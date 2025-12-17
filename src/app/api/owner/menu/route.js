@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 import { kv } from '@vercel/kv';
+import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -11,9 +12,10 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
     console.log(`[API LOG] verifyOwnerAndGetBusiness: UID verified: ${uid}`);
 
-    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
     const sessionExpiry = url.searchParams.get('session_expiry');
 
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -30,6 +32,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     let targetOwnerId = uid;
     let isImpersonating = false;
 
+    // --- ADMIN IMPERSONATION ---
     if (userRole === 'admin' && impersonatedOwnerId) {
         // Validate session expiry
         if (sessionExpiry && isSessionExpired(parseInt(sessionExpiry))) {
@@ -40,7 +43,19 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
         console.log(`[API LOG] Impersonation: Admin ${uid} is managing data for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
         isImpersonating = true;
-    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
+    }
+    // --- EMPLOYEE ACCESS (SECURE) ---
+    else if (employeeOfOwnerId) {
+        const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
+        if (!accessResult.authorized) {
+            console.warn(`[SECURITY] Blocked unauthorized employee_of access: ${uid} -> ${employeeOfOwnerId}`);
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+        console.log(`[API Employee Access] ${uid} (${accessResult.employeeRole}) accessing ${employeeOfOwnerId}'s menu`);
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // --- OWNER ACCESS ---
+    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         console.error(`[API ERROR] verifyOwnerAndGetBusiness: User ${uid} with role '${userRole}' does not have sufficient privileges.`);
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }

@@ -6,10 +6,11 @@ import { getAuth, getFirestore, verifyAndGetUid, FieldValue } from '@/lib/fireba
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
-    
-    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
+
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
     if (!userDoc.exists) {
@@ -20,10 +21,26 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const userRole = userData.role;
 
     let targetOwnerId = uid;
+
+    // Admin impersonation
     if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
+        console.log(`[API Impersonation] Admin ${uid} is viewing delivery data for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+
+        console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s delivery data`);
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
@@ -35,7 +52,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
             return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin' };
         }
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
@@ -53,11 +70,11 @@ export async function GET(req) {
             boysRef.get(),
             ordersRef.where('status', '==', 'preparing').get()
         ]);
-        
+
         let boys = [];
         const riderPromises = boysSnap.docs.map(async (doc) => {
             const subCollectionData = { id: doc.id, ...doc.data() };
-            
+
             const driverDocRef = firestore.collection('drivers').doc(subCollectionData.id);
             const driverDoc = await driverDocRef.get();
             let finalBoyData = { ...subCollectionData };
@@ -66,7 +83,7 @@ export async function GET(req) {
                 const mainDriverData = driverDoc.data();
                 // Merge main data, but prioritize subcollection data if it exists (e.g., historical stats)
                 finalBoyData = { ...mainDriverData, ...subCollectionData };
-                
+
                 // Map Firestore statuses ('online', 'offline', 'on-delivery') to UI statuses ('Available', 'Inactive', 'On Delivery')
                 switch (mainDriverData.status) {
                     case 'online':
@@ -91,7 +108,7 @@ export async function GET(req) {
             customer: doc.data().customerName,
             items: (doc.data().items || []).length
         }));
-        
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -118,13 +135,13 @@ export async function GET(req) {
             avgDeliveryTime: boys.length > 0 ? Math.round(boys.reduce((sum, boy) => sum + (boy.avgDeliveryTime || 0), 0) / boys.length) : 0,
             topPerformer: boys.length > 0 ? boys.reduce((top, boy) => ((boy.deliveriesToday || 0) > (top.deliveriesToday || 0)) ? boy : top, boys[0]) : {},
         };
-        
-        const weeklyPerformance = Array.from({length: 7}, (_, i) => {
+
+        const weeklyPerformance = Array.from({ length: 7 }, (_, i) => {
             const date = new Date();
-            date.setDate(date.getDate() - (6-i));
+            date.setDate(date.getDate() - (6 - i));
             return {
-                day: date.toLocaleDateString('en-IN', { weekday: 'short'}),
-                deliveries: 0 
+                day: date.toLocaleDateString('en-IN', { weekday: 'short' }),
+                deliveries: 0
             };
         });
 
@@ -149,7 +166,7 @@ export async function POST(req) {
         }
 
         const newBoyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc();
-        
+
         const newBoyData = {
             ...boy,
             id: newBoyRef.id,
@@ -189,7 +206,7 @@ export async function PATCH(req) {
         // Note: The main driver's status is handled separately by the rider's device.
         // This PATCH should only affect the status WITHIN the restaurant's context if needed.
         // For simplicity, we are removing direct manipulation of the main 'drivers' collection status here.
-        
+
         await boyRef.update(updateData);
 
         return NextResponse.json({ message: 'Delivery Boy updated successfully!' }, { status: 200 });
@@ -200,4 +217,3 @@ export async function PATCH(req) {
     }
 }
 
-    

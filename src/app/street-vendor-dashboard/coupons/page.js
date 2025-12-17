@@ -275,6 +275,8 @@ export default function CouponsPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
+    const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
 
     const handleApiCall = async (method, body) => {
         const user = auth.currentUser;
@@ -282,8 +284,11 @@ export default function CouponsPage() {
         const idToken = await user.getIdToken();
 
         let url = new URL('/api/owner/coupons', window.location.origin);
+        // Add impersonation or employee_of param
         if (impersonatedOwnerId) {
             url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
         }
 
         const res = await fetch(url.toString(), {
@@ -359,7 +364,7 @@ export default function CouponsPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, [impersonatedOwnerId]);
+    }, [effectiveOwnerId]);
 
     const handleSaveCoupon = async (couponData) => {
         try {

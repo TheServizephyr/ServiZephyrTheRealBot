@@ -236,6 +236,9 @@ function SettingsPageContent() {
     const [showNewPass, setShowNewPass] = useState(false);
     const bannerInputRef = React.useRef(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
 
     const defaultAddress = {
         street: '',
@@ -254,7 +257,13 @@ function SettingsPageContent() {
             }
             try {
                 const idToken = await currentUser.getIdToken();
-                const response = await fetch('/api/owner/settings', {
+                let url = '/api/owner/settings';
+                if (impersonatedOwnerId) {
+                    url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                } else if (employeeOfOwnerId) {
+                    url += `?employee_of=${employeeOfOwnerId}`;
+                }
+                const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
 
@@ -289,7 +298,7 @@ function SettingsPageContent() {
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleEditToggle = (section) => {
         if (section === 'profile') {
@@ -434,7 +443,13 @@ function SettingsPageContent() {
 
         try {
             const idToken = await currentUser.getIdToken();
-            const response = await fetch('/api/owner/settings', {
+            let url = '/api/owner/settings';
+            if (impersonatedOwnerId) {
+                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                url += `?employee_of=${employeeOfOwnerId}`;
+            }
+            const response = await fetch(url, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -515,7 +530,8 @@ function SettingsPageContent() {
         );
     }
 
-    const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor';
+    // Show business owner sections if: owner accessing their own data OR employee/admin viewing owner's data
+    const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor' || !!employeeOfOwnerId || !!impersonatedOwnerId;
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">

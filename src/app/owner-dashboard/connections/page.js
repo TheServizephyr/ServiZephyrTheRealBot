@@ -31,13 +31,13 @@ const ConnectionCard = ({ restaurantName, whatsAppNumber, status }) => (
     className="bg-card border border-border rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
   >
     <div className="flex items-center gap-4">
-       <div className="bg-primary/10 p-3 rounded-full">
-         <Bot className="h-6 w-6 text-primary" />
-       </div>
-       <div>
-          <h3 className="text-lg font-bold text-foreground">{restaurantName}</h3>
-          <p className="text-sm text-muted-foreground mt-1">{whatsAppNumber}</p>
-       </div>
+      <div className="bg-primary/10 p-3 rounded-full">
+        <Bot className="h-6 w-6 text-primary" />
+      </div>
+      <div>
+        <h3 className="text-lg font-bold text-foreground">{restaurantName}</h3>
+        <p className="text-sm text-muted-foreground mt-1">{whatsAppNumber}</p>
+      </div>
     </div>
     <div className="flex items-center gap-2 self-end sm:self-center">
       {status === 'Connected' ? (
@@ -60,37 +60,40 @@ function ConnectionsPageContent() {
   const [sdkLoaded, setSdkLoaded] = useState(false);
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+  const employeeOfOwnerId = searchParams.get('employee_of');
 
   const fetchConnections = async (isManualRefresh = false) => {
     if (!isManualRefresh) setDataLoading(true);
     setError('');
     try {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Authentication required to fetch connections.");
-        const idToken = await user.getIdToken();
+      const user = auth.currentUser;
+      if (!user) throw new Error("Authentication required to fetch connections.");
+      const idToken = await user.getIdToken();
 
-        let url = '/api/owner/connections';
-        if (impersonatedOwnerId) {
-            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
-        }
-        
-        const res = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${idToken}` }
-        });
+      let url = '/api/owner/connections';
+      if (impersonatedOwnerId) {
+        url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+      } else if (employeeOfOwnerId) {
+        url += `?employee_of=${employeeOfOwnerId}`;
+      }
 
-        if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.message || 'Failed to fetch connections.');
-        }
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${idToken}` }
+      });
 
-        const data = await res.json();
-        setConnections(data.connections || []);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to fetch connections.');
+      }
 
-    } catch(err) {
-        console.error(err);
-        setError(err.message);
+      const data = await res.json();
+      setConnections(data.connections || []);
+
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
     } finally {
-        if (!isManualRefresh) setDataLoading(false);
+      if (!isManualRefresh) setDataLoading(false);
     }
   };
 
@@ -107,19 +110,19 @@ function ConnectionsPageContent() {
     }
 
     const unsubscribe = auth.onAuthStateChanged(user => {
-        if (user) {
-            fetchConnections();
-        } else {
-            setDataLoading(false);
-        }
+      if (user) {
+        fetchConnections();
+      } else {
+        setDataLoading(false);
+      }
     });
 
     return () => unsubscribe();
-  }, [impersonatedOwnerId]);
+  }, [impersonatedOwnerId, employeeOfOwnerId]);
 
   const initializeFacebookSDK = () => {
     if (window.FB) {
-        setSdkLoaded(true);
+      setSdkLoaded(true);
     }
   };
 
@@ -129,9 +132,9 @@ function ConnectionsPageContent() {
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("You must be logged in to connect a bot.");
-      
+
       const idToken = await user.getIdToken();
-      
+
       const response = await fetch('/api/owner/whatsapp-onboarding', {
         method: 'POST',
         headers: {
@@ -162,12 +165,12 @@ function ConnectionsPageContent() {
       setError("Facebook SDK is not ready yet. Please wait a moment.");
       return;
     }
-    
+
     const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
     console.log("DEBUG: App ID being used for login is:", appId);
     if (!appId) {
-        setError("Facebook App ID is not configured. Please contact support.");
-        return;
+      setError("Facebook App ID is not configured. Please contact support.");
+      return;
     }
 
     window.FB.init({
@@ -175,11 +178,11 @@ function ConnectionsPageContent() {
       version: 'v19.0',
       xfbml: true,
     });
-    
+
     const config_id = "808539835091857";
     const scopes = 'whatsapp_business_management,business_management';
 
-    window.FB.login(function(response) {
+    window.FB.login(function (response) {
       if (response.authResponse && response.authResponse.code) {
         const authCode = response.authResponse.code;
         console.log("Received auth code from Facebook:", authCode);
@@ -190,7 +193,7 @@ function ConnectionsPageContent() {
         setError('Login cancelled or not fully authorized.');
       }
     }, {
-      config_id: config_id, 
+      config_id: config_id,
       response_type: 'code',
       override_default_response_type: true,
       scope: scopes
@@ -214,14 +217,14 @@ function ConnectionsPageContent() {
           </p>
         </div>
         <div className="flex gap-4">
-            <Button onClick={() => fetchConnections(true)} variant="outline" disabled={dataLoading}>
-                <RefreshCw size={16} className={dataLoading ? "animate-spin" : ""} />
-                <span className="ml-2">Refresh</span>
-            </Button>
-            <Button onClick={handleFacebookLogin} disabled={fbLoading || !sdkLoaded} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                {fbLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle size={20} className="mr-2" />}
-                {fbLoading ? 'Connecting...' : 'Connect a New WhatsApp Bot'}
-            </Button>
+          <Button onClick={() => fetchConnections(true)} variant="outline" disabled={dataLoading}>
+            <RefreshCw size={16} className={dataLoading ? "animate-spin" : ""} />
+            <span className="ml-2">Refresh</span>
+          </Button>
+          <Button onClick={handleFacebookLogin} disabled={fbLoading || !sdkLoaded} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            {fbLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle size={20} className="mr-2" />}
+            {fbLoading ? 'Connecting...' : 'Connect a New WhatsApp Bot'}
+          </Button>
         </div>
       </div>
 
@@ -233,10 +236,10 @@ function ConnectionsPageContent() {
 
       <div className="space-y-4">
         {dataLoading ? (
-             <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
-                 <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary" />
-                <p className="mt-4 text-lg font-semibold">Loading your connections...</p>
-             </div>
+          <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
+            <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary" />
+            <p className="mt-4 text-lg font-semibold">Loading your connections...</p>
+          </div>
         ) : connections.length > 0 ? (
           connections.map(conn => (
             <ConnectionCard key={conn.id} {...conn} />
@@ -250,7 +253,7 @@ function ConnectionsPageContent() {
         )}
       </div>
 
-      <motion.div 
+      <motion.div
         variants={itemVariants}
         className="bg-card border border-border rounded-xl p-6"
       >
@@ -264,14 +267,14 @@ function ConnectionsPageContent() {
               <p className="text-sm text-muted-foreground mt-1">Create and manage your message templates (e.g., for promotions) in the Meta Business Suite.</p>
             </div>
           </div>
-          <a 
-            href="https://business.facebook.com/wa/manage/message-templates/" 
-            target="_blank" 
+          <a
+            href="https://business.facebook.com/wa/manage/message-templates/"
+            target="_blank"
             rel="noopener noreferrer"
             className="flex-shrink-0"
           >
             <Button variant="outline">
-              Open Template Manager <ExternalLink size={16} className="ml-2"/>
+              Open Template Manager <ExternalLink size={16} className="ml-2" />
             </Button>
           </a>
         </div>
@@ -282,9 +285,9 @@ function ConnectionsPageContent() {
 }
 
 export default function ConnectionsPage() {
-    return (
-        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
-            <ConnectionsPageContent />
-        </Suspense>
-    )
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+      <ConnectionsPageContent />
+    </Suspense>
+  )
 }

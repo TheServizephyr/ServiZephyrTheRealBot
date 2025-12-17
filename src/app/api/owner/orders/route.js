@@ -10,8 +10,10 @@ import Razorpay from 'razorpay';
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
 
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
     if (!userDoc.exists) {
@@ -22,10 +24,26 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const userRole = userData.role;
 
     let targetOwnerId = uid;
+
+    // Admin impersonation
     if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
+        console.log(`[API Impersonation] Admin ${uid} is viewing orders for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+
+        console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s orders`);
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 

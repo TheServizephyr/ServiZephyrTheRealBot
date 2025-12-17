@@ -13,10 +13,10 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
@@ -42,7 +42,7 @@ const ConversationItem = ({ conversation, active, onClick }) => {
     const TagIcon = tagConfig[conversation.tag]?.icon;
 
     return (
-        <div 
+        <div
             onClick={() => onClick(conversation)}
             className={cn(
                 'flex items-center p-3 cursor-pointer rounded-lg transition-colors',
@@ -83,7 +83,7 @@ const MessageBubble = ({ message }) => {
                 {message.type === 'image' && message.mediaUrl ? (
                     <div className="p-2">
                         <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
-                           <Image src={message.mediaUrl} alt="Chat image" width={250} height={250} className="rounded-lg cursor-pointer" />
+                            <Image src={message.mediaUrl} alt="Chat image" width={250} height={250} className="rounded-lg cursor-pointer" />
                         </a>
                     </div>
                 ) : (
@@ -124,35 +124,38 @@ function WhatsAppDirectPageContent() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadingFile, setUploadingFile] = useState(null);
     const [activeFilter, setActiveFilter] = useState('All');
     const [isConfirmEndChatOpen, setConfirmEndChatOpen] = useState(false);
-    
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
 
     useEffect(scrollToBottom, [messages, uploadingFile]);
-    
+
     const handleApiCall = async (endpoint, method = 'GET', body = null) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
-        
+
         let url = new URL(endpoint, window.location.origin);
         if (impersonatedOwnerId) {
             url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
         }
         if (method === 'GET' && body) {
-             Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
+            Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
         }
-        
+
         const res = await fetch(url.toString(), {
             method,
-            headers: { 
+            headers: {
                 'Authorization': `Bearer ${idToken}`,
                 ...(method !== 'GET' && { 'Content-Type': 'application/json' }),
             },
@@ -163,9 +166,9 @@ function WhatsAppDirectPageContent() {
         if (!res.ok) throw new Error(data.message || 'API call failed');
         return data;
     }
-    
+
     const fetchConversations = async (isBackgroundRefresh = false) => {
-         if (!isBackgroundRefresh) {
+        if (!isBackgroundRefresh) {
             setLoadingConversations(true);
         }
         try {
@@ -182,8 +185,8 @@ function WhatsAppDirectPageContent() {
         try {
             const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId });
             setMessages(data.messages || []);
-        } catch(error) {
-             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load messages: ' + error.message });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load messages: ' + error.message });
         } finally {
             setLoadingMessages(false);
         }
@@ -194,14 +197,14 @@ function WhatsAppDirectPageContent() {
             if (user) fetchConversations();
             else setLoadingConversations(false);
         });
-        
-        const interval = setInterval(() => fetchConversations(true), 30000); 
+
+        const interval = setInterval(() => fetchConversations(true), 30000);
 
         return () => {
             unsubscribe();
             clearInterval(interval);
         };
-    }, [impersonatedOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     useEffect(() => {
         let interval;
@@ -214,31 +217,31 @@ function WhatsAppDirectPageContent() {
             if (interval) clearInterval(interval);
         };
     }, [activeConversation]);
-    
+
     const handleConversationClick = async (conversation) => {
         setActiveConversation(conversation);
         setLoadingMessages(true);
         setMessages([]);
         await fetchMessages(conversation.id);
     };
-    
+
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!newMessage.trim() || !activeConversation) return;
-        
+
         setIsSending(true);
         const optimisticMessage = { id: 'temp-' + Date.now(), text: newMessage, sender: 'owner', timestamp: new Date().toISOString() };
         setMessages(prev => [...prev, optimisticMessage]);
         const messageToSend = newMessage;
         setNewMessage('');
-        
+
         try {
             await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', {
                 conversationId: activeConversation.id,
                 text: messageToSend
             });
             await fetchMessages(activeConversation.id);
-        } catch(error) {
+        } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to send message: ' + error.message });
             setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
         } finally {
@@ -260,14 +263,14 @@ function WhatsAppDirectPageContent() {
         if (!activeConversation) return;
         setUploadingFile(file.name);
         setUploadProgress(0);
-        
+
         try {
             const { presignedUrl, publicUrl } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
                 fileName: file.name,
                 fileType: file.type,
                 conversationId: activeConversation.id
             });
-            
+
             const uploadResponse = await fetch(presignedUrl, {
                 method: 'PUT',
                 body: file,
@@ -275,22 +278,22 @@ function WhatsAppDirectPageContent() {
                     'Content-Type': file.type,
                 },
             });
-    
+
             if (!uploadResponse.ok) {
-                 const errorText = await uploadResponse.text();
-                 console.error("Firebase upload failed:", errorText);
-                 throw new Error('Failed to upload image to storage.');
+                const errorText = await uploadResponse.text();
+                console.error("Firebase upload failed:", errorText);
+                throw new Error('Failed to upload image to storage.');
             }
-            
+
             await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', {
                 conversationId: activeConversation.id,
                 imageUrl: publicUrl
             });
-    
+
             await fetchMessages(activeConversation.id);
-    
+
         } catch (error) {
-            setInfoDialog({isOpen: true, title: "Upload Failed", message: "Could not send image: " + error.message});
+            setInfoDialog({ isOpen: true, title: "Upload Failed", message: "Could not send image: " + error.message });
         } finally {
             setUploadingFile(null);
             setUploadProgress(0);
@@ -306,7 +309,7 @@ function WhatsAppDirectPageContent() {
 
         setActiveConversation(prev => ({ ...prev, tag: newTag }));
         setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, tag: newTag } : c));
-        
+
         try {
             await handleApiCall('/api/owner/whatsapp-direct/conversations', 'PATCH', { conversationId, tag: newTag });
         } catch (error) {
@@ -340,7 +343,7 @@ function WhatsAppDirectPageContent() {
         "Dhanyavaad, humein aapka feedback mil gaya hai.",
         "Kripya thoda intezaar karein, hum abhi check kar rahe hain.",
     ];
-    
+
     const filteredConversations = useMemo(() => {
         if (activeFilter === 'All') return conversations;
         return conversations.filter(c => c.tag === activeFilter);
@@ -348,20 +351,20 @@ function WhatsAppDirectPageContent() {
 
 
     const ConversationList = (
-         <aside className="w-full md:w-1/3 border-r border-border flex flex-col h-full">
+        <aside className="w-full md:w-1/3 border-r border-border flex flex-col h-full">
             <header className="p-4 border-b border-border space-y-3">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                     <input type="text" placeholder="Search chats..." className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border" />
                 </div>
-                 <div className="flex gap-2 overflow-x-auto pb-1">
+                <div className="flex gap-2 overflow-x-auto pb-1">
                     {Object.keys(tagConfig).map(tag => {
                         const TagIcon = tagConfig[tag].icon;
                         return (
-                            <Button 
-                                key={tag} 
-                                variant={activeFilter === tag ? 'default' : 'outline'} 
-                                size="sm" 
+                            <Button
+                                key={tag}
+                                variant={activeFilter === tag ? 'default' : 'outline'}
+                                size="sm"
                                 className="flex items-center gap-2 flex-shrink-0"
                                 onClick={() => setActiveFilter(prev => prev === tag ? 'All' : tag)}
                             >
@@ -369,23 +372,23 @@ function WhatsAppDirectPageContent() {
                             </Button>
                         )
                     })}
-                     {activeFilter !== 'All' && <Button variant="ghost" size="sm" onClick={() => setActiveFilter('All')}>Clear</Button>}
+                    {activeFilter !== 'All' && <Button variant="ghost" size="sm" onClick={() => setActiveFilter('All')}>Clear</Button>}
                 </div>
             </header>
             <div className="flex-grow overflow-y-auto p-2 space-y-1">
                 {loadingConversations ? (
-                    <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary"/></div>
+                    <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary" /></div>
                 ) : filteredConversations.length > 0 ? (
-                   filteredConversations.map(convo => (
-                       <ConversationItem 
-                         key={convo.id} 
-                         conversation={convo} 
-                         active={activeConversation?.id === convo.id}
-                         onClick={handleConversationClick}
-                       />
-                   ))
+                    filteredConversations.map(convo => (
+                        <ConversationItem
+                            key={convo.id}
+                            conversation={convo}
+                            active={activeConversation?.id === convo.id}
+                            onClick={handleConversationClick}
+                        />
+                    ))
                 ) : (
-                     <div className="text-center text-muted-foreground p-8">No conversations found for this filter.</div>
+                    <div className="text-center text-muted-foreground p-8">No conversations found for this filter.</div>
                 )}
             </div>
         </aside>
@@ -394,7 +397,7 @@ function WhatsAppDirectPageContent() {
     const ChatWindow = (
         <main className="w-full flex-grow flex flex-col bg-background h-full">
             {activeConversation ? (
-                 <>
+                <>
                     <header className="p-4 border-b border-border flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <button className="md:hidden" onClick={() => setActiveConversation(null)}>
@@ -409,57 +412,57 @@ function WhatsAppDirectPageContent() {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                           <DropdownMenu>
+                            <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="outline" size="sm" className="flex items-center gap-2">
-                                        <Tag size={14} /> 
+                                        <Tag size={14} />
                                         {activeConversation.tag || 'Tag Chat'}
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent>
-                                    {Object.entries(tagConfig).map(([tag, {icon: TagIcon, color}]) => (
+                                    {Object.entries(tagConfig).map(([tag, { icon: TagIcon, color }]) => (
                                         <DropdownMenuItem key={tag} onClick={() => handleTagChange(tag)}>
                                             <TagIcon className={cn("mr-2 h-4 w-4", color)} /> {tag}
                                         </DropdownMenuItem>
                                     ))}
                                     {activeConversation.tag && (
                                         <>
-                                        <div className="h-px bg-border my-1 mx-[-4px]"></div>
-                                        <DropdownMenuItem onClick={() => handleTagChange(null)} className="text-red-500">
-                                            <X size={14} className="mr-2"/> Clear Tag
-                                        </DropdownMenuItem>
+                                            <div className="h-px bg-border my-1 mx-[-4px]"></div>
+                                            <DropdownMenuItem onClick={() => handleTagChange(null)} className="text-red-500">
+                                                <X size={14} className="mr-2" /> Clear Tag
+                                            </DropdownMenuItem>
                                         </>
                                     )}
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                             <Button variant="destructive" size="sm" onClick={() => setConfirmEndChatOpen(true)}>
-                                <LogOut size={14} className="mr-2"/> End Chat
+                            <Button variant="destructive" size="sm" onClick={() => setConfirmEndChatOpen(true)}>
+                                <LogOut size={14} className="mr-2" /> End Chat
                             </Button>
                         </div>
                     </header>
                     <div className="flex-grow p-4 overflow-y-auto">
-                       {loadingMessages ? (
-                           <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary"/></div>
-                       ) : (
-                           messages.map(msg => <MessageBubble key={msg.id} message={msg} />)
-                       )}
-                       {uploadingFile && (
-                          <div className="flex justify-end mb-3">
-                            <div className="max-w-xs lg:max-w-md px-4 py-3 rounded-2xl bg-primary text-primary-foreground rounded-br-none">
-                               <div className="flex items-center gap-3">
-                                <Loader2 className="animate-spin"/>
-                                <div>
-                                    <p className="text-sm font-semibold">Sending image...</p>
-                                    <p className="text-xs truncate max-w-xs text-primary-foreground/80">{uploadingFile}</p>
+                        {loadingMessages ? (
+                            <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary" /></div>
+                        ) : (
+                            messages.map(msg => <MessageBubble key={msg.id} message={msg} />)
+                        )}
+                        {uploadingFile && (
+                            <div className="flex justify-end mb-3">
+                                <div className="max-w-xs lg:max-w-md px-4 py-3 rounded-2xl bg-primary text-primary-foreground rounded-br-none">
+                                    <div className="flex items-center gap-3">
+                                        <Loader2 className="animate-spin" />
+                                        <div>
+                                            <p className="text-sm font-semibold">Sending image...</p>
+                                            <p className="text-xs truncate max-w-xs text-primary-foreground/80">{uploadingFile}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                               </div>
                             </div>
-                           </div>
-                       )}
-                       <div ref={messagesEndRef} />
+                        )}
+                        <div ref={messagesEndRef} />
                     </div>
                     <footer className="p-4 border-t border-border bg-card">
-                         <div className="flex gap-2 overflow-x-auto mb-3 pb-2">
+                        <div className="flex gap-2 overflow-x-auto mb-3 pb-2">
                             {quickReplies.map((reply, i) => (
                                 <Button key={i} variant="outline" size="sm" className="flex-shrink-0" onClick={() => setNewMessage(reply)}>
                                     {reply}
@@ -467,23 +470,23 @@ function WhatsAppDirectPageContent() {
                             ))}
                         </div>
                         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
-                             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/png, image/jpeg" />
-                             <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="flex-shrink-0">
-                                <Paperclip/>
-                             </Button>
-                            <input 
-                                type="text" 
-                                placeholder="Type your message..." 
+                            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/png, image/jpeg" />
+                            <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="flex-shrink-0">
+                                <Paperclip />
+                            </Button>
+                            <input
+                                type="text"
+                                placeholder="Type your message..."
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
                                 className="flex-grow p-2 h-10 rounded-md bg-input border border-border"
                             />
                             <button type="submit" disabled={isSending || !newMessage.trim()} className="h-10 w-10 bg-primary text-primary-foreground rounded-md flex items-center justify-center disabled:opacity-50">
-                               {isSending ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
+                                {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
                             </button>
                         </form>
                     </footer>
-                 </>
+                </>
             ) : (
                 <div className="flex-grow flex flex-col items-center justify-center text-center p-8">
                     <div className="bg-primary/10 p-6 rounded-full">
@@ -518,24 +521,24 @@ function WhatsAppDirectPageContent() {
                 <div className="md:hidden w-full h-full">
                     <AnimatePresence mode="wait">
                         {activeConversation ? (
-                             <motion.div
+                            <motion.div
                                 key="chat"
                                 className="w-full h-full"
                                 initial={{ x: '100%' }}
                                 animate={{ x: 0 }}
                                 exit={{ x: '100%' }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                             >
+                            >
                                 {ChatWindow}
                             </motion.div>
                         ) : (
-                             <motion.div
+                            <motion.div
                                 key="list"
                                 className="w-full h-full"
                                 initial={{ x: 0 }}
                                 exit={{ x: '-100%' }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                             >
+                            >
                                 {ConversationList}
                             </motion.div>
                         )}
@@ -560,4 +563,3 @@ export default function WhatsAppDirectPage() {
     )
 }
 
-    

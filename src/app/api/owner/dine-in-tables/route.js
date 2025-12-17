@@ -8,19 +8,40 @@ import { isAfter, subDays } from 'date-fns';
 async function getBusinessRef(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req);
-    
+
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
     let finalUserId = uid;
 
     const userDoc = await firestore.collection('users').doc(uid).get();
 
-    if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
-        finalUserId = impersonatedOwnerId;
-    } else if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userDoc.data().role)) {
-         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    if (!userDoc.exists) {
+        throw { message: 'Access Denied: User profile not found.', status: 403 };
     }
-    
+
+    const userData = userDoc.data();
+    const userRole = userData.role;
+
+    // Admin impersonation
+    if (userRole === 'admin' && impersonatedOwnerId) {
+        finalUserId = impersonatedOwnerId;
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+        finalUserId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userRole)) {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    }
+
     const collectionsToTry = ['restaurants', 'shops'];
     for (const collection of collectionsToTry) {
         const query = await firestore.collection(collection).where('ownerId', '==', finalUserId).limit(1).get();
@@ -28,7 +49,7 @@ async function getBusinessRef(req) {
             return query.docs[0].ref;
         }
     }
-    
+
     throw { message: 'No business associated with this request.', status: 404 };
 }
 
@@ -42,10 +63,10 @@ export async function GET(req) {
         // 1. Fetch ALL tables from the `/tables` subcollection. This is our source of truth.
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         const tableMap = new Map();
-        
+
         tablesSnap.forEach(doc => {
-            tableMap.set(doc.id, { 
-                id: doc.id, 
+            tableMap.set(doc.id, {
+                id: doc.id,
                 ...doc.data(),
                 tabs: {}, // Initialize as empty object
                 pendingOrders: [] // Initialize as empty array
@@ -54,7 +75,7 @@ export async function GET(req) {
 
         // 2. Fetch all active tabs
         const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
-        
+
         // 3. Group active tabs by their tableId
         activeTabsSnap.forEach(tabDoc => {
             const tabData = tabDoc.data();
@@ -69,39 +90,39 @@ export async function GET(req) {
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
             .where('status', 'not-in', ['delivered', 'picked_up', 'rejected']);
-            
+
         const ordersSnap = await ordersQuery.get();
-        
+
         // 5. Assign orders to the correct tab or as a pending order on the correct table
         ordersSnap.forEach(orderDoc => {
             const orderData = orderDoc.data();
             const tableId = orderData.tableId;
             const tabId = orderData.dineInTabId;
-            
+
             const table = tableMap.get(tableId);
             if (!table) return; // Skip if order is for a table that doesn't exist anymore
 
             // If it belongs to an active tab, place it inside that tab
             if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
-            } 
+            }
             // If it's a pending order that isn't yet in a tab
             else if (orderData.status === 'pending' && !tabId) {
-                 const isAlreadyInAnActiveTab = Array.from(tableMap.values()).some(t => 
+                const isAlreadyInAnActiveTab = Array.from(tableMap.values()).some(t =>
                     Object.values(t.tabs).some(activeTab => activeTab.orders?.[orderDoc.id])
-                 );
-                 if (!isAlreadyInAnActiveTab) {
+                );
+                if (!isAlreadyInAnActiveTab) {
                     table.pendingOrders.push({ id: orderDoc.id, ...orderData });
-                 }
+                }
             }
         });
-        
+
         // 6. Recalculate current_pax and state for EVERY table based on live data
         tableMap.forEach(table => {
             const totalPaxInTabs = Object.values(table.tabs).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
             const totalPaxInPending = table.pendingOrders.reduce((sum, order) => sum + (order.pax_count || 0), 0);
             const current_pax = totalPaxInTabs + totalPaxInPending;
-            
+
             // Overwrite database value with calculated value
             table.current_pax = current_pax;
 
@@ -142,13 +163,13 @@ export async function POST(req) {
     try {
         const businessRef = await getBusinessRef(req);
         if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.', status: 404 });
-        
+
         if (body.action === 'create_tab') {
             const { tableId, pax_count, tab_name } = body;
             if (!tableId || !pax_count || !tab_name) {
                 return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
             }
-            
+
             const tableRef = businessRef.collection('tables').doc(tableId);
             const newTabId = `tab_${Date.now()}`;
 
@@ -156,45 +177,45 @@ export async function POST(req) {
                 await firestore.runTransaction(async (transaction) => {
                     const tableDoc = await transaction.get(tableRef);
                     if (!tableDoc.exists) throw new Error("Table not found.");
-                    
+
                     const tableData = tableDoc.data();
                     const availableCapacity = tableData.max_capacity - (tableData.current_pax || 0);
 
                     if (pax_count > availableCapacity) {
                         throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
                     }
-                    
+
                     const newTabRef = businessRef.collection('dineInTabs').doc(newTabId);
-                    const newTabData = { 
-                        id: newTabId, 
-                        tableId, 
-                        restaurantId: businessRef.id, 
-                        status: 'active', 
-                        tab_name, 
-                        pax_count: Number(pax_count), 
+                    const newTabData = {
+                        id: newTabId,
+                        tableId,
+                        restaurantId: businessRef.id,
+                        status: 'active',
+                        tab_name,
+                        pax_count: Number(pax_count),
                         createdAt: FieldValue.serverTimestamp(),
                         totalBill: 0,
                         orders: {}
                     };
                     transaction.set(newTabRef, newTabData);
-                    
+
                     transaction.update(tableRef, {
                         current_pax: FieldValue.increment(Number(pax_count)),
                         state: 'occupied'
                     });
                 });
                 return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
-            } catch(txError) {
+            } catch (txError) {
                 console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", txError);
                 return NextResponse.json({ message: txError.message }, { status: 400 });
             }
         }
-        
+
         const { tableId, max_capacity } = body;
         if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
         const tableRef = businessRef.collection('tables').doc(tableId);
         await tableRef.set({ id: tableId, max_capacity: Number(max_capacity), createdAt: FieldValue.serverTimestamp(), state: 'available', current_pax: 0 }, { merge: true });
-        
+
         return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
 
     } catch (error) {
@@ -205,22 +226,60 @@ export async function POST(req) {
 
 export async function PATCH(req) {
     const firestore = await getFirestore();
-     try {
+    try {
         const businessRef = await getBusinessRef(req);
-        const { tableId, action, tabId, paymentMethod, paxCount } = await req.json();
-        
+        const body = await req.json();
+        const { tableId, action, tabId, paymentMethod, paxCount, newTableId, newCapacity } = body;
+
         const tableRef = businessRef.collection('tables').doc(tableId);
+
+        // Handle table editing (updating table ID or capacity)
+        if (newTableId !== undefined || newCapacity !== undefined) {
+            const tableDoc = await tableRef.get();
+            if (!tableDoc.exists) {
+                return NextResponse.json({ message: 'Table not found.' }, { status: 404 });
+            }
+
+            const currentData = tableDoc.data();
+
+            // If table ID is changing, we need to create new doc and delete old
+            if (newTableId && newTableId !== tableId) {
+                const newTableRef = businessRef.collection('tables').doc(newTableId);
+                const existingNew = await newTableRef.get();
+                if (existingNew.exists) {
+                    return NextResponse.json({ message: 'A table with this ID already exists.' }, { status: 400 });
+                }
+
+                // Create new table with updated data
+                await newTableRef.set({
+                    ...currentData,
+                    id: newTableId,
+                    max_capacity: newCapacity ? Number(newCapacity) : currentData.max_capacity
+                });
+
+                // Delete old table
+                await tableRef.delete();
+
+                return NextResponse.json({ message: 'Table updated successfully.' }, { status: 200 });
+            } else {
+                // Just update capacity
+                await tableRef.update({
+                    max_capacity: newCapacity ? Number(newCapacity) : currentData.max_capacity
+                });
+                return NextResponse.json({ message: 'Table capacity updated successfully.' }, { status: 200 });
+            }
+        }
 
         if (action === 'clear_tab') {
             if (!tabId || !tableId) return NextResponse.json({ message: 'Tab ID and Table ID are required to clear a tab.' }, { status: 400 });
-            
+
             await firestore.runTransaction(async (transaction) => {
                 const tabRef = businessRef.collection('dineInTabs').doc(tabId);
                 const tableDoc = await transaction.get(tableRef);
                 const tabDoc = await transaction.get(tabRef);
 
                 if (!tabDoc.exists && !tableDoc.exists) throw new Error("Could not find tab or table to clear.");
-                
+
                 if (tableDoc.exists) {
                     const tabPaxCount = tabDoc.exists() ? (tabDoc.data().pax_count || 0) : (paxCount || 0);
                     const newPax = Math.max(0, (tableDoc.data().current_pax || 0) - tabPaxCount);
@@ -230,7 +289,7 @@ export async function PATCH(req) {
                     });
                 }
 
-                if(tabDoc.exists) {
+                if (tabDoc.exists) {
                     transaction.delete(tabRef);
                 }
             });
@@ -247,27 +306,27 @@ export async function PATCH(req) {
                 const tabDoc = await transaction.get(tabRef);
 
                 if (!tabDoc.exists) throw new Error("Tab to close not found.");
-                
+
                 const tabData = tabDoc.data();
-                
+
                 Object.keys(tabData.orders || {}).forEach(orderId => {
                     const orderRef = firestore.collection('orders').doc(orderId);
                     transaction.update(orderRef, {
-                        status: 'delivered', 
+                        status: 'delivered',
                         paymentDetails: { ...(orderData.orders[orderId].paymentDetails || {}), method: paymentMethod || 'cod' }
                     });
                 });
-                
+
                 const tabPax = tabData.pax_count || 0;
-                
+
                 transaction.update(tabRef, {
                     status: 'closed',
                     closedAt: FieldValue.serverTimestamp(),
                     paymentMethod: paymentMethod || 'cod'
                 });
-                
+
                 if (tableDoc.exists) {
-                     transaction.update(tableRef, {
+                    transaction.update(tableRef, {
                         state: 'needs_cleaning',
                         lastClosedAt: FieldValue.serverTimestamp(),
                         current_pax: FieldValue.increment(-tabPax),
@@ -276,25 +335,25 @@ export async function PATCH(req) {
             });
             return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
         }
-        
+
         if (action === 'mark_cleaned') {
-             await firestore.runTransaction(async (transaction) => {
+            await firestore.runTransaction(async (transaction) => {
                 const tableDoc = await transaction.get(tableRef);
                 if (!tableDoc.exists) throw new Error("Table not found.");
-                
+
                 const activeTabsQuery = businessRef.collection('dineInTabs').where('tableId', '==', tableId).where('status', '==', 'active');
                 const activeTabsSnap = await transaction.get(activeTabsQuery);
-                
+
                 const newPax = activeTabsSnap.docs.reduce((sum, doc) => sum + (doc.data().pax_count || 0), 0);
-                
-                transaction.update(tableRef, { 
+
+                transaction.update(tableRef, {
                     state: newPax > 0 ? 'occupied' : 'available',
                     current_pax: newPax
                 });
             });
-             return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
+            return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
         }
-        
+
         return NextResponse.json({ message: 'No valid action or edit data provided.' }, { status: 400 });
 
     } catch (error) {
@@ -304,7 +363,7 @@ export async function PATCH(req) {
 }
 
 export async function DELETE(req) {
-     const firestore = await getFirestore();
+    const firestore = await getFirestore();
     try {
         const businessRef = await getBusinessRef(req);
         const { tableId } = await req.json();

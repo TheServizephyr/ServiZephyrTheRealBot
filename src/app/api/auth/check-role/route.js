@@ -20,7 +20,51 @@ export async function POST(req) {
             console.log("[DEBUG] /api/auth/check-role: User document data:", userData);
             const role = userData.role;
             const businessType = userData.businessType || null;
-            
+            const linkedOutlets = userData.linkedOutlets || [];
+
+            // Check for multiple roles (user is both owner/customer AND employee somewhere)
+            const hasEmployeeRole = linkedOutlets.some(o => o.status === 'active');
+            const isOwnerOrVendor = role === 'owner' || role === 'street-vendor' || role === 'restaurant-owner' || role === 'shop-owner';
+
+            // If user has multiple roles, redirect to select-role page
+            if (hasEmployeeRole && (isOwnerOrVendor || role === 'customer')) {
+                console.log(`[DEBUG] /api/auth/check-role: User has multiple roles. Primary: ${role}, Employee at ${linkedOutlets.length} outlets.`);
+                return NextResponse.json({
+                    role,
+                    businessType,
+                    hasMultipleRoles: true,
+                    linkedOutlets: linkedOutlets.filter(o => o.status === 'active').map(o => ({
+                        outletId: o.outletId,
+                        outletName: o.outletName,
+                        employeeRole: o.employeeRole,
+                        collectionName: o.collectionName,
+                        ownerId: o.ownerId, // Include ownerId for employee_of redirect
+                    })),
+                }, { status: 200 });
+            }
+
+            // If user is ONLY an employee (no owner role)
+            if (hasEmployeeRole && (!role || role === 'customer' || role === 'employee')) {
+                const primaryOutlet = linkedOutlets.find(o => o.status === 'active' && o.isActive);
+                const firstActiveOutlet = linkedOutlets.find(o => o.status === 'active');
+                const outlet = primaryOutlet || firstActiveOutlet;
+
+                if (outlet) {
+                    console.log(`[DEBUG] /api/auth/check-role: User is employee only. Redirecting to outlet dashboard.`);
+                    const redirectTo = outlet.collectionName === 'street_vendors'
+                        ? '/street-vendor-dashboard'
+                        : '/owner-dashboard/live-orders';
+
+                    return NextResponse.json({
+                        role: 'employee',
+                        employeeRole: outlet.employeeRole,
+                        businessType: null,
+                        redirectTo,
+                        outletName: outlet.outletName,
+                    }, { status: 200 });
+                }
+            }
+
             // This custom claim logic can be simplified, but let's keep it for now
             const auth = await getAuth();
             const { customClaims } = await auth.getUser(uid);
@@ -29,8 +73,8 @@ export async function POST(req) {
                 await auth.setCustomUserClaims(uid, { isAdmin: true });
                 console.log(`[DEBUG] /api/auth/check-role: Custom claim 'isAdmin: true' set for UID: ${uid}.`);
             } else if (role !== 'admin' && customClaims?.isAdmin) {
-                 await auth.setCustomUserClaims(uid, { isAdmin: null });
-                 console.log(`[DEBUG] /api/auth/check-role: User is no longer admin, removing custom claim for UID: ${uid}.`);
+                await auth.setCustomUserClaims(uid, { isAdmin: null });
+                console.log(`[DEBUG] /api/auth/check-role: User is no longer admin, removing custom claim for UID: ${uid}.`);
             }
 
             if (role) {
@@ -38,7 +82,7 @@ export async function POST(req) {
                 return NextResponse.json({ role, businessType }, { status: 200 });
             }
         }
-        
+
         console.log(`[DEBUG] /api/auth/check-role: User not in 'users' or has no role. Checking 'drivers' collection.`);
         const driverRef = firestore.collection('drivers').doc(uid);
         const driverDoc = await driverRef.get();
@@ -64,3 +108,4 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+

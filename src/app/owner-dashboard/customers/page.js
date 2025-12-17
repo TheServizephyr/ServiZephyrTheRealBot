@@ -26,7 +26,7 @@ const formatDate = (dateString) => {
         return new Date(dateString.seconds * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     }
     const date = new Date(dateString);
-    if(isNaN(date.getTime())) return 'N/A'; // Invalid date
+    if (isNaN(date.getTime())) return 'N/A'; // Invalid date
     return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
@@ -35,15 +35,15 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 // --- HELPER FUNCTIONS FOR STATUS ---
 const getCustomerStatus = (customer) => {
     if (!customer) return 'New';
-    
+
     // Unclaimed is the most base status
-    if(customer.status === 'unclaimed') return 'Claimed';
+    if (customer.status === 'unclaimed') return 'Claimed';
 
     const lastOrderDate = customer.lastOrderDate?.seconds ? new Date(customer.lastOrderDate.seconds * 1000) : new Date(customer.lastOrderDate);
     if (isNaN(lastOrderDate.getTime())) return 'New';
 
     const daysSinceLastOrder = (new Date() - lastOrderDate) / (1000 * 60 * 60 * 24);
-    
+
     if (customer.totalOrders > 10) return 'Loyal';
     if (daysSinceLastOrder > 60) return 'At Risk';
     if (customer.totalOrders <= 2) return 'New';
@@ -53,34 +53,34 @@ const getCustomerStatus = (customer) => {
 // --- SUB-COMPONENTS (Single File) ---
 
 const CustomerBadge = ({ status }) => {
-  if (status === 'Loyal') {
-    return <span title="Loyal Customer" className="flex items-center gap-1 text-xs text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full"><Star size={12} /> Loyal</span>;
-  }
-  if (status === 'At Risk') {
-    return <span title="At Risk" className="flex items-center gap-1 text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-full"><AlertTriangle size={12} /> At Risk</span>;
-  }
-  if (status === 'New') {
-     return <span title="New Customer" className="flex items-center gap-1 text-xs text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full"><Sparkles size={12} /> New</span>;
-  }
-  if (status === 'Claimed') {
-    return <span title="Claimed via Order" className="flex items-center gap-1 text-xs text-indigo-500 bg-indigo-500/10 px-2 py-1 rounded-full"><ShieldCheck size={12} /> Claimed</span>;
-  }
-  return <span title="Active Customer" className="flex items-center gap-1 text-xs text-green-500 bg-green-500/10 px-2 py-1 rounded-full"><Users size={12} /> Active</span>;
+    if (status === 'Loyal') {
+        return <span title="Loyal Customer" className="flex items-center gap-1 text-xs text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full"><Star size={12} /> Loyal</span>;
+    }
+    if (status === 'At Risk') {
+        return <span title="At Risk" className="flex items-center gap-1 text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-full"><AlertTriangle size={12} /> At Risk</span>;
+    }
+    if (status === 'New') {
+        return <span title="New Customer" className="flex items-center gap-1 text-xs text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full"><Sparkles size={12} /> New</span>;
+    }
+    if (status === 'Claimed') {
+        return <span title="Claimed via Order" className="flex items-center gap-1 text-xs text-indigo-500 bg-indigo-500/10 px-2 py-1 rounded-full"><ShieldCheck size={12} /> Claimed</span>;
+    }
+    return <span title="Active Customer" className="flex items-center gap-1 text-xs text-green-500 bg-green-500/10 px-2 py-1 rounded-full"><Users size={12} /> Active</span>;
 };
 
 const SortableHeader = ({ children, column, sortConfig, onSort }) => {
-  const isSorted = sortConfig.key === column;
-  const direction = isSorted ? sortConfig.direction : 'desc';
-  const Icon = direction === 'asc' ? ChevronUp : ChevronDown;
+    const isSorted = sortConfig.key === column;
+    const direction = isSorted ? sortConfig.direction : 'desc';
+    const Icon = direction === 'asc' ? ChevronUp : ChevronDown;
 
-  return (
-    <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
-      <div className="flex items-center gap-2">
-        {children}
-        {isSorted && <Icon size={16} />}
-      </div>
-    </th>
-  );
+    return (
+        <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
+            <div className="flex items-center gap-2">
+                {children}
+                {isSorted && <Icon size={16} />}
+            </div>
+        </th>
+    );
 };
 
 const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
@@ -89,7 +89,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
     const [modalError, setModalError] = useState('');
 
     useEffect(() => {
-        if(isOpen && customer) {
+        if (isOpen && customer) {
             setModalError('');
             setCoupon({
                 code: '',
@@ -104,8 +104,8 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
             });
         }
     }, [isOpen, customer]);
-    
-    if(!coupon) return null;
+
+    if (!coupon) return null;
 
     const handleChange = (field, value) => {
         setCoupon(prev => (prev ? { ...prev, [field]: value } : null));
@@ -119,7 +119,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setModalError('');
-        if(!coupon.code || !coupon.value || !coupon.minOrder) {
+        if (!coupon.code || !coupon.value || !coupon.minOrder) {
             setModalError("Please fill all fields to create a reward.");
             return;
         }
@@ -145,16 +145,16 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                         </DialogTitle>
                         <DialogDescription>Sending a special reward to {customer.name}.</DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="grid gap-y-4 py-6">
-                         <div>
+                        <div>
                             <Label htmlFor="code">Coupon Code</Label>
                             <div className="flex items-center gap-2 mt-1">
                                 <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-input border-border w-full" />
-                                <Button type="button" variant="outline" onClick={generateRandomCode}><Wand2 size={16} className="mr-2"/> Generate</Button>
+                                <Button type="button" variant="outline" onClick={generateRandomCode}><Wand2 size={16} className="mr-2" /> Generate</Button>
                             </div>
                         </div>
-                         <div>
+                        <div>
                             <Label htmlFor="description">Description</Label>
                             <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={2} placeholder="e.g., A special thanks for being a loyal customer." className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                         </div>
@@ -168,14 +168,14 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                                 <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                             </div>
                         </div>
-                         <div>
+                        <div>
                             <Label>Expiry Date</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
-                                   <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !coupon.expiryDate && "text-muted-foreground")}>
-                                      <CalendarIcon className="mr-2 h-4 w-4" />
-                                      {coupon.expiryDate ? format(coupon.expiryDate, 'dd MMM yyyy') : <span>Pick a date</span>}
-                                   </Button>
+                                    <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !coupon.expiryDate && "text-muted-foreground")}>
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {coupon.expiryDate ? format(coupon.expiryDate, 'dd MMM yyyy') : <span>Pick a date</span>}
+                                    </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={coupon.expiryDate} onSelect={(date) => handleChange('expiryDate', date)} initialFocus /></PopoverContent>
                             </Popover>
@@ -196,156 +196,155 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
 
 const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) => {
-  const [activeTab, setActiveTab] = useState('history');
-  const [notes, setNotes] = useState(customer.notes || '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [activeTab, setActiveTab] = useState('history');
+    const [notes, setNotes] = useState(customer.notes || '');
+    const [isSaving, setIsSaving] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-  useEffect(() => {
-    setNotes(customer.notes || '');
-  }, [customer]);
+    useEffect(() => {
+        setNotes(customer.notes || '');
+    }, [customer]);
 
-  if (!customer) return null;
+    if (!customer) return null;
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-        await onSaveNotes(customer.id, notes);
-        setInfoDialog({ isOpen: true, title: 'Success', message: 'Notes saved!' });
-    } catch(err) {
-        setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to save notes. ' + err.message });
-    } finally {
-        setIsSaving(false);
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await onSaveNotes(customer.id, notes);
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Notes saved!' });
+        } catch (err) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to save notes. ' + err.message });
+        } finally {
+            setIsSaving(false);
+        }
     }
-  }
 
-  const tabs = [
-    { id: 'history', label: 'Order History', icon: History },
-    { id: 'actions', label: 'Actions', icon: Gift },
-    { id: 'notes', label: 'Notes', icon: StickyNote },
-  ];
+    const tabs = [
+        { id: 'history', label: 'Order History', icon: History },
+        { id: 'actions', label: 'Actions', icon: Gift },
+        { id: 'notes', label: 'Notes', icon: StickyNote },
+    ];
 
-  return (
-    <>
-    <InfoDialog
-        isOpen={infoDialog.isOpen}
-        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-        title={infoDialog.title}
-        message={infoDialog.message}
-    />
-    <motion.div
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="fixed top-0 right-0 h-full w-full max-w-lg bg-card border-l border-border shadow-2xl z-50 flex flex-col"
-    >
-      {/* Header */}
-      <div className="p-6 border-b border-border flex justify-between items-start">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">{customer.name}</h2>
-          <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1"><Mail size={14} /> {customer.email}</p>
-          <div className="mt-3"><CustomerBadge status={getCustomerStatus(customer)} /></div>
-        </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:bg-muted hover:text-foreground">
-          <X size={24} />
-        </Button>
-      </div>
-
-       {/* Quick Stats */}
-      <div className="grid grid-cols-3 gap-px bg-border">
-        <div className="bg-background p-4 text-center">
-            <p className="text-xs text-muted-foreground">Total Spend</p>
-            <p className="text-xl font-bold text-foreground">{formatCurrency(customer.totalSpend)}</p>
-        </div>
-        <div className="bg-background p-4 text-center">
-            <p className="text-xs text-muted-foreground">Total Orders</p>
-            <p className="text-xl font-bold text-foreground">{customer.totalOrders}</p>
-        </div>
-        <div className="bg-background p-4 text-center">
-            <p className="text-xs text-muted-foreground">Last Order</p>
-            <p className="text-xl font-bold text-foreground">{formatDate(customer.lastOrderDate)}</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-border">
-        <nav className="flex -mb-px">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-4 px-1 text-center border-b-2 text-sm font-medium flex items-center justify-center gap-2 ${
-                activeTab === tab.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-              }`}
+    return (
+        <>
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                className="fixed top-0 right-0 h-full w-full max-w-lg bg-card border-l border-border shadow-2xl z-50 flex flex-col"
             >
-              <tab.icon size={16} /> {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-grow p-6 overflow-y-auto">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            {activeTab === 'history' && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-foreground">All Orders ({customer.orderHistory?.length || 0})</h3>
-                {customer.orderHistory && customer.orderHistory.length > 0 ? customer.orderHistory.map(order => (
-                  <div key={order.id} className="bg-muted p-3 rounded-lg flex justify-between items-center">
+                {/* Header */}
+                <div className="p-6 border-b border-border flex justify-between items-start">
                     <div>
-                      <p className="font-semibold text-foreground">{order.id}</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(order.date)}</p>
+                        <h2 className="text-2xl font-bold text-foreground">{customer.name}</h2>
+                        <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1"><Mail size={14} /> {customer.email}</p>
+                        <div className="mt-3"><CustomerBadge status={getCustomerStatus(customer)} /></div>
                     </div>
-                    <p className="font-bold text-lg text-foreground">{formatCurrency(order.amount)}</p>
-                  </div>
-                )) : <p className="text-muted-foreground text-center py-4">No order history available.</p>}
-              </div>
-            )}
-            {activeTab === 'actions' && (
-              <div className="space-y-4">
-                 <h3 className="font-semibold text-foreground">Engage with {customer.name}</h3>
-                 <div className="bg-muted p-4 rounded-lg">
-                    <h4 className="font-semibold text-primary">Send a Custom Discount</h4>
-                    <p className="text-sm text-muted-foreground mt-1 mb-3">Reward their loyalty with a special coupon.</p>
-                    <Button onClick={() => onSendReward(customer)} className="w-full bg-primary hover:bg-primary/90">
-                        <Gift size={16} className="mr-2"/> Create & Send Reward
+                    <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:bg-muted hover:text-foreground">
+                        <X size={24} />
                     </Button>
-                 </div>
-              </div>
-            )}
-            {activeTab === 'notes' && (
-               <div>
-                 <h3 className="font-semibold text-foreground mb-2">Private Notes</h3>
-                 <textarea 
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={8} 
-                    className="w-full p-3 bg-input border border-border rounded-lg text-foreground focus:ring-primary focus:border-primary" 
-                    placeholder={`e.g., Prefers window seat, always orders extra sauce...`}
-                 />
-                 <div className="mt-4 flex justify-end">
-                    <Button onClick={handleSave} className="bg-primary hover:bg-primary/90" disabled={isSaving}>
-                        {isSaving ? 'Saving...' : 'Save Notes'}
-                    </Button>
-                 </div>
-               </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-    </motion.div>
-    </>
-  );
+                </div>
+
+                {/* Quick Stats */}
+                <div className="grid grid-cols-3 gap-px bg-border">
+                    <div className="bg-background p-4 text-center">
+                        <p className="text-xs text-muted-foreground">Total Spend</p>
+                        <p className="text-xl font-bold text-foreground">{formatCurrency(customer.totalSpend)}</p>
+                    </div>
+                    <div className="bg-background p-4 text-center">
+                        <p className="text-xs text-muted-foreground">Total Orders</p>
+                        <p className="text-xl font-bold text-foreground">{customer.totalOrders}</p>
+                    </div>
+                    <div className="bg-background p-4 text-center">
+                        <p className="text-xs text-muted-foreground">Last Order</p>
+                        <p className="text-xl font-bold text-foreground">{formatDate(customer.lastOrderDate)}</p>
+                    </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="border-b border-border">
+                    <nav className="flex -mb-px">
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`flex-1 py-4 px-1 text-center border-b-2 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === tab.id
+                                        ? 'border-primary text-primary'
+                                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                                    }`}
+                            >
+                                <tab.icon size={16} /> {tab.label}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+
+                {/* Tab Content */}
+                <div className="flex-grow p-6 overflow-y-auto">
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={activeTab}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            {activeTab === 'history' && (
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-foreground">All Orders ({customer.orderHistory?.length || 0})</h3>
+                                    {customer.orderHistory && customer.orderHistory.length > 0 ? customer.orderHistory.map(order => (
+                                        <div key={order.id} className="bg-muted p-3 rounded-lg flex justify-between items-center">
+                                            <div>
+                                                <p className="font-semibold text-foreground">{order.id}</p>
+                                                <p className="text-xs text-muted-foreground">{formatDate(order.date)}</p>
+                                            </div>
+                                            <p className="font-bold text-lg text-foreground">{formatCurrency(order.amount)}</p>
+                                        </div>
+                                    )) : <p className="text-muted-foreground text-center py-4">No order history available.</p>}
+                                </div>
+                            )}
+                            {activeTab === 'actions' && (
+                                <div className="space-y-4">
+                                    <h3 className="font-semibold text-foreground">Engage with {customer.name}</h3>
+                                    <div className="bg-muted p-4 rounded-lg">
+                                        <h4 className="font-semibold text-primary">Send a Custom Discount</h4>
+                                        <p className="text-sm text-muted-foreground mt-1 mb-3">Reward their loyalty with a special coupon.</p>
+                                        <Button onClick={() => onSendReward(customer)} className="w-full bg-primary hover:bg-primary/90">
+                                            <Gift size={16} className="mr-2" /> Create & Send Reward
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                            {activeTab === 'notes' && (
+                                <div>
+                                    <h3 className="font-semibold text-foreground mb-2">Private Notes</h3>
+                                    <textarea
+                                        value={notes}
+                                        onChange={(e) => setNotes(e.target.value)}
+                                        rows={8}
+                                        className="w-full p-3 bg-input border border-border rounded-lg text-foreground focus:ring-primary focus:border-primary"
+                                        placeholder={`e.g., Prefers window seat, always orders extra sauce...`}
+                                    />
+                                    <div className="mt-4 flex justify-end">
+                                        <Button onClick={handleSave} className="bg-primary hover:bg-primary/90" disabled={isSaving}>
+                                            {isSaving ? 'Saving...' : 'Save Notes'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </motion.div>
+                    </AnimatePresence>
+                </div>
+            </motion.div>
+        </>
+    );
 };
 
 const StatCard = ({ icon: Icon, title, value, detail, isLoading }) => (
@@ -356,15 +355,15 @@ const StatCard = ({ icon: Icon, title, value, detail, isLoading }) => (
         <div>
             {isLoading ? (
                 <>
-                  <div className="h-4 bg-muted-foreground/20 rounded w-24 mb-2"></div>
-                  <div className="h-8 bg-muted-foreground/20 rounded w-16 mb-2"></div>
-                  <div className="h-3 bg-muted-foreground/20 rounded w-32"></div>
+                    <div className="h-4 bg-muted-foreground/20 rounded w-24 mb-2"></div>
+                    <div className="h-8 bg-muted-foreground/20 rounded w-16 mb-2"></div>
+                    <div className="h-3 bg-muted-foreground/20 rounded w-32"></div>
                 </>
             ) : (
                 <>
-                  <p className="text-sm text-muted-foreground">{title}</p>
-                  <p className="text-2xl font-bold text-foreground">{value}</p>
-                  <p className="text-xs text-muted-foreground">{detail}</p>
+                    <p className="text-sm text-muted-foreground">{title}</p>
+                    <p className="text-2xl font-bold text-foreground">{value}</p>
+                    <p className="text-xs text-muted-foreground">{detail}</p>
                 </>
             )}
         </div>
@@ -386,17 +385,20 @@ export default function CustomersPage() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
 
     const handleApiCall = async (endpoint, method, body) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
-        
+
         let url = new URL(endpoint, window.location.origin)
         if (impersonatedOwnerId) {
             url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
         }
-        
+
         const res = await fetch(url.toString(), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -431,8 +433,8 @@ export default function CustomersPage() {
             }
         });
         return () => unsubscribe();
-    }, [impersonatedOwnerId, router]);
-    
+    }, [impersonatedOwnerId, employeeOfOwnerId, router]);
+
     // Effect to handle opening customer panel from URL
     useEffect(() => {
         const customerIdFromUrl = searchParams.get('customerId');
@@ -456,7 +458,7 @@ export default function CustomersPage() {
         setRewardCustomer(customer);
         setCouponModalOpen(true);
     };
-    
+
     const handleSaveReward = async (couponData) => {
         const payload = {
             ...couponData,
@@ -485,7 +487,7 @@ export default function CustomersPage() {
             const key = sortConfig.key;
             let valA = a[key];
             let valB = b[key];
-             if (key.includes('Date')) {
+            if (key.includes('Date')) {
                 valA = a[key]?.seconds ? new Date(a[key].seconds * 1000) : new Date(a[key]);
                 valB = b[key]?.seconds ? new Date(b[key].seconds * 1000) : new Date(b[key]);
             }
@@ -509,11 +511,11 @@ export default function CustomersPage() {
     const handleSaveNotes = async (customerId, newNotes) => {
         await handleApiCall('/api/owner/customers', 'PATCH', { customerId, notes: newNotes });
         setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, notes: newNotes } : c));
-        if(selectedCustomer && selectedCustomer.id === customerId) {
-            setSelectedCustomer(prev => ({...prev, notes: newNotes}));
+        if (selectedCustomer && selectedCustomer.id === customerId) {
+            setSelectedCustomer(prev => ({ ...prev, notes: newNotes }));
         }
     };
-    
+
     useEffect(() => {
         const handleKeyDown = (event) => {
             if (event.key === 'Escape') setSelectedCustomer(null);
@@ -521,7 +523,7 @@ export default function CustomersPage() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
-    
+
     const filterButtons = [
         { label: 'All', value: 'All' },
         { label: 'Claimed', value: 'Claimed', className: 'bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20' },
@@ -533,13 +535,13 @@ export default function CustomersPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground relative min-h-screen bg-background">
-             {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customer={rewardCustomer} onSave={handleSaveReward} />}
-             <InfoDialog
+            {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customer={rewardCustomer} onSave={handleSaveReward} />}
+            <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
                 message={infoDialog.message}
-             />
+            />
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Customer Hub</h1>
                 <p className="text-muted-foreground mt-1">Manage, analyze, and engage with your customers.</p>
@@ -567,7 +569,7 @@ export default function CustomersPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {loading ? Array.from({length: 5}).map((_, i) => (
+                                {loading ? Array.from({ length: 5 }).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-3/4"></div></td>
@@ -583,7 +585,7 @@ export default function CustomersPage() {
                                         <td className="p-4 text-center">{cust.totalOrders}</td>
                                         <td className="p-4 text-center">
                                             <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => handleSendReward(cust)}>
-                                                <Gift size={16} className="mr-2"/> Send Reward
+                                                <Gift size={16} className="mr-2" /> Send Reward
                                             </Button>
                                         </td>
                                     </tr>
@@ -598,28 +600,28 @@ export default function CustomersPage() {
             <div className="my-6 p-4 bg-card rounded-xl border border-border flex flex-col md:flex-row gap-4 justify-between items-center">
                 <div className="relative w-full md:w-auto">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-                    <input 
-                        type="text" 
-                        placeholder="Search by name or email..." 
+                    <input
+                        type="text"
+                        placeholder="Search by name or email..."
                         className="bg-input border border-border rounded-lg w-full md:w-80 pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary outline-none"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
                 <div className="flex items-center gap-2">
-                     <Filter size={16} className="text-muted-foreground"/>
+                    <Filter size={16} className="text-muted-foreground" />
                     <span className="text-sm font-medium">Filter by segment:</span>
                     <div className="flex items-center gap-2 flex-wrap">
                         {filterButtons.map(btn => (
-                           <Button 
-                             key={btn.value} 
-                             variant="secondary" 
-                             size="sm" 
-                             onClick={() => setActiveFilter(btn.value)}
-                             className={cn('bg-muted hover:bg-muted/80', btn.className, activeFilter === btn.value && 'ring-2 ring-primary')}
-                           >
-                            {btn.label}
-                           </Button>
+                            <Button
+                                key={btn.value}
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setActiveFilter(btn.value)}
+                                className={cn('bg-muted hover:bg-muted/80', btn.className, activeFilter === btn.value && 'ring-2 ring-primary')}
+                            >
+                                {btn.label}
+                            </Button>
                         ))}
                     </div>
                 </div>
@@ -639,7 +641,7 @@ export default function CustomersPage() {
                         </thead>
                         <tbody className="divide-y divide-border">
                             {loading ? (
-                                Array.from({length: 5}).map((_, i) => (
+                                Array.from({ length: 5 }).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-3/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
@@ -649,18 +651,18 @@ export default function CustomersPage() {
                                     </tr>
                                 ))
                             ) : filteredAndSortedCustomers.map(customer => (
-                                <motion.tr 
-                                    key={customer.id} 
+                                <motion.tr
+                                    key={customer.id}
                                     onClick={() => setSelectedCustomer(customer)}
                                     className="cursor-pointer hover:bg-muted transition-colors"
-                                    whileHover={{scale: 1.01}}
+                                    whileHover={{ scale: 1.01 }}
                                 >
                                     <td className="p-4 font-medium">
                                         <div className="flex flex-col">
-                                           <div className="flex items-center gap-3">
-                                               {customer.name}
-                                           </div>
-                                           <span className="text-xs text-muted-foreground">{customer.email || customer.phone}</span>
+                                            <div className="flex items-center gap-3">
+                                                {customer.name}
+                                            </div>
+                                            <span className="text-xs text-muted-foreground">{customer.email || customer.phone}</span>
                                         </div>
                                     </td>
                                     <td className="p-4 text-muted-foreground">{formatDate(customer.lastOrderDate)}</td>
@@ -669,7 +671,7 @@ export default function CustomersPage() {
                                     <td className="p-4"><CustomerBadge status={getCustomerStatus(customer)} /></td>
                                 </motion.tr>
                             ))}
-                             { !loading && filteredAndSortedCustomers.length === 0 && (
+                            {!loading && filteredAndSortedCustomers.length === 0 && (
                                 <tr>
                                     <td colSpan="5" className="text-center p-8 text-muted-foreground">
                                         No customers found for this filter.
@@ -683,8 +685,8 @@ export default function CustomersPage() {
 
             <AnimatePresence>
                 {selectedCustomer && (
-                    <CustomerDetailPanel 
-                        customer={selectedCustomer} 
+                    <CustomerDetailPanel
+                        customer={selectedCustomer}
                         onClose={() => setSelectedCustomer(null)}
                         onSaveNotes={handleSaveNotes}
                         onSendReward={handleSendReward}

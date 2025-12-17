@@ -30,6 +30,9 @@ export default function OrderHistoryPage() {
     const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
+    const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
+    const queryParam = impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '';
 
     // Auto-load today's data on page load
     useEffect(() => {
@@ -42,7 +45,7 @@ export default function OrderHistoryPage() {
         };
 
         loadTodayData();
-    }, [user, isUserLoading, impersonatedOwnerId]);
+    }, [user, isUserLoading, effectiveOwnerId]);
 
     const fetchTodayHistory = async () => {
         setLoading(true);
@@ -57,6 +60,8 @@ export default function OrderHistoryPage() {
             let url = `/api/owner/orders?startDate=${start}&endDate=${end}`;
             if (impersonatedOwnerId) {
                 url += `&impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                url += `&employee_of=${employeeOfOwnerId}`;
             }
 
             const res = await fetch(url, {
@@ -97,6 +102,8 @@ export default function OrderHistoryPage() {
             let url = `/api/owner/orders?startDate=${start}&endDate=${end}`;
             if (impersonatedOwnerId) {
                 url += `&impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                url += `&employee_of=${employeeOfOwnerId}`;
             }
 
             const res = await fetch(url, {
@@ -438,7 +445,7 @@ export default function OrderHistoryPage() {
     return (
         <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
             <header className="flex items-center gap-4 mb-6">
-                <Link href={impersonatedOwnerId ? `/street-vendor-dashboard?impersonate_owner_id=${impersonatedOwnerId}` : "/street-vendor-dashboard"}>
+                <Link href={`/street-vendor-dashboard${queryParam}`}>
                     <Button variant="ghost" size="icon">
                         <ArrowLeft />
                     </Button>
@@ -481,49 +488,57 @@ export default function OrderHistoryPage() {
                 </Popover>
             </div>
 
-            {orders.length > 0 && (
-                <div className="relative mb-6">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <input
-                        type="text"
-                        placeholder="Search by Name or Token..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
-                    />
-                </div>
-            )}
+            {
+                orders.length > 0 && (
+                    <div className="relative mb-6">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            placeholder="Search by Name or Token..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
+                        />
+                    </div>
+                )
+            }
 
-            {error && (
-                <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-6 text-center">
-                    {error}
-                </div>
-            )}
+            {
+                error && (
+                    <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-6 text-center">
+                        {error}
+                    </div>
+                )
+            }
 
-            {!loading && !error && (
-                <Tabs defaultValue="completed" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-4">
-                        <TabsTrigger value="completed">Completed ({completedOrders.length})</TabsTrigger>
-                        <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="completed">
-                        <OrderList items={completedOrders} emptyMessage="No completed orders found." />
-                    </TabsContent>
-                    <TabsContent value="cancelled">
-                        <OrderList items={cancelledOrders} emptyMessage="No cancelled orders found." />
-                    </TabsContent>
-                </Tabs>
-            )}
+            {
+                !loading && !error && (
+                    <Tabs defaultValue="completed" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 mb-4">
+                            <TabsTrigger value="completed">Completed ({completedOrders.length})</TabsTrigger>
+                            <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="completed">
+                            <OrderList items={completedOrders} emptyMessage="No completed orders found." />
+                        </TabsContent>
+                        <TabsContent value="cancelled">
+                            <OrderList items={cancelledOrders} emptyMessage="No cancelled orders found." />
+                        </TabsContent>
+                    </Tabs>
+                )
+            }
 
             {/* Refund Dialog */}
-            {selectedOrderForRefund && (
-                <RefundDialog
-                    order={selectedOrderForRefund}
-                    open={refundDialogOpen}
-                    onOpenChange={setRefundDialogOpen}
-                    onRefundSuccess={handleRefundSuccess}
-                />
-            )}
-        </div>
+            {
+                selectedOrderForRefund && (
+                    <RefundDialog
+                        order={selectedOrderForRefund}
+                        open={refundDialogOpen}
+                        onOpenChange={setRefundDialogOpen}
+                        onRefundSuccess={handleRefundSuccess}
+                    />
+                )
+            }
+        </div >
     );
 }

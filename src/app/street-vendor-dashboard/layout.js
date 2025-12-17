@@ -14,6 +14,8 @@ import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSqu
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/firebase";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import GoldenCoinSpinner from "@/components/GoldenCoinSpinner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 
@@ -68,12 +70,61 @@ function OwnerDashboardContent({ children }) {
   });
   const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
+  const [userRole, setUserRole] = useState(null); // For RBAC
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+  const employeeOfOwnerId = searchParams.get('employee_of');
 
   const { user, isUserLoading } = useUser();
+
+  // CRITICAL: Role detection - prevent owner from being blocked
+  useEffect(() => {
+    async function fetchEmployeeRole() {
+      if (employeeOfOwnerId && user) {
+        if (user.uid === employeeOfOwnerId) {
+          console.log('[Layout] Owner detected, full access');
+          setUserRole(null);
+          return;
+        }
+
+        // Fetch employee role from Firestore linkedOutlets
+        console.log('[Layout] Employee detected, checking Firestore...');
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userDocRef);
+
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            const linkedOutlets = userData.linkedOutlets || [];
+
+            const outlet = linkedOutlets.find(
+              o => o.ownerId === employeeOfOwnerId && o.status === 'active'
+            );
+
+            if (outlet) {
+              console.log('[Layout] Employee role found:', outlet.employeeRole);
+              setUserRole(outlet.employeeRole);
+            } else {
+              console.error('[Layout] No matching outlet');
+              setUserRole('manager');
+            }
+          } else {
+            console.error('[Layout] User doc not found');
+            setUserRole('manager');
+          }
+        } catch (err) {
+          console.error('[Layout] Firestore error:', err);
+          setUserRole('manager');
+        }
+      } else {
+        setUserRole(null);
+      }
+    }
+
+    fetchEmployeeRole();
+  }, [employeeOfOwnerId, user]);
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -125,6 +176,9 @@ function OwnerDashboardContent({ children }) {
         if (impersonatedOwnerId) {
           statusUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
           settingsUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        } else if (employeeOfOwnerId) {
+          statusUrl += `?employee_of=${employeeOfOwnerId}`;
+          settingsUrl += `?employee_of=${employeeOfOwnerId}`;
         }
 
         const [statusRes, settingsRes] = await Promise.all([
@@ -147,6 +201,11 @@ function OwnerDashboardContent({ children }) {
           });
         } else if (statusRes.status === 404) {
           setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
+        } else if (statusRes.status === 403) {
+          // Unauthorized access - redirect to select-role for employees
+          console.error("[Layout] User not authorized, redirecting to select-role...");
+          router.push('/select-role');
+          return;
         } else {
           const errorData = await statusRes.json();
           console.error("Error fetching status:", errorData.message);
@@ -253,6 +312,7 @@ function OwnerDashboardContent({ children }) {
             isCollapsed={isCollapsed}
             restrictedFeatures={restaurantStatus.restrictedFeatures}
             status={restaurantStatus.status}
+            userRole={userRole}
           />
         </motion.aside>
 
@@ -271,6 +331,7 @@ function OwnerDashboardContent({ children }) {
               setSidebarOpen={setSidebarOpen}
               restaurantName={restaurantName}
               restaurantLogo={restaurantLogo}
+              userRole={userRole}
             />
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-6">

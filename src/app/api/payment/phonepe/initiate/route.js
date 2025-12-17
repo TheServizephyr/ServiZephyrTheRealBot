@@ -1,16 +1,29 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
-// PhonePe API Configuration
-const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox";
-const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || "M23Z4Z8YT4OW5_2511281822";
-const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || "MzY4MjkwYzctZGM3Mi00NDBjLWJjYjQtNzYyMjY5YWRkNDc0";
+// PhonePe API Configuration - Read from env (NO fallbacks to sandbox)
+const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL;
+const CLIENT_ID = process.env.PHONEPE_CLIENT_ID;
+const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET;
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || "1";
-const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token";
+const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL;
 
 export async function POST(req) {
     try {
         const { amount, orderId, customerPhone } = await req.json();
+
+        // Debug: Log which config is being used
+        console.log("[PhonePe Initiate] Config:", {
+            BASE_URL: PHONEPE_BASE_URL,
+            AUTH_URL: PHONEPE_AUTH_URL,
+            CLIENT_ID: CLIENT_ID ? `${CLIENT_ID.substring(0, 10)}...` : 'NOT SET',
+            CLIENT_SECRET: CLIENT_SECRET ? 'SET' : 'NOT SET'
+        });
+
+        if (!PHONEPE_BASE_URL || !CLIENT_ID || !CLIENT_SECRET || !PHONEPE_AUTH_URL) {
+            console.error("[PhonePe Initiate] Missing PhonePe credentials in env!");
+            return NextResponse.json({ error: "PhonePe not configured" }, { status: 500 });
+        }
 
         if (!amount || !orderId) {
             return NextResponse.json({ error: "Amount and Order ID are required" }, { status: 400 });

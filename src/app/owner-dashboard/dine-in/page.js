@@ -33,15 +33,15 @@ const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loadi
                             View, edit, or delete all the tables you have created for your establishment.
                         </DialogDescription>
                     </div>
-                    <Button onClick={onCreateNew}><PlusCircle size={16} className="mr-2"/> Create New Table</Button>
+                    <Button onClick={onCreateNew}><PlusCircle size={16} className="mr-2" /> Create New Table</Button>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto mt-4 pr-4">
                     <table className="w-full">
                         <thead className="bg-muted/50 sticky top-0">
                             <tr>
-                                <th className="p-4 text-left font-semibold text-muted-foreground"><TableIcon size={16} className="inline mr-2"/>Table Name</th>
-                                <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Max Capacity</th>
-                                <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Currently Occupied</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground"><TableIcon size={16} className="inline mr-2" />Table Name</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2" />Max Capacity</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2" />Currently Occupied</th>
                                 <th className="p-4 text-right font-semibold text-muted-foreground">Actions</th>
                             </tr>
                         </thead>
@@ -60,14 +60,14 @@ const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loadi
                                         <td className="p-4">{table.current_pax || 0}</td>
                                         <td className="p-4 flex justify-end gap-2">
                                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onShowQr(table)}>
-                                                <QrCode size={16}/>
+                                                <QrCode size={16} />
                                             </Button>
                                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(table)}>
-                                                <Edit size={16}/>
-                                             </Button>
-                                             <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => onDelete(table.id)}>
-                                                <Trash2 size={16}/>
-                                             </Button>
+                                                <Edit size={16} />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => onDelete(table.id)}>
+                                                <Trash2 size={16} />
+                                            </Button>
                                         </td>
                                     </tr>
                                 ))
@@ -78,7 +78,7 @@ const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loadi
                             )}
                         </tbody>
                     </table>
-                 </div>
+                </div>
             </DialogContent>
         </Dialog>
     );
@@ -89,7 +89,7 @@ const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
 
     const filteredTabs = useMemo(() => {
         if (!searchTerm) return closedTabs;
-        return closedTabs.filter(tab => 
+        return closedTabs.filter(tab =>
             tab.tableId.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (tab.tab_name && tab.tab_name.toLowerCase().includes(searchTerm.toLowerCase()))
         );
@@ -102,7 +102,7 @@ const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
                     <DialogTitle>Dine-In History (Last 30 Days)</DialogTitle>
                     <DialogDescription>A log of all closed tabs from the past 30 days.</DialogDescription>
                 </DialogHeader>
-                 <div className="relative my-4">
+                <div className="relative my-4">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                         placeholder="Search by table or tab name..."
@@ -153,7 +153,7 @@ const HistoryModal = ({ tableHistory, onClose }) => {
                         events.map((event, index) => (
                             <div key={index} className="flex items-start gap-4">
                                 <div className="bg-muted p-2 rounded-full mt-1">
-                                    {event.type === 'order' ? <ShoppingBag size={16} className="text-primary"/> : <Bell size={16} className="text-yellow-500"/>}
+                                    {event.type === 'order' ? <ShoppingBag size={16} className="text-primary" /> : <Bell size={16} className="text-yellow-500" />}
                                 </div>
                                 <div>
                                     <p className="font-semibold">{event.type === 'order' ? `Order Placed by ${event.customerName}` : 'Service Request'}</p>
@@ -185,20 +185,20 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     const allItems = useMemo(() => {
         return Object.values(order.orders || {});
     }, [order.orders]);
-    
+
     const totalBill = useMemo(() => Object.values(order.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order.orders]);
 
 
     return (
         <Dialog open={true} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                 <div ref={printRef} className="font-mono text-black bg-white p-6">
+                <div ref={printRef} className="font-mono text-black bg-white p-6">
                     <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
                         <h1 className="text-xl font-bold uppercase">{restaurant.name}</h1>
                         <p className="text-xs">{restaurant.address?.street}, {restaurant.address?.city}</p>
                         {restaurant.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
                     </div>
-                     <div className="mb-4 text-xs">
+                    <div className="mb-4 text-xs">
                         <p><strong>Table:</strong> {order.tableId}</p>
                         <p><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')} - {new Date().toLocaleTimeString('en-IN')}</p>
                     </div>
@@ -221,7 +221,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                             ))}
                         </tbody>
                     </table>
-                    
+
                     <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
                         <span>GRAND TOTAL</span>
                         <span>{formatCurrency(totalBill)}</span>
@@ -230,10 +230,10 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                     <div className="text-center mt-6 pt-4 border-t border-dashed border-black">
                         <p className="text-xs italic">Thank you for dining with us!</p>
                         <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
-                         <p className="text-xs italic mt-1">For exclusive offers and faster ordering, visit the ServiZephyr Customer Hub!</p>
+                        <p className="text-xs italic mt-1">For exclusive offers and faster ordering, visit the ServiZephyr Customer Hub!</p>
                     </div>
                 </div>
-                 <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
+                <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
                     <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
                         <Printer className="mr-2 h-4 w-4" /> Print Bill
                     </Button>
@@ -292,10 +292,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
         needs_cleaning: { title: "Needs Cleaning", bg: "bg-red-500/10", border: "border-red-500", icon: <Wind size={16} className="text-red-500" /> }
     };
     const currentConfig = stateConfig[state] || stateConfig.available;
-    
+
     // Combine pending orders and active tabs into one list for rendering
     const allGroups = [...(tableData.pendingOrders || []), ...Object.values(tableData.tabs || {})];
-    
+
     return (
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
             <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
@@ -303,17 +303,17 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     <CardTitle className="text-2xl font-bold">{tableData.id}</CardTitle>
                     <div className="flex items-center gap-2 text-sm font-semibold">{currentConfig.icon} {currentConfig.title}</div>
                 </CardHeader>
-                
+
                 <CardContent className="flex-grow p-4">
                     {allGroups.length > 0 ? (
                         <div className="space-y-4">
                             {allGroups.map(group => {
                                 const isPending = !group.status || group.status === 'pending';
                                 const isActiveTab = group.status === 'active';
-                                
+
                                 const orderId = group.id; // Use group ID for both pending and active tabs
                                 const orderData = isPending ? group : Object.values(group.orders || {})[0];
-                                
+
                                 const totalBill = useMemo(() => {
                                     if (isPending) return group.totalAmount;
                                     return Object.values(group.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
@@ -323,25 +323,25 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                     if (isPending) return group.items || [];
                                     return Object.values(group.orders || {}).flatMap(o => o.items);
                                 }, [group, isPending]);
-                                
+
                                 const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : orderData?.paymentDetails?.method === 'razorpay';
                                 const isPaid = isOnlinePayment || group.paymentStatus === 'paid';
                                 const isCOD = !isPaid;
-                                
+
                                 const isServed = orderData?.status === 'delivered';
-                                
+
                                 const actionDetails = actionConfig[orderData?.status];
                                 const ActionIcon = actionDetails ? actionDetails.icon : null;
 
                                 return (
-                                    <div key={group.id} className={cn("relative p-3 rounded-lg border", 
+                                    <div key={group.id} className={cn("relative p-3 rounded-lg border",
                                         isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
                                     )}>
                                         <div className="flex justify-between items-center mb-2">
                                             <h4 className="font-semibold text-foreground">{group.tab_name || 'New Order'} <span className="text-xs text-muted-foreground">({group.pax_count || 1} guests)</span></h4>
                                             {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
-                                        
+
                                         {allItems.length > 0 && (
                                             <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
                                                 {allItems.map((item, i) => (
@@ -369,10 +369,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         )}
 
                                         {isPending ? (
-                                             <div className="grid grid-cols-2 gap-2 mt-4">
-                                                <Button size="sm" variant="destructive" onClick={() => onRejectOrder(orderId)}> <X size={16} className="mr-2"/> Reject </Button>
-                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId)}> <Check size={16} className="mr-2"/> Confirm </Button>
-                                             </div>
+                                            <div className="grid grid-cols-2 gap-2 mt-4">
+                                                <Button size="sm" variant="destructive" onClick={() => onRejectOrder(orderId)}> <X size={16} className="mr-2" /> Reject </Button>
+                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId)}> <Check size={16} className="mr-2" /> Confirm </Button>
+                                            </div>
                                         ) : isActiveTab ? (
                                             <div className="mt-4 space-y-2">
                                                 <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
@@ -381,21 +381,21 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {ActionIcon ? (
-                                                         <Button size="sm" className="w-full col-span-2" onClick={() => onUpdateStatus(orderId, actionDetails.next)}>
-                                                            <ActionIcon size={16} className="mr-2"/> {actionDetails.text}
+                                                        <Button size="sm" className="w-full col-span-2" onClick={() => onUpdateStatus(orderId, actionDetails.next)}>
+                                                            <ActionIcon size={16} className="mr-2" /> {actionDetails.text}
                                                         </Button>
                                                     ) : isServed && isCOD ? (
                                                         <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full col-span-2 bg-green-500 hover:bg-green-600">
-                                                            <Wallet size={16} className="mr-2"/> Mark as Paid
+                                                            <Wallet size={16} className="mr-2" /> Mark as Paid
                                                         </Button>
                                                     ) : null}
-                                                    <Button variant="outline" size="sm" className="w-full col-span-2" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2"/> Print Bill </Button>
+                                                    <Button variant="outline" size="sm" className="w-full col-span-2" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2" /> Print Bill </Button>
                                                 </div>
                                             </div>
                                         ) : null}
                                         {!isPending && totalBill === 0 && (
                                             <button onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground">
-                                                 <X size={14} />
+                                                <X size={14} />
                                             </button>
                                         )}
                                     </div>
@@ -403,16 +403,16 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                             })}
                         </div>
                     ) : (
-                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                        <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
                             <p className="text-muted-foreground">{state === 'needs_cleaning' ? "Ready to be cleaned." : "This table is available."}</p>
                         </div>
                     )}
                 </CardContent>
-                
+
                 {(state === 'needs_cleaning') && (
-                     <CardFooter className="p-4 mt-auto">
+                    <CardFooter className="p-4 mt-auto">
                         <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableData.id)}>
-                            <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
+                            <CheckCircle size={16} className="mr-2" /> Mark as Cleaned
                         </Button>
                     </CardFooter>
                 )}
@@ -443,7 +443,7 @@ const QrCodeDisplay = ({ text, tableName, innerRef }) => {
 
     return (
         <div className="mt-6 flex flex-col items-center gap-4">
-             <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
+            <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
                 <QRCode
                     value={text}
                     size={256}
@@ -487,11 +487,11 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
 
     const handleGenerate = () => {
         if (!tableName.trim()) {
-            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a table name or number."});
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a table name or number." });
             return;
         }
         if (!restaurantId) {
-            showInfoDialog({ isOpen: true, title: 'Error', message: "Restaurant ID is missing. Cannot generate QR code."});
+            showInfoDialog({ isOpen: true, title: 'Error', message: "Restaurant ID is missing. Cannot generate QR code." });
             return;
         }
         const url = `${window.location.origin}/order/${restaurantId}?table=${tableName.trim()}`;
@@ -500,7 +500,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
 
     const handleSave = async () => {
         if (!tableName.trim() || !maxCapacity || maxCapacity < 1) {
-            showInfoDialog({ isOpen: true, title: 'Input Error', message: 'Please enter a valid table name and capacity.'});
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: 'Please enter a valid table name and capacity.' });
             return;
         }
         try {
@@ -553,10 +553,10 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
 
                     {qrValue && <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />}
 
-                     {initialTable && (
+                    {initialTable && (
                         <div className="pt-4 border-t border-dashed">
-                             <Button onClick={() => { onDeleteTable(initialTable.id); onClose(); }} variant="destructive" className="w-full">
-                                <Trash2 className="mr-2 h-4 w-4"/> Delete This Table
+                            <Button onClick={() => { onDeleteTable(initialTable.id); onClose(); }} variant="destructive" className="w-full">
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete This Table
                             </Button>
                         </div>
                     )}
@@ -597,8 +597,8 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
             if (!user) throw new Error("Authentication required.");
             const idToken = await user.getIdToken();
             let url = '/api/owner/service-requests';
-            if(impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
-            
+            if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+
             await fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -608,11 +608,11 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
             console.error("Failed to acknowledge request", error);
         }
     };
-    
+
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) return;
-        
+
         const fetchRequests = async () => {
             const idToken = await user.getIdToken();
             let url = new URL('/api/owner/service-requests', window.location.origin);
@@ -620,7 +620,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
                 url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
             }
             const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
-            if(res.ok) {
+            if (res.ok) {
                 const data = await res.json();
                 setRequests(data.requests || []);
             }
@@ -643,14 +643,14 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
                     exit={{ opacity: 0, y: -20 }}
                     className="border border-yellow-500/30 bg-yellow-500/10 p-4 rounded-lg mb-6"
                 >
-                    <h3 className="font-bold text-yellow-300 flex items-center gap-2"><Bell size={16}/> Live Service Requests</h3>
+                    <h3 className="font-bold text-yellow-300 flex items-center gap-2"><Bell size={16} /> Live Service Requests</h3>
                     {requests.length > 0 ? (
                         <div className="flex flex-wrap gap-2 mt-2">
                             {requests.map(req => (
                                 <div key={req.id} className="bg-yellow-500/20 text-yellow-200 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
                                     Table {req.tableId} needs assistance!
                                     <Button size="icon" variant="ghost" className="h-5 w-5 text-yellow-300 hover:bg-yellow-400/20" onClick={() => handleAcknowledge(req.id)}>
-                                        <CheckCircle size={14}/>
+                                        <CheckCircle size={14} />
                                     </Button>
                                 </div>
                             ))}
@@ -669,6 +669,7 @@ const DineInPageContent = () => {
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
@@ -678,30 +679,32 @@ const DineInPageContent = () => {
     const [restaurantDetails, setRestaurantDetails] = useState(null);
     const [billData, setBillData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
-    
+    const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => { }, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
+
     const billPrintRef = useRef();
 
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
     });
-    
+
     const handleApiCall = async (method, body, endpoint) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
-        
+
         let url = new URL(endpoint, window.location.origin);
         const finalImpersonatedId = impersonatedOwnerId || searchParams.get('impersonate_owner_id');
         if (finalImpersonatedId) {
             url.searchParams.append('impersonate_owner_id', finalImpersonatedId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
         }
-        
+
         const fetchOptions = {
             method,
-            headers: { 'Authorization': `Bearer ${idToken}`},
+            headers: { 'Authorization': `Bearer ${idToken}` },
         };
-        
+
         if (method !== 'GET') {
             fetchOptions.headers['Content-Type'] = 'application/json';
             fetchOptions.body = JSON.stringify(body);
@@ -710,7 +713,7 @@ const DineInPageContent = () => {
         }
 
         const res = await fetch(url.toString(), fetchOptions);
-        
+
         if (res.status === 204 || (res.ok && res.headers.get('content-length') === '0')) {
             return null;
         }
@@ -731,30 +734,35 @@ const DineInPageContent = () => {
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    }, [impersonatedOwnerId]);
-    
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
     useEffect(() => {
         const fetchAndSetRestaurantDetails = async () => {
-             const user = auth.currentUser;
-             if(user) {
+            const user = auth.currentUser;
+            if (user) {
                 const idToken = await user.getIdToken();
-                const settingsUrl = `/api/owner/settings${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : ''}`;
+                let settingsUrl = '/api/owner/settings';
+                if (impersonatedOwnerId) {
+                    settingsUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                } else if (employeeOfOwnerId) {
+                    settingsUrl += `?employee_of=${employeeOfOwnerId}`;
+                }
                 const settingsRes = await fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } });
-                if(settingsRes.ok) {
+                if (settingsRes.ok) {
                     const settingsData = await settingsRes.json();
                     setRestaurantDetails({
                         id: settingsData.businessId,
                         name: settingsData.restaurantName,
                         address: settingsData.address,
                         gstin: settingsData.gstin
-                     });
+                    });
                 } else {
                     console.error("[Dine-In Dashboard] Failed to fetch restaurant settings.");
                 }
-             }
+            }
         }
         fetchAndSetRestaurantDetails();
-    }, [impersonatedOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleSaveTable = async (tableName, maxCapacity) => {
         try {
@@ -766,13 +774,13 @@ const DineInPageContent = () => {
             throw error;
         }
     };
-    
+
     const handleEditTable = async (originalId, newId, newCapacity) => {
         try {
             await handleApiCall('PATCH', { tableId: originalId, newTableId: newId, newCapacity }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: `Table updated.` });
             await fetchData(true);
-        } catch(error) {
+        } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not edit table: ${error.message}` });
             throw error;
         }
@@ -792,16 +800,16 @@ const DineInPageContent = () => {
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
-          if (user) fetchData();
-          else setLoading(false);
+            if (user) fetchData();
+            else setLoading(false);
         });
-    
+
         const interval = setInterval(() => fetchData(true), 30000);
         return () => {
             unsubscribe();
             clearInterval(interval);
         };
-      }, [impersonatedOwnerId, fetchData]);
+    }, [impersonatedOwnerId, fetchData]);
 
     const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({
@@ -829,18 +837,18 @@ const DineInPageContent = () => {
             setLoading(false);
         }
     };
-    
+
     const handleMarkAsCleaned = async (tableId) => {
-         setLoading(true);
-         try {
-             await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
-             setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
-             await fetchData(true);
-         } catch(error) {
-             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update table status: ${error.message}` });
-         } finally {
-             setLoading(false);
-         }
+        setLoading(true);
+        try {
+            await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
+            setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
+            await fetchData(true);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not update table status: ${error.message}` });
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleClearTab = async (tabId, tableId, paxCount) => {
@@ -855,7 +863,7 @@ const DineInPageContent = () => {
             setLoading(false);
         }
     }
-    
+
     const handleUpdateStatus = async (orderId, newStatus) => {
         setLoading(true);
         try {
@@ -867,15 +875,14 @@ const DineInPageContent = () => {
             setLoading(false);
         }
     }
-    
+
     const handleRejectOrder = async (orderId) => {
         setLoading(true);
-         try {
+        try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
             setInfoDialog({ isOpen: true, title: "Success", message: "Order rejected." });
             await fetchData(true);
-        } catch (error)
-        {
+        } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not reject order: ${error.message}` });
         } finally {
             setLoading(false);
@@ -886,19 +893,19 @@ const DineInPageContent = () => {
         if (!allData || !allData.tables) return [];
         return allData.tables;
     }, [allData]);
-    
+
     const handleOpenEditModal = (table = null) => {
         if (!restaurantDetails?.id) {
-            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables."});
+            setInfoDialog({ isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables." });
             return;
         }
         setEditingTable(table);
         setIsQrGeneratorModalOpen(true);
     };
 
-     const handleOpenQrDisplayModal = (table) => {
+    const handleOpenQrDisplayModal = (table) => {
         if (!restaurantDetails?.id) {
-            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot show QR code."});
+            setInfoDialog({ isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot show QR code." });
             return;
         }
         setDisplayTable(table);
@@ -908,7 +915,7 @@ const DineInPageContent = () => {
 
     const renderTableCards = () => {
         if (loading || activeTableData.length === 0) return [];
-        
+
         const sortedTables = activeTableData.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
         return sortedTables.map(table => {
@@ -934,7 +941,7 @@ const DineInPageContent = () => {
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={allData.closedTabs || []} />
             <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allData.tables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
             {billData && (
-                <BillModal 
+                <BillModal
                     order={billData}
                     restaurant={restaurantDetails}
                     onClose={() => setBillData(null)}
@@ -950,7 +957,7 @@ const DineInPageContent = () => {
             />
             {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
-             <ConfirmationModal 
+            <ConfirmationModal
                 isOpen={confirmationState.isOpen}
                 onClose={() => setConfirmationState({ ...confirmationState, isOpen: false })}
                 onConfirm={() => confirmationState.onConfirm(confirmationState.paymentMethod)}
@@ -968,16 +975,16 @@ const DineInPageContent = () => {
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
                 </div>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <History size={20}/> Dine-In History
+                    <History size={20} /> Dine-In History
                 </Button>
-                 <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
-                    <Salad size={20}/> Dine-In Menu
+                <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
+                    <Salad size={20} /> Dine-In Menu
                 </Button>
-                 <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading || !restaurantDetails}>
-                    <TableIcon size={20}/> Manage Tables
+                <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading || !restaurantDetails}>
+                    <TableIcon size={20} /> Manage Tables
                 </Button>
                 <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
@@ -986,10 +993,10 @@ const DineInPageContent = () => {
 
 
             <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} />
-            
-             <h2 className="text-xl font-bold mb-4">Live Tables</h2>
+
+            <h2 className="text-xl font-bold mb-4">Live Tables</h2>
             {loading ? (
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
                     {[...Array(4)].map((_, i) => (
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
@@ -1017,4 +1024,3 @@ const DineInPage = () => (
 
 export default DineInPage;
 
-    

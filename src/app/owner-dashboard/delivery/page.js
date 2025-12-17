@@ -60,7 +60,7 @@ const InviteRiderModal = ({ isOpen, setIsOpen, onInvite }) => {
             setIsSubmitting(false);
         }
     };
-    
+
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogContent className="bg-card border-border text-foreground">
@@ -99,7 +99,7 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
             try {
                 await onAssign(selectedOrder);
                 setIsOpen(false);
-            } catch(error) {
+            } catch (error) {
                 // error alert shown in onAssign
                 throw error;
             }
@@ -108,7 +108,7 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
             }
         }
     };
-    
+
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogContent className="bg-card border-border text-foreground">
@@ -119,14 +119,14 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
                 <div className="py-4 space-y-3 max-h-60 overflow-y-auto">
                     <h4 className="font-semibold text-muted-foreground">Ready Orders:</h4>
                     {readyOrders && readyOrders.length > 0 ? readyOrders.map(order => (
-                        <div 
+                        <div
                             key={order.id}
                             onClick={() => setSelectedOrder(order.id)}
                             className={cn(
                                 "p-3 rounded-lg border cursor-pointer transition-all",
-                                selectedOrder === order.id 
-                                  ? 'bg-primary/10 border-primary ring-2 ring-primary'
-                                  : 'bg-muted/50 border-border hover:bg-muted'
+                                selectedOrder === order.id
+                                    ? 'bg-primary/10 border-primary ring-2 ring-primary'
+                                    : 'bg-muted/50 border-border hover:bg-muted'
                             )}
                         >
                             <div className="flex justify-between items-center">
@@ -137,7 +137,7 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
                         </div>
                     )) : <p className="text-center text-muted-foreground">No orders are ready.</p>}
                 </div>
-                 <DialogFooter>
+                <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                     <Button onClick={handleAssign} disabled={!selectedOrder || isSaving}>
                         {isSaving ? 'Assigning...' : 'Confirm Assignment'}
@@ -150,8 +150,8 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
 
 const PerformanceCard = ({ title, value, icon: Icon, onClick, isLoading }) => (
     <div
-      className={cn("bg-card p-4 rounded-lg flex items-center gap-4 border border-border", onClick && "cursor-pointer hover:bg-muted transition-colors", isLoading && 'animate-pulse')}
-      onClick={onClick}
+        className={cn("bg-card p-4 rounded-lg flex items-center gap-4 border border-border", onClick && "cursor-pointer hover:bg-muted transition-colors", isLoading && 'animate-pulse')}
+        onClick={onClick}
     >
         <div className="bg-muted p-3 rounded-full text-primary">
             <Icon size={24} />
@@ -176,17 +176,17 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
     const isSorted = sortConfig.key === column;
     const direction = isSorted ? sortConfig.direction : 'desc';
     const Icon = direction === 'asc' ? ChevronUp : ChevronDown;
-  
+
     return (
-      <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
-        <div className="flex items-center gap-2">
-          {children}
-          {isSorted && <Icon size={16} />}
-        </div>
-      </th>
+        <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
+            <div className="flex items-center gap-2">
+                {children}
+                {isSorted && <Icon size={16} />}
+            </div>
+        </th>
     );
-  };
-  
+};
+
 const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
     const [sortConfig, setSortConfig] = useState({ key: 'totalDeliveries', direction: 'desc' });
     const [searchQuery, setSearchQuery] = useState("");
@@ -217,31 +217,31 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
         return filtered;
     }, [searchQuery, sortConfig, boysData]);
 
-    return(
+    return (
         <div className="mt-8 space-y-6">
-             <h2 className="text-2xl font-bold tracking-tight">Delivery Analytics Hub</h2>
+            <h2 className="text-2xl font-bold tracking-tight">Delivery Analytics Hub</h2>
             <section>
-                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><BarChartIcon/> Team's Weekly Performance</h3>
-                 <div className="bg-card border border-border rounded-xl p-5 h-[300px]">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><BarChartIcon /> Team's Weekly Performance</h3>
+                <div className="bg-card border border-border rounded-xl p-5 h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={weeklyData}>
-                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                             <XAxis dataKey="day" fontSize={12} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                             <YAxis fontSize={12} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                             <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} formatter={(value) => [value, "Deliveries"]}/>
-                             <Bar dataKey="deliveries" fill="hsl(var(--primary))" name="Total Deliveries" radius={[4, 4, 0, 0]} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                            <XAxis dataKey="day" fontSize={12} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                            <YAxis fontSize={12} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                            <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} formatter={(value) => [value, "Deliveries"]} />
+                            <Bar dataKey="deliveries" fill="hsl(var(--primary))" name="Total Deliveries" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
-                 </div>
+                </div>
             </section>
             <section>
                 <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-xl font-bold">Rider Deep Dive</h3>
-                     <div className="relative w-full md:w-auto max-w-xs">
+                    <h3 className="text-xl font-bold">Rider Deep Dive</h3>
+                    <div className="relative w-full md:w-auto max-w-xs">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-                        <input 
-                            type="text" 
-                            placeholder="Search rider..." 
+                        <input
+                            type="text"
+                            placeholder="Search rider..."
                             className="bg-input border border-border rounded-lg w-full pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -261,7 +261,7 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {isLoading ? Array.from({length:3}).map((_, i) => (
+                                {isLoading ? Array.from({ length: 3 }).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4"><div className="h-5 bg-muted rounded"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded"></div></td>
@@ -275,7 +275,7 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
                                         <td className="p-4 text-center font-bold text-lg">{boy.totalDeliveries || 0}</td>
                                         <td className="p-4 text-center">{boy.avgDeliveryTime || 0}</td>
                                         <td className="p-4 text-center flex items-center justify-center gap-1">
-                                            {(boy.avgRating || 0).toFixed(1)} <Star size={14} className="text-yellow-400"/>
+                                            {(boy.avgRating || 0).toFixed(1)} <Star size={14} className="text-yellow-400" />
                                         </td>
                                         <td className="p-4">
                                             <StatusBadge status={boy.status} />
@@ -300,17 +300,20 @@ export default function DeliveryPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
 
     const handleApiCall = async (method, body, endpoint = '/api/owner/delivery') => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
-        
+
         let url = new URL(endpoint, window.location.origin);
         if (impersonatedOwnerId) {
             url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
         }
-        
+
         const res = await fetch(url.toString(), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -340,7 +343,7 @@ export default function DeliveryPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, [impersonatedOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleInviteRider = async (riderEmail) => {
         try {
@@ -351,7 +354,7 @@ export default function DeliveryPage() {
             throw new Error(`Failed to send invite: ${error.message}`);
         }
     };
-    
+
     const handleConfirmAssignment = async (orderId) => {
         if (!selectedBoy) return;
         try {
@@ -366,11 +369,11 @@ export default function DeliveryPage() {
             setSelectedBoy(null);
         }
     };
-    
+
     const handleAssignClick = (boy) => { setSelectedBoy(boy); setAssignModalOpen(true); };
-    
+
     const handleStatusToggle = async (boy, newStatus) => {
-         try {
+        try {
             await handleApiCall('PATCH', { boy: { ...boy, status: newStatus } }, '/api/owner/delivery');
             await fetchData(true);
         } catch (error) {
@@ -387,8 +390,8 @@ export default function DeliveryPage() {
                 message={infoDialog.message}
             />
             <InviteRiderModal isOpen={isInviteModalOpen} setIsOpen={setInviteModalOpen} onInvite={handleInviteRider} />
-            {selectedBoy && <AssignOrderModal isOpen={isAssignModalOpen} setIsOpen={setAssignModalOpen} onAssign={handleConfirmAssignment} boyName={selectedBoy.name} readyOrders={data.readyOrders}/>}
-            
+            {selectedBoy && <AssignOrderModal isOpen={isAssignModalOpen} setIsOpen={setAssignModalOpen} onAssign={handleConfirmAssignment} boyName={selectedBoy.name} readyOrders={data.readyOrders} />}
+
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                     <div>
@@ -397,13 +400,13 @@ export default function DeliveryPage() {
                     </div>
                     <div className="flex-shrink-0 flex gap-4">
                         <Link href="/owner-dashboard/delivery-settings">
-                            <Button variant="outline"><Settings size={16} className="mr-2"/> Delivery Settings</Button>
+                            <Button variant="outline"><Settings size={16} className="mr-2" /> Delivery Settings</Button>
                         </Link>
                         <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
                             <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh
                         </Button>
-                         <Button onClick={() => setInviteModalOpen(true)}>
-                            <Mail size={16} className="mr-2"/> Invite Rider
+                        <Button onClick={() => setInviteModalOpen(true)}>
+                            <Mail size={16} className="mr-2" /> Invite Rider
                         </Button>
                     </div>
                 </div>
@@ -413,11 +416,11 @@ export default function DeliveryPage() {
                     <PerformanceCard title="Average Delivery Time" value={`${data.performance?.avgDeliveryTime || 0} min`} icon={Clock} isLoading={loading} />
                     <PerformanceCard title="Top Performer" value={data.performance?.topPerformer?.name || 'N/A'} icon={Trophy} isLoading={loading} />
                 </div>
-                
+
                 <div className="bg-card rounded-xl p-4 flex flex-col border border-border">
-                     <h3 className="text-lg font-semibold mb-4">Delivery Team ({data.boys?.length || 0})</h3>
-                     <div className="overflow-y-auto space-y-3">
-                        {loading ? Array.from({length:3}).map((_, i) => (
+                    <h3 className="text-lg font-semibold mb-4">Delivery Team ({data.boys?.length || 0})</h3>
+                    <div className="overflow-y-auto space-y-3">
+                        {loading ? Array.from({ length: 3 }).map((_, i) => (
                             <div key={i} className="p-3 bg-muted rounded-lg border border-border animate-pulse h-28"></div>
                         )) : (data.boys || []).map(boy => (
                             <motion.div
@@ -428,7 +431,7 @@ export default function DeliveryPage() {
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <p className="font-bold text-foreground">{boy.name}</p>
-                                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Phone size={12}/>{boy.phone}</p>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Phone size={12} />{boy.phone}</p>
                                     </div>
                                     <StatusBadge status={boy.status} />
                                 </div>
@@ -443,10 +446,10 @@ export default function DeliveryPage() {
                                     </div>
                                     <div className="flex flex-col items-center justify-center gap-1">
                                         <p className="font-semibold text-foreground">{(boy.avgRating || 0).toFixed(1)}</p>
-                                        <Star size={12} className="text-yellow-400"/>
+                                        <Star size={12} className="text-yellow-400" />
                                     </div>
                                 </div>
-                                 <div className="mt-3 pt-3 border-t border-border flex justify-between items-center gap-2 flex-wrap">
+                                <div className="mt-3 pt-3 border-t border-border flex justify-between items-center gap-2 flex-wrap">
                                     <div className="flex items-center gap-2">
                                         <Switch
                                             checked={boy.status !== 'Inactive'}
@@ -460,19 +463,19 @@ export default function DeliveryPage() {
                                     </div>
                                     <div className="flex gap-2">
                                         <Button size="sm" disabled={boy.status !== 'Available'} onClick={() => handleAssignClick(boy)}>
-                                            <Bike size={14} className="mr-1"/> Assign Order
+                                            <Bike size={14} className="mr-1" /> Assign Order
                                         </Button>
                                     </div>
                                 </div>
                             </motion.div>
                         ))}
-                         {!loading && (!data.boys || data.boys.length === 0) && (
+                        {!loading && (!data.boys || data.boys.length === 0) && (
                             <p className="text-center text-muted-foreground py-10">No delivery riders have been added yet.</p>
-                         )}
+                        )}
                     </div>
                 </div>
 
-                <DeliveryAnalytics boysData={data.boys} weeklyData={data.weeklyPerformance} isLoading={loading}/>
+                <DeliveryAnalytics boysData={data.boys} weeklyData={data.weeklyPerformance} isLoading={loading} />
             </div>
         </div>
     );

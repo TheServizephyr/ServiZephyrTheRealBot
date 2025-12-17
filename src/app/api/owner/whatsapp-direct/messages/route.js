@@ -6,15 +6,38 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp';
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req); // Use central helper
-    
+
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
+    if (!userDoc.exists) {
+        throw { message: 'Access Denied: User profile not found.', status: 403 };
+    }
+
+    const userData = userDoc.data();
+    const userRole = userData.role;
+
     let targetOwnerId = uid;
-    if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
+
+    // Admin impersonation
+    if (userRole === 'admin' && impersonatedOwnerId) {
         targetOwnerId = impersonatedOwnerId;
-    } else if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner'].includes(userRole)) {
         throw { message: 'Access Denied', status: 403 };
     }
 
@@ -22,12 +45,12 @@ async function verifyOwnerAndGetBusinessRef(req) {
     if (!restaurantsQuery.empty) {
         return restaurantsQuery.docs[0];
     }
-    
+
     const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
     if (!shopsQuery.empty) {
         return shopsQuery.docs[0];
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
@@ -42,11 +65,11 @@ export async function GET(req) {
         }
 
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
-        
+
         const messagesSnap = await businessDoc.ref.collection('conversations').doc(conversationId).collection('messages')
             .orderBy('timestamp', 'asc')
             .get();
-            
+
         const messages = messagesSnap.docs.map(doc => {
             const data = doc.data();
             const timestamp = data.timestamp?.toDate ? data.timestamp.toDate().toISOString() : new Date().toISOString();
@@ -56,7 +79,7 @@ export async function GET(req) {
                 timestamp: timestamp,
             };
         });
-        
+
         await businessDoc.ref.collection('conversations').doc(conversationId).set({ unreadCount: 0 }, { merge: true });
 
         return NextResponse.json({ messages }, { status: 200 });
@@ -76,7 +99,7 @@ export async function POST(req) {
         if (!conversationId || (!text && !imageUrl)) {
             return NextResponse.json({ message: 'Conversation ID and text or imageUrl are required.' }, { status: 400 });
         }
-        
+
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
         const businessData = businessDoc.data();
         const botPhoneNumberId = businessData.botPhoneNumberId;
@@ -84,14 +107,14 @@ export async function POST(req) {
         if (!botPhoneNumberId) {
             throw { message: 'WhatsApp bot is not connected for this business.', status: 400 };
         }
-        
+
         const customerPhoneWithCode = '91' + conversationId;
 
         let messagePayload;
         let firestoreMessageData;
-        
+
         if (text) {
-             messagePayload = {
+            messagePayload = {
                 type: 'interactive',
                 interactive: {
                     type: 'button',
@@ -110,15 +133,15 @@ export async function POST(req) {
             messagePayload = { type: 'image', link: imageUrl };
             firestoreMessageData = { type: 'image', mediaUrl: imageUrl, text: 'Image' };
         }
-        
+
         await sendWhatsAppMessage(customerPhoneWithCode, messagePayload, botPhoneNumberId);
-        
+
         const firestore = getFirestore();
         const conversationRef = businessDoc.ref.collection('conversations').doc(conversationId);
         const messageRef = conversationRef.collection('messages').doc();
 
         const batch = firestore.batch();
-        
+
         batch.set(messageRef, {
             id: messageRef.id,
             sender: 'owner',

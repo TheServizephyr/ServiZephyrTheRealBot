@@ -782,7 +782,8 @@ const OrderPageInternal = () => {
                 tab_name: tabName,
             };
 
-            const res = await fetch('/api/owner/dine-in-tables', {
+            // Use public tables API (no auth required for customers)
+            const res = await fetch('/api/owner/tables', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

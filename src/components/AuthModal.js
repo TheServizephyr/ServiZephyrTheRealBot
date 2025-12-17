@@ -28,7 +28,7 @@ export default function AuthModal({ isOpen, onClose }) {
     }
     return () => (document.body.style.overflow = "auto");
   }, [isOpen]);
-  
+
 
   const resetForm = () => {
     setMsg("");
@@ -50,39 +50,64 @@ export default function AuthModal({ isOpen, onClose }) {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       console.log("[DEBUG] AuthModal: Google sign-in successful. User:", user.email);
-      
+
       setMsg("Verifying user details...");
-      
+
       // Correctly check the user's role from our backend
       const idToken = await user.getIdToken();
       console.log("[DEBUG] AuthModal: Got ID token. Calling /api/auth/check-role...");
       const res = await fetch('/api/auth/check-role', {
-          method: 'POST',
-          headers: {
-              'Authorization': `Bearer ${idToken}`,
-          },
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
       });
-  
+
       const data = await res.json();
       console.log(`[DEBUG] AuthModal: Received response from check-role API. Status: ${res.status}, Data:`, data);
-  
+
       if (!res.ok) {
-          // If the backend returns a 404, it's a new user.
-          if(res.status === 404) {
-               console.log("[DEBUG] AuthModal: User not found (404), treating as new user.");
-               setMsg("✅ New user detected! Redirecting to complete your profile...");
-               setMsgType("success");
-               localStorage.setItem("role", "none"); 
-               setTimeout(() => {
-                 closeModal();
-                 router.push("/complete-profile");
-               }, 1500);
-               return;
-          }
-          // For any other error, display it.
-          throw new Error(data.message || 'Failed to verify user role.');
+        // If the backend returns a 404, it's a new user.
+        if (res.status === 404) {
+          console.log("[DEBUG] AuthModal: User not found (404), treating as new user.");
+          setMsg("✅ New user detected! Redirecting to complete your profile...");
+          setMsgType("success");
+          localStorage.setItem("role", "none");
+          setTimeout(() => {
+            closeModal();
+            router.push("/complete-profile");
+          }, 1500);
+          return;
+        }
+        // For any other error, display it.
+        throw new Error(data.message || 'Failed to verify user role.');
       }
-      
+
+      // Check if user has multiple roles (owner/customer + employee)
+      if (data.hasMultipleRoles) {
+        console.log("[DEBUG] AuthModal: Multiple roles detected. Redirecting to select-role page.");
+        setMsg("✅ Multiple accounts found! Choose your account...");
+        setMsgType("success");
+        setTimeout(() => {
+          closeModal();
+          router.push("/select-role");
+        }, 1000);
+        return;
+      }
+
+      // Check if API provided a specific redirect URL (for employees)
+      if (data.redirectTo) {
+        console.log(`[DEBUG] AuthModal: Custom redirect provided: ${data.redirectTo}`);
+        setMsg(`✅ Welcome back! Redirecting to ${data.outletName || 'dashboard'}...`);
+        setMsgType("success");
+        localStorage.setItem("role", data.role || 'employee');
+        setTimeout(() => {
+          closeModal();
+          router.push(data.redirectTo);
+        }, 1500);
+        return;
+      }
+
       // If the response is OK, the backend found a role.
       const { role, businessType } = data;
       console.log(`[DEBUG] AuthModal: Role found: '${role}', BusinessType: '${businessType}'. Redirecting...`);
@@ -92,7 +117,7 @@ export default function AuthModal({ isOpen, onClose }) {
       if (businessType) {
         localStorage.setItem("businessType", businessType);
       }
-  
+
       setTimeout(() => {
         closeModal();
         if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
@@ -112,30 +137,30 @@ export default function AuthModal({ isOpen, onClose }) {
           router.push("/customer-dashboard");
         }
       }, 1500);
-  
+
     } catch (err) {
-        let errorMessage = "An unexpected error occurred. Please try again.";
-        if (err.code) {
-            switch (err.code) {
-                case 'auth/popup-closed-by-user':
-                    errorMessage = 'Sign-in popup closed before completion.';
-                    break;
-                case 'auth/cancelled-popup-request':
-                    errorMessage = 'Multiple sign-in attempts detected. Please try again.';
-                    break;
-                case 'auth/permission-denied':
-                    errorMessage = 'This domain is not authorized. Please contact support.';
-                    break;
-                default:
-                    errorMessage = `Error: ${err.code}. Please try again.`;
-            }
-        } else {
-            errorMessage = err.message;
+      let errorMessage = "An unexpected error occurred. Please try again.";
+      if (err.code) {
+        switch (err.code) {
+          case 'auth/popup-closed-by-user':
+            errorMessage = 'Sign-in popup closed before completion.';
+            break;
+          case 'auth/cancelled-popup-request':
+            errorMessage = 'Multiple sign-in attempts detected. Please try again.';
+            break;
+          case 'auth/permission-denied':
+            errorMessage = 'This domain is not authorized. Please contact support.';
+            break;
+          default:
+            errorMessage = `Error: ${err.code}. Please try again.`;
         }
-        console.error("[DEBUG] AuthModal: Login failed.", err);
-        setMsg(`❌ Login Failed: ${errorMessage}`);
-        setMsgType("error");
-        setLoading(false);
+      } else {
+        errorMessage = err.message;
+      }
+      console.error("[DEBUG] AuthModal: Login failed.", err);
+      setMsg(`❌ Login Failed: ${errorMessage}`);
+      setMsgType("error");
+      setLoading(false);
     }
   };
 
@@ -145,11 +170,11 @@ export default function AuthModal({ isOpen, onClose }) {
       <div className={styles.form}>
         <h2 className={styles.title}>Welcome to ServiZephyr</h2>
         <p className={styles.infoText}>The easiest way to manage your restaurant. Please sign in to continue.</p>
-        
+
         <button className={styles.btn} onClick={handleGoogleLogin} disabled={loading}>
           Continue with Google
         </button>
-        
+
         <p className={styles.switchText}>By continuing, you agree to our Terms of Service and Privacy Policy.</p>
       </div>
     );
@@ -160,8 +185,8 @@ export default function AuthModal({ isOpen, onClose }) {
       {isOpen && (
         <motion.div className={styles.overlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeModal}>
           <motion.div className={styles.card} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={{ duration: 0.3, ease: "easeOut" }} onClick={(e) => e.stopPropagation()}>
-            <button onClick={closeModal} className={styles.closeBtn}><X size={24}/></button>
-            
+            <button onClick={closeModal} className={styles.closeBtn}><X size={24} /></button>
+
             <AnimatePresence mode="wait">
               <motion.div
                 key="google-login"
@@ -175,10 +200,10 @@ export default function AuthModal({ isOpen, onClose }) {
             </AnimatePresence>
 
             {msg && (
-              <motion.p 
-                className={`${styles.msg} ${msgType === "success" ? styles.msgSuccess : msgType === "error" ? styles.msgError : styles.msgInfo}`} 
-                initial={{ opacity: 0, y: 10 }} 
-                animate={{ opacity: 1, y: 0 }} 
+              <motion.p
+                className={`${styles.msg} ${msgType === "success" ? styles.msgSuccess : msgType === "error" ? styles.msgError : styles.msgInfo}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2 }}
               >
                 {loading && <span className={styles.spinner}></span>}

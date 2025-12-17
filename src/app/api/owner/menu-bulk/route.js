@@ -6,17 +6,46 @@ import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/fireba
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req);
 
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
+
     const userDoc = await firestore.collection('users').doc(uid).get();
-    if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userDoc.data().role)) {
+    if (!userDoc.exists) {
+        throw { message: 'Access Denied: User profile not found.', status: 403 };
+    }
+
+    const userData = userDoc.data();
+    const userRole = userData.role;
+
+    let targetOwnerId = uid;
+
+    // Admin impersonation
+    if (userRole === 'admin' && impersonatedOwnerId) {
+        targetOwnerId = impersonatedOwnerId;
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
 
     const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
     for (const collectionName of collectionsToTry) {
-        const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', uid).limit(1).get();
+        const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
         if (!querySnapshot.empty) {
             const restaurantId = querySnapshot.docs[0].id;
-            return { uid, restaurantId, collectionName };
+            return { uid: targetOwnerId, restaurantId, collectionName };
         }
     }
 

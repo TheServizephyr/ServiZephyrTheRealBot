@@ -558,6 +558,9 @@ const StreetVendorDashboardContent = () => {
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
+    const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
+    const queryParam = impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '';
     const [date, setDate] = useState(null);
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -636,24 +639,32 @@ const StreetVendorDashboardContent = () => {
         if (!user) throw new Error('Authentication Error');
         const idToken = await user.getIdToken();
         let url = endpoint;
+        // Add impersonation or employee_of param
         if (impersonatedOwnerId) {
             const separator = url.includes('?') ? '&' : '?';
             url += `${separator}impersonate_owner_id=${impersonatedOwnerId}`;
+        } else if (employeeOfOwnerId) {
+            const separator = url.includes('?') ? '&' : '?';
+            url += `${separator}employee_of=${employeeOfOwnerId}`;
         }
-        const response = await fetch(url, {
+        const fetchOptions = {
             method,
             headers: {
                 'Authorization': `Bearer ${idToken}`,
                 'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
+            }
+        };
+        // Only add body for non-GET methods
+        if (method !== 'GET' && method !== 'HEAD') {
+            fetchOptions.body = JSON.stringify(body);
+        }
+        const response = await fetch(url, fetchOptions);
         if (!response.ok) {
             const errData = await response.json();
             throw new Error(errData.message || 'An API error occurred.');
         }
         return await response.json();
-    }, [user, impersonatedOwnerId]);
+    }, [user, impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleScanSuccess = useCallback(async (scannedUrl) => {
         setScannerOpen(false);
@@ -715,18 +726,20 @@ const StreetVendorDashboardContent = () => {
         }
     };
 
-    // Fetch Vendor ID (or use impersonated ID)
+    // Fetch Vendor ID (or use impersonated/employee ID)
     useEffect(() => {
         if (isUserLoading || !user) {
             if (!isUserLoading) setLoading(false);
             return;
         }
 
-        if (impersonatedOwnerId) {
-            setVendorId(impersonatedOwnerId); // Use the impersonated ID directly
+        // For impersonation or employee access, use the target owner ID directly
+        if (effectiveOwnerId) {
+            setVendorId(effectiveOwnerId);
             return;
         }
 
+        // Only for owner's own access - use Firestore
         const q = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             if (!querySnapshot.empty) {
@@ -743,10 +756,10 @@ const StreetVendorDashboardContent = () => {
         });
 
         return () => unsubscribe();
-    }, [user, isUserLoading, impersonatedOwnerId]);
+    }, [user, isUserLoading, effectiveOwnerId]);
 
     const fetchOrdersViaApi = useCallback(async () => {
-        if (!impersonatedOwnerId) return;
+        if (!effectiveOwnerId) return;
         setLoading(true);
         try {
             const data = await handleApiCall('/api/owner/orders', 'GET');
@@ -757,18 +770,25 @@ const StreetVendorDashboardContent = () => {
         } finally {
             setLoading(false);
         }
-    }, [impersonatedOwnerId, handleApiCall]);
+    }, [effectiveOwnerId, handleApiCall]);
 
     // Fetch Orders
     useEffect(() => {
-        if (!vendorId) return;
+        console.log('[Orders Debug] useEffect running, effectiveOwnerId:', effectiveOwnerId, 'vendorId:', vendorId);
 
-        if (impersonatedOwnerId) {
-            // Use API polling or single fetch for impersonation
+        // For impersonation or employee access, use API polling (don't need vendorId - API handles it)
+        if (effectiveOwnerId) {
+            console.log('[Orders] Fetching via API for employee/impersonation access:', effectiveOwnerId);
             fetchOrdersViaApi();
-            // Optional: Poll every 30 seconds
+            // Poll every 30 seconds
             const interval = setInterval(fetchOrdersViaApi, 30000);
             return () => clearInterval(interval);
+        }
+
+        // For owner's own access, wait for vendorId from Firestore
+        if (!vendorId) {
+            console.log('[Orders Debug] No vendorId yet, skipping Firestore query');
+            return;
         }
 
         setLoading(true);
@@ -813,7 +833,7 @@ const StreetVendorDashboardContent = () => {
         });
 
         return () => unsubscribe();
-    }, [vendorId, impersonatedOwnerId, fetchOrdersViaApi]);
+    }, [vendorId, effectiveOwnerId, fetchOrdersViaApi]);
 
     const handleUpdateStatus = async (orderId, newStatus, reason = null, shouldRefund = undefined) => {
         try {
@@ -929,7 +949,7 @@ const StreetVendorDashboardContent = () => {
             <header className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold font-headline">Live Pre-Orders</h1>
                 <div className="flex gap-2">
-                    <Link href="/street-vendor-dashboard/history">
+                    <Link href={`/street-vendor-dashboard/history${queryParam}`}>
                         <Button variant="outline" className="flex">
                             <History className="mr-2" /> History
                         </Button>

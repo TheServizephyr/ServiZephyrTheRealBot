@@ -377,12 +377,14 @@ const CheckoutPageInternal = () => {
     };
 
     const placeOrder = async (paymentMethod) => {
-        console.log(`[Checkout Page] placeOrder called with paymentMethod: ${paymentMethod}`);
+        // If PhonePe is selected for online payment, use 'phonepe' as payment method
+        const effectivePaymentMethod = (paymentMethod === 'online' && paymentGateway === 'phonepe') ? 'phonepe' : paymentMethod;
+        console.log(`[Checkout Page] placeOrder called with paymentMethod: ${paymentMethod}, effective: ${effectivePaymentMethod}`);
         if (!validateOrderDetails()) return;
 
         const orderData = {
             name: orderName, phone: orderPhone, restaurantId, items: cart, notes: cartData.notes, coupon: appliedCoupons.find(c => !c.customerId) || null,
-            loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: paymentMethod,
+            loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: effectivePaymentMethod,
             deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress,
@@ -883,7 +885,42 @@ const CheckoutPageInternal = () => {
                                                             </div>
                                                         </div>
 
-                                                        {/* Payment Gateway Selection removed - Razorpay is default */}
+                                                        {/* Payment Gateway Selection - Razorpay and PhonePe */}
+                                                        {selectedOnlinePaymentType === 'full' && (
+                                                            <div className="mt-2 p-3 bg-muted/50 rounded border border-border/50">
+                                                                <p className="text-xs text-muted-foreground mb-2">Select Payment Gateway:</p>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setPaymentGateway('razorpay');
+                                                                        }}
+                                                                        className={cn(
+                                                                            "flex-1 px-3 py-2 text-sm font-medium rounded border transition-all",
+                                                                            paymentGateway === 'razorpay'
+                                                                                ? "bg-primary text-primary-foreground border-primary"
+                                                                                : "bg-background border-border hover:border-primary/50"
+                                                                        )}
+                                                                    >
+                                                                        Razorpay
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setPaymentGateway('phonepe');
+                                                                        }}
+                                                                        className={cn(
+                                                                            "flex-1 px-3 py-2 text-sm font-medium rounded border transition-all",
+                                                                            paymentGateway === 'phonepe'
+                                                                                ? "bg-[#5f259f] text-white border-[#5f259f]"
+                                                                                : "bg-background border-border hover:border-[#5f259f]/50"
+                                                                        )}
+                                                                    >
+                                                                        PhonePe
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
 
 
                                                         <div

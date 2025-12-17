@@ -5,6 +5,7 @@ import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { kv } from '@vercel/kv';
+import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,15 +13,34 @@ async function verifyUserAndGetData(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req); // Use central helper
 
-    // Admin impersonation logic
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    // Get URL params
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
+
     const adminUserDoc = await firestore.collection('users').doc(uid).get();
+    if (!adminUserDoc.exists) {
+        throw { message: 'User profile not found.', status: 404 };
+    }
+
+    const adminUserData = adminUserDoc.data();
 
     let finalUserId = uid;
-    if (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId) {
+
+    // --- ADMIN IMPERSONATION ---
+    if (adminUserData.role === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
         finalUserId = impersonatedOwnerId;
+    }
+    // --- EMPLOYEE ACCESS (SECURE) ---
+    else if (employeeOfOwnerId) {
+        const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, adminUserData);
+        if (!accessResult.authorized) {
+            console.warn(`[SECURITY] Blocked unauthorized employee_of access: ${uid} -> ${employeeOfOwnerId}`);
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+        console.log(`[API Employee Access] ${uid} (${accessResult.employeeRole}) accessing ${employeeOfOwnerId}'s settings`);
+        finalUserId = employeeOfOwnerId;
     }
 
     const userRef = firestore.collection('users').doc(finalUserId);
@@ -36,9 +56,10 @@ async function verifyUserAndGetData(req) {
     let businessId = null;
 
     const isOwnerRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userData.role);
-    const isAdminImpersonating = adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId;
+    const isAdminImpersonating = adminUserData.role === 'admin' && impersonatedOwnerId;
+    const isEmployeeAccessing = !!employeeOfOwnerId;
 
-    if (isOwnerRole || isAdminImpersonating) {
+    if (isOwnerRole || isAdminImpersonating || isEmployeeAccessing) {
         // --- START FIX: Role-based collection search ---
         let collectionsToTry = [];
         const userBusinessType = userData.businessType; // e.g., 'restaurant', 'shop', 'street-vendor'

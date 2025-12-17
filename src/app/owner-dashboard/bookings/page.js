@@ -19,12 +19,12 @@ export const dynamic = 'force-dynamic';
 
 const formatDateTime = (dateValue) => {
     if (!dateValue) return 'N/A';
-    
+
     let date;
     // Check if it's a Firestore Timestamp-like object from a JSON response
     if (typeof dateValue === 'object' && dateValue !== null && dateValue._seconds) {
         date = new Date(dateValue._seconds * 1000 + (dateValue._nanoseconds || 0) / 1000000);
-    } 
+    }
     // Check if it's a native Firestore Timestamp
     else if (typeof dateValue === 'object' && dateValue !== null && typeof dateValue.toDate === 'function') {
         date = dateValue.toDate();
@@ -33,13 +33,13 @@ const formatDateTime = (dateValue) => {
     else {
         date = new Date(dateValue);
     }
-    
+
     // Final validation
     if (isNaN(date.getTime())) {
         console.warn("Invalid date value provided to formatDateTime:", dateValue);
         return 'Invalid Date';
     }
-    
+
     return format(date, "dd MMM, yyyy 'at' hh:mm a");
 };
 
@@ -50,7 +50,7 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
         cancelled: { style: 'text-red-400 bg-red-500/10', icon: <XCircle size={14} /> },
         completed: { style: 'text-blue-400 bg-blue-500/10', icon: <CheckCircle size={14} /> },
     };
-    
+
     const currentStatusConfig = statusConfig[booking.status] || statusConfig.pending;
 
 
@@ -69,12 +69,12 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
     const bookingDate = useMemo(() => {
         if (!booking.bookingDateTime) return null;
         if (booking.bookingDateTime._seconds) {
-             return new Date(booking.bookingDateTime._seconds * 1000);
+            return new Date(booking.bookingDateTime._seconds * 1000);
         }
         const date = new Date(booking.bookingDateTime);
         return isNaN(date.getTime()) ? null : date;
     }, [booking.bookingDateTime]);
-    
+
     const canBeCompleted = bookingDate ? isPast(bookingDate) : true;
 
     return (
@@ -87,13 +87,13 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
             <TableCell>
                 <div className="font-medium">{formatDateTime(booking.bookingDateTime)}</div>
                 {createdAtDate && (
-                     <div className="text-xs text-muted-foreground">
+                    <div className="text-xs text-muted-foreground">
                         Booked at {format(createdAtDate, 'p')}
                     </div>
                 )}
             </TableCell>
             <TableCell>
-                 <span className={cn('flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full capitalize', currentStatusConfig.style)}>
+                <span className={cn('flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full capitalize', currentStatusConfig.style)}>
                     {currentStatusConfig.icon}
                     {booking.status}
                 </span>
@@ -123,7 +123,7 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
                                     <span className="text-red-500">Cancel</span>
                                 </DropdownMenuItem>
                             )}
-                             {booking.status === 'confirmed' && canBeCompleted && (
+                            {booking.status === 'confirmed' && canBeCompleted && (
                                 <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'completed')}>
                                     <CheckCircle className="mr-2 h-4 w-4 text-blue-500" />
                                     <span className="text-blue-500">Mark as Completed</span>
@@ -144,6 +144,7 @@ function BookingsPageContent() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('upcoming');
 
@@ -158,6 +159,8 @@ function BookingsPageContent() {
             let url = new URL('/api/owner/bookings', window.location.origin);
             if (impersonatedOwnerId) {
                 url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            } else if (employeeOfOwnerId) {
+                url.searchParams.append('employee_of', employeeOfOwnerId);
             }
 
             const res = await fetch(url.toString(), {
@@ -177,14 +180,14 @@ function BookingsPageContent() {
             if (!isManualRefresh) setLoading(false);
         }
     };
-    
+
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
             if (user) fetchBookings();
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, [impersonatedOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
 
     const handleUpdateStatus = async (bookingId, status) => {
@@ -193,28 +196,35 @@ function BookingsPageContent() {
             if (!user) throw new Error("Authentication required.");
             const idToken = await user.getIdToken();
 
-            const res = await fetch('/api/owner/bookings', {
+            let url = new URL('/api/owner/bookings', window.location.origin);
+            if (impersonatedOwnerId) {
+                url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            } else if (employeeOfOwnerId) {
+                url.searchParams.append('employee_of', employeeOfOwnerId);
+            }
+
+            const res = await fetch(url.toString(), {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ bookingId, status }),
             });
-            
-            if(!res.ok) {
+
+            if (!res.ok) {
                 const errorData = await res.json();
                 throw new Error(errorData.message || "Failed to update status.");
             }
-            
+
             setInfoDialog({ isOpen: true, title: 'Success', message: `Booking has been ${status}.` });
             fetchBookings(true); // Refresh data
-        } catch(error) {
-             setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to update status: ${error.message}` });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to update status: ${error.message}` });
         }
     };
 
 
     const filteredBookings = useMemo(() => {
         let items = [...bookings];
-        
+
         if (activeTab === 'upcoming') {
             items = items.filter(b => b.status === 'pending' || b.status === 'confirmed');
         } else if (activeTab === 'past') {
@@ -224,7 +234,7 @@ function BookingsPageContent() {
 
         if (searchQuery) {
             const lowerQuery = searchQuery.toLowerCase();
-            items = items.filter(b => 
+            items = items.filter(b =>
                 b.customerName.toLowerCase().includes(lowerQuery) ||
                 b.customerPhone.includes(lowerQuery)
             );
@@ -239,7 +249,7 @@ function BookingsPageContent() {
 
         return items;
     }, [bookings, searchQuery, activeTab]);
-    
+
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 md:p-6 space-y-6">
             <InfoDialog

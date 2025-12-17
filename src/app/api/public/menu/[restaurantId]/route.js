@@ -18,24 +18,30 @@ export async function GET(req, { params }) {
     }
 
     console.log(`[Menu API] 🚀 START - Request received for restaurantId: ${restaurantId} at ${new Date().toISOString()}`);
-    
-    try {
-        // Step 1: Check Redis cache first (1-hour TTL)
-        const cachedData = await kv.get(cacheKey);
-        if (cachedData) {
-            console.log(`[Menu API] ✅ Cache HIT for ${restaurantId}`);
-            return NextResponse.json(cachedData, {
-                status: 200,
-                headers: {
-                    'X-Cache': 'HIT',
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                }
-            });
-        }
 
-        console.log(`[Menu API] ❌ Cache MISS - Fetching from Firestore for ${restaurantId}`);
+    // Check if Vercel KV is available (optional for local dev)
+    const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+
+    try {
+        // Step 1: Check Redis cache first (1-hour TTL) - only if KV is available
+        if (isKvAvailable) {
+            const cachedData = await kv.get(cacheKey);
+            if (cachedData) {
+                console.log(`[Menu API] ✅ Cache HIT for ${restaurantId}`);
+                return NextResponse.json(cachedData, {
+                    status: 200,
+                    headers: {
+                        'X-Cache': 'HIT',
+                        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                });
+            }
+            console.log(`[Menu API] ❌ Cache MISS - Fetching from Firestore for ${restaurantId}`);
+        } else {
+            console.log(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${restaurantId}`);
+        }
 
         // Step 2: Cache miss - fetch from Firestore (OPTIMIZED)
         let businessData = null;
@@ -162,10 +168,12 @@ export async function GET(req, { params }) {
             isOpen: businessData.isOpen === true, // Restaurant open/closed status
         };
 
-        // Write to Redis cache with 1-hour TTL (invalidated on vendor changes)
-        kv.set(cacheKey, responseData, { ex: 3600 }) // 1 hour TTL
-            .then(() => console.log(`[Menu API] ✅ Cached data for ${restaurantId} (TTL: 1 hour)`))
-            .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
+        // Write to Redis cache with 1-hour TTL (invalidated on vendor changes) - only if KV available
+        if (isKvAvailable) {
+            kv.set(cacheKey, responseData, { ex: 3600 }) // 1 hour TTL
+                .then(() => console.log(`[Menu API] ✅ Cached data for ${restaurantId} (TTL: 1 hour)`))
+                .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
+        }
 
         // Return with no-cache headers to prevent browser caching
         return NextResponse.json(responseData, {

@@ -8,10 +8,11 @@ export const dynamic = 'force-dynamic';
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
-    
-    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
+
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
     if (!userDoc.exists) {
@@ -22,10 +23,27 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const userRole = userData.role;
 
     let targetOwnerId = uid;
+
+    // Admin impersonation
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        // Verify employee has access to this owner's data
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+
+        console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s dashboard data`);
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
@@ -37,7 +55,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
             return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin' };
         }
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
@@ -72,13 +90,13 @@ export async function GET(req) {
 
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
         const customersRef = firestore.collection(collectionName).doc(businessId).collection('customers');
-        
+
         const [currentOrdersSnap, prevOrdersSnap, newCustomersSnap, topItemsSnap, rejectedOrdersSnap] = await Promise.all([
             ordersRef.where('orderDate', '>=', startDate).where('status', '!=', 'rejected').get(),
             ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
-            customersRef.where('lastOrderDate', '>=', startDate).get(), 
+            customersRef.where('lastOrderDate', '>=', startDate).get(),
             ordersRef.where('orderDate', '>=', startDate).limit(50).get(),
-            ordersRef.where('orderDate', '>=', new Date(new Date().setHours(0,0,0,0))).where('status', '==', 'rejected').get()
+            ordersRef.where('orderDate', '>=', new Date(new Date().setHours(0, 0, 0, 0))).where('status', '==', 'rejected').get()
         ]);
 
         let sales = 0;
@@ -97,7 +115,7 @@ export async function GET(req) {
             if (previous === 0) return current > 0 ? 100 : 0;
             return ((current - previous) / previous) * 100;
         };
-        
+
         const avgOrderValue = currentOrders.length > 0 ? sales / currentOrders.length : 0;
         const prevAvgOrderValue = prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0;
 
@@ -116,9 +134,9 @@ export async function GET(req) {
         const liveOrdersSnap = await ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(3).get();
         const liveOrders = liveOrdersSnap.docs.map(doc => {
             const orderData = doc.data();
-            return { 
-                id: doc.id, 
-                customer: orderData.customerName, 
+            return {
+                id: doc.id,
+                customer: orderData.customerName,
                 amount: orderData.totalAmount,
                 items: (orderData.items || []).map(item => ({
                     name: item.name,
@@ -130,7 +148,7 @@ export async function GET(req) {
         const salesChartData = [];
         const sevenDaysAgo = new Date(new Date().setDate(new Date().getDate() - 7));
         const chartSnap = await ordersRef.where('orderDate', '>=', sevenDaysAgo).orderBy('orderDate').get();
-        
+
         const salesByDay = {};
         const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         daysOfWeek.forEach(day => salesByDay[day] = 0);
@@ -140,7 +158,7 @@ export async function GET(req) {
             const day = data.orderDate.toDate().toLocaleDateString('en-US', { weekday: 'short' });
             salesByDay[day] = (salesByDay[day] || 0) + data.totalAmount;
         });
-        
+
         const todayDayIndex = new Date().getDay();
         const orderedDays = [...daysOfWeek.slice(todayDayIndex + 1), ...daysOfWeek.slice(0, todayDayIndex + 1)];
         orderedDays.forEach(day => salesChartData.push({ day: day, sales: salesByDay[day] || 0 }));
@@ -157,7 +175,7 @@ export async function GET(req) {
         const menuItems = menuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         const topSellingNames = Object.entries(itemCounts)
-            .sort(([,a],[,b]) => b - a)
+            .sort(([, a], [, b]) => b - a)
             .slice(0, 3)
             .map(([name]) => name);
 
@@ -166,7 +184,7 @@ export async function GET(req) {
             .map((item, index) => ({
                 name: item.name,
                 count: itemCounts[item.name],
-                imageUrl: item.imageUrl || `https://picsum.photos/seed/dish${index+1}/200/200`
+                imageUrl: item.imageUrl || `https://picsum.photos/seed/dish${index + 1}/200/200`
             }));
 
 
@@ -179,4 +197,4 @@ export async function GET(req) {
     }
 }
 
-    
+

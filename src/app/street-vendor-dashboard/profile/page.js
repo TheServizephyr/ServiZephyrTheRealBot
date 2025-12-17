@@ -253,6 +253,11 @@ function VendorProfilePageContent() {
 
     const defaultAddress = { street: '', city: '', state: '', postalCode: '', country: 'IN' };
 
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
+    const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
+
     useEffect(() => {
         const fetchUserData = async () => {
             const currentUser = getAuth().currentUser;
@@ -263,7 +268,16 @@ function VendorProfilePageContent() {
             }
             try {
                 const idToken = await currentUser.getIdToken();
-                const response = await fetch('/api/owner/settings', {
+
+                // Build URL with correct query param for employee/impersonation access
+                let apiUrl = '/api/owner/settings';
+                if (impersonatedOwnerId) {
+                    apiUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                } else if (employeeOfOwnerId) {
+                    apiUrl += `?employee_of=${employeeOfOwnerId}`;
+                }
+
+                const response = await fetch(apiUrl, {
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
 
@@ -286,7 +300,7 @@ function VendorProfilePageContent() {
         });
 
         return () => unsubscribe();
-    }, [router]);
+    }, [router, effectiveOwnerId]);
 
     const handleEditToggle = (section) => {
         const toggles = {
@@ -392,7 +406,16 @@ function VendorProfilePageContent() {
 
         try {
             const idToken = await currentUser.getIdToken();
-            const response = await fetch('/api/owner/settings', {
+
+            // Build URL with correct query param for employee/impersonation access
+            let apiUrl = '/api/owner/settings';
+            if (impersonatedOwnerId) {
+                apiUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                apiUrl += `?employee_of=${employeeOfOwnerId}`;
+            }
+
+            const response = await fetch(apiUrl, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify(payload)

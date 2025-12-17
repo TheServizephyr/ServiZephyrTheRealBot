@@ -21,6 +21,8 @@ export default function StreetVendorQrPage() {
     const printRef = useRef();
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
+    const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
 
     const handlePrint = useReactToPrint({
         content: () => printRef.current,
@@ -53,9 +55,13 @@ export default function StreetVendorQrPage() {
         const fetchVendorData = async () => {
             try {
                 const idToken = await user.getIdToken();
+
+                // Build URL with correct query param for employee/impersonation access
                 let url = '/api/owner/settings';
                 if (impersonatedOwnerId) {
                     url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                } else if (employeeOfOwnerId) {
+                    url += `?employee_of=${employeeOfOwnerId}`;
                 }
 
                 const res = await fetch(url, {
@@ -79,7 +85,7 @@ export default function StreetVendorQrPage() {
             }
         }
         fetchVendorData();
-    }, [user, isUserLoading, impersonatedOwnerId]);
+    }, [user, isUserLoading, effectiveOwnerId]);
 
     const qrValue = vendorId ? `${window.location.origin}/order/${vendorId}` : '';
 

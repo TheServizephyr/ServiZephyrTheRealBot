@@ -5,9 +5,11 @@ import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/fireba
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
-    
+
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
     if (!userDoc.exists) {
@@ -18,13 +20,29 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const userRole = userData.role;
 
     let targetOwnerId = uid;
+
+    // Admin impersonation
     if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is managing data for owner ${impersonatedOwnerId}.`);
+        console.log(`[API Impersonation] Admin ${uid} is managing bookings for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+
+        console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s bookings`);
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
-    
+
     const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
     for (const collectionName of collectionsToTry) {
         const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
@@ -33,7 +51,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
             return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin' };
         }
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
@@ -47,11 +65,11 @@ export async function GET(req) {
 
         const bookingsRef = firestore.collection(collectionName).doc(businessId).collection('bookings');
         const bookingsSnap = await bookingsRef.orderBy('bookingDateTime', 'desc').get();
-        
+
         let bookings = bookingsSnap.docs.map(doc => {
             const data = doc.data();
-            return { 
-                id: doc.id, 
+            return {
+                id: doc.id,
                 ...data,
             };
         });
@@ -77,25 +95,25 @@ export async function POST(req) {
         const businessRef = firestore.collection('restaurants').doc(restaurantId);
         const businessSnap = await businessRef.get();
         if (!businessSnap.exists) {
-            return NextResponse.json({ message: `Business with ID ${restaurantId} not found.`}, { status: 404 });
+            return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
         }
         const businessData = businessSnap.data();
-        
+
         const newBookingRef = businessRef.collection('bookings').doc();
-        
+
         const newBookingData = {
             id: newBookingRef.id,
             customerName: name,
             customerPhone: phone,
             partySize: guests,
-            bookingDateTime: new Date(bookingDateTime), 
+            bookingDateTime: new Date(bookingDateTime),
             status: 'pending',
             createdAt: FieldValue.serverTimestamp(),
             notes: '',
         };
 
         await newBookingRef.set(newBookingData);
-        
+
         // TODO: Send WhatsApp notification to owner
 
         return NextResponse.json({ message: 'Booking request sent successfully!', id: newBookingRef.id }, { status: 201 });
@@ -117,21 +135,21 @@ export async function PATCH(req) {
         if (!bookingId || !status) {
             return NextResponse.json({ message: 'Booking ID and new status are required.' }, { status: 400 });
         }
-        
+
         const validStatuses = ['pending', 'confirmed', 'cancelled', 'completed'];
         if (!validStatuses.includes(status)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
-        
+
         const bookingRef = firestore.collection(collectionName).doc(businessId).collection('bookings').doc(bookingId);
-        
+
         const bookingSnap = await bookingRef.get();
-        if(!bookingSnap.exists){
+        if (!bookingSnap.exists) {
             return NextResponse.json({ message: 'Booking not found.' }, { status: 404 });
         }
 
         await bookingRef.update({ status: status });
-        
+
         // TODO: Send WhatsApp notification to customer about status update
 
         return NextResponse.json({ message: `Booking marked as ${status}.` }, { status: 200 });
@@ -142,4 +160,3 @@ export async function PATCH(req) {
     }
 }
 
-    

@@ -579,8 +579,8 @@ export async function POST(req) {
         }
 
         // --- Handle Online Payment (Razorpay OR PhonePe) ---
-        if (paymentMethod === 'online' || paymentMethod === 'razorpay') {
-            console.log("[API /order/create] Handling Online Payment for standard order.");
+        if (paymentMethod === 'online' || paymentMethod === 'razorpay' || paymentMethod === 'phonepe') {
+            console.log(`[API /order/create] Handling Online Payment for standard order. Gateway: ${paymentMethod}`);
 
             const firestoreOrderId = firestore.collection('orders').doc().id;
             const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
@@ -647,7 +647,17 @@ export async function POST(req) {
             await batch.commit();
             console.log(`[API /order/create] Order ${firestoreOrderId} created in Firestore`);
 
-            // Now create Razorpay order
+            // For PhonePe, skip Razorpay order creation - return Firestore order for PhonePe initiation
+            if (paymentMethod === 'phonepe') {
+                console.log(`[API /order/create] PhonePe payment - returning order for PhonePe initiation`);
+                return NextResponse.json({
+                    message: 'Order created for PhonePe payment.',
+                    firestore_order_id: firestoreOrderId,
+                    token: trackingToken,
+                }, { status: 200 });
+            }
+
+            // Now create Razorpay order (only for non-phonepe)
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                 console.error("[API /order/create] Razorpay credentials not configured.");
                 return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });

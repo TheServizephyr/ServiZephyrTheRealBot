@@ -559,6 +559,7 @@ export default function LiveOrdersPage() {
     const [selectedOrders, setSelectedOrders] = useState([]);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
     const [printData, setPrintData] = useState(null);
     const [restaurantData, setRestaurantData] = useState(null);
     const billPrintRef = useRef();
@@ -591,6 +592,10 @@ export default function LiveOrdersPage() {
                 ordersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
                 ridersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
                 settingsUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            } else if (employeeOfOwnerId) {
+                ordersUrl.searchParams.append('employee_of', employeeOfOwnerId);
+                ridersUrl.searchParams.append('employee_of', employeeOfOwnerId);
+                settingsUrl.searchParams.append('employee_of', employeeOfOwnerId);
             }
 
             const [ordersRes, ridersRes, settingsRes] = await Promise.all([
@@ -652,6 +657,8 @@ export default function LiveOrdersPage() {
         let url = new URL(endpoint, window.location.origin);
         if (impersonatedOwnerId) {
             url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
         }
         if (method === 'GET' && body) {
             Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));

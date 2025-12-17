@@ -586,10 +586,19 @@ export default function StreetVendorMenuPage() {
     const [selectedItems, setSelectedItems] = useState([]);
     const [bulkConfirmation, setBulkConfirmation] = useState(null); // { action: 'delete' | 'outOfStock', count: number }
 
+    // Move searchParams hook BEFORE vendorQuery that uses it
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
+    const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
+
     const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
+        // Only use direct Firestore query for owner's own data
+        // For employee access, we'll use API fetch instead
+        if (effectiveOwnerId) return null; // Skip Firestore, use API
         return query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
-    }, [user]);
+    }, [user, effectiveOwnerId]);
 
     const { data: vendorData, isLoading: isVendorLoading, error: vendorError } = useCollection(vendorQuery);
 
@@ -601,12 +610,9 @@ export default function StreetVendorMenuPage() {
         }
     }, [vendorError]);
 
-    const searchParams = useSearchParams();
-    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-
     // Fetch customCategories from Firebase for normal vendors
     useEffect(() => {
-        if (!vendorId || impersonatedOwnerId) return; // Skip if impersonating (API handles it)
+        if (!vendorId || effectiveOwnerId) return; // Skip if impersonating/employee access (API handles it)
 
         const fetchCustomCategories = async () => {
             try {
@@ -622,7 +628,7 @@ export default function StreetVendorMenuPage() {
         };
 
         fetchCustomCategories();
-    }, [vendorId, impersonatedOwnerId]);
+    }, [vendorId, effectiveOwnerId]);
 
     // Transform customCategories array into object format for dropdown
     const allCategories = useMemo(() => {
@@ -650,11 +656,12 @@ export default function StreetVendorMenuPage() {
             return () => { };
         }
 
-        // If impersonating, use API instead of Firestore listener
-        if (impersonatedOwnerId) {
+        // If impersonating or employee access, use API instead of Firestore listener
+        if (effectiveOwnerId) {
             try {
                 const idToken = await user.getIdToken();
-                const res = await fetch(`/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId}`, {
+                const paramName = impersonatedOwnerId ? 'impersonate_owner_id' : 'employee_of';
+                const res = await fetch(`/api/owner/menu?${paramName}=${effectiveOwnerId}`, {
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
                 if (!res.ok) throw new Error('Failed to fetch menu via API');
@@ -703,13 +710,13 @@ export default function StreetVendorMenuPage() {
         });
 
         return unsubscribe;
-    }, [user, vendorId, impersonatedOwnerId]);
+    }, [user, vendorId, effectiveOwnerId]);
 
 
     useEffect(() => {
         if (isUserLoading) return;
-        // If impersonating, we don't need vendorId to be loaded from Firestore
-        if (!impersonatedOwnerId && isVendorLoading) return;
+        // If impersonating or employee access, we don't need vendorId to be loaded from Firestore
+        if (!effectiveOwnerId && isVendorLoading) return;
 
         const fetchData = async () => {
             const unsubscribe = await fetchMenu();
@@ -718,13 +725,15 @@ export default function StreetVendorMenuPage() {
 
         const cleanupPromise = fetchData();
         return () => { cleanupPromise.then(unsub => unsub && unsub()) };
-    }, [user, isUserLoading, vendorId, isVendorLoading, fetchMenu, impersonatedOwnerId]);
+    }, [user, isUserLoading, vendorId, isVendorLoading, fetchMenu, effectiveOwnerId]);
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
-        if (impersonatedOwnerId) {
+        // For impersonation or employee access, use API
+        if (effectiveOwnerId) {
             try {
                 const idToken = await user.getIdToken();
-                await fetch(`/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId}`, {
+                const paramName = impersonatedOwnerId ? 'impersonate_owner_id' : 'employee_of';
+                await fetch(`/api/owner/menu?${paramName}=${effectiveOwnerId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                     body: JSON.stringify({ updates: { id: itemId, isAvailable: newAvailability } })
@@ -754,10 +763,12 @@ export default function StreetVendorMenuPage() {
     const confirmDeleteItem = async () => {
         if (!itemToDelete) return;
 
-        if (impersonatedOwnerId) {
+        // For impersonation or employee access, use API
+        if (effectiveOwnerId) {
             try {
                 const idToken = await user.getIdToken();
-                await fetch(`/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId}`, {
+                const paramName = impersonatedOwnerId ? 'impersonate_owner_id' : 'employee_of';
+                await fetch(`/api/owner/menu?${paramName}=${effectiveOwnerId}`, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                     body: JSON.stringify({ itemId: itemToDelete.id })
@@ -789,8 +800,11 @@ export default function StreetVendorMenuPage() {
         const handleApiCall = async (endpoint, method, body) => {
             const idToken = await user.getIdToken();
             let url = endpoint;
+            // Add impersonation or employee_of param
             if (impersonatedOwnerId) {
                 url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                url += `?employee_of=${employeeOfOwnerId}`;
             }
             const response = await fetch(url, {
                 method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -808,7 +822,7 @@ export default function StreetVendorMenuPage() {
             setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
 
             // Refetch menu and categories to get updated data
-            if (impersonatedOwnerId) {
+            if (effectiveOwnerId) {
                 const fetchUnsub = await fetchMenu();
                 if (fetchUnsub) fetchUnsub();
             } else {
@@ -865,7 +879,12 @@ export default function StreetVendorMenuPage() {
                     try {
                         const imageDataUri = reader.result;
                         let url = '/api/ai/scan-menu';
-                        if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                        // Add impersonation or employee_of param
+                        if (impersonatedOwnerId) {
+                            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                        } else if (employeeOfOwnerId) {
+                            url += `?employee_of=${employeeOfOwnerId}`;
+                        }
 
                         const response = await fetch(url, {
                             method: 'POST',
@@ -876,7 +895,7 @@ export default function StreetVendorMenuPage() {
                         if (!response.ok) throw new Error(result.message);
                         setInfoDialog({ isOpen: true, title: 'Success!', message: result.message });
 
-                        if (impersonatedOwnerId) {
+                        if (effectiveOwnerId) {
                             const fetchUnsub = await fetchMenu();
                             if (fetchUnsub) fetchUnsub();
                         }
@@ -901,7 +920,12 @@ export default function StreetVendorMenuPage() {
             if (!user) throw new Error("User not authenticated");
             const idToken = await user.getIdToken();
             let url = '/api/owner/menu-bulk';
-            if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            // Add impersonation or employee_of param
+            if (impersonatedOwnerId) {
+                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                url += `?employee_of=${employeeOfOwnerId}`;
+            }
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -912,7 +936,7 @@ export default function StreetVendorMenuPage() {
             const data = await response.json();
             setInfoDialog({ isOpen: true, title: 'Success!', message: data.message });
 
-            if (impersonatedOwnerId) {
+            if (effectiveOwnerId) {
                 const fetchUnsub = await fetchMenu();
                 if (fetchUnsub) fetchUnsub();
             }
@@ -952,7 +976,12 @@ export default function StreetVendorMenuPage() {
             if (!user) throw new Error("Authentication failed");
             const idToken = await user.getIdToken();
             let url = '/api/owner/menu';
-            if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            // Add impersonation or employee_of param
+            if (impersonatedOwnerId) {
+                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                url += `?employee_of=${employeeOfOwnerId}`;
+            }
 
             await fetch(url, {
                 method: 'PATCH',
@@ -962,7 +991,7 @@ export default function StreetVendorMenuPage() {
             setInfoDialog({ isOpen: true, title: 'Success', message: `Successfully completed bulk action.` });
             setSelectedItems([]);
 
-            if (impersonatedOwnerId) {
+            if (effectiveOwnerId) {
                 const fetchUnsub = await fetchMenu();
                 if (fetchUnsub) fetchUnsub();
             } else {

@@ -8,15 +8,38 @@ export const dynamic = 'force-dynamic';
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req); // Use central helper
-    
+
+    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
+    if (!userDoc.exists) {
+        throw { message: 'Access Denied: User profile not found.', status: 403 };
+    }
+
+    const userData = userDoc.data();
+    const userRole = userData.role;
+
     let targetOwnerId = uid;
-    if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
+
+    // Admin impersonation
+    if (userRole === 'admin' && impersonatedOwnerId) {
         targetOwnerId = impersonatedOwnerId;
-    } else if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
+    }
+    // Employee access
+    else if (employeeOfOwnerId) {
+        const linkedOutlets = userData.linkedOutlets || [];
+        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
+
+        if (!hasAccess) {
+            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+        }
+        targetOwnerId = employeeOfOwnerId;
+    }
+    // Owner access
+    else if (!['owner', 'restaurant-owner', 'shop-owner'].includes(userRole)) {
         throw { message: 'Access Denied', status: 403 };
     }
 
@@ -24,23 +47,23 @@ async function verifyOwnerAndGetBusinessRef(req) {
     if (!restaurantsQuery.empty) {
         return restaurantsQuery.docs[0].ref;
     }
-    
+
     const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
     if (!shopsQuery.empty) {
         return shopsQuery.docs[0].ref;
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
-        
+
         const conversationsSnap = await businessRef.collection('conversations')
             .orderBy('lastMessageTimestamp', 'desc')
             .get();
-            
+
         const conversations = conversationsSnap.docs.map(doc => {
             const data = doc.data();
             const lastMessageTimestamp = data.lastMessageTimestamp?.toDate ? data.lastMessageTimestamp.toDate().toISOString() : null;
@@ -71,7 +94,7 @@ export async function PATCH(req) {
         if (!conversationId) {
             return NextResponse.json({ message: 'Conversation ID is required.' }, { status: 400 });
         }
-        
+
         const conversationRef = businessRef.collection('conversations').doc(conversationId);
 
         if (action === 'end_chat') {
@@ -89,15 +112,15 @@ export async function PATCH(req) {
                     },
                     action: {
                         buttons: [
-                             { type: "reply", reply: { id: `action_order_${businessDoc.id}`, title: "Order Food" } },
+                            { type: "reply", reply: { id: `action_order_${businessDoc.id}`, title: "Order Food" } },
                             { type: "reply", reply: { id: `action_track_${businessDoc.id}`, title: "Track Last Order" } },
-                             { type: "reply", reply: { id: "action_help", title: "Need More Help?" } }
+                            { type: "reply", reply: { id: "action_help", title: "Need More Help?" } }
                         ]
                     }
                 }
             };
             await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
-            
+
             return NextResponse.json({ message: 'Chat ended and menu sent.' }, { status: 200 });
         }
 
@@ -105,10 +128,10 @@ export async function PATCH(req) {
         if (tag !== undefined && !validTags.includes(tag)) {
             return NextResponse.json({ message: 'Invalid tag provided.' }, { status: 400 });
         }
-        
+
         if (tag !== undefined) {
-             await conversationRef.set({ tag: tag || FieldValue.delete() }, { merge: true });
-             return NextResponse.json({ message: 'Tag updated successfully.' }, { status: 200 });
+            await conversationRef.set({ tag: tag || FieldValue.delete() }, { merge: true });
+            return NextResponse.json({ message: 'Tag updated successfully.' }, { status: 200 });
         }
 
         return NextResponse.json({ message: 'No valid action or tag provided.' }, { status: 400 });

@@ -21,6 +21,7 @@ import {
   CalendarClock,
   MapPin,
   QrCode,
+  UserCircle,
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -31,14 +32,17 @@ import { doc, getDoc } from 'firebase/firestore';
 import Image from 'next/image';
 import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
+import { canAccessPage, ROLES } from '@/lib/permissions';
 
-const getMenuItems = (businessType, impersonatedOwnerId) => {
-  const appendParam = (href) => impersonatedOwnerId ? `${href}?impersonate_owner_id=${impersonatedOwnerId}` : href;
+const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_owner_id') => {
+  // Use the appropriate param name based on context (impersonate or employee access)
+  const appendParam = (href) => effectiveOwnerId ? `${href}?${paramName}=${effectiveOwnerId}` : href;
 
   if (businessType === 'street-vendor') {
     return [
       { name: "Live Orders", icon: ClipboardList, href: appendParam("/street-vendor-dashboard"), featureId: "live-orders" },
       { name: "My Menu", icon: Salad, href: appendParam("/street-vendor-dashboard/menu"), featureId: "menu" },
+      { name: "Team", icon: Users, href: appendParam("/street-vendor-dashboard/employees"), featureId: "employees" },
       { name: "Analytics", icon: BarChart2, href: appendParam("/street-vendor-dashboard/analytics"), featureId: "analytics" },
       { name: "My QR Code", icon: QrCode, href: appendParam("/street-vendor-dashboard/qr"), featureId: "qr" },
       { name: "Coupons", icon: Ticket, href: appendParam("/street-vendor-dashboard/coupons"), featureId: "coupons" },
@@ -53,6 +57,7 @@ const getMenuItems = (businessType, impersonatedOwnerId) => {
       : { name: "Menu", icon: Salad, href: appendParam("/owner-dashboard/menu"), featureId: "menu" },
     { name: "Dine-In", icon: ConciergeBell, href: appendParam("/owner-dashboard/dine-in"), featureId: "dine-in" },
     { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" },
+    { name: "Team", icon: Users, href: appendParam("/owner-dashboard/employees"), featureId: "employees" },
     { name: "Customers", icon: Users, href: appendParam("/owner-dashboard/customers"), featureId: "customers" },
     { name: "WhatsApp Direct", icon: MessageSquare, href: appendParam("/owner-dashboard/whatsapp-direct"), featureId: "whatsapp-direct" },
     { name: "Analytics", icon: BarChart2, href: appendParam("/owner-dashboard/analytics"), featureId: "analytics" },
@@ -61,16 +66,18 @@ const getMenuItems = (businessType, impersonatedOwnerId) => {
   ];
 };
 
-const getSettingsItems = (businessType, impersonatedOwnerId) => {
-  const appendParam = (href) => impersonatedOwnerId ? `${href}?impersonate_owner_id=${impersonatedOwnerId}` : href;
+const getSettingsItems = (businessType, effectiveOwnerId, paramName = 'impersonate_owner_id') => {
+  const appendParam = (href) => effectiveOwnerId ? `${href}?${paramName}=${effectiveOwnerId}` : href;
 
   if (businessType === 'street-vendor') {
     return [
+      { name: "My Profile", icon: UserCircle, href: appendParam("/street-vendor-dashboard/my-profile"), featureId: "my-profile" },
       { name: "Profile", icon: Users, href: appendParam("/street-vendor-dashboard/profile"), featureId: "profile" },
       { name: "Payouts", icon: Banknote, href: appendParam("/street-vendor-dashboard/payout-settings"), featureId: "payouts" },
     ];
   }
   return [
+    { name: "My Profile", icon: UserCircle, href: appendParam("/owner-dashboard/my-profile"), featureId: "my-profile" },
     { name: "Location", icon: MapPin, href: appendParam("/owner-dashboard/location"), featureId: "location" },
     { name: "Connections", icon: Bot, href: appendParam("/owner-dashboard/connections"), featureId: "connections" },
     { name: "Payouts", icon: Banknote, href: appendParam("/owner-dashboard/payouts"), featureId: "payouts" },
@@ -80,67 +87,72 @@ const getSettingsItems = (businessType, impersonatedOwnerId) => {
 };
 
 
-export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status }) {
+export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status, userRole = null }) {
   const [businessType, setBusinessType] = useState('restaurant');
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+  const employeeOfOwnerId = searchParams.get('employee_of');
+
+  // Use either impersonation or employee context for links
+  const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
+  const paramName = employeeOfOwnerId ? 'employee_of' : 'impersonate_owner_id';
 
   useEffect(() => {
-    // If impersonating, infer business type from URL
-    if (impersonatedOwnerId) {
+    // If accessing someone else's data (impersonation or employee), infer business type from URL
+    if (effectiveOwnerId) {
       if (pathname.includes('/street-vendor-dashboard')) {
         setBusinessType('street-vendor');
         return;
       } else if (pathname.includes('/shop-dashboard')) {
         setBusinessType('shop');
         return;
+      } else if (pathname.includes('/owner-dashboard')) {
+        setBusinessType('restaurant'); // Default for owner-dashboard
+        return;
       }
-      // If on owner-dashboard, it could be restaurant or shop. 
-      // We might need to fetch it, but for now default to restaurant or check existing logic.
     }
 
-    const storedBusinessType = localStorage.getItem('businessType');
-    if (storedBusinessType) {
-      setBusinessType(storedBusinessType);
-    }
+    // Only use localStorage for owner's own dashboard (not employee access)
+    if (!effectiveOwnerId) {
+      const storedBusinessType = localStorage.getItem('businessType');
+      if (storedBusinessType) {
+        setBusinessType(storedBusinessType);
+      }
 
-    const fetchBusinessType = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        try {
-          // If impersonating, we shouldn't fetch the ADMIN's business type.
-          // But we might want to fetch the IMPERSONATED user's business type if possible.
-          // For now, let's skip if impersonating and rely on URL or default.
-          if (impersonatedOwnerId) return;
-
-          const userDocRef = doc(db, "users", user.uid);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            const fetchedType = userDoc.data().businessType || 'restaurant';
-            if (fetchedType !== storedBusinessType) {
-              setBusinessType(fetchedType);
-              localStorage.setItem('businessType', fetchedType);
+      const fetchBusinessType = async () => {
+        const user = auth.currentUser;
+        if (user) {
+          try {
+            const userDocRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+              const fetchedType = userDoc.data().businessType || 'restaurant';
+              if (fetchedType !== storedBusinessType) {
+                setBusinessType(fetchedType);
+                localStorage.setItem('businessType', fetchedType);
+              }
             }
+          } catch (error) {
+            console.error("Error fetching business type from Firestore:", error);
+            if (!storedBusinessType) setBusinessType('restaurant');
           }
-        } catch (error) {
-          console.error("Error fetching business type from Firestore:", error);
-          if (!storedBusinessType) setBusinessType('restaurant');
         }
-      }
-    };
+      };
 
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        fetchBusinessType();
-      }
-    });
+      const unsubscribe = auth.onAuthStateChanged((user) => {
+        if (user) {
+          fetchBusinessType();
+        }
+      });
 
-    return () => unsubscribe();
-  }, [impersonatedOwnerId, pathname]);
+      return () => unsubscribe();
+    }
+  }, [effectiveOwnerId, pathname]);
+
 
   const getIsDisabled = (featureId) => {
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr', 'coupons'];
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr', 'coupons', 'employees', 'my-profile'];
     if (alwaysEnabled.includes(featureId)) {
       return false;
     }
@@ -162,8 +174,17 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     }
   };
 
-  const menuItems = getMenuItems(businessType, impersonatedOwnerId);
-  const settingsItems = getSettingsItems(businessType, impersonatedOwnerId);
+  // Get all menu items with appropriate owner ID param (for impersonation or employee access)
+  const allMenuItems = getMenuItems(businessType, effectiveOwnerId, paramName);
+  const allSettingsItems = getSettingsItems(businessType, effectiveOwnerId, paramName);
+
+  // Filter items based on user role
+  // null = owner accessing their own dashboard
+  // For street-vendor-dashboard, treat null as STREET_VENDOR role
+  const effectiveRole = userRole || (pathname.includes('/street-vendor-dashboard') ? ROLES.STREET_VENDOR : ROLES.OWNER);
+
+  const menuItems = allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId));
+  const settingsItems = allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId));
 
 
   return (
