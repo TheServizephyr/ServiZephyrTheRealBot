@@ -106,8 +106,8 @@ export async function GET(req) {
             if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
             }
-            // If it's a pending order that isn't yet in a tab
-            else if (orderData.status === 'pending' && !tabId) {
+            // If it's a standalone order (not in a tab yet)
+            else if (!tabId) {
                 const isAlreadyInAnActiveTab = Array.from(tableMap.values()).some(t =>
                     Object.values(t.tabs).some(activeTab => activeTab.orders?.[orderDoc.id])
                 );
@@ -120,11 +120,22 @@ export async function GET(req) {
         // 6. Recalculate current_pax and state for EVERY table based on live data
         tableMap.forEach(table => {
             const totalPaxInTabs = Object.values(table.tabs).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
-            const totalPaxInPending = table.pendingOrders.reduce((sum, order) => sum + (order.pax_count || 0), 0);
+
+            // For pending orders: group by tab_name to avoid duplicate counting
+            // Multiple orders from same party should only count pax once
+            const pendingParties = new Map();
+            table.pendingOrders.forEach(order => {
+                const partyKey = order.tab_name || order.customerName || order.id;
+                if (!pendingParties.has(partyKey)) {
+                    pendingParties.set(partyKey, order.pax_count || 1);
+                }
+            });
+            const totalPaxInPending = Array.from(pendingParties.values()).reduce((sum, pax) => sum + pax, 0);
+
             const current_pax = totalPaxInTabs + totalPaxInPending;
 
-            // Overwrite database value with calculated value
-            table.current_pax = current_pax;
+            // Overwrite database value with calculated value - cap at max_capacity
+            table.current_pax = Math.min(current_pax, table.max_capacity || 99);
 
             // Update state based on live pax count, unless it needs cleaning
             if (table.state === 'needs_cleaning') {
@@ -275,22 +286,38 @@ export async function PATCH(req) {
 
             await firestore.runTransaction(async (transaction) => {
                 const tabRef = businessRef.collection('dineInTabs').doc(tabId);
+                const orderRef = firestore.collection('orders').doc(tabId); // tabId might be an order ID
                 const tableDoc = await transaction.get(tableRef);
                 const tabDoc = await transaction.get(tabRef);
+                const orderDoc = await transaction.get(orderRef);
 
-                if (!tabDoc.exists && !tableDoc.exists) throw new Error("Could not find tab or table to clear.");
+                const isTab = tabDoc.exists;
+                const isOrder = orderDoc.exists && !isTab;
 
-                if (tableDoc.exists) {
-                    const tabPaxCount = tabDoc.exists() ? (tabDoc.data().pax_count || 0) : (paxCount || 0);
-                    const newPax = Math.max(0, (tableDoc.data().current_pax || 0) - tabPaxCount);
+                if (!isTab && !isOrder && !tableDoc.exists) {
+                    throw new Error("Could not find tab or order to clear.");
+                }
+
+                if (tableDoc.exists && (isTab || isOrder)) {
+                    const itemPaxCount = isTab
+                        ? (tabDoc.data().pax_count || 0)
+                        : (orderDoc.data().pax_count || paxCount || 0);
+                    const newPax = Math.max(0, (tableDoc.data().current_pax || 0) - itemPaxCount);
                     transaction.update(tableRef, {
                         current_pax: newPax,
                         state: newPax > 0 ? 'occupied' : 'available'
                     });
                 }
 
-                if (tabDoc.exists) {
+                if (isTab) {
+                    // Delete the tab from dineInTabs collection
                     transaction.delete(tabRef);
+                } else if (isOrder) {
+                    // Reject/cancel the order
+                    transaction.update(orderRef, {
+                        status: 'rejected',
+                        rejectionReason: 'Cleared by staff'
+                    });
                 }
             });
             return new NextResponse(null, { status: 204 });
@@ -313,7 +340,7 @@ export async function PATCH(req) {
                     const orderRef = firestore.collection('orders').doc(orderId);
                     transaction.update(orderRef, {
                         status: 'delivered',
-                        paymentDetails: { ...(orderData.orders[orderId].paymentDetails || {}), method: paymentMethod || 'cod' }
+                        paymentDetails: { ...(tabData.orders[orderId]?.paymentDetails || {}), method: paymentMethod || 'cod' }
                     });
                 });
 

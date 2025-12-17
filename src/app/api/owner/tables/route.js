@@ -137,3 +137,43 @@ export async function POST(req) {
         return NextResponse.json({ message: 'Internal Server Error: ' + error.message }, { status: 500 });
     }
 }
+
+// PATCH: Public endpoint for customers to mark they are done (table needs cleaning)
+export async function PATCH(req) {
+    try {
+        const firestore = await getFirestore();
+        const { restaurantId, tableId, action } = await req.json();
+
+        if (action !== 'customer_done') {
+            return NextResponse.json({ message: 'Invalid action.' }, { status: 400 });
+        }
+
+        if (!restaurantId || !tableId) {
+            return NextResponse.json({ message: 'Restaurant ID and Table ID are required.' }, { status: 400 });
+        }
+
+        const businessRef = await getBusinessRef(firestore, restaurantId);
+        if (!businessRef) {
+            return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
+        }
+
+        const tableRef = businessRef.collection('tables').doc(tableId);
+        const tableSnap = await tableRef.get();
+
+        if (!tableSnap.exists) {
+            return NextResponse.json({ message: 'Table not found.' }, { status: 404 });
+        }
+
+        // Mark table as needs cleaning - customer is done
+        await tableRef.update({
+            state: 'needs_cleaning',
+            customerMarkedDoneAt: FieldValue.serverTimestamp()
+        });
+
+        return NextResponse.json({ message: 'Table marked for cleaning. Thank you!' }, { status: 200 });
+
+    } catch (error) {
+        console.error("PATCH TABLE ERROR:", error);
+        return NextResponse.json({ message: 'Internal Server Error: ' + error.message }, { status: 500 });
+    }
+}

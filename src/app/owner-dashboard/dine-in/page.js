@@ -314,15 +314,14 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const orderId = group.id; // Use group ID for both pending and active tabs
                                 const orderData = isPending ? group : Object.values(group.orders || {})[0];
 
-                                const totalBill = useMemo(() => {
-                                    if (isPending) return group.totalAmount;
-                                    return Object.values(group.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-                                }, [group, isPending]);
+                                // Calculate without useMemo - hooks can't be inside loops
+                                const totalBill = isPending
+                                    ? group.totalAmount
+                                    : Object.values(group.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
-                                const allItems = useMemo(() => {
-                                    if (isPending) return group.items || [];
-                                    return Object.values(group.orders || {}).flatMap(o => o.items);
-                                }, [group, isPending]);
+                                const allItems = isPending
+                                    ? (group.items || [])
+                                    : Object.values(group.orders || {}).flatMap(o => o.items || []);
 
                                 const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : orderData?.paymentDetails?.method === 'razorpay';
                                 const isPaid = isOnlinePayment || group.paymentStatus === 'paid';
@@ -339,7 +338,20 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                     )}>
                                         <div className="flex justify-between items-center mb-2">
                                             <h4 className="font-semibold text-foreground">{group.tab_name || 'New Order'} <span className="text-xs text-muted-foreground">({group.pax_count || 1} guests)</span></h4>
-                                            {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
+                                            <div className="text-right">
+                                                {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
+                                                {(orderData?.ordered_by || group.ordered_by) && (
+                                                    <p className={cn("text-xs font-medium",
+                                                        (orderData?.ordered_by || group.ordered_by)?.startsWith('waiter')
+                                                            ? "text-blue-400"
+                                                            : "text-green-400"
+                                                    )}>
+                                                        {(orderData?.ordered_by || group.ordered_by)?.startsWith('waiter')
+                                                            ? `📱 ${orderData?.ordered_by_name || 'Waiter'}`
+                                                            : '📲 Via QR'}
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {allItems.length > 0 && (

@@ -49,7 +49,9 @@ export async function POST(req) {
             dineInTabId,
             diningPreference = null,
             packagingCharge = 0,
-            existingOrderId // <-- NEW: For adding items to an existing order
+            existingOrderId, // <-- NEW: For adding items to an existing order
+            ordered_by = 'customer', // 'customer' | 'waiter_<name>' - who placed the order
+            ordered_by_name = null // Waiter's name if applicable
         } = body;
 
         // --- START: ADD-ON ORDER LOGIC ---
@@ -374,24 +376,43 @@ export async function POST(req) {
             const newOrderRef = firestore.collection('orders').doc();
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
-            await newOrderRef.set({
+            // Generate dine-in token
+            const lastToken = businessData.lastOrderToken || 0;
+            const newTokenNumber = lastToken + 1;
+            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+            const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+            const dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
+
+            const batch = firestore.batch();
+
+            batch.set(newOrderRef, {
                 restaurantId, businessType, tableId,
                 items: processedItems, notes: notes || null,
                 subtotal, cgst, sgst, totalAmount: grandTotal,
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
+                customerName: tab_name,
                 status: 'pending',
                 dineInTabId: dineInTabId || null,
                 diningPreference: diningPreference || null,
                 packagingCharge: packagingCharge || 0,
+                ordered_by: ordered_by || 'customer',
+                ordered_by_name: ordered_by_name || null,
+                dineInToken: dineInToken,
                 orderDate: FieldValue.serverTimestamp(),
                 trackingToken: trackingToken,
             });
 
-            console.log(`[API /order/create] Post-paid dine-in order created with ID: ${newOrderRef.id}`);
+            // Update last token counter
+            batch.update(businessRef, { lastOrderToken: newTokenNumber });
+            await batch.commit();
+
+            console.log(`[API /order/create] Post-paid dine-in order created with ID: ${newOrderRef.id}, Token: ${dineInToken}`);
             return NextResponse.json({
-                message: "Order placed. Awaiting WhatsApp confirmation.",
+                message: "Order placed successfully!",
                 order_id: newOrderRef.id,
+                dineInToken: dineInToken,
                 whatsappNumber: businessData.botDisplayNumber || businessData.ownerPhone,
                 token: trackingToken
             }, { status: 200 });

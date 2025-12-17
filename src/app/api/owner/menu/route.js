@@ -153,7 +153,7 @@ export async function GET(req) {
         });
 
         console.log("[API LOG] GET /api/owner/menu: Successfully processed menu data. Responding to client.");
-        return NextResponse.json({ menu: menuData, customCategories: customCategories, businessType: businessType }, { status: 200 });
+        return NextResponse.json({ menu: menuData, customCategories: customCategories, businessType: businessType, restaurantId: businessId }, { status: 200 });
 
     } catch (error) {
         console.error("[API LOG] CRITICAL ERROR in GET /api/owner/menu:", error);
