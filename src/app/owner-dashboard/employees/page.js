@@ -180,14 +180,14 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
     const isCustomRole = role === 'custom';
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col">
-                <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] flex flex-col my-auto overflow-hidden">
+                <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">Add Employee</h2>
                     <p className="text-slate-500 dark:text-slate-400 text-sm">Send an invitation to join your team</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+                <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                             Email Address *
