@@ -75,6 +75,12 @@ export default function JoinPage() {
             setAccepting(true);
             setError(null);
 
+            // IMPORTANT: Sign out any existing user first to force fresh Google account picker
+            // This ensures user can choose any account in their browser
+            if (auth.currentUser) {
+                await auth.signOut();
+            }
+
             const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
             const provider = new GoogleAuthProvider();
             // Force account picker to show - this shows all accounts in browser
