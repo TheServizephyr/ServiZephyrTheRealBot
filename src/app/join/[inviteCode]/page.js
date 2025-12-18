@@ -47,21 +47,28 @@ export default function JoinPage() {
         fetchInviteDetails();
     }, [inviteCode]);
 
-    // Auto-accept when user is logged in and matches email
+    // Auto-accept ONLY when user is logged in AND email matches
+    // If wrong email is logged in, we just sign them out silently and wait for button click
     useEffect(() => {
-        if (!user || !inviteData || accepting || success || error || hasAttemptedAccept.current) {
+        if (!user || !inviteData || accepting || success || hasAttemptedAccept.current) {
             return;
         }
 
-        // Check if email matches
         const userEmail = user.email?.toLowerCase();
         const invitedEmail = inviteData.invitedEmail?.toLowerCase();
 
         if (userEmail === invitedEmail) {
+            // Correct email - auto accept
             hasAttemptedAccept.current = true;
             handleAcceptInvite();
+        } else {
+            // Wrong email logged in - sign out silently so user can choose correct account
+            // Don't show error, just let them click button to choose account
+            if (auth?.currentUser) {
+                auth.signOut();
+            }
         }
-    }, [user, inviteData, accepting, success, error]);
+    }, [user, inviteData, accepting, success]);
 
     // Handle Google Sign In with account picker (using redirect for mobile compatibility)
     async function handleGoogleSignIn() {
