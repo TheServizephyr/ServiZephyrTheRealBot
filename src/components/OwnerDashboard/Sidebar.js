@@ -185,9 +185,25 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const effectiveRole = userRole || (pathname.includes('/street-vendor-dashboard') ? ROLES.STREET_VENDOR : ROLES.OWNER);
 
   // Get custom allowed pages from localStorage (set by layout when employee logs in)
-  const customAllowedPages = typeof window !== 'undefined'
-    ? JSON.parse(localStorage.getItem('customAllowedPages') || 'null')
-    : null;
+  // Using state so sidebar re-renders when role changes
+  const [customAllowedPages, setCustomAllowedPages] = useState(null);
+
+  useEffect(() => {
+    // Re-read localStorage when userRole changes (layout stores pages before passing role)
+    if (userRole === 'custom') {
+      const stored = localStorage.getItem('customAllowedPages');
+      if (stored) {
+        try {
+          setCustomAllowedPages(JSON.parse(stored));
+        } catch (e) {
+          console.error('[Sidebar] Failed to parse customAllowedPages:', e);
+          setCustomAllowedPages(null);
+        }
+      }
+    } else {
+      setCustomAllowedPages(null);
+    }
+  }, [userRole]);
 
   const menuItems = allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
   const settingsItems = allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));

@@ -86,6 +86,8 @@ function OwnerDashboardContent({ children }) {
         if (user.uid === employeeOfOwnerId) {
           console.log('[Layout] Owner detected, full access');
           setUserRole(null);
+          // Owner - clear any custom pages
+          localStorage.removeItem('customAllowedPages');
           return;
         }
 
@@ -106,20 +108,34 @@ function OwnerDashboardContent({ children }) {
             if (outlet) {
               console.log('[Layout] Employee role found:', outlet.employeeRole);
               setUserRole(outlet.employeeRole);
+
+              // For custom roles, store the allowed pages in localStorage
+              if (outlet.employeeRole === 'custom' && outlet.customAllowedPages) {
+                localStorage.setItem('customAllowedPages', JSON.stringify(outlet.customAllowedPages));
+                console.log('[Layout] Custom role pages stored:', outlet.customAllowedPages);
+              } else {
+                // Clear custom pages if not a custom role
+                localStorage.removeItem('customAllowedPages');
+              }
             } else {
               console.error('[Layout] No matching outlet');
               setUserRole('manager');
+              localStorage.removeItem('customAllowedPages');
             }
           } else {
             console.error('[Layout] User doc not found');
             setUserRole('manager');
+            localStorage.removeItem('customAllowedPages');
           }
         } catch (err) {
           console.error('[Layout] Firestore error:', err);
           setUserRole('manager');
+          localStorage.removeItem('customAllowedPages');
         }
       } else {
         setUserRole(null);
+        // Owner accessing own dashboard - clear any custom pages
+        localStorage.removeItem('customAllowedPages');
       }
     }
 
