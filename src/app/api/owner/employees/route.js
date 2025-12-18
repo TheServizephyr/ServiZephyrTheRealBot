@@ -213,12 +213,13 @@ export async function GET(req) {
         }));
 
         // Create owner entry (always at top)
-        const ownerId = accessContext.isOwner ? accessContext.uid : accessContext.ownerId;
+        // Use outletData.ownerId as the authoritative source
+        const ownerId = outletData.ownerId;
         const ownerEntry = {
             userId: ownerId,
-            email: outletData.email || '',
-            name: outletData.name || outletData.restaurantName || 'Owner',
-            phone: outletData.phone || '',
+            email: outletData.email || outletData.ownerEmail || '',
+            name: outletData.ownerName || outletData.restaurantName || outletData.name || 'Owner',
+            phone: outletData.phone || outletData.ownerPhone || '',
             role: 'owner',
             roleDisplay: 'Owner',
             status: 'active',
