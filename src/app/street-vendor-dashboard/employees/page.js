@@ -534,6 +534,15 @@ export default function StreetVendorEmployeesPage() {
 
             if (response.ok) {
                 const data = await response.json();
+
+                // DEBUG: Log full API response
+                console.log('[Employees Page] API Response:', JSON.stringify({
+                    currentUserId: data.currentUserId,
+                    employeesCount: data.employees?.length,
+                    employees: data.employees?.map(e => ({ userId: e.userId, role: e.role, name: e.name, isOwner: e.isOwner })),
+                    pendingCount: data.pendingInvites?.length,
+                }));
+
                 // Mark which employee is the current user
                 const employeesWithYou = (data.employees || []).map(emp => ({
                     ...emp,
