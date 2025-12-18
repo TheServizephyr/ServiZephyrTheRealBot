@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ROLE_DISPLAY_NAMES } from '@/lib/permissions';
+import { ROLE_DISPLAY_NAMES, ALL_DASHBOARD_PAGES } from '@/lib/permissions';
 
 // Invite Link Dialog Component
 function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role }) {
@@ -133,11 +133,13 @@ function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role }) {
 }
 
 // Add Employee Modal
-function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }) {
+function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, allDashboardPages }) {
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [role, setRole] = useState('');
+    const [customRoleName, setCustomRoleName] = useState('');
+    const [selectedPages, setSelectedPages] = useState([]);
 
     useEffect(() => {
         if (isOpen) {
@@ -145,38 +147,69 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }
             setName('');
             setPhone('');
             setRole('');
+            setCustomRoleName('');
+            setSelectedPages([]);
         }
     }, [isOpen]);
 
+    // Reset custom fields when role changes
+    useEffect(() => {
+        if (role !== 'custom') {
+            setCustomRoleName('');
+            setSelectedPages([]);
+        } else {
+            setSelectedPages(['live-orders', 'my-profile']);
+        }
+    }, [role]);
+
     if (!isOpen) return null;
+
+    const handlePageToggle = (pageId) => {
+        setSelectedPages(prev =>
+            prev.includes(pageId)
+                ? prev.filter(p => p !== pageId)
+                : [...prev, pageId]
+        );
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!email || !role) return;
-        onSubmit({ email, name, phone, role });
+        if (role === 'custom' && (!customRoleName || selectedPages.length === 0)) return;
+
+        onSubmit({
+            email,
+            name,
+            phone,
+            role,
+            customRoleName: role === 'custom' ? customRoleName : null,
+            customAllowedPages: role === 'custom' ? selectedPages : null
+        });
     };
+
+    const isCustomRole = role === 'custom';
 
     return (
         <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto"
             onClick={onClose}
         >
             <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-card border border-border rounded-2xl w-full max-w-md"
+                className="bg-card border border-border rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] flex flex-col my-auto overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="p-6 border-b border-border">
+                <div className="p-4 sm:p-6 border-b border-border flex-shrink-0">
                     <h2 className="text-xl font-bold text-foreground">Add Employee</h2>
                     <p className="text-muted-foreground text-sm">Add a new team member</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">
                             Email Address *
@@ -226,7 +259,6 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }
                             onChange={(e) => setRole(e.target.value)}
                             required
                             className="w-full px-4 py-3 rounded-xl border border-border bg-input text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
-                            style={{ maxHeight: '300px', overflowY: 'auto' }}
                         >
                             <option value="">Select a role</option>
                             {invitableRoles?.map((r) => (
@@ -236,6 +268,57 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }
                             ))}
                         </select>
                     </div>
+
+                    {/* Custom Role Options */}
+                    {isCustomRole && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="space-y-4"
+                        >
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-1">
+                                    Custom Role Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={customRoleName}
+                                    onChange={(e) => setCustomRoleName(e.target.value)}
+                                    placeholder="e.g., Supervisor, Kitchen Helper"
+                                    required={isCustomRole}
+                                    className="w-full px-4 py-3 rounded-xl border border-border bg-input text-foreground focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-2">
+                                    Page Access * (Select pages this employee can view)
+                                </label>
+                                <div className="bg-muted rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                                    {allDashboardPages?.map((page) => (
+                                        <label
+                                            key={page.id}
+                                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted-foreground/10 cursor-pointer"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedPages.includes(page.id)}
+                                                onChange={() => handlePageToggle(page.id)}
+                                                className="w-5 h-5 rounded border-border text-purple-500 focus:ring-purple-500"
+                                            />
+                                            <div>
+                                                <p className="text-sm font-medium text-foreground">{page.label}</p>
+                                                <p className="text-xs text-muted-foreground">{page.description}</p>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {selectedPages.length} page(s) selected
+                                </p>
+                            </div>
+                        </motion.div>
+                    )}
 
                     <div className="bg-primary/10 rounded-xl p-4 border border-primary/30">
                         <p className="text-primary text-sm">
@@ -255,7 +338,7 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }
                         </Button>
                         <Button
                             type="submit"
-                            disabled={!email || !role || loading}
+                            disabled={!email || !role || (isCustomRole && (!customRoleName || selectedPages.length === 0)) || loading}
                             className="flex-1 bg-primary hover:bg-primary/90"
                         >
                             {loading ? 'Sending...' : 'Create Link'}
@@ -458,7 +541,7 @@ export default function StreetVendorEmployeesPage() {
     }, [fetchEmployees]);
 
     // Handle add employee
-    const handleAddEmployee = async ({ email, name, phone, role }) => {
+    const handleAddEmployee = async ({ email, name, phone, role, customRoleName, customAllowedPages }) => {
         try {
             setActionLoading(true);
             vibrateOnClick();
@@ -470,7 +553,14 @@ export default function StreetVendorEmployeesPage() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                 },
-                body: JSON.stringify({ email, name, phone, role }),
+                body: JSON.stringify({
+                    email,
+                    name,
+                    phone,
+                    role,
+                    customRoleName,
+                    customAllowedPages
+                }),
             });
 
             const data = await response.json();
@@ -496,7 +586,7 @@ export default function StreetVendorEmployeesPage() {
                 email,
                 name,
                 role,
-                roleDisplay: ROLE_DISPLAY_NAMES[role],
+                roleDisplay: role === 'custom' ? customRoleName : ROLE_DISPLAY_NAMES[role],
                 status: 'pending',
                 inviteLink: inviteLink,
             }]);
@@ -690,6 +780,7 @@ export default function StreetVendorEmployeesPage() {
                         onSubmit={handleAddEmployee}
                         invitableRoles={invitableRoles}
                         loading={actionLoading}
+                        allDashboardPages={ALL_DASHBOARD_PAGES}
                     />
                 )}
             </AnimatePresence>
