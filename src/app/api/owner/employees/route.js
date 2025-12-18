@@ -213,19 +213,24 @@ export async function GET(req) {
         }));
 
         // Create owner entry (always at top)
-        // Use outletData.ownerId as the authoritative source
-        const ownerId = outletData.ownerId;
+        // For employees: use accessContext.ownerId (from linkedOutlets) 
+        // For owners: use accessContext.uid
+        // Fallback: outletData.ownerId
+        const ownerId = accessContext.isOwner
+            ? accessContext.uid
+            : (accessContext.ownerId || outletData.ownerId);
 
         // DEBUG LOGGING
-        console.log('[EMPLOYEES API] Debug:', {
+        console.log('[EMPLOYEES API] Debug:', JSON.stringify({
             currentUserId,
-            ownerId,
-            isOwner: accessContext.isOwner,
+            computedOwnerId: ownerId,
+            outletDataOwnerId: outletData.ownerId,
             accessContextOwnerId: accessContext.ownerId,
+            isOwner: accessContext.isOwner,
             employeesCount: employeesFromOutlet.length,
+            employeesData: employeesFromOutlet.map(e => ({ userId: e.userId, role: e.role, name: e.name })),
             outletId,
-            outletDataKeys: Object.keys(outletData),
-        });
+        }));
 
         const ownerEntry = {
             userId: ownerId,
