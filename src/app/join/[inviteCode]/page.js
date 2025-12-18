@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useFirebase } from '@/firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle, XCircle, Building2, User, Shield } from 'lucide-react';
 import Image from 'next/image';
@@ -64,7 +63,7 @@ export default function JoinPage() {
         }
     }, [user, inviteData, accepting, success, error]);
 
-    // Handle Google Sign In with account picker
+    // Handle Google Sign In with account picker (using redirect for mobile compatibility)
     async function handleGoogleSignIn() {
         if (!auth) {
             setError('Authentication not ready. Please refresh the page.');
@@ -76,12 +75,15 @@ export default function JoinPage() {
             setAccepting(true);
             setError(null);
 
+            const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
             const provider = new GoogleAuthProvider();
-            // Force account picker to show
+            // Force account picker to show - this shows all accounts in browser
             provider.setCustomParameters({
-                prompt: 'select_account'
+                prompt: 'select_account',
+                login_hint: inviteData?.invitedEmail || '' // Pre-fill with invited email
             });
 
+            // Use popup with proper error handling
             const result = await signInWithPopup(auth, provider);
 
             // Check if signed-in email matches invited email
@@ -103,6 +105,9 @@ export default function JoinPage() {
             console.error('Google sign in error:', err);
             if (err.code === 'auth/popup-closed-by-user') {
                 setError('Sign-in cancelled. Please try again.');
+            } else if (err.code === 'auth/popup-blocked') {
+                // Try with redirect if popup is blocked
+                setError('Popup blocked. Please allow popups or try again.');
             } else {
                 setError('Failed to sign in with Google. Please try again.');
             }

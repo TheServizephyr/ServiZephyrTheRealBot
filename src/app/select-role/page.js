@@ -98,6 +98,13 @@ export default function SelectRolePage() {
             } else {
                 router.push('/owner-dashboard');
             }
+        } else if (roleType === 'admin') {
+            // Clear any employee context
+            localStorage.removeItem('activeOutletId');
+            localStorage.removeItem('activeOwnerId');
+            localStorage.removeItem('activeOutletName');
+            localStorage.removeItem('employeeRole');
+            router.push('/admin-dashboard');
         } else if (roleType === 'customer') {
             // Clear any employee context
             localStorage.removeItem('activeOutletId');
@@ -201,6 +208,31 @@ export default function SelectRolePage() {
                                 </p>
                             </div>
                             {selectedRole === 'owner' ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <ArrowRight className="w-5 h-5" />
+                            )}
+                        </motion.button>
+                    )}
+
+                    {/* Admin Account */}
+                    {primaryRole === 'admin' && (
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => handleSelectRole('admin')}
+                            disabled={selectedRole}
+                            className={`w-full bg-gradient-to-r from-purple-500 to-violet-500 text-white rounded-xl p-4 flex items-center gap-4 transition-all ${selectedRole === 'admin' ? 'ring-2 ring-purple-500 ring-offset-2' : ''
+                                }`}
+                        >
+                            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                                <User className="w-6 h-6" />
+                            </div>
+                            <div className="flex-1 text-left">
+                                <p className="font-bold text-lg">Admin Dashboard</p>
+                                <p className="text-sm opacity-80">Manage the platform</p>
+                            </div>
+                            {selectedRole === 'admin' ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                                 <ArrowRight className="w-5 h-5" />

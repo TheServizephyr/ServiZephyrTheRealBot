@@ -135,7 +135,7 @@ export async function POST(req) {
         await firestore.collection('employee_invitations').doc(inviteCode).set(invitationData);
 
         // Generate invite link
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://servisephyr.com';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.servizephyr.com';
         const inviteLink = `${baseUrl}/join/${inviteCode}`;
 
         console.log(`[EMPLOYEES API] Invitation created for ${email} as ${role} at outlet ${outletId}`);

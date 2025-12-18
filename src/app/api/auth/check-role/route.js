@@ -22,13 +22,19 @@ export async function POST(req) {
             const businessType = userData.businessType || null;
             const linkedOutlets = userData.linkedOutlets || [];
 
+            console.log(`[DEBUG] /api/auth/check-role: Role: ${role}, LinkedOutlets count: ${linkedOutlets.length}`);
+            console.log("[DEBUG] /api/auth/check-role: LinkedOutlets:", JSON.stringify(linkedOutlets));
+
             // Check for multiple roles (user is both owner/customer AND employee somewhere)
             const hasEmployeeRole = linkedOutlets.some(o => o.status === 'active');
             const isOwnerOrVendor = role === 'owner' || role === 'street-vendor' || role === 'restaurant-owner' || role === 'shop-owner';
 
+            console.log(`[DEBUG] /api/auth/check-role: hasEmployeeRole: ${hasEmployeeRole}, isOwnerOrVendor: ${isOwnerOrVendor}, role: ${role}`);
+
             // If user has multiple roles, redirect to select-role page
-            if (hasEmployeeRole && (isOwnerOrVendor || role === 'customer')) {
-                console.log(`[DEBUG] /api/auth/check-role: User has multiple roles. Primary: ${role}, Employee at ${linkedOutlets.length} outlets.`);
+            // Include admin, owner, vendor, and customer - anyone with a primary role + employee roles
+            if (hasEmployeeRole && (isOwnerOrVendor || role === 'customer' || role === 'admin')) {
+                console.log(`[DEBUG] /api/auth/check-role: User has MULTIPLE ROLES! Returning hasMultipleRoles: true`);
                 return NextResponse.json({
                     role,
                     businessType,
