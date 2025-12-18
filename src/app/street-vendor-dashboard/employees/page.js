@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ROLE_DISPLAY_NAMES, ALL_DASHBOARD_PAGES } from '@/lib/permissions';
+import { ROLE_DISPLAY_NAMES, STREET_VENDOR_DASHBOARD_PAGES } from '@/lib/permissions';
 
 // Invite Link Dialog Component
 function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role }) {
@@ -780,7 +780,7 @@ export default function StreetVendorEmployeesPage() {
                         onSubmit={handleAddEmployee}
                         invitableRoles={invitableRoles}
                         loading={actionLoading}
-                        allDashboardPages={ALL_DASHBOARD_PAGES}
+                        allDashboardPages={STREET_VENDOR_DASHBOARD_PAGES}
                     />
                 )}
             </AnimatePresence>

@@ -22,7 +22,7 @@ import {
     Link as LinkIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { EMPLOYEE_ROLES, ROLE_DISPLAY_NAMES, ALL_DASHBOARD_PAGES } from '@/lib/permissions';
+import { EMPLOYEE_ROLES, ROLE_DISPLAY_NAMES, OWNER_DASHBOARD_PAGES } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
 // Invite Link Dialog Component
@@ -724,7 +724,7 @@ export default function EmployeesPage() {
                 onSubmit={handleAddEmployee}
                 invitableRoles={invitableRoles}
                 loading={actionLoading}
-                allDashboardPages={ALL_DASHBOARD_PAGES}
+                allDashboardPages={OWNER_DASHBOARD_PAGES}
             />
 
             {/* Invite Link Dialog */}

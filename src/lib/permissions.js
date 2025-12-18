@@ -123,23 +123,43 @@ export const ROLE_DISPLAY_NAMES = {
 };
 
 // ============================================
-// ALL DASHBOARD PAGES (for Custom Role UI)
+// DASHBOARD PAGES FOR CUSTOM ROLE UI
+// These match the actual sidebar menu items for each dashboard type
 // ============================================
 
-export const ALL_DASHBOARD_PAGES = [
+// Owner/Restaurant Dashboard Pages (matches Sidebar getMenuItems + getSettingsItems)
+export const OWNER_DASHBOARD_PAGES = [
+    { id: 'dashboard', label: 'Dashboard', description: 'Overview and quick stats' },
     { id: 'live-orders', label: 'Live Orders', description: 'View and manage incoming orders' },
     { id: 'menu', label: 'Menu Management', description: 'Edit menu items and categories' },
     { id: 'dine-in', label: 'Dine-in Tables', description: 'Manage tables and tabs' },
     { id: 'bookings', label: 'Bookings', description: 'Table reservations' },
     { id: 'employees', label: 'Team/Employees', description: 'View team members' },
     { id: 'customers', label: 'Customers', description: 'Customer list and data' },
+    { id: 'whatsapp-direct', label: 'WhatsApp Direct', description: 'WhatsApp ordering link' },
     { id: 'analytics', label: 'Analytics', description: 'Sales and order analytics' },
     { id: 'delivery', label: 'Delivery', description: 'Delivery settings and riders' },
     { id: 'coupons', label: 'Coupons & Offers', description: 'Manage discounts' },
-    { id: 'qr', label: 'QR Code', description: 'Generate and manage QR codes' },
-    { id: 'whatsapp-direct', label: 'WhatsApp Direct', description: 'WhatsApp ordering link' },
+    { id: 'location', label: 'Location', description: 'Outlet location settings' },
+    { id: 'connections', label: 'Connections', description: 'Integrations and bots' },
+    { id: 'payouts', label: 'Payouts', description: 'Payment settings' },
     { id: 'settings', label: 'Settings', description: 'Outlet settings' },
 ];
+
+// Street Vendor Dashboard Pages (matches street-vendor Sidebar)
+export const STREET_VENDOR_DASHBOARD_PAGES = [
+    { id: 'live-orders', label: 'Live Orders', description: 'View and manage incoming orders' },
+    { id: 'menu', label: 'My Menu', description: 'Edit menu items and categories' },
+    { id: 'employees', label: 'Team', description: 'View team members' },
+    { id: 'analytics', label: 'Analytics', description: 'Sales and order analytics' },
+    { id: 'qr', label: 'My QR Code', description: 'Generate and manage QR codes' },
+    { id: 'coupons', label: 'Coupons & Offers', description: 'Manage discounts' },
+    { id: 'profile', label: 'Profile', description: 'Business profile settings' },
+    { id: 'payouts', label: 'Payouts', description: 'Payout settings' },
+];
+
+// Legacy export for backward compatibility (use OWNER_DASHBOARD_PAGES by default)
+export const ALL_DASHBOARD_PAGES = OWNER_DASHBOARD_PAGES;
 
 // ============================================
 // ROLE → PERMISSIONS MAPPING
