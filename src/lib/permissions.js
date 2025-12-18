@@ -97,6 +97,7 @@ export const ROLES = {
     WAITER: 'waiter',
     CASHIER: 'cashier',
     ORDER_TAKER: 'order_taker',
+    CUSTOM: 'custom',                    // Custom role with owner-defined permissions
 
     // ===== FUTURE ENTERPRISE ROLES =====
     HQ_ANALYST: 'hq_analyst',            // Read-only analytics for multi-outlet
@@ -115,10 +116,30 @@ export const ROLE_DISPLAY_NAMES = {
     [ROLES.WAITER]: 'Waiter (Orders, Dine-in, Bookings)',
     [ROLES.CASHIER]: 'Cashier (Orders & Billing)',
     [ROLES.ORDER_TAKER]: 'Order Taker (Create orders only)',
+    [ROLES.CUSTOM]: 'Custom (Select pages)',
     // Future enterprise roles
     [ROLES.HQ_ANALYST]: 'HQ Analyst (Read-only Analytics)',
     [ROLES.INVENTORY_MANAGER]: 'Inventory Manager (Stock only)',
 };
+
+// ============================================
+// ALL DASHBOARD PAGES (for Custom Role UI)
+// ============================================
+
+export const ALL_DASHBOARD_PAGES = [
+    { id: 'live-orders', label: 'Live Orders', description: 'View and manage incoming orders' },
+    { id: 'menu', label: 'Menu Management', description: 'Edit menu items and categories' },
+    { id: 'dine-in', label: 'Dine-in Tables', description: 'Manage tables and tabs' },
+    { id: 'bookings', label: 'Bookings', description: 'Table reservations' },
+    { id: 'employees', label: 'Team/Employees', description: 'View team members' },
+    { id: 'customers', label: 'Customers', description: 'Customer list and data' },
+    { id: 'analytics', label: 'Analytics', description: 'Sales and order analytics' },
+    { id: 'delivery', label: 'Delivery', description: 'Delivery settings and riders' },
+    { id: 'coupons', label: 'Coupons & Offers', description: 'Manage discounts' },
+    { id: 'qr', label: 'QR Code', description: 'Generate and manage QR codes' },
+    { id: 'whatsapp-direct', label: 'WhatsApp Direct', description: 'WhatsApp ordering link' },
+    { id: 'settings', label: 'Settings', description: 'Outlet settings' },
+];
 
 // ============================================
 // ROLE → PERMISSIONS MAPPING
@@ -407,9 +428,17 @@ export function getAllowedPages(role) {
  * Check if a role can access a specific page/feature
  * @param {string} role - User's role
  * @param {string} featureId - The page/feature ID
+ * @param {string[]} customAllowedPages - Optional array of allowed pages for custom roles
  * @returns {boolean}
  */
-export function canAccessPage(role, featureId) {
+export function canAccessPage(role, featureId, customAllowedPages = null) {
+    // For custom roles, use the provided customAllowedPages
+    if (role === 'custom' && customAllowedPages) {
+        // Always allow my-profile for all employees
+        if (featureId === 'my-profile') return true;
+        return customAllowedPages.includes(featureId);
+    }
+
     const allowedPages = ROLE_ALLOWED_PAGES[role];
     if (!allowedPages) return false;
     if (allowedPages === 'all') return true;

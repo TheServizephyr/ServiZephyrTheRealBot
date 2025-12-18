@@ -41,7 +41,7 @@ export async function POST(req) {
         const accessContext = await verifyAccessWithRBAC(req, PERMISSIONS.INVITE_EMPLOYEE);
 
         const body = await req.json();
-        const { email, role, name, phone, customPermissions } = body;
+        const { email, role, name, phone, customPermissions, customRoleName, customAllowedPages } = body;
 
         // Validation
         if (!email || !role) {
@@ -60,12 +60,22 @@ export async function POST(req) {
             );
         }
 
-        // Validate role
-        if (!EMPLOYEE_ROLES.includes(role)) {
+        // Validate role - allow 'custom' role as well
+        if (!EMPLOYEE_ROLES.includes(role) && role !== 'custom') {
             return NextResponse.json(
-                { message: `Invalid role. Must be one of: ${EMPLOYEE_ROLES.join(', ')}` },
+                { message: `Invalid role. Must be one of: ${EMPLOYEE_ROLES.join(', ')}, custom` },
                 { status: 400 }
             );
+        }
+
+        // For custom role, require customRoleName and customAllowedPages
+        if (role === 'custom') {
+            if (!customRoleName || !customAllowedPages || customAllowedPages.length === 0) {
+                return NextResponse.json(
+                    { message: 'Custom role requires a name and at least one page access.' },
+                    { status: 400 }
+                );
+            }
         }
 
         // Check if inviter can manage this role
@@ -130,6 +140,11 @@ export async function POST(req) {
             status: 'pending',
             createdAt: FieldValue.serverTimestamp(),
             expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48 hours
+            // Custom role fields
+            ...(role === 'custom' && {
+                customRoleName,
+                customAllowedPages,  // Array of page IDs this employee can access
+            }),
         };
 
         await firestore.collection('employee_invitations').doc(inviteCode).set(invitationData);
@@ -148,7 +163,7 @@ export async function POST(req) {
             invitation: {
                 email,
                 role,
-                roleDisplay: ROLE_DISPLAY_NAMES[role],
+                roleDisplay: role === 'custom' ? customRoleName : ROLE_DISPLAY_NAMES[role],
                 inviteLink, // Remove in production, send via email only
                 expiresAt: invitationData.expiresAt,
             }

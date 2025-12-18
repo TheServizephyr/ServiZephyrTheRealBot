@@ -97,6 +97,11 @@ export async function POST(req) {
             status: 'active',
             addedAt: new Date(),
             addedBy: inviteData.invitedBy,
+            // Custom role fields
+            ...(inviteData.role === 'custom' && {
+                customRoleName: inviteData.customRoleName,
+                customAllowedPages: inviteData.customAllowedPages,
+            }),
         };
 
         // 2. Update outlet's employees array
@@ -118,6 +123,11 @@ export async function POST(req) {
             status: 'active',
             joinedAt: new Date(),
             isActive: true, // Currently active outlet
+            // Custom role fields - used for sidebar/access control
+            ...(inviteData.role === 'custom' && {
+                customRoleName: inviteData.customRoleName,
+                customAllowedPages: inviteData.customAllowedPages,
+            }),
         };
 
         // 4. Update user document

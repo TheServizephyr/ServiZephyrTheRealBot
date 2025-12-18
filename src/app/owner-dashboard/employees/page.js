@@ -22,7 +22,7 @@ import {
     Link as LinkIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { EMPLOYEE_ROLES, ROLE_DISPLAY_NAMES } from '@/lib/permissions';
+import { EMPLOYEE_ROLES, ROLE_DISPLAY_NAMES, ALL_DASHBOARD_PAGES } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
 // Invite Link Dialog Component
@@ -133,29 +133,61 @@ function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role }) {
 }
 
 // Add Employee Modal
-function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }) {
+function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, allDashboardPages }) {
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [role, setRole] = useState('');
+    const [customRoleName, setCustomRoleName] = useState('');
+    const [selectedPages, setSelectedPages] = useState([]);
+
+    // Reset custom fields when role changes
+    useEffect(() => {
+        if (role !== 'custom') {
+            setCustomRoleName('');
+            setSelectedPages([]);
+        } else {
+            // Default to live-orders for custom role
+            setSelectedPages(['live-orders', 'my-profile']);
+        }
+    }, [role]);
 
     if (!isOpen) return null;
+
+    const handlePageToggle = (pageId) => {
+        setSelectedPages(prev =>
+            prev.includes(pageId)
+                ? prev.filter(p => p !== pageId)
+                : [...prev, pageId]
+        );
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!email || !role) return;
-        onSubmit({ email, name, phone, role });
+        if (role === 'custom' && (!customRoleName || selectedPages.length === 0)) return;
+
+        onSubmit({
+            email,
+            name,
+            phone,
+            role,
+            customRoleName: role === 'custom' ? customRoleName : null,
+            customAllowedPages: role === 'custom' ? selectedPages : null
+        });
     };
+
+    const isCustomRole = role === 'custom';
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md">
-                <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white">Add Employee</h2>
                     <p className="text-slate-500 dark:text-slate-400 text-sm">Send an invitation to join your team</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                             Email Address *
@@ -215,6 +247,57 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }
                         </select>
                     </div>
 
+                    {/* Custom Role Options */}
+                    {isCustomRole && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="space-y-4"
+                        >
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    Custom Role Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={customRoleName}
+                                    onChange={(e) => setCustomRoleName(e.target.value)}
+                                    placeholder="e.g., Supervisor, Kitchen Helper"
+                                    required={isCustomRole}
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                    Page Access * (Select pages this employee can view)
+                                </label>
+                                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                                    {allDashboardPages?.map((page) => (
+                                        <label
+                                            key={page.id}
+                                            className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedPages.includes(page.id)}
+                                                onChange={() => handlePageToggle(page.id)}
+                                                className="w-5 h-5 rounded border-slate-300 text-purple-500 focus:ring-purple-500"
+                                            />
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-900 dark:text-white">{page.label}</p>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">{page.description}</p>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    {selectedPages.length} page(s) selected
+                                </p>
+                            </div>
+                        </motion.div>
+                    )}
+
                     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
                         <p className="text-blue-700 dark:text-blue-300 text-sm">
                             📧 An email will be sent with a link to join your team. The employee will sign in with Google using this email.
@@ -233,7 +316,7 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }
                         </Button>
                         <Button
                             type="submit"
-                            disabled={!email || !role || loading}
+                            disabled={!email || !role || (isCustomRole && (!customRoleName || selectedPages.length === 0)) || loading}
                             className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
                         >
                             {loading ? 'Sending...' : 'Send Invitation'}
@@ -244,6 +327,7 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading }
         </div>
     );
 }
+
 
 // Employee Card
 function EmployeeCard({ employee, onAction, isPending }) {
@@ -256,6 +340,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
         waiter: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
         cashier: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
         order_taker: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
+        custom: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300',
     };
 
     const copyInviteLink = async () => {
@@ -415,7 +500,7 @@ export default function EmployeesPage() {
     }, [fetchEmployees]);
 
     // Handle add employee
-    const handleAddEmployee = async ({ email, name, phone, role }) => {
+    const handleAddEmployee = async ({ email, name, phone, role, customRoleName, customAllowedPages }) => {
         try {
             setActionLoading(true);
 
@@ -426,7 +511,14 @@ export default function EmployeesPage() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                 },
-                body: JSON.stringify({ email, name, phone, role }),
+                body: JSON.stringify({
+                    email,
+                    name,
+                    phone,
+                    role,
+                    customRoleName,     // For custom role: display name
+                    customAllowedPages  // For custom role: array of page IDs
+                }),
             });
 
             const data = await response.json();
@@ -452,7 +544,7 @@ export default function EmployeesPage() {
                 email,
                 name,
                 role,
-                roleDisplay: ROLE_DISPLAY_NAMES[role],
+                roleDisplay: role === 'custom' ? customRoleName : ROLE_DISPLAY_NAMES[role],
                 status: 'pending',
                 inviteLink: inviteLink,
             }]);
@@ -632,6 +724,7 @@ export default function EmployeesPage() {
                 onSubmit={handleAddEmployee}
                 invitableRoles={invitableRoles}
                 loading={actionLoading}
+                allDashboardPages={ALL_DASHBOARD_PAGES}
             />
 
             {/* Invite Link Dialog */}

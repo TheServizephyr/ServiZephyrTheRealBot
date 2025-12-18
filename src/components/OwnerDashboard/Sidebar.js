@@ -184,8 +184,13 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   // For street-vendor-dashboard, treat null as STREET_VENDOR role
   const effectiveRole = userRole || (pathname.includes('/street-vendor-dashboard') ? ROLES.STREET_VENDOR : ROLES.OWNER);
 
-  const menuItems = allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId));
-  const settingsItems = allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId));
+  // Get custom allowed pages from localStorage (set by layout when employee logs in)
+  const customAllowedPages = typeof window !== 'undefined'
+    ? JSON.parse(localStorage.getItem('customAllowedPages') || 'null')
+    : null;
+
+  const menuItems = allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
+  const settingsItems = allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
 
 
   return (
