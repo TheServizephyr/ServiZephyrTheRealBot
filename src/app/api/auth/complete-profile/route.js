@@ -14,16 +14,16 @@ export async function POST(req) {
 
         // --- VALIDATION ---
         if (!finalUserData || !finalUserData.role || !finalUserData.phone) {
-             return NextResponse.json({ message: 'User role and phone are missing in payload.' }, { status: 400 });
+            return NextResponse.json({ message: 'User role and phone are missing in payload.' }, { status: 400 });
         }
-        
+
         const isBusinessOwner = finalUserData.role === 'restaurant-owner' || finalUserData.role === 'shop-owner' || finalUserData.role === 'street-vendor';
 
         if (isBusinessOwner && !businessData) {
             return NextResponse.json({ message: 'Business data is required for owners.' }, { status: 400 });
         }
         if (businessData && (!businessData.address || !businessData.address.street || !businessData.address.city)) {
-             return NextResponse.json({ message: 'A structured address is required for businesses.' }, { status: 400 });
+            return NextResponse.json({ message: 'A structured address is required for businesses.' }, { status: 400 });
         }
 
         const normalizedPhone = finalUserData.phone.slice(-10);
@@ -35,10 +35,10 @@ export async function POST(req) {
         const unclaimedProfileSnap = await unclaimedProfileRef.get();
         let mergedUserData = { ...finalUserData };
 
-        if (unclaimedProfileSnap.exists) { 
+        if (unclaimedProfileSnap.exists) {
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} found. Merging data.`);
             const unclaimedData = unclaimedProfileSnap.data();
-            
+
             const existingAddresses = finalUserData.addresses || [];
             const unclaimedAddresses = (unclaimedData.addresses || []).map(addr => {
                 if (typeof addr === 'string') {
@@ -72,16 +72,16 @@ export async function POST(req) {
 
                         const oldCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(normalizedPhone);
                         const newCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(uid);
-                        
+
                         const oldCustomerSnap = await oldCustomerRef.get();
-                        
+
                         let oldCustomerData = {};
                         if (oldCustomerSnap.exists) {
                             oldCustomerData = oldCustomerSnap.data();
                             batch.delete(oldCustomerRef);
                             console.log(`[PROFILE COMPLETION] Marked old customer record at ${oldCustomerRef.path} for deletion.`);
                         }
-                        
+
                         const newCustomerPayload = {
                             ...oldCustomerData,
                             name: finalUserData.name,
@@ -92,10 +92,10 @@ export async function POST(req) {
 
                         batch.set(newCustomerRef, newCustomerPayload, { merge: true });
                         console.log(`[PROFILE COMPLETION] Marked new/updated customer record at ${newCustomerRef.path} for creation.`);
-                        
+
                         const userRestaurantLinkRef = masterUserRef.collection('joined_restaurants').doc(restaurantId);
-                         batch.set(userRestaurantLinkRef, {
-                            restaurantName: restaurantInfo.restaurantName, 
+                        batch.set(userRestaurantLinkRef, {
+                            restaurantName: restaurantInfo.restaurantName,
                             joinedAt: FieldValue.serverTimestamp(),
                             totalSpend: oldCustomerData.totalSpend || 0,
                             loyaltyPoints: oldCustomerData.loyaltyPoints || 0,
@@ -115,15 +115,15 @@ export async function POST(req) {
                     console.log(`[PROFILE COMPLETION] Marked order ${orderDoc.id} to be updated with new UID.`);
                 });
             }
-            
+
             batch.delete(unclaimedProfileRef);
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
         }
-        
+
         mergedUserData.createdAt = FieldValue.serverTimestamp();
         batch.set(masterUserRef, mergedUserData, { merge: true });
         console.log(`[PROFILE COMPLETION] Master user profile for UID ${uid} added to batch in 'users' collection.`);
-        
+
         if (finalUserData.role === 'rider') {
             const driverRef = firestore.collection('drivers').doc(uid);
             batch.set(driverRef, {
@@ -141,18 +141,19 @@ export async function POST(req) {
                 walletBalance: 0,
             }, { merge: true });
             console.log(`[PROFILE COMPLETION] Rider Action: New rider profile for UID ${uid} added to 'drivers' collection.`);
-        } 
+        }
         else if (isBusinessOwner && businessData) {
-             let collectionName;
-             if (businessType === 'restaurant') collectionName = 'restaurants';
-             else if (businessType === 'shop') collectionName = 'shops';
-             else if (businessType === 'street-vendor') collectionName = 'street_vendors';
+            let collectionName;
+            if (businessType === 'restaurant') collectionName = 'restaurants';
+            else if (businessType === 'shop') collectionName = 'shops';
+            else if (businessType === 'street-vendor') collectionName = 'street_vendors';
 
-             const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
-             const businessRef = firestore.collection(collectionName).doc(businessId);
-             
-             const finalBusinessData = {
+            const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
+            const businessRef = firestore.collection(collectionName).doc(businessId);
+
+            const finalBusinessData = {
                 ...businessData,
+                ownerId: uid, // CRITICAL: Owner's user ID for RBAC and team management
                 createdAt: FieldValue.serverTimestamp(),
                 razorpayAccountId: '',
                 // Set default true values for all settings
@@ -166,11 +167,11 @@ export async function POST(req) {
                 pickupPodEnabled: true,
                 dineInOnlinePaymentEnabled: true,
                 dineInPayAtCounterEnabled: true,
-             };
-             batch.set(businessRef, finalBusinessData);
-             console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch with default settings.`);
+            };
+            batch.set(businessRef, finalBusinessData);
+            console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch with default settings.`);
         }
-        
+
         await batch.commit();
 
         console.log(`[PROFILE COMPLETION] Successfully completed profile for user ${uid}`);
