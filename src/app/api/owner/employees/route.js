@@ -215,6 +215,18 @@ export async function GET(req) {
         // Create owner entry (always at top)
         // Use outletData.ownerId as the authoritative source
         const ownerId = outletData.ownerId;
+
+        // DEBUG LOGGING
+        console.log('[EMPLOYEES API] Debug:', {
+            currentUserId,
+            ownerId,
+            isOwner: accessContext.isOwner,
+            accessContextOwnerId: accessContext.ownerId,
+            employeesCount: employeesFromOutlet.length,
+            outletId,
+            outletDataKeys: Object.keys(outletData),
+        });
+
         const ownerEntry = {
             userId: ownerId,
             email: outletData.email || outletData.ownerEmail || '',
