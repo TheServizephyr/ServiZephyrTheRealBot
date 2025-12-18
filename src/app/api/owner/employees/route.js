@@ -190,12 +190,45 @@ export async function GET(req) {
 
         const outletData = accessContext.outletData;
         const outletId = accessContext.outletId;
+        const currentUserId = accessContext.uid;
+
+        // Role hierarchy for sorting (lower number = higher rank)
+        const ROLE_HIERARCHY = {
+            'owner': 0,
+            'manager': 1,
+            'chef': 2,
+            'waiter': 3,
+            'cashier': 4,
+            'order_taker': 5,
+            'custom': 6,
+        };
 
         // Get employees from outlet document
-        const employees = (outletData.employees || []).map(emp => ({
+        const employeesFromOutlet = (outletData.employees || []).map(emp => ({
             ...emp,
-            roleDisplay: ROLE_DISPLAY_NAMES[emp.role],
+            roleDisplay: emp.role === 'custom'
+                ? (emp.customRoleName || 'Custom')
+                : ROLE_DISPLAY_NAMES[emp.role],
+            hierarchyOrder: ROLE_HIERARCHY[emp.role] || 99,
         }));
+
+        // Create owner entry (always at top)
+        const ownerId = accessContext.isOwner ? accessContext.uid : accessContext.ownerId;
+        const ownerEntry = {
+            userId: ownerId,
+            email: outletData.email || '',
+            name: outletData.name || outletData.restaurantName || 'Owner',
+            phone: outletData.phone || '',
+            role: 'owner',
+            roleDisplay: 'Owner',
+            status: 'active',
+            hierarchyOrder: 0,
+            isOwner: true,
+        };
+
+        // Combine owner + employees, sort by hierarchy
+        const allTeamMembers = [ownerEntry, ...employeesFromOutlet]
+            .sort((a, b) => a.hierarchyOrder - b.hierarchyOrder);
 
         // Get pending invitations
         const pendingInvitesQuery = await firestore
@@ -211,13 +244,16 @@ export async function GET(req) {
                 email: data.email,
                 name: data.name,
                 role: data.role,
-                roleDisplay: ROLE_DISPLAY_NAMES[data.role],
+                roleDisplay: data.role === 'custom'
+                    ? (data.customRoleName || 'Custom')
+                    : ROLE_DISPLAY_NAMES[data.role],
                 status: 'pending',
                 invitedBy: data.invitedByName,
                 createdAt: data.createdAt?.toDate?.() || data.createdAt,
                 expiresAt: data.expiresAt,
+                hierarchyOrder: ROLE_HIERARCHY[data.role] || 99,
             };
-        });
+        }).sort((a, b) => a.hierarchyOrder - b.hierarchyOrder);
 
         // Get roles that current user can invite  
         const invitableRoles = getInvitableRoles(accessContext.role).map(role => ({
@@ -226,9 +262,10 @@ export async function GET(req) {
         }));
 
         return NextResponse.json({
-            employees,
+            employees: allTeamMembers,
             pendingInvites,
             invitableRoles,
+            currentUserId, // For frontend to show "(You)" label
             canInvite: accessContext.permissions.includes(PERMISSIONS.INVITE_EMPLOYEE),
             canManage: accessContext.permissions.includes(PERMISSIONS.MANAGE_EMPLOYEES),
         }, { status: 200 });

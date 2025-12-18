@@ -356,11 +356,13 @@ function EmployeeCard({ employee, onAction, isPending }) {
     const [copied, setCopied] = useState(false);
 
     const roleColors = {
+        owner: 'bg-gradient-to-r from-yellow-500/30 to-orange-500/30 text-yellow-500 border-yellow-500/50',
         manager: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
         chef: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
         waiter: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
         cashier: 'bg-green-500/20 text-green-400 border-green-500/30',
         order_taker: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+        custom: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
     };
 
     const copyInviteLink = async () => {
@@ -381,14 +383,20 @@ function EmployeeCard({ employee, onAction, isPending }) {
             exit={{ opacity: 0, y: -20 }}
             className={cn(
                 "bg-card rounded-xl p-4 border border-border",
-                employee.status === 'inactive' && 'opacity-60'
+                employee.status === 'inactive' && 'opacity-60',
+                employee.isYou && 'ring-2 ring-primary/30'
             )}
         >
             <div className="flex items-start gap-4">
                 {/* Avatar */}
-                <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+                <div className={cn(
+                    "w-12 h-12 rounded-full flex items-center justify-center",
+                    employee.isOwner ? "bg-gradient-to-br from-yellow-400 to-orange-500" : "bg-muted"
+                )}>
                     {isPending ? (
                         <Clock className="w-5 h-5 text-yellow-500" />
+                    ) : employee.isOwner ? (
+                        <span className="text-lg font-bold text-white">👑</span>
                     ) : (
                         <span className="text-lg font-bold text-muted-foreground">
                             {(employee.name || employee.email)?.[0]?.toUpperCase() || '?'}
@@ -400,7 +408,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-semibold text-foreground truncate">
-                            {employee.name || 'Pending...'}
+                            {employee.isYou ? '(You)' : (employee.name || 'Pending...')}
                         </h3>
                         {isPending && (
                             <span className="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">
@@ -416,7 +424,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
                     <p className="text-muted-foreground text-sm truncate">{employee.email}</p>
                     <div className="mt-2">
                         <span className={cn("text-xs px-2 py-1 rounded-full border", roleColors[employee.role] || 'bg-muted text-muted-foreground')}>
-                            {employee.roleDisplay?.hi || employee.roleDisplay?.en || employee.role}
+                            {employee.roleDisplay?.hi || employee.roleDisplay?.en || employee.roleDisplay || employee.role}
                         </span>
                     </div>
                 </div>
@@ -497,6 +505,7 @@ export default function StreetVendorEmployeesPage() {
     const [employees, setEmployees] = useState([]);
     const [pendingInvites, setPendingInvites] = useState([]);
     const [invitableRoles, setInvitableRoles] = useState([]);
+    const [currentUserId, setCurrentUserId] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
@@ -525,9 +534,15 @@ export default function StreetVendorEmployeesPage() {
 
             if (response.ok) {
                 const data = await response.json();
-                setEmployees(data.employees || []);
+                // Mark which employee is the current user
+                const employeesWithYou = (data.employees || []).map(emp => ({
+                    ...emp,
+                    isYou: emp.userId === data.currentUserId,
+                }));
+                setEmployees(employeesWithYou);
                 setPendingInvites(data.pendingInvites || []);
                 setInvitableRoles(data.invitableRoles || []);
+                setCurrentUserId(data.currentUserId);
             }
         } catch (error) {
             console.error('Error fetching employees:', error);

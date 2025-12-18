@@ -335,6 +335,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
     const [copied, setCopied] = useState(false);
 
     const roleColors = {
+        owner: 'bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-700 dark:from-yellow-900/40 dark:to-orange-900/40 dark:text-yellow-300',
         manager: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
         chef: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
         waiter: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
@@ -352,15 +353,23 @@ function EmployeeCard({ employee, onAction, isPending }) {
     };
 
     return (
-        <div className={`
-            bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700
-            ${employee.status === 'inactive' ? 'opacity-60' : ''}
-        `}>
+        <div className={cn(
+            "bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700",
+            employee.status === 'inactive' && 'opacity-60',
+            employee.isYou && 'ring-2 ring-blue-500/30'
+        )}>
             <div className="flex items-start gap-4">
                 {/* Avatar */}
-                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
+                <div className={cn(
+                    "w-12 h-12 rounded-full flex items-center justify-center",
+                    employee.isOwner
+                        ? "bg-gradient-to-br from-yellow-400 to-orange-500"
+                        : "bg-slate-100 dark:bg-slate-700"
+                )}>
                     {isPending ? (
                         <Clock className="w-5 h-5 text-yellow-500" />
+                    ) : employee.isOwner ? (
+                        <span className="text-lg font-bold text-white">👑</span>
                     ) : (
                         <span className="text-lg font-bold text-slate-400">
                             {(employee.name || employee.email)?.[0]?.toUpperCase() || '?'}
@@ -372,7 +381,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-semibold text-slate-900 dark:text-white truncate">
-                            {employee.name || 'Pending...'}
+                            {employee.isYou ? '(You)' : (employee.name || 'Pending...')}
                         </h3>
                         {isPending && (
                             <span className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 px-2 py-0.5 rounded-full">
@@ -388,7 +397,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
                     <p className="text-slate-500 dark:text-slate-400 text-sm truncate">{employee.email}</p>
                     <div className="mt-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${roleColors[employee.role] || 'bg-slate-100 text-slate-600'}`}>
-                            {employee.roleDisplay?.en || employee.role}
+                            {employee.roleDisplay?.en || employee.roleDisplay || employee.role}
                         </span>
                     </div>
                 </div>
@@ -484,7 +493,12 @@ export default function EmployeesPage() {
 
             if (response.ok) {
                 const data = await response.json();
-                setEmployees(data.employees || []);
+                // Mark which employee is the current user
+                const employeesWithYou = (data.employees || []).map(emp => ({
+                    ...emp,
+                    isYou: emp.userId === data.currentUserId,
+                }));
+                setEmployees(employeesWithYou);
                 setPendingInvites(data.pendingInvites || []);
                 setInvitableRoles(data.invitableRoles || []);
             }
