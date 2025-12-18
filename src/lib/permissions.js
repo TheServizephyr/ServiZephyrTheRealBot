@@ -351,6 +351,7 @@ export const EMPLOYEE_ROLES = [
     ROLES.WAITER,
     ROLES.CASHIER,
     ROLES.ORDER_TAKER,
+    ROLES.CUSTOM,    // Custom role with owner-defined pages
 ];
 
 // ============================================
