@@ -182,11 +182,26 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   // Filter items based on user role
   // null = owner accessing their own dashboard
   // For street-vendor-dashboard, treat null as STREET_VENDOR role
+  // IMPORTANT: If employee_of param exists but userRole is null, role is still loading - show nothing
+  const isRolePending = employeeOfOwnerId && userRole === null;
   const effectiveRole = userRole || (pathname.includes('/street-vendor-dashboard') ? ROLES.STREET_VENDOR : ROLES.OWNER);
 
   // Get custom allowed pages from localStorage (set by layout when employee logs in)
   // Using state so sidebar re-renders when role changes
-  const [customAllowedPages, setCustomAllowedPages] = useState(null);
+  const [customAllowedPages, setCustomAllowedPages] = useState(() => {
+    // Read from localStorage on initial mount to prevent flash
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('customAllowedPages');
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch (e) {
+          return null;
+        }
+      }
+    }
+    return null;
+  });
 
   useEffect(() => {
     // Re-read localStorage when userRole changes (layout stores pages before passing role)
@@ -205,8 +220,9 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     }
   }, [userRole]);
 
-  const menuItems = allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
-  const settingsItems = allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
+  // If role is still pending for employee, show empty menus to prevent flash
+  const menuItems = isRolePending ? [] : allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
+  const settingsItems = isRolePending ? [] : allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
 
 
   return (
