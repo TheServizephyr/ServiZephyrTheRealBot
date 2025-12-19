@@ -770,8 +770,6 @@ const OrderPageInternal = () => {
     const [dineInState, setDineInState] = useState('loading');
     const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
 
-    const tabIdFromUrl = searchParams.get('tabId');
-
 
     const handleStartNewTab = async (paxCount, tabName) => {
         try {
