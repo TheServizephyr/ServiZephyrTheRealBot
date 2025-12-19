@@ -448,9 +448,20 @@ const CartPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             console.log("[Cart Page] Post-paid order successful. Response:", data);
+
+            // Save liveOrder to localStorage so track button shows on order page
+            const liveOrderData = {
+                orderId: data.order_id,
+                trackingToken: data.token,
+                restaurantId: restaurantId
+            };
+            localStorage.setItem(`liveOrder_${restaurantId}`, JSON.stringify(liveOrderData));
+            console.log("[Cart Page] Saved liveOrder for dine-in:", liveOrderData);
+
             localStorage.removeItem(`cart_${restaurantId}`);
-            localStorage.removeItem(`liveOrder_${restaurantId}`);
-            router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.whatsappNumber}&token=${data.token}`);
+
+            // Redirect to track page for dine-in orders
+            router.push(`/track/dine-in/${data.order_id}?token=${data.token}`);
         } catch (err) {
             console.error("[Cart Page] Post-paid checkout error:", err.message);
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });
