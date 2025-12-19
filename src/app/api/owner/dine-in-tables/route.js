@@ -93,27 +93,90 @@ export async function GET(req) {
 
         const ordersSnap = await ordersQuery.get();
 
-        // 5. Assign orders to the correct tab or as a pending order on the correct table
+        // 5. Group ALL orders by tab_name for same table - this ensures same customer shows as ONE entry
+        // Structure: { tableId_tabName: { orders: [...], hasPending: bool, ... } }
+        const orderGroups = new Map();
+
         ordersSnap.forEach(orderDoc => {
             const orderData = orderDoc.data();
             const tableId = orderData.tableId;
             const tabId = orderData.dineInTabId;
+            const status = orderData.status;
 
             const table = tableMap.get(tableId);
-            if (!table) return; // Skip if order is for a table that doesn't exist anymore
+            if (!table) return;
 
-            // If it belongs to an active tab, place it inside that tab
+            // If it belongs to an existing dineInTab (from dineInTabs collection), add to that tab
             if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
+                return;
             }
-            // If it's a standalone order (not in a tab yet)
-            else if (!tabId) {
-                const isAlreadyInAnActiveTab = Array.from(tableMap.values()).some(t =>
-                    Object.values(t.tabs).some(activeTab => activeTab.orders?.[orderDoc.id])
-                );
-                if (!isAlreadyInAnActiveTab) {
-                    table.pendingOrders.push({ id: orderDoc.id, ...orderData });
-                }
+
+            // For orders without tabId, group by tab_name
+            const tabName = orderData.tab_name || orderData.customerName || 'Guest';
+            const groupKey = `${tableId}_${tabName}`;
+
+            if (!orderGroups.has(groupKey)) {
+                orderGroups.set(groupKey, {
+                    id: groupKey,
+                    tableId,
+                    tab_name: tabName,
+                    pax_count: orderData.pax_count || 1,
+                    orders: {},
+                    dineInToken: orderData.dineInToken,
+                    ordered_by: orderData.ordered_by,
+                    ordered_by_name: orderData.ordered_by_name,
+                    paymentMethod: orderData.paymentMethod,
+                    paymentDetails: orderData.paymentDetails,
+                });
+            }
+
+            const group = orderGroups.get(groupKey);
+            group.orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
+
+            // Keep the latest token
+            if (orderData.dineInToken && !group.dineInToken) {
+                group.dineInToken = orderData.dineInToken;
+            }
+        });
+
+        // Now add grouped orders to tables
+        // Determine if group has pending items or not
+        orderGroups.forEach((group, groupKey) => {
+            const table = tableMap.get(group.tableId);
+            if (!table) return;
+
+            const orders = Object.values(group.orders);
+            const hasPending = orders.some(o => o.status === 'pending');
+            const hasConfirmed = orders.some(o => o.status !== 'pending' && o.status !== 'rejected');
+
+            // Calculate total amount for all orders
+            const totalAmount = orders.reduce((sum, o) => sum + (o.totalAmount || o.grandTotal || 0), 0);
+
+            // Get the "main" order status (lowest in progression)
+            const statusPriority = { 'pending': 0, 'confirmed': 1, 'preparing': 2, 'ready_for_pickup': 3, 'delivered': 4 };
+            const lowestStatus = orders.reduce((lowest, o) => {
+                const orderPriority = statusPriority[o.status] ?? 99;
+                const lowestPriority = statusPriority[lowest] ?? 99;
+                return orderPriority < lowestPriority ? o.status : lowest;
+            }, 'delivered');
+
+            const groupData = {
+                ...group,
+                totalAmount,
+                hasPending,
+                hasConfirmed,
+                status: hasPending ? 'pending' : 'active',
+                mainStatus: lowestStatus, // For determining which button to show
+                items: orders.flatMap(o => o.items || []),
+            };
+
+            // If has any pending, put in pendingOrders
+            if (hasPending) {
+                table.pendingOrders.push(groupData);
+            } else {
+                // Active orders go to tabs
+                table.tabs[groupKey] = groupData;
             }
         });
 

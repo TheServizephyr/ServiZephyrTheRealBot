@@ -261,9 +261,24 @@ function DineInTrackingContent() {
             </Dialog>
 
             <header className="p-4 border-b border-border flex justify-between items-center">
-                <div>
-                    <p className="text-xs text-muted-foreground">Tracking Dine-In Order</p>
-                    <h1 className="font-bold text-lg">{orderData.restaurant?.name}</h1>
+                <div className="flex items-center gap-3">
+                    <Button
+                        onClick={() => {
+                            // Navigate back to order page with table and tab params
+                            const params = new URLSearchParams();
+                            if (orderData.order?.tableId) params.set('table', orderData.order.tableId);
+                            if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
+                            router.push(`/order/${orderData.restaurant?.id}?${params.toString()}`);
+                        }}
+                        variant="ghost"
+                        size="icon"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <div>
+                        <p className="text-xs text-muted-foreground">Tracking Dine-In Order</p>
+                        <h1 className="font-bold text-lg">{orderData.restaurant?.name}</h1>
+                    </div>
                 </div>
                 <Button onClick={() => fetchData(true)} variant="outline" size="icon" disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />

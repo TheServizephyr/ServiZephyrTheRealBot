@@ -308,52 +308,67 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     {allGroups.length > 0 ? (
                         <div className="space-y-4">
                             {allGroups.map(group => {
-                                const isPending = !group.status || group.status === 'pending';
-                                const isActiveTab = group.status === 'active';
+                                // New logic: use group.status and group.mainStatus from API
+                                const isPending = group.status === 'pending' || group.hasPending;
+                                const isActiveTab = group.status === 'active' && !group.hasPending;
 
-                                const orderId = group.id; // Use group ID for both pending and active tabs
-                                const orderData = isPending ? group : Object.values(group.orders || {})[0];
+                                // Get ALL orders in this group
+                                const allOrders = Object.values(group.orders || {});
+                                const firstOrder = allOrders[0] || group;
 
-                                // Calculate without useMemo - hooks can't be inside loops
-                                const totalBill = isPending
-                                    ? group.totalAmount
-                                    : Object.values(group.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+                                // Use mainStatus for determining which action button to show
+                                const mainStatus = group.mainStatus || firstOrder?.status || 'pending';
 
-                                const allItems = isPending
-                                    ? (group.items || [])
-                                    : Object.values(group.orders || {}).flatMap(o => o.items || []);
+                                // Calculate totals from API or compute
+                                const totalBill = group.totalAmount || allOrders.reduce((sum, o) => sum + (o.totalAmount || o.grandTotal || 0), 0);
+                                const allItems = group.items || allOrders.flatMap(o => o.items || []);
 
-                                const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : orderData?.paymentDetails?.method === 'razorpay';
-                                const isPaid = isOnlinePayment || group.paymentStatus === 'paid';
-                                const isCOD = !isPaid;
+                                // Payment status - dine-in is POSTPAID by default
+                                // isPaid = true ONLY if: (1) paid online via razorpay, OR (2) paymentStatus explicitly set to 'paid'
+                                const isOnlinePayment = group.paymentDetails?.method === 'razorpay' || firstOrder?.paymentDetails?.method === 'razorpay';
+                                const isPaidStatus = group.paymentStatus === 'paid' || allOrders.some(o => o.paymentStatus === 'paid');
+                                const isPaid = isOnlinePayment || isPaidStatus;
 
-                                const isServed = orderData?.status === 'delivered';
+                                // Status checks
+                                const isServed = mainStatus === 'delivered';
 
-                                const actionDetails = actionConfig[orderData?.status];
+                                // Action button config based on mainStatus
+                                const actionDetails = actionConfig[mainStatus];
                                 const ActionIcon = actionDetails ? actionDetails.icon : null;
+
+                                // For pending orders, find the pending order IDs to confirm
+                                const pendingOrderIds = allOrders.filter(o => o.status === 'pending').map(o => o.id);
+                                const firstPendingOrderId = pendingOrderIds[0];
+
+                                // For active orders, find the first non-delivered order to update
+                                const activeOrderToUpdate = allOrders.find(o => o.status !== 'delivered' && o.status !== 'pending');
+                                const orderIdToUpdate = activeOrderToUpdate?.id;
 
                                 return (
                                     <div key={group.id} className={cn("relative p-3 rounded-lg border",
                                         isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
                                     )}>
+                                        {/* Header */}
                                         <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-semibold text-foreground">{group.tab_name || 'New Order'} <span className="text-xs text-muted-foreground">({group.pax_count || 1} guests)</span></h4>
+                                            <h4 className="font-semibold text-foreground">
+                                                {group.tab_name || 'New Order'}
+                                                <span className="text-xs text-muted-foreground"> ({group.pax_count || 1} guests)</span>
+                                            </h4>
                                             <div className="text-right">
                                                 {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
-                                                {(orderData?.ordered_by || group.ordered_by) && (
+                                                {(group.ordered_by || firstOrder?.ordered_by) && (
                                                     <p className={cn("text-xs font-medium",
-                                                        (orderData?.ordered_by || group.ordered_by)?.startsWith('waiter')
-                                                            ? "text-blue-400"
-                                                            : "text-green-400"
+                                                        (group.ordered_by || firstOrder?.ordered_by)?.startsWith('waiter')
+                                                            ? "text-blue-400" : "text-green-400"
                                                     )}>
-                                                        {(orderData?.ordered_by || group.ordered_by)?.startsWith('waiter')
-                                                            ? `📱 ${orderData?.ordered_by_name || 'Waiter'}`
-                                                            : '📲 Via QR'}
+                                                        {(group.ordered_by || firstOrder?.ordered_by)?.startsWith('waiter')
+                                                            ? `📱 ${group.ordered_by_name || 'Waiter'}` : '📲 Via QR'}
                                                     </p>
                                                 )}
                                             </div>
                                         </div>
 
+                                        {/* Items list */}
                                         {allItems.length > 0 && (
                                             <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
                                                 {allItems.map((item, i) => (
@@ -365,6 +380,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             </div>
                                         )}
 
+                                        {/* Bill & Payment Status */}
                                         {totalBill > 0 && (
                                             <div className="mt-3 pt-3 border-t border-dashed border-border/50">
                                                 <div className="flex justify-between items-center font-bold">
@@ -373,38 +389,71 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 </div>
                                                 <div className="flex justify-between items-center text-xs mt-1">
                                                     <span>Payment Status:</span>
-                                                    <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
-                                                        {isPaid ? 'PAID' : 'Payment Due'}
+                                                    <span className={cn('font-semibold',
+                                                        isPaid ? 'text-green-500' :
+                                                            isServed ? 'text-orange-500' : 'text-yellow-500'
+                                                    )}>
+                                                        {isPaid ? 'PAID ✓' :
+                                                            isServed ? 'Payment to be collected' : 'Payment Due'}
                                                     </span>
                                                 </div>
                                             </div>
                                         )}
 
-                                        {isPending ? (
-                                            <div className="grid grid-cols-2 gap-2 mt-4">
-                                                <Button size="sm" variant="destructive" onClick={() => onRejectOrder(orderId)}> <X size={16} className="mr-2" /> Reject </Button>
-                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId)}> <Check size={16} className="mr-2" /> Confirm </Button>
-                                            </div>
-                                        ) : isActiveTab ? (
-                                            <div className="mt-4 space-y-2">
-                                                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-                                                    <p>STATUS:</p>
-                                                    <p className="font-bold capitalize text-primary">{orderData?.status?.replace('_', ' ') || 'Confirmed'}</p>
-                                                </div>
+                                        {/* Action Buttons based on status */}
+                                        <div className="mt-4 space-y-2">
+                                            {isPending ? (
+                                                /* PENDING: Confirm/Reject buttons */
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    {ActionIcon ? (
-                                                        <Button size="sm" className="w-full col-span-2" onClick={() => onUpdateStatus(orderId, actionDetails.next)}>
-                                                            <ActionIcon size={16} className="mr-2" /> {actionDetails.text}
-                                                        </Button>
-                                                    ) : isServed && isCOD ? (
-                                                        <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full col-span-2 bg-green-500 hover:bg-green-600">
-                                                            <Wallet size={16} className="mr-2" /> Mark as Paid
-                                                        </Button>
-                                                    ) : null}
-                                                    <Button variant="outline" size="sm" className="w-full col-span-2" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2" /> Print Bill </Button>
+                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(firstPendingOrderId)}>
+                                                        <X size={16} className="mr-2" /> Reject
+                                                    </Button>
+                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(firstPendingOrderId)}>
+                                                        <Check size={16} className="mr-2" /> Confirm
+                                                    </Button>
                                                 </div>
-                                            </div>
-                                        ) : null}
+                                            ) : (
+                                                /* ACTIVE: Show status and appropriate action button */
+                                                <>
+                                                    <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                                                        <p>STATUS:</p>
+                                                        <p className={cn("font-bold capitalize",
+                                                            mainStatus === 'delivered' ? 'text-green-500' : 'text-primary'
+                                                        )}>
+                                                            {mainStatus?.replace(/_/g, ' ') || 'Active'}
+                                                        </p>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2">
+                                                        {/* Next action button based on status */}
+                                                        {ActionIcon && orderIdToUpdate && (
+                                                            <Button size="sm" className="w-full" onClick={() => onUpdateStatus(orderIdToUpdate, actionDetails.next)}>
+                                                                <ActionIcon size={16} className="mr-2" /> {actionDetails.text}
+                                                            </Button>
+                                                        )}
+
+                                                        {/* After served: Mark as Paid (for non-online-payment orders) */}
+                                                        {isServed && !isPaid && (
+                                                            <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full bg-green-500 hover:bg-green-600">
+                                                                <Wallet size={16} className="mr-2" /> Mark as Paid
+                                                            </Button>
+                                                        )}
+
+                                                        {/* After paid: Show clear tab button */}
+                                                        {isServed && isPaid && (
+                                                            <Button variant="outline" onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="w-full">
+                                                                <CheckCircle size={16} className="mr-2" /> Clear Tab
+                                                            </Button>
+                                                        )}
+
+                                                        <Button variant="outline" size="sm" className="w-full" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}>
+                                                            <Printer size={16} className="mr-2" /> Print Bill
+                                                        </Button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {/* Clear tab X button (only for empty/no-bill tabs) */}
                                         {!isPending && totalBill === 0 && (
                                             <button onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground">
                                                 <X size={14} />
@@ -838,66 +887,158 @@ const DineInPageContent = () => {
     };
 
     const handleMarkAsPaid = async (tableId, tabId, paymentMethod) => {
-        setLoading(true);
+        // Optimistic update - update table state to needs_cleaning
+        setAllData(prev => {
+            if (!prev?.tables) return prev;
+            const updatedTables = prev.tables.map(table => {
+                if (table.id === tableId) {
+                    // Remove the paid tab and set state to needs_cleaning
+                    const { [tabId]: removedTab, ...remainingTabs } = table.tabs || {};
+                    return {
+                        ...table,
+                        tabs: remainingTabs,
+                        state: Object.keys(remainingTabs).length === 0 ? 'needs_cleaning' : table.state
+                    };
+                }
+                return table;
+            });
+            return { ...prev, tables: updatedTables };
+        });
+
         try {
             await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabId, paymentMethod }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
-            await fetchData(true);
         } catch (error) {
+            await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear table: ${error.message}` });
-        } finally {
-            setLoading(false);
         }
     };
 
     const handleMarkAsCleaned = async (tableId) => {
-        setLoading(true);
+        // Optimistic update - set table to available
+        setAllData(prev => {
+            if (!prev?.tables) return prev;
+            const updatedTables = prev.tables.map(table => {
+                if (table.id === tableId) {
+                    return { ...table, state: 'available' };
+                }
+                return table;
+            });
+            return { ...prev, tables: updatedTables };
+        });
+
         try {
             await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
-            await fetchData(true);
         } catch (error) {
+            await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update table status: ${error.message}` });
-        } finally {
-            setLoading(false);
         }
     };
 
     const handleClearTab = async (tabId, tableId, paxCount) => {
-        setLoading(true);
+        // Optimistic update - remove tab/order from view
+        setAllData(prev => {
+            if (!prev?.tables) return prev;
+            const updatedTables = prev.tables.map(table => {
+                if (table.id === tableId) {
+                    // Remove from tabs if exists
+                    const { [tabId]: removedTab, ...remainingTabs } = table.tabs || {};
+                    // Remove from pendingOrders if exists
+                    const updatedPending = (table.pendingOrders || []).filter(order => order.id !== tabId);
+                    // Update current_pax
+                    const newPax = Math.max(0, (table.current_pax || 0) - (paxCount || 0));
+                    return {
+                        ...table,
+                        tabs: remainingTabs,
+                        pendingOrders: updatedPending,
+                        current_pax: newPax,
+                        state: Object.keys(remainingTabs).length === 0 && updatedPending.length === 0 ? 'available' : table.state
+                    };
+                }
+                return table;
+            });
+            return { ...prev, tables: updatedTables };
+        });
+
         try {
             await handleApiCall('PATCH', { action: 'clear_tab', tabId, tableId, paxCount }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: `Tab on Table ${tableId} has been cleared.` });
-            await fetchData(true);
         } catch (error) {
+            await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear tab: ${error.message}` });
-        } finally {
-            setLoading(false);
         }
     }
 
     const handleUpdateStatus = async (orderId, newStatus) => {
-        setLoading(true);
+        // Optimistic update - update local state immediately
+        setAllData(prev => {
+            if (!prev?.tables) return prev;
+            const updatedTables = prev.tables.map(table => {
+                // Update in tabs
+                const updatedTabs = Object.fromEntries(
+                    Object.entries(table.tabs || {}).map(([tabId, tab]) => {
+                        const updatedOrders = Object.fromEntries(
+                            Object.entries(tab.orders || {}).map(([oid, order]) => {
+                                if (oid === orderId) {
+                                    return [oid, { ...order, status: newStatus }];
+                                }
+                                return [oid, order];
+                            })
+                        );
+                        return [tabId, { ...tab, orders: updatedOrders }];
+                    })
+                );
+                // Update in pendingOrders
+                const updatedPending = (table.pendingOrders || []).map(order => {
+                    if (order.id === orderId) {
+                        return { ...order, status: newStatus };
+                    }
+                    return order;
+                });
+                return { ...table, tabs: updatedTabs, pendingOrders: updatedPending };
+            });
+            return { ...prev, tables: updatedTables };
+        });
+
+        // API call in background
         try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus }, '/api/owner/orders');
-            await fetchData(true);
         } catch (error) {
+            // Revert on error - refetch data
+            await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update status: ${error.message}` });
-        } finally {
-            setLoading(false);
         }
     }
 
     const handleRejectOrder = async (orderId) => {
-        setLoading(true);
+        // Optimistic update - remove order from view
+        setAllData(prev => {
+            if (!prev?.tables) return prev;
+            const updatedTables = prev.tables.map(table => {
+                // Update in tabs
+                const updatedTabs = Object.fromEntries(
+                    Object.entries(table.tabs || {}).map(([tabId, tab]) => {
+                        const updatedOrders = Object.fromEntries(
+                            Object.entries(tab.orders || {}).filter(([oid]) => oid !== orderId)
+                        );
+                        return [tabId, { ...tab, orders: updatedOrders }];
+                    })
+                );
+                // Remove from pendingOrders
+                const updatedPending = (table.pendingOrders || []).filter(order => order.id !== orderId);
+                return { ...table, tabs: updatedTabs, pendingOrders: updatedPending };
+            });
+            return { ...prev, tables: updatedTables };
+        });
+
+        // API call in background
         try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
             setInfoDialog({ isOpen: true, title: "Success", message: "Order rejected." });
-            await fetchData(true);
         } catch (error) {
+            await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not reject order: ${error.message}` });
-        } finally {
-            setLoading(false);
         }
     }
 

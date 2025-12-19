@@ -81,13 +81,28 @@ function AdminLayoutContent({ children }) {
 
   const { user, isUserLoading } = useUser();
 
+  // Track if auth has settled
+  const [authChecked, setAuthChecked] = useState(false);
+
   useEffect(() => {
-    if (!isUserLoading) {
-      if (!user) {
-        router.push('/');
-      }
+    if (isUserLoading) return;
+
+    // Give auth time to settle (race condition fix)
+    const timer = setTimeout(() => {
+      setAuthChecked(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [isUserLoading]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+
+    if (!user) {
+      console.log('[Admin Layout] No user after auth check, redirecting');
+      router.push('/');
     }
-  }, [user, isUserLoading, router]);
+  }, [user, authChecked, router]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -112,7 +127,7 @@ function AdminLayoutContent({ children }) {
     }
   };
 
-  if (isUserLoading) {
+  if (isUserLoading || !authChecked) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <GoldenCoinSpinner />

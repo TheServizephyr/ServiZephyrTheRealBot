@@ -153,12 +153,25 @@ function OwnerDashboardContent({ children }) {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  useEffect(() => {
-    if (isUserLoading) {
-      return;
-    }
+  // Track if auth has settled
+  const [authChecked, setAuthChecked] = useState(false);
 
-    if (!isUserLoading && !user) {
+  useEffect(() => {
+    if (isUserLoading) return;
+
+    // Give auth time to settle (race condition fix)
+    const timer = setTimeout(() => {
+      setAuthChecked(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [isUserLoading]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+
+    if (!user) {
+      console.log('[Street Vendor Layout] No user after auth check, redirecting');
       router.push('/');
       return;
     }
@@ -240,7 +253,7 @@ function OwnerDashboardContent({ children }) {
 
   }, [user, isUserLoading, impersonatedOwnerId, router]);
 
-  if (isUserLoading) {
+  if (isUserLoading || !authChecked) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <GoldenCoinSpinner />

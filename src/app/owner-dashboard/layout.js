@@ -155,12 +155,31 @@ function OwnerDashboardContent({ children }) {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
+  // Track if we've given auth time to settle
+  const [authChecked, setAuthChecked] = useState(false);
+
   useEffect(() => {
+    // Wait for loading to complete
     if (isUserLoading) {
       return;
     }
 
-    if (!isUserLoading && !user) {
+    // Give auth a moment to settle (race condition fix for login redirect)
+    const timer = setTimeout(() => {
+      setAuthChecked(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [isUserLoading]);
+
+  useEffect(() => {
+    // Only redirect after auth has been properly checked
+    if (!authChecked) {
+      return;
+    }
+
+    if (!user) {
+      console.log('[Layout] No user after auth check, redirecting to home');
       router.push('/');
       return;
     }
@@ -272,7 +291,7 @@ function OwnerDashboardContent({ children }) {
 
   }, [user, isUserLoading, effectiveOwnerId, router]);
 
-  if (isUserLoading) {
+  if (isUserLoading || !authChecked) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <GoldenCoinSpinner />

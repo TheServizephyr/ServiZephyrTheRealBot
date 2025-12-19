@@ -661,6 +661,7 @@ const OrderPageInternal = () => {
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
     const tableIdFromUrl = searchParams.get('table');
+    const tabIdFromUrl = searchParams.get('tabId'); // For adding to existing tab
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     const activeOrderId = searchParams.get('activeOrderId');
@@ -792,7 +793,14 @@ const OrderPageInternal = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
 
-            setActiveTabInfo({ id: data.tabId, name: tabName, pax_count: paxCount });
+            const tabInfo = { id: data.tabId, name: tabName, pax_count: paxCount };
+            setActiveTabInfo(tabInfo);
+
+            // Save to localStorage for session persistence
+            const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
+            localStorage.setItem(dineInTabKey, JSON.stringify(tabInfo));
+            console.log('[Dine-In] Saved tab to localStorage:', tabInfo);
+
             setDineInState('ready');
             setIsDineInModalOpen(false);
 
@@ -915,6 +923,24 @@ const OrderPageInternal = () => {
                     setActiveTabInfo({ id: tabIdFromUrl, name: 'Active Tab', total: 0 });
                     setDineInState('ready');
                 } else {
+                    // Check localStorage for existing tab for this table
+                    const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
+                    const savedTabData = localStorage.getItem(dineInTabKey);
+
+                    if (savedTabData) {
+                        try {
+                            const tabInfo = JSON.parse(savedTabData);
+                            console.log('[Dine-In] Found existing tab in localStorage:', tabInfo);
+                            // Auto-load existing tab
+                            setActiveTabInfo(tabInfo);
+                            setDineInState('ready');
+                            return; // Skip modal
+                        } catch (e) {
+                            console.error('[Dine-In] Error parsing saved tab:', e);
+                            localStorage.removeItem(dineInTabKey);
+                        }
+                    }
+
                     try {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
                         if (!tableRes.ok) throw new Error((await tableRes.json()).message);
@@ -1151,8 +1177,12 @@ const OrderPageInternal = () => {
         if (token) params.append('token', token);
         if (tableIdFromUrl) params.append('table', tableIdFromUrl);
 
-        if (deliveryType === 'dine-in' && activeTabInfo.id) {
-            params.append('tabId', activeTabInfo.id);
+        // Use tabIdFromUrl (from Add More button) if present, otherwise use activeTabInfo.id
+        if (deliveryType === 'dine-in') {
+            const tabId = tabIdFromUrl || activeTabInfo.id;
+            if (tabId) {
+                params.append('tabId', tabId);
+            }
         }
         if (liveOrder && liveOrder.restaurantId === restaurantId) {
             params.append('activeOrderId', liveOrder.orderId);
@@ -1337,6 +1367,35 @@ const OrderPageInternal = () => {
                                 <Bell size={20} className="text-primary" /> Call Waiter
                             </Button>
                         </div>
+                    )}
+
+                    {/* Track Live Order Button - Only for Dine-In with existing order */}
+                    {deliveryType === 'dine-in' && trackingUrl && liveOrder && liveOrder.restaurantId === restaurantId && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-gradient-to-r from-yellow-400 to-orange-400 p-4 rounded-lg border-2 border-yellow-500 shadow-lg"
+                        >
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
+                                        <Navigation className="text-white" size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-white font-bold text-sm">Your Order is Active</p>
+                                        <p className="text-white/80 text-xs">Track your order status</p>
+                                    </div>
+                                </div>
+                                <Button
+                                    asChild
+                                    className="bg-white text-black hover:bg-white/90 font-bold"
+                                >
+                                    <a href={trackingUrl}>
+                                        Track Order
+                                    </a>
+                                </Button>
+                            </div>
+                        </motion.div>
                     )}
 
                     <div className="relative w-full">

@@ -19,12 +19,25 @@ function RiderLayoutContent({ children }) {
     const [riderName, setRiderName] = useState('Rider');
     const [riderImage, setRiderImage] = useState('');
 
-    useEffect(() => {
-        if (isUserLoading) {
-            return;
-        }
+    // Track if auth has settled
+    const [authChecked, setAuthChecked] = useState(false);
 
-        if (!isUserLoading && !user) {
+    useEffect(() => {
+        if (isUserLoading) return;
+
+        // Give auth time to settle (race condition fix)
+        const timer = setTimeout(() => {
+            setAuthChecked(true);
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [isUserLoading]);
+
+    useEffect(() => {
+        if (!authChecked) return;
+
+        if (!user) {
+            console.log('[Rider Layout] No user after auth check, redirecting');
             router.push('/rider-dashboard/login');
             return;
         }
@@ -74,7 +87,7 @@ function RiderLayoutContent({ children }) {
         router.push('/rider-dashboard/login');
     };
 
-    if (isUserLoading) {
+    if (isUserLoading || !authChecked) {
         return (
             <div className="flex h-screen items-center justify-center bg-background">
                 <GoldenCoinSpinner />

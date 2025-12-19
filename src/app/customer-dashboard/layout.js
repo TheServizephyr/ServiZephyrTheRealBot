@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Home, Map, MessageSquare, User, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -40,11 +40,28 @@ const CustomerDashboardContent = ({ children }) => {
   const searchParams = useSearchParams();
   const { user, isUserLoading } = useUser();
 
+  // Track if auth has settled
+  const [authChecked, setAuthChecked] = useState(false);
+
   useEffect(() => {
-    if (!isUserLoading && !user) {
+    if (isUserLoading) return;
+
+    // Give auth time to settle (race condition fix)
+    const timer = setTimeout(() => {
+      setAuthChecked(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [isUserLoading]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+
+    if (!user) {
+      console.log('[Customer Layout] No user after auth check, redirecting');
       router.push('/');
     }
-  }, [user, isUserLoading, router]);
+  }, [user, authChecked, router]);
 
   // Log impersonation when detected
   useEffect(() => {
@@ -68,7 +85,7 @@ const CustomerDashboardContent = ({ children }) => {
     }
   }, [user, searchParams]);
 
-  if (isUserLoading) {
+  if (isUserLoading || !authChecked) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <GoldenCoinSpinner />
