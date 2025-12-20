@@ -780,6 +780,8 @@ export async function POST(req) {
         console.log(`[API /order/create] Creating final order document with ID ${newOrderRef.id}`);
 
         let dineInToken = null;
+
+        // Generate token for street vendor
         if (isStreetVendorOrder) {
             console.log(`[API /order/create] Generating token for street vendor order.`);
             try {
@@ -796,6 +798,42 @@ export async function POST(req) {
                 console.log(`[API /order/create] Generated Street Vendor Token: ${dineInToken}`);
             } catch (e) {
                 console.error(`[API /order/create] Error generating street vendor token:`, e);
+            }
+        }
+
+        // Generate or reuse token for dine-in
+        if (deliveryType === 'dine-in' && dineInTabId) {
+            console.log(`[API /order/create] Checking for existing token for dineInTabId: ${dineInTabId}`);
+            try {
+                // Check if there's already an order with this dineInTabId
+                const existingOrdersSnapshot = await firestore
+                    .collection('orders')
+                    .where('restaurantId', '==', restaurantId)
+                    .where('dineInTabId', '==', dineInTabId)
+                    .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
+                    .limit(1)
+                    .get();
+
+                if (!existingOrdersSnapshot.empty) {
+                    // Reuse existing token
+                    const existingOrder = existingOrdersSnapshot.docs[0].data();
+                    dineInToken = existingOrder.dineInToken;
+                    console.log(`[API /order/create] Reusing existing token: ${dineInToken}`);
+                } else {
+                    // Generate new token for new tab
+                    const lastToken = businessData.lastOrderToken || 0;
+                    const newTokenNumber = lastToken + 1;
+                    dineInToken = String(newTokenNumber);
+                    batch.update(businessRef, { lastOrderToken: newTokenNumber });
+                    console.log(`[API /order/create] Generated new dine-in token: ${dineInToken}`);
+                }
+            } catch (e) {
+                console.error(`[API /order/create] Error generating dine-in token:`, e);
+                // Fallback: generate new token
+                const lastToken = businessData.lastOrderToken || 0;
+                const newTokenNumber = lastToken + 1;
+                dineInToken = String(newTokenNumber);
+                batch.update(businessRef, { lastOrderToken: newTokenNumber });
             }
         }
 
