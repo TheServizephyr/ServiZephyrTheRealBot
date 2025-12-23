@@ -982,44 +982,14 @@ const DineInPageContent = () => {
         // Set loading state
         setButtonLoading(`status_${orderId}`);
 
-        // Optimistic update - update local state immediately
-        setAllData(prev => {
-            if (!prev?.tables) return prev;
-            const updatedTables = prev.tables.map(table => {
-                // Update in tabs
-                const updatedTabs = Object.fromEntries(
-                    Object.entries(table.tabs || {}).map(([tabId, tab]) => {
-                        const updatedOrders = Object.fromEntries(
-                            Object.entries(tab.orders || {}).map(([oid, order]) => {
-                                if (oid === orderId) {
-                                    return [oid, { ...order, status: newStatus }];
-                                }
-                                return [oid, order];
-                            })
-                        );
-                        return [tabId, { ...tab, orders: updatedOrders }];
-                    })
-                );
-                // Update in pendingOrders
-                const updatedPending = (table.pendingOrders || []).map(order => {
-                    if (order.id === orderId) {
-                        return { ...order, status: newStatus };
-                    }
-                    return order;
-                });
-                return { ...table, tabs: updatedTabs, pendingOrders: updatedPending };
-            });
-            return { ...prev, tables: updatedTables };
-        });
-
-        // API call in background
+        // API call  
         try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus }, '/api/owner/orders');
-            setButtonLoading(null); // Stop spinner immediately on success
+            // Refetch to get updated data with correct calculated fields (hasPending, mainStatus, etc)
+            await fetchData(true);
+            setButtonLoading(null);
         } catch (error) {
-            setButtonLoading(null); // Stop spinner immediately even on error
-            // Revert on error - refetch data (in background, don't block UI)
-            fetchData(true); // Don't await - let it happen in background
+            setButtonLoading(null);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update status: ${error.message}` });
         }
     }
@@ -1028,34 +998,14 @@ const DineInPageContent = () => {
         // Set loading state
         setButtonLoading(`reject_${orderId}`);
 
-        // Optimistic update - remove order from view
-        setAllData(prev => {
-            if (!prev?.tables) return prev;
-            const updatedTables = prev.tables.map(table => {
-                // Update in tabs
-                const updatedTabs = Object.fromEntries(
-                    Object.entries(table.tabs || {}).map(([tabId, tab]) => {
-                        const updatedOrders = Object.fromEntries(
-                            Object.entries(tab.orders || {}).filter(([oid]) => oid !== orderId)
-                        );
-                        return [tabId, { ...tab, orders: updatedOrders }];
-                    })
-                );
-                // Remove from pendingOrders
-                const updatedPending = (table.pendingOrders || []).filter(order => order.id !== orderId);
-                return { ...table, tabs: updatedTabs, pendingOrders: updatedPending };
-            });
-            return { ...prev, tables: updatedTables };
-        });
-
-        // API call in background
+        // API call
         try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
-            setButtonLoading(null); // Stop spinner immediately
+            await fetchData(true); // Refetch to remove rejected order
+            setButtonLoading(null);
             setInfoDialog({ isOpen: true, title: "Success", message: "Order rejected." });
         } catch (error) {
-            setButtonLoading(null); // Stop spinner immediately even on error
-            fetchData(true); // Background refetch (don't await)
+            setButtonLoading(null);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not reject order: ${error.message}` });
         }
     }
