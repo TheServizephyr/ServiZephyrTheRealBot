@@ -87,10 +87,11 @@ export async function GET(req) {
         // });
 
         // 4. Fetch all relevant orders that are not finished or rejected
+        // IMPORTANT: Include 'delivered' status - tabs should stay visible for payment/cleaning flow
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', 'not-in', ['delivered', 'picked_up', 'rejected']);
+            .where('status', 'not-in', ['picked_up', 'rejected']); // Removed 'delivered' from exclusion
 
         const ordersSnap = await ordersQuery.get();
 
