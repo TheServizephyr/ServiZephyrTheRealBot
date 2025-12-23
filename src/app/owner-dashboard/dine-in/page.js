@@ -911,7 +911,7 @@ const DineInPageContent = () => {
                 orderIds,
                 paymentStatus: 'paid',
                 paymentMethod
-            }, '/api/owner/orders/payment-status');
+            }, '/api/owner/orders'); // Fixed: use /orders not /orders/payment-status
 
             // Refetch to get updated data
             await fetchData(true);
