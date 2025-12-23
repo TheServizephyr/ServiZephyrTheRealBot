@@ -401,24 +401,33 @@ export async function POST(req) {
                         newTokenNumber = businessData.lastOrderToken || 0; // Don't increment when reusing
                         console.log(`[API /order/create] POST-PAID ✅ REUSING token: ${dineInToken} from order ${existingOrdersSnapshot.docs[0].id}`);
                     } else {
-                        // Generate NEW token (simple number, NO random chars)
+                        // Generate NEW token with random characters for security
                         const lastToken = businessData.lastOrderToken || 0;
                         newTokenNumber = lastToken + 1;
-                        dineInToken = String(newTokenNumber);
+                        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                        const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                        const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                        dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
                         console.log(`[API /order/create] POST-PAID ⚠️ NEW token generated: ${dineInToken}`);
                     }
                 } catch (e) {
                     console.error(`[API /order/create] POST-PAID ❌ Error in token query:`, e);
-                    // Fallback: generate new token
+                    // Fallback: generate new token with random characters
                     const lastToken = businessData.lastOrderToken || 0;
                     newTokenNumber = lastToken + 1;
-                    dineInToken = String(newTokenNumber);
+                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
                 }
             } else {
                 console.log(`[API /order/create] POST-PAID ⚠️ No dineInTabId provided!`);
                 const lastToken = businessData.lastOrderToken || 0;
                 newTokenNumber = lastToken + 1;
-                dineInToken = String(newTokenNumber);
+                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
             }
 
             const batch = firestore.batch();
