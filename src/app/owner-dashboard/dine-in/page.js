@@ -284,7 +284,7 @@ const actionConfig = {
 };
 
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus }) => {
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -438,10 +438,17 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             </Button>
                                                         )}
 
-                                                        {/* After paid: Show clear tab button */}
-                                                        {isServed && isPaid && (
-                                                            <Button variant="outline" onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="w-full">
-                                                                <CheckCircle size={16} className="mr-2" /> Clear Tab
+                                                        {/* After paid: Need Cleaning button (doesn't clear yet) */}
+                                                        {isServed && isPaid && !group.needsCleaning && (
+                                                            <Button variant="outline" onClick={() => onMarkForCleaning(group.id, tableData.id)} className="w-full">
+                                                                <Wind size={16} className="mr-2" /> Need Cleaning
+                                                            </Button>
+                                                        )}
+
+                                                        {/* After cleaning marked: Clear Table button */}
+                                                        {group.needsCleaning && (
+                                                            <Button variant="destructive" onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="w-full">
+                                                                <CheckCircle size={16} className="mr-2" /> Mark as Cleaned (Clear Table)
                                                             </Button>
                                                         )}
 

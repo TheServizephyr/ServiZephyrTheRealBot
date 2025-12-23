@@ -161,6 +161,12 @@ export async function GET(req) {
                 return orderPriority < lowestPriority ? o.status : lowest;
             }, 'delivered');
 
+            // Determine payment status
+            const isOnlinePayment = orders.some(o => o.paymentDetails?.method === 'razorpay' || o.paymentDetails?.method === 'phonepe');
+            const isPaidStatus = orders.some(o => o.paymentStatus === 'paid');
+            const isPaid = isOnlinePayment || isPaidStatus;
+            const isServed = lowestStatus === 'delivered';
+
             const groupData = {
                 ...group,
                 totalAmount,
@@ -169,6 +175,8 @@ export async function GET(req) {
                 status: hasPending ? 'pending' : 'active',
                 mainStatus: lowestStatus, // For determining which button to show
                 items: orders.flatMap(o => o.items || []),
+                isPaid, // NEW: Payment status
+                needsCleaning: isServed && isPaid && !group.cleaned, // NEW: Needs cleaning if served + paid but not cleaned
             };
 
             // If has any pending, put in pendingOrders
