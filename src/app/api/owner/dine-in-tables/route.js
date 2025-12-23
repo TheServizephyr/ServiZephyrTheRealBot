@@ -109,6 +109,10 @@ export async function GET(req) {
             // If it belongs to an existing dineInTab (from dineInTabs collection), add to that tab
             if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
+                // Set token if not already set
+                if (orderData.dineInToken && !table.tabs[tabId].dineInToken) {
+                    table.tabs[tabId].dineInToken = orderData.dineInToken;
+                }
                 return;
             }
 
@@ -178,6 +182,36 @@ export async function GET(req) {
                 // Active orders go to tabs
                 table.tabs[groupKey] = groupData;
             }
+        });
+
+        // 5.5. Calculate hasPending, status, mainStatus for tabs (for button display)
+        tableMap.forEach(table => {
+            Object.values(table.tabs).forEach(tab => {
+                const orders = Object.values(tab.orders || {});
+                if (orders.length > 0) {
+                    const hasPending = orders.some(o => o.status === 'pending');
+                    const hasConfirmed = orders.some(o => o.status !== 'pending' && o.status !== 'rejected');
+
+                    // Calculate total amount
+                    const totalAmount = orders.reduce((sum, o) => sum + (o.totalAmount || o.grandTotal || 0), 0);
+
+                    // Get main status (lowest in progression)
+                    const statusPriority = { 'pending': 0, 'confirmed': 1, 'preparing': 2, 'ready_for_pickup': 3, 'delivered': 4 };
+                    const lowestStatus = orders.reduce((lowest, o) => {
+                        const orderPriority = statusPriority[o.status] ?? 99;
+                        const lowestPriority = statusPriority[lowest] ?? 99;
+                        return orderPriority < lowestPriority ? o.status : lowest;
+                    }, 'delivered');
+
+                    // Update tab with calculated fields
+                    tab.hasPending = hasPending;
+                    tab.hasConfirmed = hasConfirmed;
+                    tab.status = hasPending ? 'pending' : 'active';
+                    tab.mainStatus = lowestStatus;
+                    tab.totalAmount = totalAmount;
+                    tab.items = orders.flatMap(o => o.items || []);
+                }
+            });
         });
 
         // 6. Recalculate current_pax and state for EVERY table based on live data
