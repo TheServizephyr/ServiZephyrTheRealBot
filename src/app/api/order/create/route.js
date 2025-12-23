@@ -378,6 +378,7 @@ export async function POST(req) {
 
             // Generate or REUSE dine-in token based on dineInTabId
             let dineInToken = null;
+            let newTokenNumber = null; // Define outside for batch.update
 
             if (dineInTabId) {
                 console.log(`[API /order/create] POST-PAID: Checking for existing token for tabId: ${dineInTabId}`);
@@ -397,11 +398,12 @@ export async function POST(req) {
                         // REUSE existing token
                         const existingOrder = existingOrdersSnapshot.docs[0].data();
                         dineInToken = existingOrder.dineInToken;
+                        newTokenNumber = businessData.lastOrderToken || 0; // Don't increment when reusing
                         console.log(`[API /order/create] POST-PAID ✅ REUSING token: ${dineInToken} from order ${existingOrdersSnapshot.docs[0].id}`);
                     } else {
                         // Generate NEW token (simple number, NO random chars)
                         const lastToken = businessData.lastOrderToken || 0;
-                        const newTokenNumber = lastToken + 1;
+                        newTokenNumber = lastToken + 1;
                         dineInToken = String(newTokenNumber);
                         console.log(`[API /order/create] POST-PAID ⚠️ NEW token generated: ${dineInToken}`);
                     }
@@ -409,13 +411,13 @@ export async function POST(req) {
                     console.error(`[API /order/create] POST-PAID ❌ Error in token query:`, e);
                     // Fallback: generate new token
                     const lastToken = businessData.lastOrderToken || 0;
-                    const newTokenNumber = lastToken + 1;
+                    newTokenNumber = lastToken + 1;
                     dineInToken = String(newTokenNumber);
                 }
             } else {
                 console.log(`[API /order/create] POST-PAID ⚠️ No dineInTabId provided!`);
                 const lastToken = businessData.lastOrderToken || 0;
-                const newTokenNumber = lastToken + 1;
+                newTokenNumber = lastToken + 1;
                 dineInToken = String(newTokenNumber);
             }
 
