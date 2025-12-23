@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle } from 'lucide-react';
+import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
@@ -402,7 +402,19 @@ function DineInTrackingContent() {
             </main>
 
             <footer className="fixed bottom-0 left-0 w-full bg-background/95 backdrop-blur-lg border-t border-border z-10">
-                <div className="container mx-auto p-4">
+                <div className="container mx-auto p-4 space-y-3">
+                    {/* Add More Items Button */}
+                    {!isServed && (
+                        <Button
+                            onClick={handleAddMoreItems}
+                            variant="outline"
+                            className="w-full h-12 border-primary text-primary hover:bg-primary/10"
+                        >
+                            <Plus className="mr-2 h-5 w-5" /> Add More Items
+                        </Button>
+                    )}
+
+                    {/* Pay Bill Button */}
                     <Button
                         onClick={() => setIsPayModalOpen(true)}
                         className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground"
