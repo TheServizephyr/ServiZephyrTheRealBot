@@ -110,10 +110,24 @@ export async function GET(req) {
             // NOTE: dineInTabs loading disabled above, so all orders go to orderGroups
             // (This ensures single detailed card per tab)
 
-            // For orders without tabId, group by tab_name
+            // CRITICAL: Group by dineInToken to prevent duplicate cards
+            // Orders with same token should ALWAYS be in the same group
             const tabName = orderData.tab_name || orderData.customerName || 'Guest';
-            // IMPORTANT: Use dineInTabId as key if it exists, so orderGroup can override tab from dineInTabs
-            const groupKey = tabId || `${tableId}_${tabName}`;
+            const dineInToken = orderData.dineInToken;
+
+            // Priority: dineInToken > tabId > tableId_tabName
+            // This ensures orders with same token are grouped even if tabId differs
+            let groupKey;
+            if (dineInToken) {
+                // Use token as key - prevents duplicates when token is same
+                groupKey = `${tableId}_token_${dineInToken}`;
+            } else if (tabId) {
+                // Fallback to tabId
+                groupKey = tabId;
+            } else {
+                // Last resort: table + name
+                groupKey = `${tableId}_${tabName}`;
+            }
 
             if (!orderGroups.has(groupKey)) {
                 orderGroups.set(groupKey, {
@@ -137,6 +151,14 @@ export async function GET(req) {
             // Keep the latest token
             if (orderData.dineInToken && !group.dineInToken) {
                 group.dineInToken = orderData.dineInToken;
+            }
+
+            // Update tab_name and pax_count to latest values
+            if (orderData.tab_name) {
+                group.tab_name = orderData.tab_name;
+            }
+            if (orderData.pax_count) {
+                group.pax_count = orderData.pax_count;
             }
         });
 
