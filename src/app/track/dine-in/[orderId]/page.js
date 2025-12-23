@@ -114,10 +114,15 @@ function DineInTrackingContent() {
         return () => clearInterval(interval);
     }, [fetchData]);
 
-    // Calculate bill details
+    // Calculate bill details - AGGREGATE ALL ORDERS IN SAME TAB
     const billDetails = useMemo(() => {
         if (!orderData?.order) return null;
         const order = orderData.order;
+
+        // For dine-in, we need to fetch ALL orders with same dineInTabId
+        // But for now, show current order's items
+        // TODO: Fetch all orders with same dineInTabId from API
+
         return {
             items: order.items || [],
             subtotal: order.subtotal || order.totalAmount || 0,

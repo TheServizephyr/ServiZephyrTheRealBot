@@ -22,14 +22,14 @@ export async function GET(request, { params }) {
             console.log(`[API][Order Status] Error: Order document ${orderId} not found.`);
             return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
         }
-        
+
         const orderData = orderSnap.data();
         let deliveryBoyData = null;
         console.log(`[API][Order Status] Order data found. Status: ${orderData.status}, Delivery Boy ID: ${orderData.deliveryBoyId}`);
 
         if (orderData.deliveryBoyId) {
             console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from drivers collection.`);
-            
+
             const driverDocRef = firestore.collection('drivers').doc(orderData.deliveryBoyId);
             const driverDoc = await driverDocRef.get();
 
@@ -37,17 +37,17 @@ export async function GET(request, { params }) {
                 deliveryBoyData = { id: driverDoc.id, ...driverDoc.data() };
                 console.log("[API][Order Status] Delivery boy found in 'drivers' collection.");
             } else {
-                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in the main 'drivers' collection.`);
+                console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in the main 'drivers' collection.`);
             }
         }
-        
+
         const businessType = orderData.businessType || 'restaurant';
         const collectionName = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
         const businessDoc = await firestore.collection(collectionName).doc(orderData.restaurantId).get();
-        
-        if(!businessDoc || !businessDoc.exists){
-             console.log(`[API][Order Status] Error: Business ${orderData.restaurantId} not found in collection ${collectionName}.`);
-             return NextResponse.json({ message: 'Business associated with order not found.' }, { status: 404 });
+
+        if (!businessDoc || !businessDoc.exists) {
+            console.log(`[API][Order Status] Error: Business ${orderData.restaurantId} not found in collection ${collectionName}.`);
+            return NextResponse.json({ message: 'Business associated with order not found.' }, { status: 404 });
         }
         const businessData = businessDoc.data();
         console.log("[API][Order Status] Business found.");
@@ -56,16 +56,63 @@ export async function GET(request, { params }) {
             ? { lat: businessData.address.latitude, lng: businessData.address.longitude }
             : null;
 
+        // For dine-in orders with dineInTabId, aggregate ALL orders in the same tab
+        let aggregatedItems = orderData.items || [];
+        let aggregatedSubtotal = orderData.subtotal || 0;
+        let aggregatedCgst = orderData.cgst || 0;
+        let aggregatedSgst = orderData.sgst || 0;
+        let aggregatedTotal = orderData.totalAmount || 0;
+
+        if (orderData.deliveryType === 'dine-in' && orderData.dineInTabId) {
+            console.log(`[API][Order Status] Dine-in order detected. Aggregating all orders for tabId: ${orderData.dineInTabId}`);
+            try {
+                const tabOrdersSnapshot = await firestore
+                    .collection('orders')
+                    .where('restaurantId', '==', orderData.restaurantId)
+                    .where('dineInTabId', '==', orderData.dineInTabId)
+                    .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
+                    .get();
+
+                if (!tabOrdersSnapshot.empty) {
+                    aggregatedItems = [];
+                    aggregatedSubtotal = 0;
+                    aggregatedCgst = 0;
+                    aggregatedSgst = 0;
+                    aggregatedTotal = 0;
+
+                    tabOrdersSnapshot.forEach(doc => {
+                        const tabOrder = doc.data();
+                        if (tabOrder.items) {
+                            aggregatedItems = aggregatedItems.concat(tabOrder.items);
+                        }
+                        aggregatedSubtotal += tabOrder.subtotal || 0;
+                        aggregatedCgst += tabOrder.cgst || 0;
+                        aggregatedSgst += tabOrder.sgst || 0;
+                        aggregatedTotal += tabOrder.totalAmount || 0;
+                    });
+
+                    console.log(`[API][Order Status] Aggregated ${tabOrdersSnapshot.size} orders. Total items: ${aggregatedItems.length}, Total: ${aggregatedTotal}`);
+                }
+            } catch (err) {
+                console.error("[API][Order Status] Error aggregating tab orders:", err);
+                // Fall back to single order data
+            }
+        }
+
         const responsePayload = {
             order: {
                 id: orderSnap.id,
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
-                restaurantLocation: restaurantLocationForMap, 
+                restaurantLocation: restaurantLocationForMap,
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
-                totalAmount: orderData.totalAmount,
+                items: aggregatedItems, // Aggregated items
+                subtotal: aggregatedSubtotal, // Aggregated subtotal
+                cgst: aggregatedCgst, // Aggregated cgst
+                sgst: aggregatedSgst, // Aggregated sgst
+                totalAmount: aggregatedTotal, // Aggregated total
                 paymentDetails: orderData.paymentDetails,
                 deliveryType: orderData.deliveryType,
                 dineInToken: orderData.dineInToken,
@@ -76,7 +123,7 @@ export async function GET(request, { params }) {
             restaurant: {
                 id: businessDoc.id,
                 name: businessData.name,
-                address: businessData.address 
+                address: businessData.address
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
@@ -87,7 +134,7 @@ export async function GET(request, { params }) {
                 location: deliveryBoyData.currentLocation
             } : null
         };
-        
+
         console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
         return NextResponse.json(responsePayload, { status: 200 });
 
