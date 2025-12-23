@@ -172,12 +172,12 @@ export async function PATCH(req) {
         const body = await req.json();
         console.log(`[API][PATCH /orders] Body:`, body);
 
-        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason, action, shouldRefund } = body;
+        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason, action, shouldRefund, paymentStatus, paymentMethod } = body;
 
         const { businessId, businessSnap } = await verifyOwnerWithAudit(
             req,
             'update_order_status',
-            { orderId, orderIds, newStatus, rejectionReason, action }
+            { orderId, orderIds, newStatus, rejectionReason, action, paymentStatus }
         );
 
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
@@ -205,6 +205,29 @@ export async function PATCH(req) {
 
             await batch.commit();
             return NextResponse.json({ message: 'Cash refund marked successfully.' });
+        }
+
+        // Handle payment status update (for dine-in mark as paid)
+        if (paymentStatus && idsToUpdate.length > 0) {
+            const batch = firestore.batch();
+            for (const id of idsToUpdate) {
+                const orderRef = firestore.collection('orders').doc(id);
+                const orderDoc = await orderRef.get();
+                if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
+                    console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
+                    continue;
+                }
+
+                const updateData = { paymentStatus };
+                if (paymentMethod) {
+                    updateData.paymentMethod = paymentMethod;
+                }
+
+                batch.update(orderRef, updateData);
+            }
+
+            await batch.commit();
+            return NextResponse.json({ message: 'Payment status updated successfully.' });
         }
 
         if (idsToUpdate.length === 0 || !newStatus) {

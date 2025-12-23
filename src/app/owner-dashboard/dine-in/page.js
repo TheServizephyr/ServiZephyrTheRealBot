@@ -895,30 +895,31 @@ const DineInPageContent = () => {
     };
 
     const handleMarkAsPaid = async (tableId, tabId, paymentMethod) => {
-        // Optimistic update - update table state to needs_cleaning
-        setAllData(prev => {
-            if (!prev?.tables) return prev;
-            const updatedTables = prev.tables.map(table => {
-                if (table.id === tableId) {
-                    // Remove the paid tab and set state to needs_cleaning
-                    const { [tabId]: removedTab, ...remainingTabs } = table.tabs || {};
-                    return {
-                        ...table,
-                        tabs: remainingTabs,
-                        state: Object.keys(remainingTabs).length === 0 ? 'needs_cleaning' : table.state
-                    };
-                }
-                return table;
-            });
-            return { ...prev, tables: updatedTables };
-        });
+        setButtonLoading(`paid_${tabId}`);
 
         try {
-            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabId, paymentMethod }, '/api/owner/dine-in-tables');
-            setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
-        } catch (error) {
+            // Find all orders in this tab and update their paymentStatus
+            const tabData = allData.tables.find(t => t.id === tableId)?.tabs?.[tabId];
+            if (!tabData?.orders) {
+                throw new Error('Tab not found');
+            }
+
+            const orderIds = Object.keys(tabData.orders);
+
+            // Update all orders in tab to mark as paid
+            await handleApiCall('PATCH', {
+                orderIds,
+                paymentStatus: 'paid',
+                paymentMethod
+            }, '/api/owner/orders/payment-status');
+
+            // Refetch to get updated data
             await fetchData(true);
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear table: ${error.message}` });
+            setButtonLoading(null);
+            setInfoDialog({ isOpen: true, title: "Success", message: "Payment marked as received." });
+        } catch (error) {
+            setButtonLoading(null);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark as paid: ${error.message}` });
         }
     };
 
