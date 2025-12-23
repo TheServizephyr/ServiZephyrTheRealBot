@@ -264,7 +264,7 @@ export async function POST(req) {
                         id: newTabId,
                         tableId,
                         restaurantId: businessRef.id,
-                        status: 'active',
+                        status: 'inactive', // Tab starts as inactive until first order
                         tab_name,
                         pax_count: Number(pax_count),
                         createdAt: FieldValue.serverTimestamp(),

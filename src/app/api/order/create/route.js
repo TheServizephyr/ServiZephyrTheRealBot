@@ -443,6 +443,17 @@ export async function POST(req) {
 
             // Update last token counter
             batch.update(businessRef, { lastOrderToken: newTokenNumber });
+
+            // ACTIVATE TAB on first order
+            if (dineInTabId) {
+                const tabRef = businessRef.collection('dineInTabs').doc(dineInTabId);
+                batch.update(tabRef, {
+                    status: 'active',
+                    firstOrderPlacedAt: FieldValue.serverTimestamp()
+                });
+                console.log(`[API /order/create] Activating tab: ${dineInTabId}`);
+            }
+
             await batch.commit();
 
             console.log(`[API /order/create] Post-paid dine-in order created with ID: ${newOrderRef.id}, Token: ${dineInToken}`);
