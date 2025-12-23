@@ -116,9 +116,11 @@ export async function GET(req) {
                 return;
             }
 
+
             // For orders without tabId, group by tab_name
             const tabName = orderData.tab_name || orderData.customerName || 'Guest';
-            const groupKey = `${tableId}_${tabName}`;
+            // IMPORTANT: Use dineInTabId as key if it exists, so orderGroup can override tab from dineInTabs
+            const groupKey = tabId || `${tableId}_${tabName}`;
 
             if (!orderGroups.has(groupKey)) {
                 orderGroups.set(groupKey, {
@@ -128,6 +130,7 @@ export async function GET(req) {
                     pax_count: orderData.pax_count || 1,
                     orders: {},
                     dineInToken: orderData.dineInToken,
+                    dineInTabId: tabId, // Store tabId for reference
                     ordered_by: orderData.ordered_by,
                     ordered_by_name: orderData.ordered_by_name,
                     paymentMethod: orderData.paymentMethod,
