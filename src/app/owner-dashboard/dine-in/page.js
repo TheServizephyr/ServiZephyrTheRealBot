@@ -279,7 +279,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 
 const actionConfig = {
     'confirmed': { text: 'Start Preparing', icon: CookingPot, next: 'preparing' },
-    'preparing': { text: 'Ready for Pickup', icon: ShoppingBag, next: 'ready_for_pickup' },
+    'preparing': { text: 'Ready to Serve', icon: ShoppingBag, next: 'ready_for_pickup' },
     'ready_for_pickup': { text: 'Mark as Served', icon: Home, next: 'delivered' },
 };
 
