@@ -735,6 +735,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 const DineInPageContent = () => {
     const [allData, setAllData] = useState({ tables: [], serviceRequests: [], closedTabs: [] });
     const [loading, setLoading] = useState(true);
+    const [buttonLoading, setButtonLoading] = useState(null); // Track which button is loading
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
@@ -978,6 +979,9 @@ const DineInPageContent = () => {
     }
 
     const handleUpdateStatus = async (orderId, newStatus) => {
+        // Set loading state
+        setButtonLoading(`status_${orderId}`);
+
         // Optimistic update - update local state immediately
         setAllData(prev => {
             if (!prev?.tables) return prev;
@@ -1015,6 +1019,8 @@ const DineInPageContent = () => {
             // Revert on error - refetch data
             await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update status: ${error.message}` });
+        } finally {
+            setButtonLoading(null);
         }
     }
 
