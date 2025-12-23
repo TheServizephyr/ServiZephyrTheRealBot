@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -284,7 +284,7 @@ const actionConfig = {
 };
 
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning }) => {
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -405,11 +405,11 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             {isPending ? (
                                                 /* PENDING: Confirm/Reject buttons */
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(firstPendingOrderId)}>
-                                                        <X size={16} className="mr-2" /> Reject
+                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(firstPendingOrderId)} disabled={buttonLoading === `reject_${firstPendingOrderId}`}>
+                                                        {buttonLoading === `reject_${firstPendingOrderId}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <X size={16} className="mr-2" />} Reject
                                                     </Button>
-                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(firstPendingOrderId)}>
-                                                        <Check size={16} className="mr-2" /> Confirm
+                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(firstPendingOrderId)} disabled={buttonLoading === `status_${firstPendingOrderId}`}>
+                                                        {buttonLoading === `status_${firstPendingOrderId}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Check size={16} className="mr-2" />} Confirm
                                                     </Button>
                                                 </div>
                                             ) : (
@@ -426,8 +426,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     <div className="grid grid-cols-1 gap-2">
                                                         {/* Next action button based on status */}
                                                         {ActionIcon && orderIdToUpdate && (
-                                                            <Button size="sm" className="w-full" onClick={() => onUpdateStatus(orderIdToUpdate, actionDetails.next)}>
-                                                                <ActionIcon size={16} className="mr-2" /> {actionDetails.text}
+                                                            <Button size="sm" className="w-full" onClick={() => onUpdateStatus(orderIdToUpdate, actionDetails.next)} disabled={buttonLoading === `status_${orderIdToUpdate}`}>
+                                                                {buttonLoading === `status_${orderIdToUpdate}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <ActionIcon size={16} className="mr-2" />} {actionDetails.text}
                                                             </Button>
                                                         )}
 
@@ -1025,6 +1025,9 @@ const DineInPageContent = () => {
     }
 
     const handleRejectOrder = async (orderId) => {
+        // Set loading state
+        setButtonLoading(`reject_${orderId}`);
+
         // Optimistic update - remove order from view
         setAllData(prev => {
             if (!prev?.tables) return prev;
@@ -1052,6 +1055,8 @@ const DineInPageContent = () => {
         } catch (error) {
             await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not reject order: ${error.message}` });
+        } finally {
+            setButtonLoading(null);
         }
     }
 
@@ -1096,6 +1101,8 @@ const DineInPageContent = () => {
                     onRejectOrder={handleRejectOrder}
                     onClearTab={handleClearTab}
                     onUpdateStatus={handleUpdateStatus}
+                    onMarkForCleaning={() => { }} // TODO: implement
+                    buttonLoading={buttonLoading}
                 />
             );
         }).flat();
