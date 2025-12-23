@@ -179,8 +179,17 @@ export async function GET(req) {
             if (hasPending) {
                 table.pendingOrders.push(groupData);
             } else {
-                // Active orders go to tabs
-                table.tabs[groupKey] = groupData;
+                // Active orders go to tabs - but only if tab doesn't already exist
+                // (tabs from dineInTabs collection are already added at line 84)
+                const tabAlreadyExists = Object.keys(table.tabs).some(tabId => {
+                    const tab = table.tabs[tabId];
+                    return tab.dineInTabId === groupData.dineInTabId ||
+                        (tab.tableId === groupData.tableId && tab.tab_name === groupData.tab_name);
+                });
+
+                if (!tabAlreadyExists) {
+                    table.tabs[groupKey] = groupData;
+                }
             }
         });
 
