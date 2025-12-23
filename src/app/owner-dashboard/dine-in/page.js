@@ -1015,12 +1015,12 @@ const DineInPageContent = () => {
         // API call in background
         try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus }, '/api/owner/orders');
+            setButtonLoading(null); // Stop spinner immediately on success
         } catch (error) {
-            // Revert on error - refetch data
-            await fetchData(true);
+            setButtonLoading(null); // Stop spinner immediately even on error
+            // Revert on error - refetch data (in background, don't block UI)
+            fetchData(true); // Don't await - let it happen in background
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update status: ${error.message}` });
-        } finally {
-            setButtonLoading(null);
         }
     }
 
@@ -1051,12 +1051,12 @@ const DineInPageContent = () => {
         // API call in background
         try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
+            setButtonLoading(null); // Stop spinner immediately
             setInfoDialog({ isOpen: true, title: "Success", message: "Order rejected." });
         } catch (error) {
-            await fetchData(true);
+            setButtonLoading(null); // Stop spinner immediately even on error
+            fetchData(true); // Background refetch (don't await)
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not reject order: ${error.message}` });
-        } finally {
-            setButtonLoading(null);
         }
     }
 
