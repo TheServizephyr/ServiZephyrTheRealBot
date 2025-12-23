@@ -376,13 +376,48 @@ export async function POST(req) {
             const newOrderRef = firestore.collection('orders').doc();
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
-            // Generate dine-in token
-            const lastToken = businessData.lastOrderToken || 0;
-            const newTokenNumber = lastToken + 1;
-            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-            const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
-            const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-            const dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
+            // Generate or REUSE dine-in token based on dineInTabId
+            let dineInToken = null;
+
+            if (dineInTabId) {
+                console.log(`[API /order/create] POST-PAID: Checking for existing token for tabId: ${dineInTabId}`);
+                try {
+                    // Check if there's already an order with this dineInTabId
+                    const existingOrdersSnapshot = await firestore
+                        .collection('orders')
+                        .where('restaurantId', '==', restaurantId)
+                        .where('dineInTabId', '==', dineInTabId)
+                        .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
+                        .limit(1)
+                        .get();
+
+                    console.log(`[API /order/create] POST-PAID: Query found ${existingOrdersSnapshot.size} existing orders with this tabId`);
+
+                    if (!existingOrdersSnapshot.empty) {
+                        // REUSE existing token
+                        const existingOrder = existingOrdersSnapshot.docs[0].data();
+                        dineInToken = existingOrder.dineInToken;
+                        console.log(`[API /order/create] POST-PAID ✅ REUSING token: ${dineInToken} from order ${existingOrdersSnapshot.docs[0].id}`);
+                    } else {
+                        // Generate NEW token (simple number, NO random chars)
+                        const lastToken = businessData.lastOrderToken || 0;
+                        const newTokenNumber = lastToken + 1;
+                        dineInToken = String(newTokenNumber);
+                        console.log(`[API /order/create] POST-PAID ⚠️ NEW token generated: ${dineInToken}`);
+                    }
+                } catch (e) {
+                    console.error(`[API /order/create] POST-PAID ❌ Error in token query:`, e);
+                    // Fallback: generate new token
+                    const lastToken = businessData.lastOrderToken || 0;
+                    const newTokenNumber = lastToken + 1;
+                    dineInToken = String(newTokenNumber);
+                }
+            } else {
+                console.log(`[API /order/create] POST-PAID ⚠️ No dineInTabId provided!`);
+                const lastToken = businessData.lastOrderToken || 0;
+                const newTokenNumber = lastToken + 1;
+                dineInToken = String(newTokenNumber);
+            }
 
             const batch = firestore.batch();
 
