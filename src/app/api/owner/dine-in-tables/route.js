@@ -74,16 +74,17 @@ export async function GET(req) {
         });
 
         // 2. Fetch all active tabs
-        const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
+        // DISABLED: Loading tabs from dineInTabs causes duplicates because orders are already grouped below
+        // const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
 
         // 3. Group active tabs by their tableId
-        activeTabsSnap.forEach(tabDoc => {
-            const tabData = tabDoc.data();
-            if (tableMap.has(tabData.tableId)) {
-                const table = tableMap.get(tabData.tableId);
-                table.tabs[tabData.id] = { ...tabData, orders: {} };
-            }
-        });
+        // activeTabsSnap.forEach(tabDoc => {
+        //     const tabData = tabDoc.data();
+        //     if (tableMap.has(tabData.tableId)) {
+        //         const table = tableMap.get(tabData.tableId);
+        //         table.tabs[tabData.id] = { ...tabData, orders: {} };
+        //     }
+        // });
 
         // 4. Fetch all relevant orders that are not finished or rejected
         const ordersQuery = firestore.collection('orders')
@@ -106,16 +107,8 @@ export async function GET(req) {
             const table = tableMap.get(tableId);
             if (!table) return;
 
-            // If it belongs to an existing dineInTab (from dineInTabs collection), add to that tab
-            if (tabId && table.tabs[tabId]) {
-                table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
-                // Set token if not already set
-                if (orderData.dineInToken && !table.tabs[tabId].dineInToken) {
-                    table.tabs[tabId].dineInToken = orderData.dineInToken;
-                }
-                return;
-            }
-
+            // NOTE: dineInTabs loading disabled above, so all orders go to orderGroups
+            // (This ensures single detailed card per tab)
 
             // For orders without tabId, group by tab_name
             const tabName = orderData.tab_name || orderData.customerName || 'Guest';
