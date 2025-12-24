@@ -73,10 +73,9 @@ export default function AuthModal({ isOpen, onClose }) {
           setMsg("✅ New user detected! Redirecting to complete your profile...");
           setMsgType("success");
           localStorage.setItem("role", "none");
-          setTimeout(() => {
-            closeModal();
-            router.push("/complete-profile");
-          }, 1500);
+          // CRITICAL FIX: Redirect immediately to avoid race conditions
+          closeModal();
+          router.push("/complete-profile");
           return;
         }
         // For any other error, display it.
