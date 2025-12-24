@@ -39,7 +39,7 @@ export default function CompleteProfile() {
     { id: 'street-vendor', label: 'Street Vendor', icon: Map, enabled: true },
     { id: 'customer', label: 'Customer', icon: User, enabled: false },
     { id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store, enabled: true },
-    { id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart, enabled: true },
+    { id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart, enabled: false },
     { id: 'rider', label: 'Rider', icon: Bike, enabled: false },
     { id: 'admin', label: 'Admin', icon: Shield, enabled: false }
   ];
