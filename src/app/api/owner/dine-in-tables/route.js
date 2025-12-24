@@ -105,8 +105,23 @@ export async function GET(req) {
             const tabId = orderData.dineInTabId;
             const status = orderData.status;
 
-            const table = tableMap.get(tableId);
-            if (!table) return;
+            // Get table or create fallback for orders without valid tableId
+            let table = tableMap.get(tableId);
+            if (!table) {
+                // Fallback: create a virtual "Unknown" table for orphaned orders
+                const unknownTableId = tableId || 'UNKNOWN';
+                if (!tableMap.has(unknownTableId)) {
+                    tableMap.set(unknownTableId, {
+                        id: unknownTableId,
+                        state: 'occupied',
+                        current_pax: 0,
+                        max_capacity: 0,
+                        tabs: {},
+                        pendingOrders: []
+                    });
+                }
+                table = tableMap.get(unknownTableId);
+            }
 
             // NOTE: dineInTabs loading disabled above, so all orders go to orderGroups
             // (This ensures single detailed card per tab)
