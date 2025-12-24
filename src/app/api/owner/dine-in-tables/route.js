@@ -454,18 +454,43 @@ export async function PATCH(req) {
 
             await batch.commit();
 
-            // Also try to close the tab in dineInTabs if it exists
+            // Close ALL dineInTabs associated with these orders
             try {
-                const tabRef = businessRef.collection('dineInTabs').doc(tabId);
-                const tabDoc = await tabRef.get();
-                if (tabDoc.exists) {
-                    await tabRef.update({
-                        status: 'closed',
-                        closedAt: FieldValue.serverTimestamp()
+                // Get all unique table IDs from the orders
+                const tableIds = [...new Set(ordersQuery.docs.map(doc => doc.data().tableId))];
+
+                for (const tableId of tableIds) {
+                    if (!tableId) continue;
+
+                    // Find all tabs for this table with this tabId
+                    const tabsQuery = await businessRef.collection('dineInTabs')
+                        .where('tableId', '==', tableId)
+                        .where('status', '==', 'active')
+                        .get();
+
+                    // Close all matching tabs
+                    const tabBatch = firestore.batch();
+                    let closedCount = 0;
+
+                    tabsQuery.docs.forEach(tabDoc => {
+                        // Check if this tab matches our tabId or has any of our orders
+                        const tabData = tabDoc.data();
+                        if (tabDoc.id === tabId || tabData.orderId === tabId) {
+                            tabBatch.update(tabDoc.ref, {
+                                status: 'closed',
+                                closedAt: FieldValue.serverTimestamp()
+                            });
+                            closedCount++;
+                        }
                     });
+
+                    if (closedCount > 0) {
+                        await tabBatch.commit();
+                        console.log(`[API clear_tab] Closed ${closedCount} tab(s) for table ${tableId}`);
+                    }
                 }
             } catch (tabError) {
-                console.warn('[API dine-in-tables] Could not close dineInTab:', tabError.message);
+                console.warn('[API dine-in-tables] Could not close dineInTabs:', tabError.message);
                 // Don't fail the entire operation if this fails
             }
 
