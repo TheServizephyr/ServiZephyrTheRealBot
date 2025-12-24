@@ -153,7 +153,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
 
   const getIsDisabled = (featureId) => {
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr', 'coupons', 'employees', 'my-profile'];
+    // Only allow essential setup pages for pending/rejected accounts
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'location', 'profile', 'qr', 'coupons', 'employees', 'my-profile'];
     if (alwaysEnabled.includes(featureId)) {
       return false;
     }
