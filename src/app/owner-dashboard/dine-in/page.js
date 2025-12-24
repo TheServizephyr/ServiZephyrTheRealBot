@@ -405,10 +405,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             {isPending ? (
                                                 /* PENDING: Confirm/Reject buttons */
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(firstPendingOrderId)} disabled={buttonLoading === `reject_${firstPendingOrderId}`}>
+                                                    <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); onRejectOrder(firstPendingOrderId); }} disabled={buttonLoading === `reject_${firstPendingOrderId}`}>
                                                         {buttonLoading === `reject_${firstPendingOrderId}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <X size={16} className="mr-2" />} Reject
                                                     </Button>
-                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(firstPendingOrderId)} disabled={buttonLoading === `status_${firstPendingOrderId}`}>
+                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={(e) => { e.stopPropagation(); onConfirmOrder(firstPendingOrderId); }} disabled={buttonLoading === `status_${firstPendingOrderId}`}>
                                                         {buttonLoading === `status_${firstPendingOrderId}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Check size={16} className="mr-2" />} Confirm
                                                     </Button>
                                                 </div>
@@ -426,7 +426,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     <div className="grid grid-cols-1 gap-2">
                                                         {/* Next action button based on status */}
                                                         {ActionIcon && orderIdToUpdate && (
-                                                            <Button size="sm" className="w-full" onClick={() => onUpdateStatus(orderIdToUpdate, actionDetails.next)} disabled={buttonLoading === `status_${orderIdToUpdate}`}>
+                                                            <Button size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); onUpdateStatus(orderIdToUpdate, actionDetails.next); }} disabled={buttonLoading === `status_${orderIdToUpdate}`}>
                                                                 {buttonLoading === `status_${orderIdToUpdate}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <ActionIcon size={16} className="mr-2" />} {actionDetails.text}
                                                             </Button>
                                                         )}
