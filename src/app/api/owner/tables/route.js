@@ -60,7 +60,7 @@ export async function GET(req) {
 
             // Check if this tab has any active orders
             const activeOrdersQuery = await firestore.collection('orders')
-                .where('restaurantId', '==', businessRef.id)
+                .where('restaurantId', '==', businessInfo.id)
                 .where('deliveryType', '==', 'dine-in')
                 .where('dineInTabId', '==', tabDoc.id)
                 .where('status', 'not-in', ['picked_up', 'rejected'])
