@@ -448,7 +448,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         {/* After cleaning marked: Clear Table button */}
                                                         {group.needsCleaning && (
                                                             <Button variant="destructive" onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="w-full">
-                                                                <CheckCircle size={16} className="mr-2" /> Mark as Cleaned (Clear Table)
+                                                                <CheckCircle size={16} className="mr-2" /> Clear Table
                                                             </Button>
                                                         )}
 
