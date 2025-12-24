@@ -131,7 +131,20 @@ export async function POST(req) {
                 if (!tableDoc.exists) throw new Error("Table not found.");
 
                 const tableData = tableDoc.data();
-                const availableCapacity = tableData.max_capacity - (tableData.current_pax || 0);
+
+                // CRITICAL: Calculate live capacity from active tabs, not stale table field!
+                // Query actual active tabs to get accurate current_pax
+                const activeTabsQuery = await businessRef.collection('dineInTabs')
+                    .where('tableId', '==', tableId)
+                    .where('status', '==', 'active')
+                    .get();
+
+                // Sum pax from all active tabs
+                const current_pax = activeTabsQuery.docs.reduce((sum, doc) => {
+                    return sum + (doc.data().pax_count || 0);
+                }, 0);
+
+                const availableCapacity = tableData.max_capacity - current_pax;
 
                 if (pax_count > availableCapacity) {
                     throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
