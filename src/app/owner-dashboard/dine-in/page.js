@@ -306,7 +306,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     ];
 
     // Count tabs for same table to enable multi-tab features
-    const tabCount = allGroups.filter(g => g.status === 'active').length;
+    const tabCount = allGroups.length; // Count ALL tabs (pending + active)
     const hasMultipleTabs = tabCount > 1;
 
     return (
@@ -367,9 +367,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const activeOrderToUpdate = allOrders.find(o => o.status !== 'delivered' && o.status !== 'pending');
                                 const orderIdToUpdate = activeOrderToUpdate?.id;
 
-                                // Color coding for multi-tab tables
-                                const tabColor = isActiveTab && hasMultipleTabs ? TAB_COLORS[groupIndex % TAB_COLORS.length] : null;
-                                const activeTabIndex = allGroups.filter(g => g.status === 'active').indexOf(group) + 1;
+                                // Color coding for multi-tab tables - apply to ALL tabs (pending or active)
+                                const tabColor = hasMultipleTabs ? TAB_COLORS[groupIndex % TAB_COLORS.length] : null;
+                                const activeTabIndex = groupIndex + 1; // Simple 1-based index
 
                                 return (
                                     <div key={group.id} className={cn("relative p-3 rounded-lg border",
