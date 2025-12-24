@@ -528,3 +528,90 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+export async function PATCH(req) {
+    const firestore = await getFirestore();
+    try {
+        const businessRef = await getBusinessRef(req);
+        const body = await req.json();
+        const { action, tabId, tableId, paxCount } = body;
+
+        if (!action) {
+            return NextResponse.json({ message: 'Action is required.' }, { status: 400 });
+        }
+
+        // Handle clear_tab action
+        if (action === 'clear_tab') {
+            if (!tabId) {
+                return NextResponse.json({ message: 'Tab ID is required for clear_tab action.' }, { status: 400 });
+            }
+
+            // Find all orders with this dineInTabId and mark them as 'picked_up' to exclude from active tabs
+            const ordersQuery = await firestore.collection('orders')
+                .where('restaurantId', '==', businessRef.id)
+                .where('deliveryType', '==', 'dine-in')
+                .where('dineInTabId', '==', tabId)
+                .where('status', 'not-in', ['picked_up', 'rejected'])
+                .get();
+
+            if (ordersQuery.empty) {
+                return NextResponse.json({ message: 'No active orders found for this tab.' }, { status: 404 });
+            }
+
+            // Batch update all orders to 'picked_up' status
+            const batch = firestore.batch();
+            ordersQuery.forEach(orderDoc => {
+                batch.update(orderDoc.ref, {
+                    status: 'picked_up',
+                    statusHistory: FieldValue.arrayUnion({
+                        status: 'picked_up',
+                        timestamp: new Date()
+                    }),
+                    tabClosedAt: FieldValue.serverTimestamp()
+                });
+            });
+
+            await batch.commit();
+
+            // Also try to close the tab in dineInTabs if it exists
+            try {
+                const tabRef = businessRef.collection('dineInTabs').doc(tabId);
+                const tabDoc = await tabRef.get();
+                if (tabDoc.exists) {
+                    await tabRef.update({
+                        status: 'closed',
+                        closedAt: FieldValue.serverTimestamp()
+                    });
+                }
+            } catch (tabError) {
+                console.warn('[API dine-in-tables] Could not close dineInTab:', tabError.message);
+                // Don't fail the entire operation if this fails
+            }
+
+            return NextResponse.json({ message: 'Tab cleared successfully.' }, { status: 200 });
+        }
+
+        // Handle mark_cleaned action
+        if (action === 'mark_cleaned') {
+            if (!tableId) {
+                return NextResponse.json({ message: 'Table ID is required for mark_cleaned action.' }, { status: 400 });
+            }
+
+            const tableRef = businessRef.collection('tables').doc(tableId);
+            await tableRef.update({
+                state: 'available',
+                current_pax: 0,
+                updatedAt: FieldValue.serverTimestamp()
+            });
+
+            return NextResponse.json({ message: 'Table marked as cleaned.' }, { status: 200 });
+        }
+
+        return NextResponse.json({ message: 'Unknown action.' }, { status: 400 });
+
+    } catch (error) {
+        console.error("[API dine-in-tables] CRITICAL PATCH ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
