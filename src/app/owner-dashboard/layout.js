@@ -204,8 +204,10 @@ function OwnerDashboardContent({ children }) {
     }
 
     const fetchRestaurantData = async () => {
+      console.log('[Layout] 🚀 fetchRestaurantData started');
       try {
         const idToken = await user.getIdToken();
+        console.log('[Layout] ✅ Got ID token');
 
         let statusUrl = '/api/owner/status';
         let settingsUrl = '/api/owner/settings';
@@ -214,39 +216,61 @@ function OwnerDashboardContent({ children }) {
         if (impersonatedOwnerId) {
           statusUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
           settingsUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+          console.log('[Layout] 🔄 Using impersonation for owner:', impersonatedOwnerId);
         } else if (employeeOfOwnerId) {
           statusUrl += `?employee_of=${employeeOfOwnerId}`;
           settingsUrl += `?employee_of=${employeeOfOwnerId}`;
+          console.log('[Layout] 👤 Using employee access for owner:', employeeOfOwnerId);
+        } else {
+          console.log('[Layout] 👑 Owner accessing own dashboard');
         }
+
+        console.log('[Layout] 📡 Fetching from:', { statusUrl, settingsUrl });
 
         const [statusRes, settingsRes] = await Promise.all([
           fetch(statusUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
           fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
         ]);
 
+        console.log('[Layout] 📊 API Response Status:', {
+          status: statusRes.status,
+          settings: settingsRes.status
+        });
+
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
+          console.log('[Layout] ✅ Settings loaded:', {
+            restaurantName: settingsData.restaurantName,
+            hasLogo: !!settingsData.logoUrl
+          });
           setRestaurantName(settingsData.restaurantName || 'My Dashboard');
           setRestaurantLogo(settingsData.logoUrl || null);
+        } else {
+          console.warn('[Layout] ⚠️ Settings API failed:', settingsRes.status);
         }
 
         if (statusRes.ok) {
           const statusData = await statusRes.json();
+          console.log('[Layout] ✅ Status loaded:', {
+            status: statusData.status,
+            restrictedFeatures: statusData.restrictedFeatures?.length || 0
+          });
           setRestaurantStatus({
             status: statusData.status,
             restrictedFeatures: statusData.restrictedFeatures || [],
             suspensionRemark: statusData.suspensionRemark || '',
           });
         } else if (statusRes.status === 404) {
+          console.log('[Layout] ⚠️ Status 404 - Setting to pending');
           setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
         } else if (statusRes.status === 403) {
           // Unauthorized access - redirect to select-role for employees or homepage
-          console.error("[Layout] User not authorized, redirecting to select-role...");
+          console.error("[Layout] ❌ User not authorized (403), redirecting to select-role...");
           router.push('/select-role');
           return;
         } else {
           const errorData = await statusRes.json();
-          console.error("Error fetching status:", errorData.message);
+          console.error("[Layout] ❌ Error fetching status:", errorData.message);
           setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         }
 
