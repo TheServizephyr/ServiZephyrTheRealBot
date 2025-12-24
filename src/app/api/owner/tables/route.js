@@ -53,16 +53,46 @@ export async function GET(req) {
             .where('status', '==', 'active')
             .get();
 
-        const activeTabs = tabsSnap.docs.map(doc => doc.data());
+        // CRITICAL: Validate tabs actually have active orders (prevent ghost tabs)
+        const validActiveTabs = [];
+        for (const tabDoc of tabsSnap.docs) {
+            const tabData = tabDoc.data();
 
-        // Calculate current pax from ALL active tabs, not just one.
-        const current_pax = activeTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
+            // Check if this tab has any active orders
+            const activeOrdersQuery = await firestore.collection('orders')
+                .where('restaurantId', '==', businessRef.id)
+                .where('deliveryType', '==', 'dine-in')
+                .where('dineInTabId', '==', tabDoc.id)
+                .where('status', 'not-in', ['picked_up', 'rejected'])
+                .limit(1)
+                .get();
+
+            if (!activeOrdersQuery.empty) {
+                // Tab has active orders - keep it
+                validActiveTabs.push(tabData);
+            } else {
+                // Ghost tab - close it silently
+                try {
+                    await tabDoc.ref.update({
+                        status: 'closed',
+                        closedAt: FieldValue.serverTimestamp(),
+                        autoClosedReason: 'No active orders found'
+                    });
+                    console.log(`[API tables] Auto-closed ghost tab ${tabDoc.id} for table ${tableId}`);
+                } catch (e) {
+                    console.warn(`[API tables] Failed to close ghost tab:`, e.message);
+                }
+            }
+        }
+
+        // Calculate current pax from VALID active tabs only
+        const current_pax = validActiveTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
 
         return NextResponse.json({
             tableId: tableId,
             max_capacity: tableData.max_capacity,
             current_pax,
-            activeTabs,
+            activeTabs: validActiveTabs,
             // Determine state based on the calculated pax count.
             state: current_pax >= tableData.max_capacity ? 'full' : (current_pax > 0 ? 'occupied' : 'available')
         }, { status: 200 });
