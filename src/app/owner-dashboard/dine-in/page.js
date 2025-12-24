@@ -296,6 +296,19 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     // Combine pending orders and active tabs into one list for rendering
     const allGroups = [...(tableData.pendingOrders || []), ...Object.values(tableData.tabs || {})];
 
+    // Color palette for multi-tab visual distinction
+    const TAB_COLORS = [
+        { border: 'border-l-4 border-l-yellow-500', bg: 'bg-yellow-500/5', badge: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
+        { border: 'border-l-4 border-l-blue-500', bg: 'bg-blue-500/5', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+        { border: 'border-l-4 border-l-green-500', bg: 'bg-green-500/5', badge: 'bg-green-500/20 text-green-400 border-green-500/30' },
+        { border: 'border-l-4 border-l-purple-500', bg: 'bg-purple-500/5', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+        { border: 'border-l-4 border-l-pink-500', bg: 'bg-pink-500/5', badge: 'bg-pink-500/20 text-pink-400 border-pink-500/30' },
+    ];
+
+    // Count tabs for same table to enable multi-tab features
+    const tabCount = allGroups.filter(g => g.status === 'active').length;
+    const hasMultipleTabs = tabCount > 1;
+
     return (
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
             <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
@@ -307,7 +320,17 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                 <CardContent className="flex-grow p-4">
                     {allGroups.length > 0 ? (
                         <div className="space-y-4">
-                            {allGroups.map(group => {
+                            {/* Multi-tab header - show when multiple active tabs exist */}
+                            {hasMultipleTabs && (
+                                <div className="px-3 py-2 bg-muted/30 rounded-lg border border-border/50">
+                                    <p className="text-xs font-semibold text-muted-foreground flex items-center gap-2">
+                                        <Users size={14} />
+                                        <span>{tabCount} Active Tabs on this table</span>
+                                    </p>
+                                </div>
+                            )}
+
+                            {allGroups.map((group, groupIndex) => {
                                 // New logic: use group.status and group.mainStatus from API
                                 const isPending = group.status === 'pending' || group.hasPending;
                                 const isActiveTab = group.status === 'active' && !group.hasPending;
@@ -344,10 +367,22 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const activeOrderToUpdate = allOrders.find(o => o.status !== 'delivered' && o.status !== 'pending');
                                 const orderIdToUpdate = activeOrderToUpdate?.id;
 
+                                // Color coding for multi-tab tables
+                                const tabColor = isActiveTab && hasMultipleTabs ? TAB_COLORS[groupIndex % TAB_COLORS.length] : null;
+                                const activeTabIndex = allGroups.filter(g => g.status === 'active').indexOf(group) + 1;
+
                                 return (
                                     <div key={group.id} className={cn("relative p-3 rounded-lg border",
-                                        isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
+                                        isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border",
+                                        tabColor ? `${tabColor.border} ${tabColor.bg}` : ""
                                     )}>
+                                        {/* Tab Badge for multi-tab tables */}
+                                        {tabColor && hasMultipleTabs && (
+                                            <div className={cn("absolute -top-2 -right-2 px-2 py-0.5 rounded-full text-xs font-bold border", tabColor.badge)}>
+                                                Tab {activeTabIndex}/{tabCount}
+                                            </div>
+                                        )}
+
                                         {/* Header */}
                                         <div className="flex justify-between items-center mb-2">
                                             <h4 className="font-semibold text-foreground">
