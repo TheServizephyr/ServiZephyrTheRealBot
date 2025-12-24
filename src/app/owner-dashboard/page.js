@@ -173,31 +173,7 @@ const TopSellingItem = ({ name, count, imageUrl }) => (
   </div>
 );
 
-const BotOnboardingNudge = () => {
-  return (
-    <motion.div
-      className="bg-primary/10 border-2 border-dashed border-primary/50 rounded-xl p-6 text-center"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
-    >
-      <Bot size={40} className="mx-auto text-primary" />
-      <h3 className="mt-4 text-xl font-bold text-foreground">Your next step: Connect your first WhatsApp Bot!</h3>
-      <p className="mt-2 text-muted-foreground max-w-lg mx-auto">
-        Unlock direct orders and marketing by connecting your business WhatsApp number. The setup takes less than 5 minutes.
-      </p>
-      <Link href="/owner-dashboard/connections" passHref>
-        <motion.button
-          className="mt-6 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg text-md hover:bg-primary/90 transition-transform transform hover:scale-105"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          Connect WhatsApp Bot Now
-        </motion.button>
-      </Link>
-    </motion.div>
-  );
-};
+
 
 
 // --- Main Dashboard Page Component ---
@@ -319,9 +295,7 @@ function PageContent() {
           </div>
         </div>
 
-        <div className="mb-6">
-          {!loading && botCount === 0 && <BotOnboardingNudge />}
-        </div>
+
 
         {/* Quick Action Buttons */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
