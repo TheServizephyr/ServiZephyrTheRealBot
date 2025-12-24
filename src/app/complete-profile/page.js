@@ -102,8 +102,19 @@ export default function CompleteProfile() {
           setLoading(false);
         }
       } else {
-        console.log("[DEBUG] complete-profile: onAuthStateChanged fired. No user found. Redirecting to home.");
-        router.push('/');
+        // CRITICAL FIX: Wait for auth state to settle before redirecting
+        // Firebase auth state change can take a moment to propagate after login
+        // If we redirect too quickly, we might kick out new users mid-login!
+        console.log("[DEBUG] complete-profile: No user found yet. Waiting to see if auth state updates...");
+
+        // Give Firebase 2 seconds to populate auth state after login redirect
+        const timeoutId = setTimeout(() => {
+          console.log("[DEBUG] complete-profile: Auth state still null after wait. Redirecting to home.");
+          router.push('/');
+        }, 2000);
+
+        // Clean up timeout if component unmounts
+        return () => clearTimeout(timeoutId);
       }
     });
 
