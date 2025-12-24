@@ -173,8 +173,10 @@ function OwnerDashboardContent({ children }) {
   }, [isUserLoading]);
 
   useEffect(() => {
+    console.log('[Layout] 🔄 useEffect triggered', { authChecked, hasUser: !!user, isUserLoading });
     // Only redirect after auth has been properly checked
     if (!authChecked) {
+      console.log('[Layout] ⏸️ Auth not checked yet, waiting...');
       return;
     }
 
@@ -309,11 +311,12 @@ function OwnerDashboardContent({ children }) {
     };
 
     if (user) {
+      console.log('[Layout] ✅ Calling fetch functions...');
       fetchRestaurantData();
       fetchUserRole();
     }
 
-  }, [user, isUserLoading, effectiveOwnerId, router]);
+  }, [user, isUserLoading, authChecked, effectiveOwnerId, router]);
 
   if (isUserLoading || !authChecked) {
     return (
