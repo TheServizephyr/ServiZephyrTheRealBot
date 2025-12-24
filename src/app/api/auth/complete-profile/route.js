@@ -155,6 +155,10 @@ export async function POST(req) {
                 ...businessData,
                 ownerId: uid, // CRITICAL: Owner's user ID for RBAC and team management
                 createdAt: FieldValue.serverTimestamp(),
+                // CRITICAL FIX: Set approval status so security restrictions work!
+                approvalStatus: 'pending', // New accounts need admin approval
+                restrictedFeatures: [], // No features restricted by default
+                suspensionRemark: '', // No remarks initially
                 razorpayAccountId: '',
                 // Set default true values for all settings
                 isOpen: true,
@@ -169,7 +173,7 @@ export async function POST(req) {
                 dineInPayAtCounterEnabled: true,
             };
             batch.set(businessRef, finalBusinessData);
-            console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch with default settings.`);
+            console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch with default settings and PENDING approval status.`);
         }
 
         await batch.commit();
