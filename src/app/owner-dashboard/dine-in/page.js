@@ -401,9 +401,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             </div>
                                         )}
 
-                                        {/* URGENCY BADGE for old pending orders */}
+                                        {/* URGENCY BADGE for old pending orders - positioned at BOTTOM LEFT to avoid Tab badge */}
                                         {isUrgent && (
-                                            <div className="absolute -top-2 -left-2 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white border border-red-600 animate-pulse">
+                                            <div className="absolute -bottom-2 -left-2 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white border border-red-600 animate-pulse">
                                                 {urgencyText}
                                             </div>
                                         )}
