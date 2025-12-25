@@ -400,10 +400,24 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
                                         {/* Header */}
                                         <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-semibold text-foreground">
-                                                {group.tab_name || 'New Order'}
-                                                <span className="text-xs text-muted-foreground"> ({group.pax_count || 1} guests)</span>
-                                            </h4>
+                                            <div>
+                                                <h4 className="font-semibold text-foreground">
+                                                    {group.tab_name || 'New Order'}
+                                                    <span className="text-xs text-muted-foreground"> ({group.pax_count || 1} guests)</span>
+                                                </h4>
+                                                {/* ORDER TIME - Show how long ago order was placed */}
+                                                {orderCreatedAt && (
+                                                    <p className={cn("text-xs font-medium mt-0.5",
+                                                        isUrgent ? "text-red-400" : "text-muted-foreground"
+                                                    )}>
+                                                        <Clock size={12} className="inline mr-1" />
+                                                        {minutesSinceOrder < 60
+                                                            ? `${minutesSinceOrder}m ago`
+                                                            : `${Math.floor(minutesSinceOrder / 60)}h ${minutesSinceOrder % 60}m ago`
+                                                        }
+                                                    </p>
+                                                )}
+                                            </div>
                                             <div className="text-right">
                                                 {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                                 {(group.ordered_by || firstOrder?.ordered_by) && (
@@ -800,6 +814,13 @@ const DineInPageContent = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => { }, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
     const [activeStatusFilter, setActiveStatusFilter] = useState('Pending'); // Status filter tabs
+    const [selectedCards, setSelectedCards] = useState(new Set()); // Batch selection
+    const [batchLoading, setBatchLoading] = useState(false); // Batch operation loading
+
+    // Reset selection when filter changes (prevent cross-status batch updates)
+    useEffect(() => {
+        setSelectedCards(new Set());
+    }, [activeStatusFilter]);
 
     const billPrintRef = useRef();
 
