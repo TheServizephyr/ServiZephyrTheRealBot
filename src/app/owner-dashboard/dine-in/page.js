@@ -379,21 +379,11 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const activeTabIndex = groupIndex + 1; // Simple 1-based index
 
                                 // VISUAL PRIORITY: Red urgency for pending orders >15 mins
-                                // Try multiple field names for timestamp
-                                const orderCreatedAt = firstOrder?.createdAt || firstOrder?.created_at || firstOrder?.timestamp
-                                    || group.createdAt || group.created_at || group.timestamp;
+                                // Use orderDate field (Firebase Timestamp with _seconds)
+                                const orderTimestamp = firstOrder?.orderDate || group.orderDate;
+                                const orderCreatedAt = orderTimestamp?._seconds ? orderTimestamp._seconds * 1000 : null;
 
-                                // Debug log to see what we have
-                                if (groupIndex === 0) {
-                                    console.log('[DineIn] Timestamp debug:', {
-                                        hasOrderCreatedAt: !!orderCreatedAt,
-                                        firstOrderFields: firstOrder ? Object.keys(firstOrder).join(', ') : 'No firstOrder',
-                                        groupFields: Object.keys(group).join(', '),
-                                        sampleFirstOrder: firstOrder // Show full object
-                                    });
-                                }
-
-                                const minutesSinceOrder = orderCreatedAt ? Math.floor((Date.now() - new Date(orderCreatedAt).getTime()) / 60000) : 0;
+                                const minutesSinceOrder = orderCreatedAt ? Math.floor((Date.now() - orderCreatedAt) / 60000) : 0;
                                 const isUrgent = mainStatus === 'pending' && minutesSinceOrder > 15;
                                 const urgencyText = isUrgent ? `URGENT - ${minutesSinceOrder}m ago` : null;
 
