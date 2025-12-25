@@ -211,12 +211,41 @@ const CheckoutPageInternal = () => {
             if (!restaurantId) { router.push('/'); return; }
             setError('');
 
-            const updatedData = { ...savedCart, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
+            let updatedData = { ...savedCart, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
+
+            // FETCH EXISTING ORDER DATA for dine-in payment (when coming from track page)
+            if (tabId && deliveryType === 'dine-in') {
+                console.log('[Checkout] Fetching existing dine-in order data for tabId:', tabId);
+                try {
+                    const orderRes = await fetch(`/api/order/active?tabId=${tabId}`);
+                    if (orderRes.ok) {
+                        const orderData = await orderRes.json();
+                        console.log('[Checkout] Fetched dine-in order:', orderData);
+
+                        // Build cart from existing orders
+                        const cartItems = orderData.items || [];
+                        const totalAmount = orderData.totalAmount || orderData.grandTotal || 0;
+
+                        updatedData = {
+                            ...updatedData,
+                            cart: cartItems,
+                            tab_name: orderData.tab_name || orderData.customerName,
+                            subtotal: orderData.subtotal || totalAmount,
+                            grandTotal: totalAmount
+                        };
+
+                        console.log('[Checkout] Updated cart data from existing order:', updatedData);
+                    }
+                } catch (err) {
+                    console.error('[Checkout] Failed to fetch dine-in order:', err);
+                }
+            }
 
             console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
             setCart(updatedData.cart || []);
             setAppliedCoupons(updatedData.appliedCoupons || []);
             setCartData(updatedData);
+
 
             try {
                 const customerNameFromStorage = localStorage.getItem('customerName');
