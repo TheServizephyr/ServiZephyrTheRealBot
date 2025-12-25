@@ -379,7 +379,19 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const activeTabIndex = groupIndex + 1; // Simple 1-based index
 
                                 // VISUAL PRIORITY: Red urgency for pending orders >15 mins
-                                const orderCreatedAt = firstOrder?.createdAt || group.createdAt;
+                                // Try multiple field names for timestamp
+                                const orderCreatedAt = firstOrder?.createdAt || firstOrder?.created_at || firstOrder?.timestamp
+                                    || group.createdAt || group.created_at || group.timestamp;
+
+                                // Debug log to see what we have
+                                if (groupIndex === 0) {
+                                    console.log('[DineIn] Timestamp debug:', {
+                                        hasOrderCreatedAt: !!orderCreatedAt,
+                                        firstOrderKeys: firstOrder ? Object.keys(firstOrder) : [],
+                                        groupKeys: Object.keys(group)
+                                    });
+                                }
+
                                 const minutesSinceOrder = orderCreatedAt ? Math.floor((Date.now() - new Date(orderCreatedAt).getTime()) / 60000) : 0;
                                 const isUrgent = mainStatus === 'pending' && minutesSinceOrder > 15;
                                 const urgencyText = isUrgent ? `URGENT - ${minutesSinceOrder}m ago` : null;
