@@ -387,8 +387,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 if (groupIndex === 0) {
                                     console.log('[DineIn] Timestamp debug:', {
                                         hasOrderCreatedAt: !!orderCreatedAt,
-                                        firstOrderKeys: firstOrder ? Object.keys(firstOrder) : [],
-                                        groupKeys: Object.keys(group)
+                                        firstOrderFields: firstOrder ? Object.keys(firstOrder).join(', ') : 'No firstOrder',
+                                        groupFields: Object.keys(group).join(', '),
+                                        sampleFirstOrder: firstOrder // Show full object
                                     });
                                 }
 
