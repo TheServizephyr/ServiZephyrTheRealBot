@@ -141,16 +141,33 @@ function DineInTrackingContent() {
     };
 
     const handlePayAtCounter = async () => {
-        // For Pay at Counter, just mark the order as needing cleaning (owner will mark paid)
+        // Customer chose Pay at Counter - update payment status
         setIsMarkingDone(true);
         try {
-            // We don't have direct API access here, so we redirect to a confirmation page
-            // Or show a message
+            const res = await fetch(`/api/order/update`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orderId: orderId,
+                    dineInTabId: orderData.order?.dineInTabId,
+                    paymentStatus: 'pay_at_counter',
+                    paymentMethod: 'counter'
+                })
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || 'Failed to update payment status');
+            }
+
             setIsPayModalOpen(false);
-            // Show success message - the owner will mark as paid when customer pays at counter
-            alert('Please proceed to the counter to pay. Your table will be cleared once payment is received.');
+            alert('✅ Payment method set to "Pay at Counter". Please proceed to the counter to complete payment.');
+
+            // Refresh data to show updated status
+            fetchData(true);
         } catch (err) {
-            console.error('Error:', err);
+            console.error('Error updating payment status:', err);
+            alert('Failed to update payment status. Please try again.');
         } finally {
             setIsMarkingDone(false);
         }

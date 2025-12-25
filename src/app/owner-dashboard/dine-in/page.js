@@ -359,6 +359,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const isPaidStatus = group.paymentStatus === 'paid' || allOrders.some(o => o.paymentStatus === 'paid');
                                 const isPaid = isOnlinePayment || isPaidStatus;
 
+                                // Check if customer chose "Pay at Counter"
+                                const isPayAtCounter = group.paymentStatus === 'pay_at_counter' || allOrders.some(o => o.paymentStatus === 'pay_at_counter');
+
                                 // Status checks
                                 const isServed = mainStatus === 'delivered';
 
@@ -465,10 +468,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     <span>Payment Status:</span>
                                                     <span className={cn('font-semibold',
                                                         isPaid ? 'text-green-500' :
-                                                            isServed ? 'text-orange-500' : 'text-yellow-500'
+                                                            isPayAtCounter ? 'text-orange-500' :
+                                                                isServed ? 'text-yellow-500' : 'text-muted-foreground'
                                                     )}>
                                                         {isPaid ? 'PAID ✓' :
-                                                            isServed ? 'Payment to be collected' : 'Payment Due'}
+                                                            isPayAtCounter ? '🏪 Pay at Counter Pending' :
+                                                                isServed ? 'Payment Due' : 'Not Served Yet'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -505,8 +510,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             </Button>
                                                         )}
 
-                                                        {/* After served: Mark as Paid (for non-online-payment orders) */}
-                                                        {isServed && !isPaid && (
+                                                        {/* After served: Mark as Paid (ONLY if customer chose Pay at Counter) */}
+                                                        {isServed && isPayAtCounter && !isPaid && (
                                                             <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full bg-green-500 hover:bg-green-600">
                                                                 <Wallet size={16} className="mr-2" /> Mark as Paid
                                                             </Button>
