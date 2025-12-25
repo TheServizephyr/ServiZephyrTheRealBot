@@ -296,6 +296,13 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     // Combine pending orders and active tabs into one list for rendering
     const allGroups = [...(tableData.pendingOrders || []), ...Object.values(tableData.tabs || {})];
 
+    // SORT BY TIME: Oldest orders first (highest priority)
+    allGroups.sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.orders?.[Object.keys(a.orders || {})[0]]?.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || b.orders?.[Object.keys(b.orders || {})[0]]?.createdAt || 0).getTime();
+        return timeA - timeB; // Ascending = oldest first
+    });
+
     // Color palette for multi-tab visual distinction
     const TAB_COLORS = [
         { border: 'border-l-4 border-l-yellow-500', bg: 'bg-yellow-500/5', badge: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
