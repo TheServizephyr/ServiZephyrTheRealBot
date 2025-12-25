@@ -784,6 +784,7 @@ const DineInPageContent = () => {
     const [billData, setBillData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => { }, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
+    const [activeStatusFilter, setActiveStatusFilter] = useState('Pending'); // Status filter tabs
 
     const billPrintRef = useRef();
 
@@ -1075,7 +1076,51 @@ const DineInPageContent = () => {
 
         const sortedTables = activeTableData.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
-        return sortedTables.map(table => {
+        // Map status filter to mainStatus values
+        const statusMapping = {
+            'All': null, // Show all
+            'Pending': 'pending',
+            'In Progress': ['confirmed', 'preparing'],
+            'Ready': 'ready_for_pickup',
+            'Delivered': 'delivered'
+        };
+
+        const matchesFilter = (mainStatus) => {
+            if (activeStatusFilter === 'All') return true;
+
+            const filterValue = statusMapping[activeStatusFilter];
+            if (Array.isArray(filterValue)) {
+                return filterValue.includes(mainStatus);
+            }
+            return mainStatus === filterValue;
+        };
+
+        // Filter tables to only show those with orders matching the filter
+        const filteredTables = sortedTables.map(table => {
+            // Filter pending orders and tabs based on status
+            const filteredPendingOrders = (table.pendingOrders || []).filter(group =>
+                matchesFilter(group.mainStatus || 'pending')
+            );
+
+            const filteredTabs = {};
+            Object.entries(table.tabs || {}).forEach(([key, group]) => {
+                if (matchesFilter(group.mainStatus || group.status)) {
+                    filteredTabs[key] = group;
+                }
+            });
+
+            // Only include table if it has matching orders/tabs
+            if (filteredPendingOrders.length > 0 || Object.keys(filteredTabs).length > 0) {
+                return {
+                    ...table,
+                    pendingOrders: filteredPendingOrders,
+                    tabs: filteredTabs
+                };
+            }
+            return null;
+        }).filter(Boolean);
+
+        return filteredTables.map(table => {
             return (
                 <TableCard
                     key={table.id}
@@ -1153,7 +1198,28 @@ const DineInPageContent = () => {
 
             <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} />
 
-            <h2 className="text-xl font-bold mb-4">Live Tables</h2>
+            <div className="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4">
+                <h2 className="text-xl font-bold">Live Tables</h2>
+
+                {/* Status Filter Tabs */}
+                <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border">
+                    {['All', 'Pending', 'In Progress', 'Ready', 'Delivered'].map(filter => (
+                        <button
+                            key={filter}
+                            onClick={() => setActiveStatusFilter(filter)}
+                            className={cn(
+                                'px-3 py-1.5 text-sm font-semibold rounded-md transition-colors',
+                                activeStatusFilter === filter
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:bg-muted'
+                            )}
+                        >
+                            {filter}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
                     {[...Array(4)].map((_, i) => (
