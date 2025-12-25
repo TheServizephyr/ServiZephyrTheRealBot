@@ -371,15 +371,30 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const tabColor = hasMultipleTabs ? TAB_COLORS[groupIndex % TAB_COLORS.length] : null;
                                 const activeTabIndex = groupIndex + 1; // Simple 1-based index
 
+                                // VISUAL PRIORITY: Red urgency for pending orders >15 mins
+                                const orderCreatedAt = firstOrder?.createdAt || group.createdAt;
+                                const minutesSinceOrder = orderCreatedAt ? Math.floor((Date.now() - new Date(orderCreatedAt).getTime()) / 60000) : 0;
+                                const isUrgent = mainStatus === 'pending' && minutesSinceOrder > 15;
+                                const urgencyText = isUrgent ? `URGENT - ${minutesSinceOrder}m ago` : null;
+
                                 return (
                                     <div key={group.id} className={cn("relative p-3 rounded-lg border",
-                                        isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border",
-                                        tabColor ? `${tabColor.border} ${tabColor.bg}` : ""
+                                        isUrgent ? "bg-red-500/10 border-red-500 border-2" : (
+                                            isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
+                                        ),
+                                        tabColor && !isUrgent ? `${tabColor.border} ${tabColor.bg}` : ""
                                     )}>
                                         {/* Tab Badge for multi-tab tables */}
                                         {tabColor && hasMultipleTabs && (
                                             <div className={cn("absolute -top-2 -right-2 px-2 py-0.5 rounded-full text-xs font-bold border", tabColor.badge)}>
                                                 Tab {activeTabIndex}/{tabCount}
+                                            </div>
+                                        )}
+
+                                        {/* URGENCY BADGE for old pending orders */}
+                                        {isUrgent && (
+                                            <div className="absolute -top-2 -left-2 px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white border border-red-600 animate-pulse">
+                                                {urgencyText}
                                             </div>
                                         )}
 
