@@ -161,7 +161,6 @@ function DineInTrackingContent() {
             }
 
             setIsPayModalOpen(false);
-            alert('✅ Payment method set to "Pay at Counter". Please proceed to the counter to complete payment.');
 
             // Refresh data to show updated status
             fetchData(true);
