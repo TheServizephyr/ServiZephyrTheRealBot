@@ -24,7 +24,7 @@ const playfairDisplay = Playfair_Display({
 export const metadata = {
   title: "ServiZephyr | Founded by Ashwani Baghel - Restaurant Management",
   description: "ServiZephyr - AI-powered restaurant management platform founded by Ashwani Baghel. Streamline orders, payments, dine-in operations & delivery management.",
-  keywords: "street food, vendor management, food ordering, restaurant management, online ordering",
+  keywords: "restaurant management, food ordering system, dine-in management, delivery management, online ordering for restaurants, restaurant POS, food business automation, restaurant software India",
   authors: [{ name: "ServiZephyr" }],
   creator: "ServiZephyr",
   publisher: "ServiZephyr",

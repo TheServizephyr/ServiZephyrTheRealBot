@@ -224,7 +224,7 @@ const AnimatedSubheadline = () => {
 
   return (
     <h3 className="text-xl md:text-2xl text-muted-foreground">
-      Take direct orders from customers via <span className="inline-block" style={{ minWidth: '150px' }}><span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span></span> - <span className="text-primary font-semibold">From Restaurants to Street Vendors</span>.
+      Take direct orders from customers via <span className="inline-block" style={{ minWidth: '150px' }}><span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span></span> - <span className="text-primary font-semibold">For All Food Businesses</span>.
     </h3>
   );
 };
@@ -305,7 +305,7 @@ export default function Home() {
               </h2>
 
               <h3 className="text-xl md:text-2xl text-muted-foreground mt-8 max-w-2xl">
-                WhatsApp ordering platform for restaurants and street vendors. Zero commission. Full control.
+                WhatsApp ordering platform for restaurants and food businesses. Zero commission. Full control.
               </h3>
 
               <motion.div
@@ -673,7 +673,7 @@ export default function Home() {
                 { icon: <Briefcase className="h-10 w-10 text-primary" />, name: 'Cloud Kitchens' },
                 { icon: <Soup className="h-10 w-10 text-primary" />, name: 'Restaurants' },
                 { icon: <Pizza className="h-10 w-10 text-primary" />, name: 'Cafes & Bakeries' },
-                { icon: <Truck className="h-10 w-10 text-primary" />, name: 'Street Vendors' },
+                { icon: <Truck className="h-10 w-10 text-primary" />, name: 'Food Trucks' },
               ].map((item, i) => (
                 <motion.div key={item.name} custom={i} variants={cardVariants} className="flex flex-col items-center text-center">
                   <div className="flex h-24 w-24 items-center justify-center rounded-full bg-background shadow-inner">
