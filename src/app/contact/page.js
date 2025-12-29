@@ -152,7 +152,7 @@ export default function ContactPage() {
           transition={{ delay: 0.5 }}
           className="text-center text-sm text-muted-foreground mt-12"
         >
-          ServiZephyr © 2024 · Built with ❤️ in India
+          ServiZephyr © 2025 · Built with ❤️ in India
         </motion.p>
       </div>
     </div>
