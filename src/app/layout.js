@@ -22,8 +22,8 @@ const playfairDisplay = Playfair_Display({
 });
 
 export const metadata = {
-  title: "ServiZephyr - Street Food Vendor Management",
-  description: "Unleash the Zephyr of Success. Manage your street food business with ease - orders, menu, payments, and more.",
+  title: "ServiZephyr | Founded by Ashwani Baghel - Restaurant Management",
+  description: "ServiZephyr - AI-powered restaurant management platform founded by Ashwani Baghel. Streamline orders, payments, dine-in operations & delivery management.",
   keywords: "street food, vendor management, food ordering, restaurant management, online ordering",
   authors: [{ name: "ServiZephyr" }],
   creator: "ServiZephyr",
