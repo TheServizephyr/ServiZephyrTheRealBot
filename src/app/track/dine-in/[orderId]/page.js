@@ -432,7 +432,7 @@ function DineInTrackingContent() {
 
                     {/* Pay Bill Button */}
                     <Button
-                        onClick={() => setIsPayModalOpen(true)}
+                        onClick={handlePayOnline}
                         className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
                         <Wallet className="mr-3 h-6 w-6" /> Pay Bill - {formatCurrency(billDetails?.grandTotal || 0)}
