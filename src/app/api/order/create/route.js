@@ -453,13 +453,17 @@ export async function POST(req) {
             // Update last token counter
             batch.update(businessRef, { lastOrderToken: newTokenNumber });
 
-            // ACTIVATE TAB on first order
+            // ACTIVATE TAB on first order (create if doesn't exist)
             if (dineInTabId) {
                 const tabRef = businessRef.collection('dineInTabs').doc(dineInTabId);
-                batch.update(tabRef, {
+                batch.set(tabRef, {
+                    tableId: tableId,
+                    pax_count: pax_count || 1,
+                    tab_name: tab_name || name,
                     status: 'active',
-                    firstOrderPlacedAt: FieldValue.serverTimestamp()
-                });
+                    firstOrderPlacedAt: FieldValue.serverTimestamp(),
+                    createdAt: FieldValue.serverTimestamp()
+                }, { merge: true }); // merge:true updates if exists, creates if not
                 console.log(`[API /order/create] Activating tab: ${dineInTabId}`);
             }
 
