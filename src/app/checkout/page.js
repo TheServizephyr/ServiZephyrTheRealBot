@@ -427,6 +427,67 @@ const CheckoutPageInternal = () => {
         setError('');
 
         try {
+            // DINE-IN POST-PAID SETTLEMENT: Use settlement API for existing orders
+            if (tabId && deliveryType === 'dine-in') {
+                console.log(`[Checkout Page] POST-PAID SETTLEMENT for tabId: ${tabId}`);
+                const settlementData = {
+                    tabId,
+                    restaurantId,
+                    paymentMethod: effectivePaymentMethod,
+                    grandTotal
+                };
+
+                const res = await fetch('/api/order/settle-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settlementData)
+                });
+                const data = await res.json();
+                console.log("[Checkout Page] Settlement API response:", data);
+                if (!res.ok) throw new Error(data.message || "Failed to settle payment.");
+
+                // Handle Razorpay for online payment
+                if (data.razorpay_order_id) {
+                    const options = {
+                        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                        amount: grandTotal * 100,
+                        currency: "INR",
+                        name: cartData.restaurantName,
+                        description: `Bill Settlement - Table ${tableId}`,
+                        order_id: data.razorpay_order_id,
+                        handler: async function (response) {
+                            console.log("[Checkout Page] Razorpay payment successful:", response);
+                            // Mark orders as paid
+                            await fetch('/api/order/mark-paid', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    tabId,
+                                    restaurantId,
+                                    paymentDetails: response
+                                })
+                            });
+                            // Redirect to track page
+                            router.push(`/track/dine-in/${tabId}?token=${token || ''}`);
+                        },
+                        prefill: { name: orderName, phone: orderPhone },
+                        modal: {
+                            ondismiss: function () {
+                                setIsProcessingPayment(false);
+                            }
+                        }
+                    };
+                    const rzp = new window.Razorpay(options);
+                    rzp.open();
+                    return;
+                }
+
+                // Pay at Counter - redirect to track
+                router.push(`/track/dine-in/${tabId}?token=${token || ''}&paid=counter`);
+                return;
+            }
+
+            // NEW ORDER CREATION (original flow)
             console.log(`[Checkout Page] Sending order to /api/order/create. PaymentMethod: ${paymentMethod}, ExistingOrderId: ${orderData.existingOrderId}`);
             const res = await fetch('/api/order/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
             const data = await res.json();
