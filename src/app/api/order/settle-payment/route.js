@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+
 import Razorpay from 'razorpay';
 import axios from 'axios';
 
