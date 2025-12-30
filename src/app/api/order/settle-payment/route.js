@@ -17,6 +17,25 @@ export async function POST(req) {
 
         const firestore = await getFirestore();
 
+        // Find business reference
+        let businessRef;
+        const restaurantsQuery = await firestore.collection('restaurants').where('customUrl', '==', restaurantId).limit(1).get();
+        if (!restaurantsQuery.empty) {
+            businessRef = restaurantsQuery.docs[0].ref;
+        } else {
+            const streetVendorsQuery = await firestore.collection('street_vendors').where('customUrl', '==', restaurantId).limit(1).get();
+            if (!streetVendorsQuery.empty) {
+                businessRef = streetVendorsQuery.docs[0].ref;
+            } else {
+                return NextResponse.json({ message: 'Business not found' }, { status: 404 });
+            }
+        }
+
+        const businessDoc = await businessRef.get();
+        const businessData = businessDoc.data();
+        console.log(`[Settle Payment] Business found: ${businessData.name}`);
+
+
         // For online payment, create Razorpay order
         if (paymentMethod === 'razorpay' || paymentMethod === 'online') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -51,10 +70,9 @@ export async function POST(req) {
 
         // For Pay at Counter - just mark as pending payment
         if (paymentMethod === 'cod' || paymentMethod === 'counter') {
-            // Update all orders for this tab
-            const ordersQuery = await firestore.collection('orders')
+            // Update all orders for this tab  
+            const ordersQuery = await businessRef.collection('orders')
                 .where('dineInTabId', '==', tabId)
-                .where('restaurantId', '==', restaurantId)
                 .where('status', 'not-in', ['rejected', 'picked_up'])
                 .get();
 
