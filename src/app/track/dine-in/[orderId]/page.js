@@ -434,9 +434,14 @@ function DineInTrackingContent() {
                     {/* Pay Bill Button */}
                     <Button
                         onClick={handlePayOnline}
-                        className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground"
+                        disabled={orderData?.order?.status === 'pending'}
+                        className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <Wallet className="mr-3 h-6 w-6" /> Pay Bill - {formatCurrency(billDetails?.grandTotal || 0)}
+                        <Wallet className="mr-3 h-6 w-6" />
+                        {orderData?.order?.status === 'pending'
+                            ? 'Waiting for Restaurant Confirmation...'
+                            : `Pay Bill - ${formatCurrency(billDetails?.grandTotal || 0)}`
+                        }
                     </Button>
                 </div>
             </footer>
