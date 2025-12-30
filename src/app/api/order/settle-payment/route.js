@@ -17,23 +17,28 @@ export async function POST(req) {
 
         const firestore = await getFirestore();
 
-        // Find business reference
+        // Find business reference (restaurantId is the document ID)
         let businessRef;
-        const restaurantsQuery = await firestore.collection('restaurants').where('customUrl', '==', restaurantId).limit(1).get();
-        if (!restaurantsQuery.empty) {
-            businessRef = restaurantsQuery.docs[0].ref;
-        } else {
-            const streetVendorsQuery = await firestore.collection('street_vendors').where('customUrl', '==', restaurantId).limit(1).get();
-            if (!streetVendorsQuery.empty) {
-                businessRef = streetVendorsQuery.docs[0].ref;
-            } else {
-                return NextResponse.json({ message: 'Business not found' }, { status: 404 });
+        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+
+        for (const collectionName of collectionsToTry) {
+            const docRef = firestore.collection(collectionName).doc(restaurantId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                businessRef = docRef;
+                console.log(`[Settle Payment] Business found in ${collectionName}`);
+                break;
             }
+        }
+
+        if (!businessRef) {
+            console.error(`[Settle Payment] Business not found with ID: ${restaurantId}`);
+            return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
 
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
-        console.log(`[Settle Payment] Business found: ${businessData.name}`);
+        console.log(`[Settle Payment] Business: ${businessData.name}`);
 
 
         // For online payment, create Razorpay order
