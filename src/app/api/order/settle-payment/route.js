@@ -176,6 +176,7 @@ export async function POST(req) {
             return NextResponse.json({
                 message: 'Split bill session validated',
                 tabId,
+                firestore_order_id: tabId, // Required by SplitBillInterface
                 method: 'split_bill',
                 amount: grandTotal
             }, { status: 200 });
