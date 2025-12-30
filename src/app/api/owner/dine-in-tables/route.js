@@ -563,6 +563,23 @@ export async function DELETE(req) {
         const businessRef = await getBusinessRef(req);
         const { tableId } = await req.json();
         if (!tableId) return NextResponse.json({ message: 'Table ID is required.' }, { status: 400 });
+
+        // PREVENT DELETION OF OCCUPIED TABLES
+        const activeTabs = await businessRef.collection('dineInTabs')
+            .where('tableId', '==', tableId)
+            .where('status', '==', 'active')
+            .get();
+
+        if (!activeTabs.empty) {
+            const occupiedCount = activeTabs.docs.reduce((sum, doc) => sum + (doc.data().pax_count || 0), 0);
+            return NextResponse.json({
+                message: `Cannot delete table ${tableId}. There are ${occupiedCount} customers currently seated (${activeTabs.size} active session). Please clear all sessions first.`,
+                activeSessions: activeTabs.size,
+                occupiedSeats: occupiedCount
+            }, { status: 400 });
+        }
+
+        // No active sessions - safe to delete
         const tableRef = businessRef.collection('tables').doc(tableId);
         await tableRef.delete();
         return NextResponse.json({ message: 'Table deleted successfully.' }, { status: 200 });

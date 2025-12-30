@@ -42,10 +42,40 @@ export async function GET(req) {
         const tableRef = businessInfo.collection('tables').doc(tableId);
         const tableSnap = await tableRef.get();
 
+        // FIX: Auto-create missing table config if active sessions exist
         if (!tableSnap.exists) {
-            return NextResponse.json({ message: 'Table configuration not found.' }, { status: 404 });
+            console.log(`[Tables API] ⚠️ Table ${tableId} config not found, checking for active sessions...`);
+
+            // Check if there are active dining sessions for this table
+            const activeTabsCheck = await businessInfo.collection('dineInTabs')
+                .where('tableId', '==', tableId)
+                .where('status', '==', 'active')
+                .limit(1)
+                .get();
+
+            if (!activeTabsCheck.empty) {
+                // Active sessions exist but config missing - auto-create it
+                console.log(`[Tables API] ✅ Found active sessions for table ${tableId}, auto-creating config...`);
+
+                await tableRef.set({
+                    tableNumber: tableId,
+                    max_capacity: 4, // default capacity
+                    status: 'occupied',
+                    createdAt: FieldValue.serverTimestamp(),
+                    autoCreated: true, // flag to track auto-created tables
+                    autoCreatedReason: 'Missing config detected with active sessions'
+                });
+
+                console.log(`[Tables API] ✅ Auto-created table ${tableId} configuration`);
+            } else {
+                // No active sessions and no config - genuine 404
+                console.log(`[Tables API] ❌ Table ${tableId} not found and no active sessions`);
+                return NextResponse.json({ message: 'Table configuration not found.' }, { status: 404 });
+            }
         }
-        const tableData = tableSnap.data();
+
+        // Fetch table data (either existing or just auto-created)
+        const tableData = tableSnap.exists ? tableSnap.data() : (await tableRef.get()).data();
 
         // Fetch active tabs for this table
         const tabsSnap = await businessInfo.collection('dineInTabs')
