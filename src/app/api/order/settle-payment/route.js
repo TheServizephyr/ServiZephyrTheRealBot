@@ -13,6 +13,8 @@ export async function POST(req) {
             return NextResponse.json({ message: 'TabId and RestaurantId required' }, { status: 400 });
         }
 
+        console.log(`[Settle Payment] Method: ${paymentMethod}, TabId: ${tabId}, Amount: ${grandTotal}`);
+
         const firestore = await getFirestore();
 
         // For online payment, create Razorpay order
@@ -74,7 +76,49 @@ export async function POST(req) {
             }, { status: 200 });
         }
 
-        return NextResponse.json({ message: 'Invalid payment method' }, { status: 400 });
+        // For PhonePe payment
+        if (paymentMethod === 'phonepe') {
+            console.log('[Settle Payment] PhonePe payment - creating Razorpay order as fallback');
+            // PhonePe implementation can be added later, for now use Razorpay
+            if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+                return NextResponse.json({ message: 'Payment gateway not configured' }, { status: 500 });
+            }
+
+            const razorpay = new Razorpay({
+                key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                key_secret: process.env.RAZORPAY_KEY_SECRET,
+            });
+
+            const razorpayOrder = await razorpay.orders.create({
+                amount: Math.round(grandTotal * 100),
+                currency: 'INR',
+                receipt: `settlement_phonepe_${tabId}_${Date.now()}`,
+                notes: {
+                    type: 'dine-in-settlement',
+                    tabId,
+                    restaurantId,
+                    method: 'phonepe'
+                }
+            });
+
+            return NextResponse.json({
+                message: 'Payment order created',
+                razorpay_order_id: razorpayOrder.id,
+                tabId,
+                amount: grandTotal
+            }, { status: 200 });
+        }
+
+        // For Split Bill - not supported for settlement yet
+        if (paymentMethod === 'split_bill') {
+            console.log('[Settle Payment] Split bill requested - not supported for post-paid settlement');
+            return NextResponse.json({
+                message: 'Split bill is not supported for post-paid orders. Please pay the full amount.',
+                tabId
+            }, { status: 400 });
+        }
+
+        return NextResponse.json({ message: `Unsupported payment method: ${paymentMethod}` }, { status: 400 });
 
     } catch (error) {
         console.error('[Settle Payment] Error:', error);

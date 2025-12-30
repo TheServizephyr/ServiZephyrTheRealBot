@@ -448,11 +448,12 @@ const CheckoutPageInternal = () => {
 
                 // Handle Razorpay for online payment
                 if (data.razorpay_order_id) {
+                    console.log("[Checkout] Opening Razorpay for settlement");
                     const options = {
-                        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_m9PZ4ZL5ItHp9j',
                         amount: grandTotal * 100,
                         currency: "INR",
-                        name: cartData.restaurantName,
+                        name: cartData.restaurantName || 'Restaurant',
                         description: `Bill Settlement - Table ${tableId}`,
                         order_id: data.razorpay_order_id,
                         handler: async function (response) {
@@ -473,11 +474,17 @@ const CheckoutPageInternal = () => {
                         prefill: { name: orderName, phone: orderPhone },
                         modal: {
                             ondismiss: function () {
+                                console.log("[Checkout] Razorpay dismissed");
                                 setIsProcessingPayment(false);
                             }
                         }
                     };
                     const rzp = new window.Razorpay(options);
+                    rzp.on('payment.failed', function (response) {
+                        console.error("[Checkout] Razorpay payment failed:", response);
+                        setIsProcessingPayment(false);
+                        setError('Payment failed: ' + response.error.description);
+                    });
                     rzp.open();
                     return;
                 }
