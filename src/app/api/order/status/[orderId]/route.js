@@ -24,15 +24,21 @@ export async function GET(request, { params }) {
             console.log(`[API][Order Status] ID is a Tab ID. Querying for latest order in tab: ${orderId}`);
             const tabOrdersQuery = await firestore.collection('orders')
                 .where('dineInTabId', '==', orderId)
-                .orderBy('createdAt', 'desc') // Get latest
-                .limit(1)
                 .get();
 
             if (tabOrdersQuery.empty) {
                 console.log(`[API][Order Status] Error: No orders found for tab ${orderId}.`);
                 return NextResponse.json({ message: 'No orders found for this tab.' }, { status: 404 });
             }
-            orderSnap = tabOrdersQuery.docs[0];
+
+            // Sort in memory to avoid composite index requirement
+            const sortedDocs = tabOrdersQuery.docs.sort((a, b) => {
+                const dateA = a.data().createdAt?.toMillis() || 0;
+                const dateB = b.data().createdAt?.toMillis() || 0;
+                return dateB - dateA; // Descending
+            });
+
+            orderSnap = sortedDocs[0];
             orderRef = orderSnap.ref;
             console.log(`[API][Order Status] Found latest order for tab: ${orderSnap.id}`);
         } else {
