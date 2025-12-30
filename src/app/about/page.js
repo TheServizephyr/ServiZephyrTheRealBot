@@ -142,7 +142,7 @@ export default function AboutPage() {
                                 </div>
 
                                 <h3 className="text-2xl font-bold mb-1">Ashwani Baghel</h3>
-                                <p className="text-primary font-semibold mb-4">Founder & CEO</p>
+                                <p className="text-primary font-semibold mb-4">Co-Founder & CEO</p>
 
                                 <p className="text-muted-foreground leading-relaxed mb-6">
                                     Ashwani leads ServiZephyr's Technical Architecture and Marketing Strategy. He oversees everything from product development to market positioning, ensuring the software remains scalable, fast, and aligned with modern industry standards.
