@@ -4,6 +4,58 @@ import { getFirestore } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
+// GET: Fetch order data by tabId (for dine-in checkout)
+export async function GET(req) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const tabId = searchParams.get('tabId');
+
+        if (!tabId) {
+            return NextResponse.json({ message: 'TabId is required' }, { status: 400 });
+        }
+
+        const firestore = await getFirestore();
+
+        // Fetch ALL orders for this dine-in tab
+        const ordersQuery = await firestore.collection('orders')
+            .where('dineInTabId', '==', tabId)
+            .where('status', 'not-in', ['rejected', 'picked_up'])
+            .get();
+
+        if (ordersQuery.empty) {
+            return NextResponse.json({ message: 'No orders found for this tab' }, { status: 404 });
+        }
+
+        // Aggregate all items and calculate totals
+        let allItems = [];
+        let subtotal = 0;
+        let tab_name = '';
+        let customerName = '';
+
+        ordersQuery.docs.forEach(doc => {
+            const order = doc.data();
+            allItems = allItems.concat(order.items || []);
+            subtotal += order.subtotal || order.totalAmount || 0;
+            if (!tab_name) tab_name = order.tab_name || order.customerName || '';
+            if (!customerName) customerName = order.customerName || '';
+        });
+
+        return NextResponse.json({
+            items: allItems,
+            subtotal,
+            totalAmount: subtotal,
+            grandTotal: subtotal,
+            tab_name,
+            customerName
+        }, { status: 200 });
+
+    } catch (error) {
+        console.error("GET /api/order/active error:", error);
+        return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+    }
+}
+
+
 export async function POST(req) {
     try {
         const { phone, token, restaurantId } = await req.json();
