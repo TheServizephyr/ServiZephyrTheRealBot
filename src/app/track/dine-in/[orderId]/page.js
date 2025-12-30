@@ -78,6 +78,7 @@ function DineInTrackingContent() {
     const { orderId } = useParams();
     const searchParams = useSearchParams();
     const sessionToken = searchParams.get('token');
+    const paymentHash = searchParams.get('paid'); // Check for 'counter' param
 
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -179,7 +180,10 @@ function DineInTrackingContent() {
         if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
         if (sessionToken) params.set('session_token', sessionToken);
         params.set('deliveryType', 'dine-in'); // CRITICAL: Tell checkout this is dine-in
-        router.push(`/checkout?${params.toString()}`);
+        params.set('deliveryType', 'dine-in'); // CRITICAL: Tell checkout this is dine-in
+        // Directly open modal instead of redirecting (since we have multiple options)
+        setIsPayModalOpen(true);
+        // router.push(`/checkout?${params.toString()}`); // OLD: Direct redirect
     };
 
     const handleSplitBill = () => {
@@ -257,10 +261,10 @@ function DineInTrackingContent() {
                         <DialogDescription>Select your preferred payment method</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3 py-4">
-                        <Button onClick={handlePayAtCounter} variant="outline" className="w-full h-14 justify-start text-left">
+                        <Button onClick={handlePayAtCounter} variant="outline" className="w-full h-14 justify-start text-left" disabled={isMarkingDone}>
                             <IndianRupee className="mr-3 h-5 w-5" />
                             <div>
-                                <p className="font-semibold">Pay at Counter</p>
+                                <p className="font-semibold">{isMarkingDone ? 'Updating...' : 'Pay at Counter'}</p>
                                 <p className="text-xs text-muted-foreground">Cash, UPI, or Card at billing counter</p>
                             </div>
                         </Button>
@@ -431,18 +435,28 @@ function DineInTrackingContent() {
                         </Button>
                     )}
 
-                    {/* Pay Bill Button */}
-                    <Button
-                        onClick={handlePayOnline}
-                        disabled={orderData?.order?.status === 'pending'}
-                        className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <Wallet className="mr-3 h-6 w-6" />
-                        {orderData?.order?.status === 'pending'
-                            ? 'Waiting for Restaurant Confirmation...'
-                            : `Pay Bill - ${formatCurrency(billDetails?.grandTotal || 0)}`
-                        }
-                    </Button>
+                    {/* Pay Bill Button OR Status Message */}
+                    {(orderData?.order?.paymentStatus === 'pay_at_counter' || paymentHash === 'counter') ? (
+                        <div className="w-full h-14 bg-orange-100 text-orange-800 border-orange-200 border rounded flex items-center justify-center font-bold text-lg animate-pulse">
+                            🏪 Please Pay at Counter
+                        </div>
+                    ) : orderData?.order?.paymentStatus === 'paid' ? (
+                        <div className="w-full h-14 bg-green-100 text-green-800 border-green-200 border rounded flex items-center justify-center font-bold text-lg">
+                            ✅ Bill Paid
+                        </div>
+                    ) : (
+                        <Button
+                            onClick={handlePayOnline} // Opens Modal
+                            disabled={orderData?.order?.status === 'pending'}
+                            className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Wallet className="mr-3 h-6 w-6" />
+                            {orderData?.order?.status === 'pending'
+                                ? 'Waiting for Restaurant Confirmation...'
+                                : `Pay Bill - ${formatCurrency(billDetails?.grandTotal || 0)}`
+                            }
+                        </Button>
+                    )}
                 </div>
             </footer>
         </div>
