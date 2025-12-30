@@ -105,22 +105,12 @@ export async function GET(req) {
             const tabId = orderData.dineInTabId;
             const status = orderData.status;
 
-            // Get table or create fallback for orders without valid tableId
+            // Get table - SKIP if table config doesn't exist (no virtual tables)
             let table = tableMap.get(tableId);
             if (!table) {
-                // Fallback: create a virtual "Unknown" table for orphaned orders
-                const unknownTableId = tableId || 'UNKNOWN';
-                if (!tableMap.has(unknownTableId)) {
-                    tableMap.set(unknownTableId, {
-                        id: unknownTableId,
-                        state: 'occupied',
-                        current_pax: 0,
-                        max_capacity: 0,
-                        tabs: {},
-                        pendingOrders: []
-                    });
-                }
-                table = tableMap.get(unknownTableId);
+                // Order has invalid tableId - skip this orphaned order
+                console.log(`[Dine-In API] Skipping orphaned order ${orderDoc.id} - table ${tableId} not found`);
+                return; // Skip this order
             }
 
             // NOTE: dineInTabs loading disabled above, so all orders go to orderGroups
