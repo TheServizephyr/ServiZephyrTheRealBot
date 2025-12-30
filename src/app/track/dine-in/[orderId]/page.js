@@ -178,6 +178,7 @@ function DineInTrackingContent() {
         if (orderData.order?.tableId) params.set('table', orderData.order.tableId);
         if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
         if (sessionToken) params.set('session_token', sessionToken);
+        params.set('deliveryType', 'dine-in'); // CRITICAL: Tell checkout this is dine-in
         router.push(`/checkout?${params.toString()}`);
     };
 
