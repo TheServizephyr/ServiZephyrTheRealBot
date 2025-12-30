@@ -55,7 +55,7 @@ export async function POST(req) {
             const razorpayOrder = await razorpay.orders.create({
                 amount: Math.round(grandTotal * 100),
                 currency: 'INR',
-                receipt: `settlement_${tabId}_${Date.now()}`,
+                receipt: `rcpt_${tabId.replace('tab_', '')}_${Date.now().toString().slice(-5)}`,
                 notes: {
                     type: 'dine-in-settlement',
                     tabId,
@@ -115,7 +115,7 @@ export async function POST(req) {
             const razorpayOrder = await razorpay.orders.create({
                 amount: Math.round(grandTotal * 100),
                 currency: 'INR',
-                receipt: `settlement_phonepe_${tabId}_${Date.now()}`,
+                receipt: `phpe_${tabId.replace('tab_', '')}_${Date.now().toString().slice(-5)}`,
                 notes: {
                     type: 'dine-in-settlement',
                     tabId,
