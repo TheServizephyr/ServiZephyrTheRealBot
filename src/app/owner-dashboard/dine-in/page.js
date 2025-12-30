@@ -510,9 +510,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             </Button>
                                                         )}
 
-                                                        {/* After served: Mark as Paid (ONLY if customer chose Pay at Counter) */}
-                                                        {isServed && isPayAtCounter && !isPaid && (
-                                                            <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full bg-green-500 hover:bg-green-600">
+                                                        {/* Pay at Counter Action: Allow Mark as Paid anytime if chosen */}
+                                                        {isPayAtCounter && !isPaid && (
+                                                            <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full bg-green-500 hover:bg-green-600 animate-pulse">
                                                                 <Wallet size={16} className="mr-2" /> Mark as Paid
                                                             </Button>
                                                         )}
