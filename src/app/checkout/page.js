@@ -697,7 +697,8 @@ const CheckoutPageInternal = () => {
 
     const cameToPay = (!cart || cart.length === 0) && tabId;
 
-    if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0) {
+    // BLOCK NEW ORDERS for post-paid, but ALLOW PAYMENT for existing orders
+    if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0 && !tabId) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <Lock size={48} className="text-destructive mb-4" />
