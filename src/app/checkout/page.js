@@ -446,6 +446,20 @@ const CheckoutPageInternal = () => {
                 console.log("[Checkout Page] Settlement API response:", data);
                 if (!res.ok) throw new Error(data.message || "Failed to settle payment.");
 
+                // Handle PhonePe Redirect
+                if (data.url && (data.method === 'phonepe' || effectivePaymentMethod === 'phonepe')) {
+                    console.log("[Checkout] Redirecting to PhonePe:", data.url);
+                    window.location.href = data.url;
+                    return;
+                }
+
+                // Handle Split Bill
+                if (data.method === 'split_bill' || effectivePaymentMethod === 'split_bill') {
+                    console.log("[Checkout] Split bill approved, returning data for UI");
+                    setIsProcessingPayment(false);
+                    return data;
+                }
+
                 // Handle Razorpay for online payment
                 if (data.razorpay_order_id) {
                     console.log("[Checkout] Opening Razorpay for settlement");

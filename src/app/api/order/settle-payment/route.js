@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import Razorpay from 'razorpay';
+import axios from 'axios';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,44 +103,82 @@ export async function POST(req) {
 
         // For PhonePe payment
         if (paymentMethod === 'phonepe') {
-            console.log('[Settle Payment] PhonePe payment - creating Razorpay order as fallback');
-            // PhonePe implementation can be added later, for now use Razorpay
-            if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+            console.log('[Settle Payment] Initiating PhonePe payment');
+
+            const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL;
+            const CLIENT_ID = process.env.PHONEPE_CLIENT_ID;
+            const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET;
+            const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL;
+
+            if (!PHONEPE_BASE_URL || !CLIENT_ID || !CLIENT_SECRET || !PHONEPE_AUTH_URL) {
+                console.error("[Settle Payment] PhonePe credentials missing");
                 return NextResponse.json({ message: 'Payment gateway not configured' }, { status: 500 });
             }
 
-            const razorpay = new Razorpay({
-                key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                key_secret: process.env.RAZORPAY_KEY_SECRET,
-            });
+            // Generate Token
+            const tokenRequestBody = new URLSearchParams({
+                client_id: CLIENT_ID,
+                client_version: "1",
+                client_secret: CLIENT_SECRET,
+                grant_type: "client_credentials"
+            }).toString();
 
-            const razorpayOrder = await razorpay.orders.create({
-                amount: Math.round(grandTotal * 100),
-                currency: 'INR',
-                receipt: `phpe_${tabId.replace('tab_', '')}_${Date.now().toString().slice(-5)}`,
-                notes: {
-                    type: 'dine-in-settlement',
-                    tabId,
-                    restaurantId,
-                    method: 'phonepe'
+            const tokenResponse = await axios.post(PHONEPE_AUTH_URL, tokenRequestBody, {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
+            const accessToken = tokenResponse.data.access_token;
+
+            // Create Payment Request
+            const amountInPaise = Math.round(grandTotal * 100);
+            const settlementId = `phpe_${tabId.replace('tab_', '')}_${Date.now().toString().slice(-5)}`;
+            const redirectUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/track/dine-in/${tabId}?payment_status=success`;
+
+            const paymentPayload = {
+                merchantOrderId: settlementId,
+                amount: amountInPaise,
+                expireAfter: 1200,
+                paymentFlow: {
+                    type: "PG_CHECKOUT",
+                    message: `Bill Settlement - Table ${businessData.name}`,
+                    merchantUrls: {
+                        redirectUrl: redirectUrl
+                    }
                 }
-            });
+            };
 
-            return NextResponse.json({
-                message: 'Payment order created',
-                razorpay_order_id: razorpayOrder.id,
-                tabId,
-                amount: grandTotal
-            }, { status: 200 });
+            const paymentResponse = await axios.post(
+                `${PHONEPE_BASE_URL}/checkout/v2/pay`,
+                paymentPayload,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `O-Bearer ${accessToken}`
+                    }
+                }
+            );
+
+            if (paymentResponse.data.redirectUrl) {
+                return NextResponse.json({
+                    message: 'PhonePe initiated',
+                    url: paymentResponse.data.redirectUrl,
+                    phonepe_order_id: paymentResponse.data.orderId,
+                    tabId,
+                    method: 'phonepe'
+                }, { status: 200 });
+            } else {
+                throw new Error("PhonePe did not return a redirect URL");
+            }
         }
 
-        // For Split Bill - not supported for settlement yet
+        // For Split Bill - allow it to proceed so frontend handles it
         if (paymentMethod === 'split_bill') {
-            console.log('[Settle Payment] Split bill requested - not supported for post-paid settlement');
+            console.log('[Settle Payment] Split bill requested - approving for frontend handling');
             return NextResponse.json({
-                message: 'Split bill is not supported for post-paid orders. Please pay the full amount.',
-                tabId
-            }, { status: 400 });
+                message: 'Split bill session validated',
+                tabId,
+                method: 'split_bill',
+                amount: grandTotal
+            }, { status: 200 });
         }
 
         return NextResponse.json({ message: `Unsupported payment method: ${paymentMethod}` }, { status: 400 });
