@@ -14,13 +14,36 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: 'Order ID is missing.' }, { status: 400 });
         }
 
-        console.log(`[API][Order Status] Fetching order document: orders/${orderId}`);
-        const orderRef = firestore.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
+        console.log(`[API][Order Status] Fetching order document: ${orderId}`);
 
-        if (!orderSnap.exists) {
-            console.log(`[API][Order Status] Error: Order document ${orderId} not found.`);
-            return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
+        let orderSnap;
+        let orderRef;
+
+        // If orderId is a Tab ID (starts with 'tab_'), find the most recent order for this tab
+        if (orderId.startsWith('tab_')) {
+            console.log(`[API][Order Status] ID is a Tab ID. Querying for latest order in tab: ${orderId}`);
+            const tabOrdersQuery = await firestore.collection('orders')
+                .where('dineInTabId', '==', orderId)
+                .orderBy('createdAt', 'desc') // Get latest
+                .limit(1)
+                .get();
+
+            if (tabOrdersQuery.empty) {
+                console.log(`[API][Order Status] Error: No orders found for tab ${orderId}.`);
+                return NextResponse.json({ message: 'No orders found for this tab.' }, { status: 404 });
+            }
+            orderSnap = tabOrdersQuery.docs[0];
+            orderRef = orderSnap.ref;
+            console.log(`[API][Order Status] Found latest order for tab: ${orderSnap.id}`);
+        } else {
+            // Normal Order ID lookup
+            orderRef = firestore.collection('orders').doc(orderId);
+            orderSnap = await orderRef.get();
+
+            if (!orderSnap.exists) {
+                console.log(`[API][Order Status] Error: Order document ${orderId} not found.`);
+                return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
+            }
         }
 
         const orderData = orderSnap.data();

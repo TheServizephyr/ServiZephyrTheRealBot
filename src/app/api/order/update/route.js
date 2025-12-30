@@ -29,11 +29,18 @@ export async function PATCH(req) {
         // Find orders to update
         let ordersToUpdate = [];
 
-        if (dineInTabId) {
+        let queryTabId = dineInTabId;
+
+        // If orderId looks like a tab ID, treat it as such
+        if (!queryTabId && orderId && orderId.startsWith('tab_')) {
+            queryTabId = orderId;
+        }
+
+        if (queryTabId) {
             // Update all orders in the tab
             const ordersSnap = await firestore
                 .collection('orders')
-                .where('dineInTabId', '==', dineInTabId)
+                .where('dineInTabId', '==', queryTabId)
                 .where('status', '!=', 'rejected')
                 .get();
 
