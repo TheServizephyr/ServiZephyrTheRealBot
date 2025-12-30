@@ -204,6 +204,7 @@ export async function GET(req) {
                 mainStatus: lowestStatus, // For determining which button to show
                 items: orders.flatMap(o => o.items || []),
                 isPaid, // NEW: Payment status
+                paymentStatus: isPaid ? 'paid' : (orders.some(o => o.paymentStatus === 'pay_at_counter' || o.paymentMethod === 'counter') ? 'pay_at_counter' : 'pending'),
                 needsCleaning: isServed && isPaid && !group.cleaned, // NEW: Needs cleaning if served + paid but not cleaned
             };
 
@@ -242,7 +243,10 @@ export async function GET(req) {
                     tab.status = hasPending ? 'pending' : 'active';
                     tab.mainStatus = lowestStatus;
                     tab.totalAmount = totalAmount;
+                    tab.totalAmount = totalAmount;
                     tab.items = orders.flatMap(o => o.items || []);
+                    const isPaid = orders.some(o => o.paymentStatus === 'paid' || o.paymentDetails?.method === 'razorpay' || o.paymentDetails?.method === 'phonepe');
+                    tab.paymentStatus = isPaid ? 'paid' : (orders.some(o => o.paymentStatus === 'pay_at_counter' || o.paymentMethod === 'counter') ? 'pay_at_counter' : 'pending');
                 }
             });
         });
