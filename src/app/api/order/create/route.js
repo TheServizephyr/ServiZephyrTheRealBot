@@ -379,6 +379,7 @@ export async function POST(req) {
             // Generate or REUSE dine-in token based on dineInTabId
             let dineInToken = null;
             let newTokenNumber = null; // Define outside for batch.update
+            let existingTabStatus = null;
 
             if (dineInTabId) {
                 console.log(`[API /order/create] POST-PAID: Checking for existing token for tabId: ${dineInTabId}`);
@@ -399,7 +400,14 @@ export async function POST(req) {
                         const existingOrder = existingOrdersSnapshot.docs[0].data();
                         dineInToken = existingOrder.dineInToken;
                         newTokenNumber = businessData.lastOrderToken || 0; // Don't increment when reusing
-                        console.log(`[API /order/create] POST-PAID ✅ REUSING token: ${dineInToken} from order ${existingOrdersSnapshot.docs[0].id}`);
+
+                        // Check if tab is already marked for payment
+                        const tabDoc = await firestore.collection('restaurants').doc(restaurantId).collection('dineInTabs').doc(dineInTabId).get();
+                        if (tabDoc.exists) {
+                            existingTabStatus = tabDoc.data().paymentStatus;
+                        }
+
+                        console.log(`[API /order/create] POST-PAID ✅ REUSING token: ${dineInToken} from order ${existingOrdersSnapshot.docs[0].id}. Tab Status: ${existingTabStatus}`);
                     } else {
                         // Generate NEW token with random characters for security
                         const lastToken = businessData.lastOrderToken || 0;
@@ -439,7 +447,9 @@ export async function POST(req) {
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
                 customerName: tab_name,
-                status: 'pending',
+                status: (dineInToken && existingTabStatus === 'pay_at_counter') ? 'pay_at_counter' : 'pending',
+                paymentStatus: (dineInToken && existingTabStatus === 'pay_at_counter') ? 'pay_at_counter' : 'pending',
+                paymentMethod: (dineInToken && existingTabStatus === 'pay_at_counter') ? 'counter' : null,
                 dineInTabId: dineInTabId || null,
                 diningPreference: diningPreference || null,
                 packagingCharge: packagingCharge || 0,
