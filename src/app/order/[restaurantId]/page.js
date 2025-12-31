@@ -921,24 +921,7 @@ const OrderPageInternal = () => {
                     setActiveTabInfo({ id: tabIdFromUrl, name: 'Active Tab', total: 0 });
                     setDineInState('ready');
                 } else {
-                    // Check localStorage for existing tab for this table
-                    const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
-                    const savedTabData = localStorage.getItem(dineInTabKey);
-
-                    if (savedTabData) {
-                        try {
-                            const tabInfo = JSON.parse(savedTabData);
-                            console.log('[Dine-In] Found existing tab in localStorage:', tabInfo);
-                            // Auto-load existing tab
-                            setActiveTabInfo(tabInfo);
-                            setDineInState('ready');
-                            return; // Skip modal
-                        } catch (e) {
-                            console.error('[Dine-In] Error parsing saved tab:', e);
-                            localStorage.removeItem(dineInTabKey);
-                        }
-                    }
-
+                    // First fetch table data from server
                     try {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
 
@@ -952,6 +935,35 @@ const OrderPageInternal = () => {
                         }
 
                         const tableData = await tableRes.json();
+
+                        // Check localStorage for existing tab AFTER fetching server data
+                        const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
+                        const savedTabData = localStorage.getItem(dineInTabKey);
+
+                        if (savedTabData) {
+                            try {
+                                const tabInfo = JSON.parse(savedTabData);
+                                console.log('[Dine-In] Found existing tab in localStorage:', tabInfo);
+
+                                // SERVER-SIDE VALIDATION: Check if this tab is still active on server
+                                const isTabStillActive = tableData.activeTabs?.some(tab => tab.id === tabInfo.id);
+
+                                if (isTabStillActive) {
+                                    console.log('[Dine-In] Tab validated as active on server, auto-loading');
+                                    // Auto-load existing tab
+                                    setActiveTabInfo(tabInfo);
+                                    setDineInState('ready');
+                                    return; // Skip modal
+                                } else {
+                                    console.log('[Dine-In] Tab no longer active on server, clearing localStorage');
+                                    localStorage.removeItem(dineInTabKey);
+                                    // Continue to show modal
+                                }
+                            } catch (e) {
+                                console.error('[Dine-In] Error parsing saved tab:', e);
+                                localStorage.removeItem(dineInTabKey);
+                            }
+                        }
 
                         let state = 'available';
                         const occupiedSeats = tableData.current_pax || 0;
