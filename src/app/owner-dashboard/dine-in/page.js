@@ -284,7 +284,7 @@ const actionConfig = {
 };
 
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading, lastBulkAction, setLastBulkAction }) => {
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading, lastBulkAction, setLastBulkAction, setConfirmationState }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -553,7 +553,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                 className={batchAction.className + " flex-1 text-white text-xs h-7"}
                                                                                 onClick={(e) => {
                                                                                     e.stopPropagation();
-                                                                                    handleUpdateStatus(orderBatch.id, batchAction.next);
+                                                                                    onUpdateStatus(orderBatch.id, batchAction.next);
                                                                                 }}
                                                                                 disabled={buttonLoading !== null}
                                                                             >
@@ -585,7 +585,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                                 confirmText: "Undo",
                                                                                                 paymentMethod: 'cod',
                                                                                                 onConfirm: async () => {
-                                                                                                    handleUpdateStatus(orderBatch.id, undoPrev);
+                                                                                                    onUpdateStatus(orderBatch.id, undoPrev);
                                                                                                     setConfirmationState({ isOpen: false });
                                                                                                 }
                                                                                             });
@@ -800,7 +800,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         return bulkAction && statusBatches.length > 1 && (
                                                             <Button
                                                                 size="sm"
-                                                                className={bulkAction.className + " w-full text-white font-semibold"}
+                                                                className={bulkAction.className + " w-full text-white font-semibold h-auto py-1.5 whitespace-normal leading-tight"}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     // Track bulk action for undo
@@ -813,19 +813,49 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                         timestamp: Date.now()
                                                                     });
                                                                     // Update all orders at once
-                                                                    statusOrderIds.forEach(orderId => handleUpdateStatus(orderId, bulkAction.next));
+                                                                    statusOrderIds.forEach(orderId => onUpdateStatus(orderId, bulkAction.next));
                                                                 }}
                                                                 disabled={buttonLoading !== null}
                                                             >
                                                                 {buttonLoading ? (
-                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
                                                                 ) : (
-                                                                    BulkIcon && <BulkIcon className="mr-2 h-4 w-4" />
+                                                                    BulkIcon && <BulkIcon className="mr-2 h-4 w-4 shrink-0" />
                                                                 )}
-                                                                {bulkAction.label} ({statusBatches.length} orders)
+                                                                <span>{bulkAction.label} ({statusBatches.length})</span>
                                                             </Button>
                                                         );
                                                     })()}
+
+                                                    {/* Global Undo for Bulk Actions */}
+                                                    {lastBulkAction && lastBulkAction.tabId === group.dineInTabId && (
+                                                        <div className="mt-2">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 h-7"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const { orderIds, prevStatus } = lastBulkAction;
+                                                                    setConfirmationState({
+                                                                        isOpen: true,
+                                                                        title: "Undo Bulk Action",
+                                                                        description: `Undo status change for ${orderIds.length} orders back to ${prevStatus}?`,
+                                                                        confirmText: "Undo All",
+                                                                        paymentMethod: 'cod',
+                                                                        onConfirm: async () => {
+                                                                            orderIds.forEach(id => onUpdateStatus(id, prevStatus));
+                                                                            setLastBulkAction(null);
+                                                                            setConfirmationState({ isOpen: false });
+                                                                        }
+                                                                    });
+                                                                }}
+                                                            >
+                                                                <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                                                                Undo Last Bulk Action ({lastBulkAction.orderIds.length})
+                                                            </Button>
+                                                        </div>
+                                                    )}
 
                                                     {/* Status Display */}
                                                     {mainStatus && mainStatus !== 'pending' && (
@@ -1608,6 +1638,7 @@ const DineInPageContent = () => {
                     buttonLoading={buttonLoading}
                     lastBulkAction={lastBulkAction}
                     setLastBulkAction={setLastBulkAction}
+                    setConfirmationState={setConfirmationState}
                 />
             );
         }).flat();
