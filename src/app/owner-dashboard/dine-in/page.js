@@ -300,11 +300,19 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
     // SORT BY TIME: Newest orders/tabs first (Latest on Top)
     allGroups.sort((a, b) => {
+        const parseTime = (val) => {
+            if (!val) return 0;
+            if (typeof val === 'object' && val._seconds) return val._seconds * 1000;
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
+        };
+
         const getLatestTime = (group) => {
-            let time = group.createdAt ? new Date(group.createdAt).getTime() : 0;
+            let time = parseTime(group.createdAt);
+
             // Also check internal orders for latest activity
             if (group.orders) {
-                const orderTimes = Object.values(group.orders).map(o => new Date(o.createdAt).getTime());
+                const orderTimes = Object.values(group.orders).map(o => parseTime(o.createdAt));
                 if (orderTimes.length > 0) {
                     const maxOrderTime = Math.max(...orderTimes);
                     if (maxOrderTime > time) time = maxOrderTime;
@@ -312,7 +320,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
             }
             // Also check orderBatches if structured that way
             if (group.orderBatches) {
-                const batchTimes = group.orderBatches.map(b => new Date(b.createdAt).getTime());
+                const batchTimes = group.orderBatches.map(b => parseTime(b.createdAt || b.orderDate));
                 if (batchTimes.length > 0) {
                     const maxBatchTime = Math.max(...batchTimes);
                     if (maxBatchTime > time) time = maxBatchTime;
