@@ -180,10 +180,8 @@ function DineInTrackingContent() {
         if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
         if (sessionToken) params.set('session_token', sessionToken);
         params.set('deliveryType', 'dine-in'); // CRITICAL: Tell checkout this is dine-in
-        params.set('deliveryType', 'dine-in'); // CRITICAL: Tell checkout this is dine-in
-        // Directly open modal instead of redirecting (since we have multiple options)
-        setIsPayModalOpen(true);
-        // router.push(`/checkout?${params.toString()}`); // OLD: Direct redirect
+        // Directly navigate to checkout (no modal)
+        router.push(`/checkout?${params.toString()}`);
     };
 
     const handleSplitBill = () => {
