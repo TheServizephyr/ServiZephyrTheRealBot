@@ -590,7 +590,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                         }}
                                                                                         disabled={buttonLoading !== null}
                                                                                     >
-                                                                                        ⟲ Undo
+                                                                                        Undo
                                                                                     </Button>
                                                                                 );
                                                                             })()}
@@ -692,7 +692,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 ) : (
                                                                     <Check className="mr-2 h-4 w-4" />
                                                                 )}
-                                                                🔄 Confirm All Pending ({pendingBatches.length} order{pendingBatches.length > 1 ? 's' : ''})
+                                                                Confirm All Pending ({pendingBatches.length} order{pendingBatches.length > 1 ? 's' : ''})
                                                             </Button>
                                                         );
                                                     })()}
@@ -725,7 +725,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             disabled={buttonLoading !== null}
                                                         >
                                                             <History className="mr-2 h-4 w-4" />
-                                                            ⟲ Undo Last Bulk Action ({lastBulkAction.orderIds.length})
+                                                            Undo Last Bulk Action ({lastBulkAction.orderIds.length})
                                                         </Button>
                                                     )}
 
