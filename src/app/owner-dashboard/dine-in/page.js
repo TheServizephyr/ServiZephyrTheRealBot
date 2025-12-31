@@ -251,20 +251,22 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
                     <DialogTitle>{title}</DialogTitle>
                     {description && <DialogDescription>{description}</DialogDescription>}
                 </DialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="payment-method">Select Payment Method</Label>
-                    <select
-                        id="payment-method"
-                        value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
-                        className="mt-1 w-full p-2 border rounded-md bg-input border-border"
-                    >
-                        <option value="cod">Cash</option>
-                        <option value="upi">UPI</option>
-                        <option value="card">Card</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
+                {paymentMethod && (
+                    <div className="py-4">
+                        <Label htmlFor="payment-method">Select Payment Method</Label>
+                        <select
+                            id="payment-method"
+                            value={paymentMethod}
+                            onChange={(e) => setPaymentMethod(e.target.value)}
+                            className="mt-1 w-full p-2 border rounded-md bg-input border-border"
+                        >
+                            <option value="cod">Cash</option>
+                            <option value="upi">UPI</option>
+                            <option value="card">Card</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                )}
                 <DialogFooter>
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button onClick={onConfirm} variant={isDestructive ? "destructive" : "default"}>
@@ -635,7 +637,6 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                 title: "Cancel Order",
                                                                                 description: `Cancel Order #${batchIndex + 1}?`,
                                                                                 confirmText: "Cancel",
-                                                                                paymentMethod: 'cod',
                                                                                 isDestructive: true,
                                                                                 onConfirm: async () => {
                                                                                     onRejectOrder(orderBatch.id);
@@ -743,7 +744,6 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     title: "Undo Bulk Action",
                                                                     description: `Undo last bulk action? ${lastBulkAction.orderIds.length} orders will revert to ${lastBulkAction.prevStatus} status.`,
                                                                     confirmText: "Undo All",
-                                                                    paymentMethod: 'cod',
                                                                     onConfirm: async () => {
                                                                         // Revert all orders to previous status
                                                                         lastBulkAction.orderIds.forEach(orderId => {
@@ -863,7 +863,6 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                         title: "Undo Bulk Action",
                                                                         description: `Undo status change for ${orderIds.length} orders back to ${prevStatus}?`,
                                                                         confirmText: "Undo All",
-                                                                        paymentMethod: 'cod',
                                                                         onConfirm: async () => {
                                                                             orderIds.forEach(id => onUpdateStatus(id, prevStatus));
                                                                             setLastBulkAction(null);
