@@ -1465,13 +1465,47 @@ const DineInPageContent = () => {
         // Set loading state
         setButtonLoading(`status_${orderId}`);
 
-        // API call  
+        // OPTIMISTIC UPDATE - Update UI immediately for instant feedback
+        setAllData(prevData => {
+            const updatedTables = prevData.tables.map(table => {
+                // Update in pendingOrders
+                const updatedPendingOrders = table.pendingOrders?.map(group => ({
+                    ...group,
+                    orderBatches: group.orderBatches?.map(batch =>
+                        batch.id === orderId ? { ...batch, status: newStatus } : batch
+                    )
+                }));
+
+                // Update in tabs
+                const updatedTabs = {};
+                Object.entries(table.tabs || {}).forEach(([key, group]) => {
+                    updatedTabs[key] = {
+                        ...group,
+                        orderBatches: group.orderBatches?.map(batch =>
+                            batch.id === orderId ? { ...batch, status: newStatus } : batch
+                        )
+                    };
+                });
+
+                return {
+                    ...table,
+                    pendingOrders: updatedPendingOrders,
+                    tabs: updatedTabs
+                };
+            });
+
+            return { ...prevData, tables: updatedTables };
+        });
+
+        // API call in background
         try {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus }, '/api/owner/orders');
-            // Refetch to get updated data with correct calculated fields (hasPending, mainStatus, etc)
+            // Light refresh to sync any server-side calculations (no full loading state)
             await fetchData(true);
             setButtonLoading(null);
         } catch (error) {
+            // Revert optimistic update on error
+            await fetchData(true);
             setButtonLoading(null);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update status: ${error.message}` });
         }
