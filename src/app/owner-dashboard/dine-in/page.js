@@ -445,16 +445,109 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             </div>
                                         </div>
 
-                                        {/* Items list */}
-                                        {allItems.length > 0 && (
-                                            <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
-                                                {allItems.map((item, i) => (
-                                                    <div key={i} className="flex justify-between items-center text-muted-foreground">
-                                                        <span>{item.quantity || item.qty} x {item.name}</span>
-                                                        <span>{formatCurrency((item.totalPrice || item.price))}</span>
-                                                    </div>
-                                                ))}
+                                        {/* Order Batches - Display individual orders with timestamps */}
+                                        {group.orderBatches && group.orderBatches.length > 0 ? (
+                                            <div className="space-y-3 my-2">
+                                                {group.orderBatches.map((orderBatch, batchIndex) => {
+                                                    // Calculate time ago for this order
+                                                    const orderTime = orderBatch.orderDate?._seconds
+                                                        ? new Date(orderBatch.orderDate._seconds * 1000)
+                                                        : null;
+                                                    const now = new Date();
+                                                    const minutesAgo = orderTime
+                                                        ? Math.floor((now - orderTime) / (1000 * 60))
+                                                        : null;
+
+                                                    // Check if this is a recent order (< 5 minutes)
+                                                    const isRecent = minutesAgo !== null && minutesAgo < 5;
+
+                                                    // Status color mapping
+                                                    const statusColors = {
+                                                        'pending': 'border-blue-500/50 bg-blue-500/5',
+                                                        'confirmed': 'border-yellow-500/50 bg-yellow-500/5',
+                                                        'preparing': 'border-orange-500/50 bg-orange-500/5',
+                                                        'ready_for_pickup': 'border-green-500/50 bg-green-500/5',
+                                                        'delivered': 'border-green-600/50 bg-green-600/5',
+                                                    };
+
+                                                    const statusBadgeColors = {
+                                                        'pending': 'bg-blue-500 text-white',
+                                                        'confirmed': 'bg-yellow-500 text-black',
+                                                        'preparing': 'bg-orange-500 text-white',
+                                                        'ready_for_pickup': 'bg-green-500 text-white',
+                                                        'delivered': 'bg-green-600 text-white',
+                                                    };
+
+                                                    return (
+                                                        <div
+                                                            key={orderBatch.id}
+                                                            className={cn(
+                                                                "border-2 rounded-lg p-2 relative",
+                                                                statusColors[orderBatch.status] || 'border-border/50 bg-muted/5'
+                                                            )}
+                                                        >
+                                                            {/* Order Header with Batch Number, Time, and Status */}
+                                                            <div className="flex justify-between items-center mb-1.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-xs font-semibold text-muted-foreground">
+                                                                        📦 Order #{batchIndex + 1}
+                                                                    </span>
+                                                                    {minutesAgo !== null && (
+                                                                        <span className="text-xs text-muted-foreground flex items-center">
+                                                                            <Clock size={10} className="mr-1" />
+                                                                            {minutesAgo < 60
+                                                                                ? `${minutesAgo}m ago`
+                                                                                : `${Math.floor(minutesAgo / 60)}h ${minutesAgo % 60}m ago`
+                                                                            }
+                                                                        </span>
+                                                                    )}
+                                                                    {/* NEW Badge for recent orders */}
+                                                                    {isRecent && (
+                                                                        <span className="bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                                                                            NEW
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {/* Status Badge */}
+                                                                <span className={cn(
+                                                                    "text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase",
+                                                                    statusBadgeColors[orderBatch.status] || 'bg-gray-500 text-white'
+                                                                )}>
+                                                                    {orderBatch.status === 'ready_for_pickup' ? 'Ready' : orderBatch.status}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Items in this order batch */}
+                                                            <div className="space-y-0.5 text-xs">
+                                                                {orderBatch.items && orderBatch.items.map((item, itemIdx) => (
+                                                                    <div key={itemIdx} className="flex justify-between items-center text-muted-foreground">
+                                                                        <span>{item.quantity || item.qty} × {item.name}</span>
+                                                                        <span>{formatCurrency(item.totalPrice || item.price)}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+
+                                                            {/* Order Total */}
+                                                            <div className="flex justify-between items-center text-xs font-semibold mt-1.5 pt-1.5 border-t border-border/30">
+                                                                <span className="text-muted-foreground">Order Total:</span>
+                                                                <span className="text-foreground">{formatCurrency(orderBatch.totalAmount)}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
+                                        ) : (
+                                            // Fallback to legacy merged items display if orderBatches not available
+                                            allItems.length > 0 && (
+                                                <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
+                                                    {allItems.map((item, i) => (
+                                                        <div key={i} className="flex justify-between items-center text-muted-foreground">
+                                                            <span>{item.quantity || item.qty} x {item.name}</span>
+                                                            <span>{formatCurrency((item.totalPrice || item.price))}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )
                                         )}
 
                                         {/* Bill & Payment Status */}
