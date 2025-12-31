@@ -754,8 +754,67 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     })()}
                                                 </>
                                             ) : (
-                                                /* NON-PENDING: Show progression buttons */
+                                                /* NON-PENDING: Show bulk progression buttons + individual actions */
                                                 <>
+                                                    {/* BULK PROGRESSION BUTTONS */}
+                                                    {(() => {
+                                                        const bulkProgressionConfig = {
+                                                            'confirmed': {
+                                                                label: 'Start Preparing All',
+                                                                next: 'preparing',
+                                                                className: 'bg-orange-500 hover:bg-orange-600',
+                                                                icon: CookingPot
+                                                            },
+                                                            'preparing': {
+                                                                label: 'Mark All Ready',
+                                                                next: 'ready_for_pickup',
+                                                                className: 'bg-green-500 hover:bg-green-600',
+                                                                icon: ShoppingBag
+                                                            },
+                                                            'ready_for_pickup': {
+                                                                label: 'Mark All Served',
+                                                                next: 'delivered',
+                                                                className: 'bg-emerald-600 hover:bg-emerald-700',
+                                                                icon: Home
+                                                            }
+                                                        };
+
+                                                        // Find all orders with current mainStatus
+                                                        const statusBatches = group.orderBatches?.filter(b => b.status === mainStatus) || [];
+                                                        const statusOrderIds = statusBatches.map(b => b.id);
+                                                        const bulkAction = bulkProgressionConfig[mainStatus];
+                                                        const BulkIcon = bulkAction?.icon;
+
+                                                        return bulkAction && statusBatches.length > 1 && (
+                                                            <Button
+                                                                size="sm"
+                                                                className={bulkAction.className + " w-full text-white font-semibold"}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Track bulk action for undo
+                                                                    setLastBulkAction({
+                                                                        type: 'bulk_progress',
+                                                                        orderIds: statusOrderIds,
+                                                                        prevStatus: mainStatus,
+                                                                        tableId: tableData.id,
+                                                                        tabId: group.dineInTabId,
+                                                                        timestamp: Date.now()
+                                                                    });
+                                                                    // Update all orders at once
+                                                                    statusOrderIds.forEach(orderId => handleUpdateStatus(orderId, bulkAction.next));
+                                                                }}
+                                                                disabled={buttonLoading !== null}
+                                                            >
+                                                                {buttonLoading ? (
+                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    BulkIcon && <BulkIcon className="mr-2 h-4 w-4" />
+                                                                )}
+                                                                {bulkAction.label} ({statusBatches.length} orders)
+                                                            </Button>
+                                                        );
+                                                    })()}
+
                                                     {/* Progression Action Button (Confirmed → Preparing → Ready → Served) */}
                                                     {actionDetails && ActionIcon && orderIdToUpdate && (
                                                         <Button
