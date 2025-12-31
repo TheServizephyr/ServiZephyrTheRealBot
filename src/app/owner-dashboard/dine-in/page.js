@@ -864,36 +864,49 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             );
                                                         })()}
 
-                                                        {/* GLOBAL UNDO BUTTON (Side-by-side) */}
-                                                        {lastBulkAction && (
-                                                            lastBulkAction.tabId === effectiveTabId ||
-                                                            lastBulkAction.orderIds.some(id => (group.orders && group.orders[id]) || (group.orderBatches && group.orderBatches.some(b => b.id === id)))
-                                                        ) && (
+                                                        {/* PERSISTENT BULK REVERT BUTTON (Always visible for valid states) */}
+                                                        {(() => {
+                                                            const reverseConfig = {
+                                                                'preparing': 'confirmed',
+                                                                'ready_for_pickup': 'preparing',
+                                                                'delivered': 'ready_for_pickup'
+                                                            };
+                                                            const prevStatus = reverseConfig[mainStatus];
+                                                            
+                                                            // Recalculate batches for this scope
+                                                            const statusBatches = group.orderBatches?.filter(b => b.status === mainStatus) || [];
+                                                            
+                                                            // Show if previous status exists AND (more than 1 item OR status is delivered where main button is hidden)
+                                                            if (!prevStatus || statusBatches.length === 0) return null;
+                                                            if (statusBatches.length <= 1 && mainStatus !== 'delivered') return null;
+
+                                                            const orderIds = statusBatches.map(b => b.id);
+
+                                                            return (
                                                                 <Button
                                                                     size="sm"
                                                                     variant="outline"
                                                                     className="border-orange-500 text-orange-500 hover:bg-orange-500/10 h-auto px-3"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        const { orderIds, prevStatus } = lastBulkAction;
                                                                         setConfirmationState({
                                                                             isOpen: true,
-                                                                            title: "Undo Bulk Action",
-                                                                            description: `Undo status change for ${orderIds.length} orders back to ${prevStatus}?`,
-                                                                            confirmText: "Undo All",
+                                                                            title: "Revert Bulk Action",
+                                                                            description: `Revert ${orderIds.length} orders back to ${prevStatus}?`,
+                                                                            confirmText: "Revert",
                                                                             paymentMethod: null,
                                                                             onConfirm: async () => {
                                                                                 orderIds.forEach(id => onUpdateStatus(id, prevStatus));
-                                                                                setLastBulkAction(null);
                                                                                 setConfirmationState({ isOpen: false });
                                                                             }
                                                                         });
                                                                     }}
-                                                                    title="Undo Last Bulk Action"
+                                                                    title={`Revert All to ${prevStatus}`}
                                                                 >
                                                                     <RotateCcw className="h-4 w-4" />
                                                                 </Button>
-                                                            )}
+                                                            );
+                                                        })()}
                                                     </div>
 
                                                     {/* Status Display */}
