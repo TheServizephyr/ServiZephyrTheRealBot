@@ -150,10 +150,10 @@ export default function AboutPage() {
 
                                 {/* Social Links Placeholder */}
                                 <div className="flex gap-4">
-                                    <a href="linkedin.com/in/ashwani-baghel" className="p-2 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors">
+                                    <a href="https://www.linkedin.com/in/ashwani-baghel" className="p-2 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors">
                                         <Linkedin className="h-5 w-5 text-primary" />
                                     </a>
-                                    <a href="#" className="p-2 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors">
+                                    <a href="https://x.com/BaghelAshw76944" className="p-2 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors">
                                         <Twitter className="h-5 w-5 text-primary" />
                                     </a>
                                     <a href="mailto:ashwanibaghel@servizephyr.com" className="p-2 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors">
@@ -189,7 +189,7 @@ export default function AboutPage() {
 
                                 {/* Social Links Placeholder */}
                                 <div className="flex gap-4">
-                                    <a href="linkedin.com/in/utkarsh-patel-973047298" className="p-2 rounded-full bg-blue-500/10 hover:bg-blue-500/20 transition-colors">
+                                    <a href="https://www.linkedin.com/in/utkarsh-patel-973047298" className="p-2 rounded-full bg-blue-500/10 hover:bg-blue-500/20 transition-colors">
                                         <Linkedin className="h-5 w-5 text-blue-500" />
                                     </a>
                                     <a href="#" className="p-2 rounded-full bg-blue-500/10 hover:bg-blue-500/20 transition-colors">
