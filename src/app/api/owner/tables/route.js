@@ -39,18 +39,28 @@ export async function GET(req) {
             return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
 
-        const tableRef = businessInfo.collection('tables').doc(tableId);
-        const tableSnap = await tableRef.get();
+        // Case-insensitive table lookup
+        const tablesSnap = await businessInfo.collection('tables').get();
 
-        if (!tableSnap.exists) {
+        let matchedTable = null;
+        let actualTableId = null;
+
+        tablesSnap.forEach(doc => {
+            if (doc.id.toLowerCase() === tableId.toLowerCase()) {
+                matchedTable = doc.data();
+                actualTableId = doc.id;
+            }
+        });
+
+        if (!matchedTable) {
             return NextResponse.json({ message: 'Table configuration not found.' }, { status: 404 });
         }
 
-        const tableData = tableSnap.data();
+        const tableData = matchedTable;
 
-        // Fetch active tabs for this table
+        // Fetch active tabs for this table (use actual table ID from database)
         const tabsSnap = await businessInfo.collection('dineInTabs')
-            .where('tableId', '==', tableId)
+            .where('tableId', '==', actualTableId)
             .where('status', '==', 'active')
             .get();
 
@@ -90,7 +100,7 @@ export async function GET(req) {
         const current_pax = validActiveTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
 
         return NextResponse.json({
-            tableId: tableId,
+            tableId: actualTableId, // Return actual table ID from database
             max_capacity: tableData.max_capacity,
             current_pax,
             activeTabs: validActiveTabs,
@@ -123,7 +133,21 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
 
-        const tableRef = businessRef.collection('tables').doc(tableId);
+        // Case-insensitive table lookup
+        const tablesSnap = await businessRef.collection('tables').get();
+
+        let actualTableId = null;
+        tablesSnap.forEach(doc => {
+            if (doc.id.toLowerCase() === tableId.toLowerCase()) {
+                actualTableId = doc.id;
+            }
+        });
+
+        if (!actualTableId) {
+            return NextResponse.json({ message: 'Table not found.' }, { status: 404 });
+        }
+
+        const tableRef = businessRef.collection('tables').doc(actualTableId);
         const newTabId = `tab_${Date.now()}`;
 
         try {
@@ -136,7 +160,7 @@ export async function POST(req) {
                 // CRITICAL: Calculate live capacity from active tabs, not stale table field!
                 // Query actual active tabs to get accurate current_pax
                 const activeTabsQuery = await businessRef.collection('dineInTabs')
-                    .where('tableId', '==', tableId)
+                    .where('tableId', '==', actualTableId)
                     .where('status', '==', 'active')
                     .get();
 
@@ -154,7 +178,7 @@ export async function POST(req) {
                 const newTabRef = businessRef.collection('dineInTabs').doc(newTabId);
                 const newTabData = {
                     id: newTabId,
-                    tableId,
+                    tableId: actualTableId, // Use actual table ID from database
                     restaurantId: businessRef.id,
                     status: 'inactive', // Tab starts as inactive until first order
                     tab_name,
@@ -201,12 +225,21 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
 
-        const tableRef = businessRef.collection('tables').doc(tableId);
-        const tableSnap = await tableRef.get();
+        // Case-insensitive table lookup
+        const tablesSnap = await businessRef.collection('tables').get();
 
-        if (!tableSnap.exists) {
+        let actualTableId = null;
+        tablesSnap.forEach(doc => {
+            if (doc.id.toLowerCase() === tableId.toLowerCase()) {
+                actualTableId = doc.id;
+            }
+        });
+
+        if (!actualTableId) {
             return NextResponse.json({ message: 'Table not found.' }, { status: 404 });
         }
+
+        const tableRef = businessRef.collection('tables').doc(actualTableId);
 
         // Mark table as needs cleaning - customer is done
         await tableRef.update({
