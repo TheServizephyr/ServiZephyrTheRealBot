@@ -865,32 +865,35 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         })()}
 
                                                         {/* GLOBAL UNDO BUTTON (Side-by-side) */}
-                                                        {lastBulkAction && lastBulkAction.tabId === effectiveTabId && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="border-orange-500 text-orange-500 hover:bg-orange-500/10 h-auto px-3"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    const { orderIds, prevStatus } = lastBulkAction;
-                                                                    setConfirmationState({
-                                                                        isOpen: true,
-                                                                        title: "Undo Bulk Action",
-                                                                        description: `Undo status change for ${orderIds.length} orders back to ${prevStatus}?`,
-                                                                        confirmText: "Undo All",
-                                                                        paymentMethod: null,
-                                                                        onConfirm: async () => {
-                                                                            orderIds.forEach(id => onUpdateStatus(id, prevStatus));
-                                                                            setLastBulkAction(null);
-                                                                            setConfirmationState({ isOpen: false });
-                                                                        }
-                                                                    });
-                                                                }}
-                                                                title="Undo Last Bulk Action"
-                                                            >
-                                                                <RotateCcw className="h-4 w-4" />
-                                                            </Button>
-                                                        )}
+                                                        {lastBulkAction && (
+                                                            lastBulkAction.tabId === effectiveTabId ||
+                                                            lastBulkAction.orderIds.some(id => (group.orders && group.orders[id]) || (group.orderBatches && group.orderBatches.some(b => b.id === id)))
+                                                        ) && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="border-orange-500 text-orange-500 hover:bg-orange-500/10 h-auto px-3"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const { orderIds, prevStatus } = lastBulkAction;
+                                                                        setConfirmationState({
+                                                                            isOpen: true,
+                                                                            title: "Undo Bulk Action",
+                                                                            description: `Undo status change for ${orderIds.length} orders back to ${prevStatus}?`,
+                                                                            confirmText: "Undo All",
+                                                                            paymentMethod: null,
+                                                                            onConfirm: async () => {
+                                                                                orderIds.forEach(id => onUpdateStatus(id, prevStatus));
+                                                                                setLastBulkAction(null);
+                                                                                setConfirmationState({ isOpen: false });
+                                                                            }
+                                                                        });
+                                                                    }}
+                                                                    title="Undo Last Bulk Action"
+                                                                >
+                                                                    <RotateCcw className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
                                                     </div>
 
                                                     {/* Status Display */}
