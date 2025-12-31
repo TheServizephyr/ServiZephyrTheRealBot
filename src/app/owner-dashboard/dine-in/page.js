@@ -284,7 +284,7 @@ const actionConfig = {
 };
 
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading }) => {
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading, lastBulkAction, setLastBulkAction }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -1580,6 +1580,8 @@ const DineInPageContent = () => {
                     onUpdateStatus={handleUpdateStatus}
                     onMarkForCleaning={() => { }} // TODO: implement
                     buttonLoading={buttonLoading}
+                    lastBulkAction={lastBulkAction}
+                    setLastBulkAction={setLastBulkAction}
                 />
             );
         }).flat();
