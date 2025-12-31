@@ -573,10 +573,46 @@ export async function DELETE(req) {
             }, { status: 400 });
         }
 
-        // No active sessions - safe to delete
+        // CRITICAL: Cleanup all associated data before deleting table
+        console.log(`[API DELETE] Cleaning up all data for table ${tableId}`);
+
+        // 1. Delete ALL tabs (active and inactive) for this table
+        const allTabsQuery = await businessRef.collection('dineInTabs')
+            .where('tableId', '==', tableId)
+            .get();
+
+        const tabIds = allTabsQuery.docs.map(doc => doc.id);
+        console.log(`[API DELETE] Found ${tabIds.length} tabs to delete:`, tabIds);
+
+        const batch = firestore.batch();
+        allTabsQuery.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // 2. Delete ALL orders associated with this table
+        const ordersQuery = await firestore.collection('orders')
+            .where('restaurantId', '==', businessRef.id)
+            .where('tableId', '==', tableId)
+            .get();
+
+        console.log(`[API DELETE] Found ${ordersQuery.size} orders to delete`);
+        ordersQuery.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // 3. Delete the table document itself
         const tableRef = businessRef.collection('tables').doc(tableId);
-        await tableRef.delete();
-        return NextResponse.json({ message: 'Table deleted successfully.' }, { status: 200 });
+        batch.delete(tableRef);
+
+        // Commit all deletions in one transaction
+        await batch.commit();
+
+        console.log(`[API DELETE] Successfully deleted table ${tableId} and all associated data`);
+        return NextResponse.json({
+            message: 'Table deleted successfully.',
+            deletedTabs: tabIds.length,
+            deletedOrders: ordersQuery.size
+        }, { status: 200 });
     } catch (error) {
         console.error("[API dine-in-tables] CRITICAL DELETE ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
