@@ -665,6 +665,15 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    // Track this bulk action for global undo
+                                                                    setLastBulkAction({
+                                                                        type: 'confirm_all',
+                                                                        orderIds: pendingOrderIds,
+                                                                        prevStatus: 'pending',
+                                                                        tableId: tableData.id,
+                                                                        tabId: group.dineInTabId,
+                                                                        timestamp: Date.now()
+                                                                    });
                                                                     // Confirm all pending orders at once
                                                                     pendingOrderIds.forEach(orderId => onConfirmOrder(orderId));
                                                                 }}
@@ -679,6 +688,30 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             </Button>
                                                         );
                                                     })()}
+
+                                                    {/* Global Undo Button (appears after bulk action on this table) */}
+                                                    {lastBulkAction && lastBulkAction.tableId === tableData.id && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 font-semibold"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (confirm(`Undo last bulk action? ${lastBulkAction.orderIds.length} orders will revert to ${lastBulkAction.prevStatus}.`)) {
+                                                                    // Revert all orders to previous status
+                                                                    lastBulkAction.orderIds.forEach(orderId => {
+                                                                        handleUpdateStatus(orderId, lastBulkAction.prevStatus);
+                                                                    });
+                                                                    // Clear the bulk action
+                                                                    setLastBulkAction(null);
+                                                                }
+                                                            }}
+                                                            disabled={buttonLoading !== null}
+                                                        >
+                                                            <History className="mr-2 h-4 w-4" />
+                                                            ⟲ Undo Last Bulk Action ({lastBulkAction.orderIds.length})
+                                                        </Button>
+                                                    )}
 
                                                     {/* Reject All Pending (Optional) */}
                                                     {(() => {
@@ -1106,6 +1139,10 @@ const DineInPageContent = () => {
     const [activeStatusFilter, setActiveStatusFilter] = useState('Pending'); // Status filter tabs
     const [selectedCards, setSelectedCards] = useState(new Set()); // Batch selection
     const [batchLoading, setBatchLoading] = useState(false); // Batch operation loading
+
+    // Global undo state - tracks last bulk action for reversing
+    const [lastBulkAction, setLastBulkAction] = useState(null);
+    // Structure: { type: 'confirm_all' | 'reject_all', orderIds: [], prevStatus: 'pending', tableId: 'T1', tabId: 'xxx' }
 
     // Reset selection when filter changes (prevent cross-status batch updates)
     useEffect(() => {
