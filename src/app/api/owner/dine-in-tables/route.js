@@ -202,7 +202,25 @@ export async function GET(req) {
                 hasConfirmed,
                 status: hasPending ? 'pending' : 'active',
                 mainStatus: lowestStatus, // For determining which button to show
-                items: orders.flatMap(o => o.items || []),
+                items: orders.flatMap(o => o.items || []), // Legacy merged items
+                // Add orderBatches array with individual order metadata
+                orderBatches: orders
+                    .filter(o => o.status !== 'cancelled')
+                    .map(o => ({
+                        id: o.id,
+                        items: o.items || [],
+                        status: o.status,
+                        totalAmount: o.totalAmount || o.grandTotal || 0,
+                        orderDate: o.orderDate,
+                        paymentStatus: o.paymentStatus,
+                        paymentMethod: o.paymentMethod,
+                        canCancel: ['pending', 'confirmed'].includes(o.status)
+                    }))
+                    .sort((a, b) => {
+                        const timeA = a.orderDate?._seconds || 0;
+                        const timeB = b.orderDate?._seconds || 0;
+                        return timeA - timeB;
+                    }),
                 isPaid, // NEW: Payment status
                 paymentStatus: isPaid ? 'paid' : (orders.some(o => o.paymentStatus === 'pay_at_counter' || o.paymentMethod === 'counter') ? 'pay_at_counter' : 'pending'),
                 needsCleaning: isServed && isPaid && !group.cleaned, // NEW: Needs cleaning if served + paid but not cleaned
@@ -243,8 +261,30 @@ export async function GET(req) {
                     tab.status = hasPending ? 'pending' : 'active';
                     tab.mainStatus = lowestStatus;
                     tab.totalAmount = totalAmount;
-                    tab.totalAmount = totalAmount;
+
+                    // CRITICAL: Return orders as ARRAY not object, sorted by timestamp
+                    tab.orderBatches = orders
+                        .filter(o => o.status !== 'cancelled') // Exclude cancelled orders
+                        .map(o => ({
+                            id: o.id,
+                            items: o.items || [],
+                            status: o.status,
+                            totalAmount: o.totalAmount || o.grandTotal || 0,
+                            orderDate: o.orderDate, // Firestore timestamp
+                            paymentStatus: o.paymentStatus,
+                            paymentMethod: o.paymentMethod,
+                            canCancel: ['pending', 'confirmed'].includes(o.status) // Helper for UI
+                        }))
+                        .sort((a, b) => {
+                            // Sort by orderDate (oldest first)
+                            const timeA = a.orderDate?._seconds || 0;
+                            const timeB = b.orderDate?._seconds || 0;
+                            return timeA - timeB;
+                        });
+
+                    // Keep merged items for backward compatibility (legacy UI)
                     tab.items = orders.flatMap(o => o.items || []);
+
                     const isPaid = orders.some(o => o.paymentStatus === 'paid' || o.paymentDetails?.method === 'razorpay' || o.paymentDetails?.method === 'phonepe');
                     tab.paymentStatus = isPaid ? 'paid' : (orders.some(o => o.paymentStatus === 'pay_at_counter' || o.paymentMethod === 'counter') ? 'pay_at_counter' : 'pending');
                 }
