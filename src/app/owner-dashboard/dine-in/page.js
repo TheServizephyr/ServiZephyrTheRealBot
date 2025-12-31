@@ -361,6 +361,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                             )}
 
                             {allGroups.map((group, groupIndex) => {
+                                // Robust Tab ID extraction to persist across status changes
+                                const effectiveTabId = group.dineInTabId || group.tabId || (group.orders && Object.values(group.orders)[0]?.tabId) || group.id;
+
                                 // New logic: use group.status and group.mainStatus from API
                                 const isPending = group.status === 'pending' || group.hasPending;
                                 const isActiveTab = group.status === 'active' && !group.hasPending;
@@ -606,7 +609,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                                 title: "Undo",
                                                                                                 description: `Undo back to ${undoPrev}?`,
                                                                                                 confirmText: "Undo",
-                                                                                                paymentMethod: 'cod',
+                                                                                                paymentMethod: null,
                                                                                                 onConfirm: async () => {
                                                                                                     onUpdateStatus(orderBatch.id, undoPrev);
                                                                                                     setConfirmationState({ isOpen: false });
@@ -638,6 +641,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                 description: `Cancel Order #${batchIndex + 1}?`,
                                                                                 confirmText: "Cancel",
                                                                                 isDestructive: true,
+                                                                                paymentMethod: null,
                                                                                 onConfirm: async () => {
                                                                                     onRejectOrder(orderBatch.id);
                                                                                     setConfirmationState({ isOpen: false });
@@ -830,7 +834,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                         orderIds: statusOrderIds,
                                                                         prevStatus: mainStatus,
                                                                         tableId: tableData.id,
-                                                                        tabId: group.dineInTabId,
+                                                                        tabId: effectiveTabId,
                                                                         timestamp: Date.now()
                                                                     });
                                                                     // Update all orders at once
@@ -848,8 +852,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         );
                                                     })()}
 
-                                                    {/* Global Undo for Bulk Actions */}
-                                                    {lastBulkAction && lastBulkAction.tabId === group.dineInTabId && (
+                                                    {/* Global Undo for Bulk Actions - Using effectiveTabId */}
+                                                    {lastBulkAction && lastBulkAction.tabId === effectiveTabId && (
                                                         <div className="mt-2">
                                                             <Button
                                                                 size="sm"
@@ -863,6 +867,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                         title: "Undo Bulk Action",
                                                                         description: `Undo status change for ${orderIds.length} orders back to ${prevStatus}?`,
                                                                         confirmText: "Undo All",
+                                                                        paymentMethod: null,
                                                                         onConfirm: async () => {
                                                                             orderIds.forEach(id => onUpdateStatus(id, prevStatus));
                                                                             setLastBulkAction(null);
