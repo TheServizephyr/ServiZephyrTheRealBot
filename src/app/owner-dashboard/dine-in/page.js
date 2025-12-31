@@ -324,9 +324,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     <div className="flex items-center gap-2 text-sm font-semibold">{currentConfig.icon} {currentConfig.title}</div>
                 </CardHeader>
 
-                <CardContent className="flex-grow p-4">
+                <CardContent className="flex-grow p-2 sm:p-3">
                     {allGroups.length > 0 ? (
-                        <div className="space-y-4">
+                        <div className="space-y-2">
                             {/* Multi-tab header - show when multiple active tabs exist */}
                             {hasMultipleTabs && (
                                 <div className="px-3 py-2 bg-muted/30 rounded-lg border border-border/50">
@@ -1644,6 +1644,7 @@ const DineInPageContent = () => {
         }).flat();
     };
 
+    const tableCards = renderTableCards();
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
@@ -1726,14 +1727,14 @@ const DineInPageContent = () => {
             </div>
 
             {loading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
                     {[...Array(4)].map((_, i) => (
-                        <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
+                        <div key={i} className="h-96 bg-muted rounded-xl" />
                     ))}
                 </div>
-            ) : activeTableData.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {renderTableCards()}
+            ) : tableCards.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {tableCards}
                 </div>
             ) : (
                 <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
