@@ -94,16 +94,19 @@ export async function POST(req) {
         // Update dineInTabs totalBill (decrement)
         if (dineInTabId && orderData.totalAmount) {
             const businessRef = await getBusinessRef(firestore, restaurantId);
-            if (!businessRef) {
-                return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
+            if (businessRef) {
+                const tabRef = businessRef.collection('dineInTabs').doc(dineInTabId);
+                const tabSnap = await tabRef.get(); // Check existence first
+
+                if (tabSnap.exists) {
+                    batch.update(tabRef, {
+                        totalBill: FieldValue.increment(-orderData.totalAmount) // Decrement amount
+                    });
+                    console.log(`[API /order/cancel] Decrementing tab ${dineInTabId} totalBill by ₹${orderData.totalAmount}`);
+                } else {
+                    console.warn(`[API /order/cancel] Warning: Tab ${dineInTabId} not found. Skipping totalBill update.`);
+                }
             }
-
-            const tabRef = businessRef.collection('dineInTabs').doc(dineInTabId);
-            batch.update(tabRef, {
-                totalBill: FieldValue.increment(-orderData.totalAmount) // Decrement amount
-            });
-
-            console.log(`[API /order/cancel] Decrementing tab ${dineInTabId} totalBill by ₹${orderData.totalAmount}`);
         }
 
         // Commit batch
