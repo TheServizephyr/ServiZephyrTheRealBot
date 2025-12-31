@@ -646,65 +646,117 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         );
                                                     })()}
                                                 </>
-                                            ) : isActiveTab ? (
-                                                /* CONFIRMED/PREPARING/READY: Next step button */
-                                                actionDetails && ActionIcon && orderIdToUpdate ? (
-                                                    <Button size="sm" className={actionDetails.className} onClick={(e) => { e.stopPropagation(); onUpdateOrderStatus(orderIdToUpdate, actionDetails.nextStatus); }} disabled={buttonLoading === `update_${orderIdToUpdate}`}>
-                                                        {buttonLoading === `update_${orderIdToUpdate}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ActionIcon className="mr-2 h-4 w-4" />}
-                                                        {actionDetails.label}
-                                                    </Button>
-                                                ) : null
                                             ) : (
-                                                /* ACTIVE: Show status and appropriate action button */
+                                                /* NON-PENDING: Show progression buttons */
                                                 <>
-                                                    <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-                                                        <p>STATUS:</p>
-                                                        <p className={cn("font-bold capitalize",
-                                                            mainStatus === 'delivered' ? 'text-green-500' : 'text-primary'
-                                                        )}>
-                                                            {mainStatus?.replace(/_/g, ' ') || 'Active'}
-                                                        </p>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 gap-2">
-                                                        {/* Next action button based on status */}
-                                                        {ActionIcon && orderIdToUpdate && (
-                                                            <Button size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); onUpdateStatus(orderIdToUpdate, actionDetails.next); }} disabled={buttonLoading === `status_${orderIdToUpdate}`}>
-                                                                {buttonLoading === `status_${orderIdToUpdate}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <ActionIcon size={16} className="mr-2" />} {actionDetails.text}
-                                                            </Button>
-                                                        )}
-
-                                                        {/* Pay at Counter Action: Allow Mark as Paid anytime if chosen */}
-                                                        {isPayAtCounter && !isPaid && (
-                                                            <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full bg-green-500 hover:bg-green-600 animate-pulse">
-                                                                <Wallet size={16} className="mr-2" /> Mark as Paid
-                                                            </Button>
-                                                        )}
-
-                                                        {/* After paid: Need Cleaning button (doesn't clear yet) */}
-                                                        {isServed && isPaid && !group.needsCleaning && (
-                                                            <Button variant="outline" onClick={() => onMarkForCleaning(group.id, tableData.id)} className="w-full">
-                                                                <Wind size={16} className="mr-2" /> Need Cleaning
-                                                            </Button>
-                                                        )}
-
-                                                        {/* After cleaning marked: Clear Table button */}
-                                                        {group.needsCleaning && (
-                                                            <Button variant="destructive" onClick={() => onClearTab(group.dineInTabId, tableData.id, group.pax_count)} className="w-full">
-                                                                <CheckCircle size={16} className="mr-2" /> Clear Table
-                                                            </Button>
-                                                        )}
-
-                                                        <Button variant="outline" size="sm" className="w-full" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}>
-                                                            <Printer size={16} className="mr-2" /> Print Bill
+                                                    {/* Progression Action Button (Confirmed → Preparing → Ready → Served) */}
+                                                    {actionDetails && ActionIcon && orderIdToUpdate && (
+                                                        <Button
+                                                            size="sm"
+                                                            className={actionDetails.className + " w-full"}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onUpdateOrderStatus(orderIdToUpdate, actionDetails.nextStatus);
+                                                            }}
+                                                            disabled={buttonLoading === `update_${orderIdToUpdate}`}
+                                                        >
+                                                            {buttonLoading === `update_${orderIdToUpdate}` ? (
+                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <ActionIcon className="mr-2 h-4 w-4" />
+                                                            )}
+                                                            {actionDetails.label}
                                                         </Button>
-                                                    </div>
+                                                    )}
+
+                                                    {/* Status Display */}
+                                                    {mainStatus && mainStatus !== 'pending' && (
+                                                        <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground mt-2">
+                                                            <span>STATUS:</span>
+                                                            <span className={cn(
+                                                                mainStatus === 'delivered' ? 'text-green-500' :
+                                                                    mainStatus === 'ready_for_pickup' ? 'text-green-400' :
+                                                                        mainStatus === 'preparing' ? 'text-orange-500' :
+                                                                            'text-yellow-500'
+                                                            )}>
+                                                                {mainStatus === 'ready_for_pickup' ? 'Ready' :
+                                                                    mainStatus.charAt(0).toUpperCase() + mainStatus.slice(1)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Pay at Counter Action */}
+                                                    {isPayAtCounter && !isPaid && (
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onMarkAsPaid(tableData.id, group.id);
+                                                            }}
+                                                            className="w-full bg-green-500 hover:bg-green-600 animate-pulse mt-2"
+                                                        >
+                                                            <Wallet className="mr-2 h-4 w-4" />
+                                                            Mark as Paid
+                                                        </Button>
+                                                    )}
+
+                                                    {/* After paid: Need Cleaning button (doesn't clear yet) */}
+                                                    {isServed && isPaid && !group.needsCleaning && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onMarkForCleaning(group.id, tableData.id);
+                                                            }}
+                                                            className="w-full mt-2"
+                                                        >
+                                                            <Wind className="mr-2 h-4 w-4" />
+                                                            Need Cleaning
+                                                        </Button>
+                                                    )}
+
+                                                    {/* After cleaning marked: Clear Table button */}
+                                                    {group.needsCleaning && (
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onClearTab(group.dineInTabId, tableData.id, group.pax_count);
+                                                            }}
+                                                            className="w-full mt-2"
+                                                        >
+                                                            <CheckCircle className="mr-2 h-4 w-4" />
+                                                            Clear Table
+                                                        </Button>
+                                                    )}
+
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="w-full mt-2"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onPrintBill({ tableId: tableData.id, ...group });
+                                                        }}
+                                                    >
+                                                        <Printer className="mr-2 h-4 w-4" />
+                                                        Print Bill
+                                                    </Button>
                                                 </>
                                             )}
                                         </div>
 
                                         {/* Clear tab X button (only for empty/no-bill tabs) */}
                                         {!isPending && totalBill === 0 && (
-                                            <button onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onClearTab(group.id, tableData.id, group.pax_count);
+                                                }}
+                                                className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground"
+                                            >
                                                 <X size={14} />
                                             </button>
                                         )}
@@ -719,15 +771,17 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     )}
                 </CardContent>
 
-                {(state === 'needs_cleaning') && (
-                    <CardFooter className="p-4 mt-auto">
-                        <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableData.id)}>
-                            <CheckCircle size={16} className="mr-2" /> Mark as Cleaned
-                        </Button>
-                    </CardFooter>
-                )}
-            </Card>
-        </motion.div>
+                {
+                    (state === 'needs_cleaning') && (
+                        <CardFooter className="p-4 mt-auto">
+                            <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableData.id)}>
+                                <CheckCircle size={16} className="mr-2" /> Mark as Cleaned
+                            </Button>
+                        </CardFooter>
+                    )
+                }
+            </Card >
+        </motion.div >
     );
 };
 
