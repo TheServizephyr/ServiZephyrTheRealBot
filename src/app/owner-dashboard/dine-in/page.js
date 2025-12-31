@@ -580,58 +580,58 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     const batchAction = batchActionConfig[orderBatch.status];
                                                                     const ActionIcon = batchAction?.icon;
 
-                                                                    return batchAction && (
-                                                                        <>
-                                                                            <Button
-                                                                                size="sm"
-                                                                                className={batchAction.className + " flex-1 text-white text-xs h-7"}
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    onUpdateStatus(orderBatch.id, batchAction.next);
-                                                                                }}
-                                                                                disabled={buttonLoading !== null}
-                                                                            >
-                                                                                {ActionIcon && <ActionIcon size={12} className="mr-1" />}
-                                                                                {batchAction.label}
-                                                                            </Button>
+                                                                    if (!batchAction) return null;
 
-                                                                            {/* Undo button next to main button */}
-                                                                            {(() => {
-                                                                                const undoMap = {
-                                                                                    'confirmed': 'pending',
-                                                                                    'preparing': 'confirmed',
-                                                                                    'ready_for_pickup': 'preparing',
-                                                                                    'delivered': 'ready_for_pickup'
-                                                                                };
-                                                                                const undoPrev = undoMap[orderBatch.status];
+                                                                    return (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            className={batchAction.className + " flex-1 text-white text-xs h-7"}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                onUpdateStatus(orderBatch.id, batchAction.next);
+                                                                            }}
+                                                                            disabled={buttonLoading !== null}
+                                                                        >
+                                                                            {ActionIcon && <ActionIcon size={12} className="mr-1" />}
+                                                                            {batchAction.label}
+                                                                        </Button>
+                                                                    );
+                                                                })()}
 
-                                                                                return undoPrev && (
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        variant="outline"
-                                                                                        className="w-9 h-7 p-0 border-orange-400 text-orange-500 hover:bg-orange-500/10"
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setConfirmationState({
-                                                                                                isOpen: true,
-                                                                                                title: "Undo",
-                                                                                                description: `Undo back to ${undoPrev}?`,
-                                                                                                confirmText: "Undo",
-                                                                                                paymentMethod: null,
-                                                                                                onConfirm: async () => {
-                                                                                                    onUpdateStatus(orderBatch.id, undoPrev);
-                                                                                                    setConfirmationState({ isOpen: false });
-                                                                                                }
-                                                                                            });
-                                                                                        }}
-                                                                                        disabled={buttonLoading !== null}
-                                                                                        title="Undo"
-                                                                                    >
-                                                                                        <RotateCcw size={14} />
-                                                                                    </Button>
-                                                                                );
-                                                                            })()}
-                                                                        </>
+                                                                {/* Undo button - Separated to show even when main action is hidden (e.g., delivered) */}
+                                                                {(() => {
+                                                                    const undoMap = {
+                                                                        'confirmed': 'pending',
+                                                                        'preparing': 'confirmed',
+                                                                        'ready_for_pickup': 'preparing',
+                                                                        'delivered': 'ready_for_pickup'
+                                                                    };
+                                                                    const undoPrev = undoMap[orderBatch.status];
+
+                                                                    return undoPrev && (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            className="w-9 h-7 p-0 border-orange-400 text-orange-500 hover:bg-orange-500/10"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setConfirmationState({
+                                                                                    isOpen: true,
+                                                                                    title: "Undo",
+                                                                                    description: `Undo back to ${undoPrev}?`,
+                                                                                    confirmText: "Undo",
+                                                                                    paymentMethod: null,
+                                                                                    onConfirm: async () => {
+                                                                                        onUpdateStatus(orderBatch.id, undoPrev);
+                                                                                        setConfirmationState({ isOpen: false });
+                                                                                    }
+                                                                                });
+                                                                            }}
+                                                                            disabled={buttonLoading !== null}
+                                                                            title="Undo"
+                                                                        >
+                                                                            <RotateCcw size={14} />
+                                                                        </Button>
                                                                     );
                                                                 })()}
 
