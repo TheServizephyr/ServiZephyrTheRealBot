@@ -90,14 +90,38 @@ export async function GET(request, { params }) {
         let aggregatedSgst = orderData.sgst || 0;
         let aggregatedTotal = orderData.totalAmount || 0;
 
-        if (orderData.deliveryType === 'dine-in' && (orderData.dineInTabId || orderData.tabId)) {
-            console.log(`[API][Order Status] Dine-in order detected. Aggregating all orders.`);
+        if (orderData.deliveryType === 'dine-in') {
+            console.log(`[API][Order Status] Dine-in order detected. Attempting aggregation...`);
             try {
+                // STRATEGY: 
+                // 1. If 'dineInToken' exists, group mainly by Token (matches Owner Dashboard behavior).
+                // 2. Fallback to 'dineInTabId'/'tabId' if Token is missing.
+
+                const dineInToken = orderData.dineInToken;
                 const currentTabId = orderData.dineInTabId || orderData.tabId;
 
-                if (currentTabId) {
-                    // Query both dineInTabId and tabId to catch all orders in the tab
-                    const [snapshotByDineInTabId, snapshotByTabId] = await Promise.all([
+                let tabOrdersSnapshot = { empty: true, docs: [] };
+                let aggregationMethod = 'none';
+
+                if (dineInToken) {
+                    console.log(`[API][Order Status] Aggregating by Token: ${dineInToken}`);
+                    aggregationMethod = 'token';
+
+                    // Query by Token + Table + Restaurant
+                    tabOrdersSnapshot = await firestore
+                        .collection('orders')
+                        .where('restaurantId', '==', orderData.restaurantId)
+                        .where('tableId', '==', orderData.tableId)
+                        .where('dineInToken', '==', dineInToken)
+                        .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled'])
+                        .get();
+
+                } else if (currentTabId) {
+                    console.log(`[API][Order Status] Aggregating by ID (Token missing): ${currentTabId}`);
+                    aggregationMethod = 'id';
+
+                    // Fallback: Dual ID Query
+                    const [snap1, snap2] = await Promise.all([
                         firestore.collection('orders')
                             .where('restaurantId', '==', orderData.restaurantId)
                             .where('dineInTabId', '==', currentTabId)
@@ -109,53 +133,63 @@ export async function GET(request, { params }) {
                             .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled'])
                             .get()
                     ]);
+                    // Merge snaps
+                    const uniqueDocs = new Map();
+                    snap1.forEach(d => uniqueDocs.set(d.id, d));
+                    snap2.forEach(d => uniqueDocs.set(d.id, d));
 
-                    const uniqueOrders = new Map();
-
-                    const processSnapshot = (snapshot) => {
-                        if (!snapshot.empty) {
-                            snapshot.forEach(doc => {
-                                uniqueOrders.set(doc.id, doc.data());
-                            });
-                        }
+                    tabOrdersSnapshot = {
+                        empty: uniqueDocs.size === 0,
+                        docs: Array.from(uniqueDocs.values()),
+                        forEach: (cb) => uniqueDocs.forEach((val, key) => cb({ id: key, data: () => val.data(), ...val })) // Mock forEach for consistent API if needed, or just iterate docs
                     };
+                }
 
-                    processSnapshot(snapshotByDineInTabId);
-                    processSnapshot(snapshotByTabId);
+                // Process Snapshot
+                const docsToProcess = tabOrdersSnapshot.docs || [];
+                if (docsToProcess.length > 0) {
+                    aggregatedItems = [];
+                    aggregatedSubtotal = 0;
+                    aggregatedCgst = 0;
+                    aggregatedSgst = 0;
+                    aggregatedTotal = 0;
+                    const batchesList = [];
+                    const processedIds = new Set();
 
-                    if (uniqueOrders.size > 0) {
-                        aggregatedItems = [];
-                        aggregatedSubtotal = 0;
-                        aggregatedCgst = 0;
-                        aggregatedSgst = 0;
-                        aggregatedTotal = 0;
-                        const batchesList = [];
+                    // Using simple loop instead of .forEach to handle both Snapshot and Array
+                    for (const doc of docsToProcess) {
+                        // doc might be a QueryDocumentSnapshot (has .data()) or our mock (has .data())
+                        // Our mock above passed the raw doc, which IS a Snapshot.
+                        // Wait, in 'id' fallback, I stored 'd' which is QueryDocumentSnapshot.
 
-                        uniqueOrders.forEach((tabOrder, docId) => {
-                            // Add to batches list
-                            batchesList.push({
-                                id: docId,
-                                ...tabOrder
-                            });
+                        if (processedIds.has(doc.id)) continue;
+                        processedIds.add(doc.id);
 
-                            // Aggregate totals (excluding cancelled/rejected)
-                            if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
-                                if (tabOrder.items) {
-                                    aggregatedItems = aggregatedItems.concat(tabOrder.items);
-                                }
-                                aggregatedSubtotal += tabOrder.subtotal || 0;
-                                aggregatedCgst += tabOrder.cgst || 0;
-                                aggregatedSgst += tabOrder.sgst || 0;
-                                aggregatedTotal += tabOrder.totalAmount || 0;
-                            }
+                        const tabOrder = doc.data();
+
+                        // ADD TO BATCHES
+                        batchesList.push({
+                            id: doc.id,
+                            ...tabOrder
                         });
 
-                        // Sort batches: Oldest First
-                        batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
-
-                        orderData.batches = batchesList;
-                        console.log(`[API][Order Status] Aggregated ${uniqueOrders.size} unique orders.`);
+                        // AGGREGATE BILL (Exclude cancelled/rejected)
+                        if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
+                            if (tabOrder.items) {
+                                aggregatedItems = aggregatedItems.concat(tabOrder.items);
+                            }
+                            aggregatedSubtotal += tabOrder.subtotal || 0;
+                            aggregatedCgst += tabOrder.cgst || 0;
+                            aggregatedSgst += tabOrder.sgst || 0;
+                            aggregatedTotal += tabOrder.totalAmount || 0;
+                        }
                     }
+
+                    // Sort batches: Oldest First
+                    batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+
+                    orderData.batches = batchesList;
+                    console.log(`[API][Order Status] Aggregated ${batchesList.length} orders via ${aggregationMethod}.`);
                 }
             } catch (err) {
                 console.error("[API][Order Status] Error aggregating tab orders:", err);
@@ -164,7 +198,7 @@ export async function GET(request, { params }) {
 
         const responsePayload = {
             order: {
-                id: orderSnap.id,
+                id: orderSnap.id, // Primary ID
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
                 restaurantLocation: restaurantLocationForMap,
