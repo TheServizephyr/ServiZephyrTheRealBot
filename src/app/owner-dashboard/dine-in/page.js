@@ -296,11 +296,32 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     // Combine pending orders and active tabs into one list for rendering
     const allGroups = [...(tableData.pendingOrders || []), ...Object.values(tableData.tabs || {})];
 
-    // SORT BY TIME: Oldest orders first (highest priority)
+    // SORT BY TIME: Newest orders/tabs first (Latest on Top)
     allGroups.sort((a, b) => {
-        const timeA = new Date(a.createdAt || a.orders?.[Object.keys(a.orders || {})[0]]?.createdAt || 0).getTime();
-        const timeB = new Date(b.createdAt || b.orders?.[Object.keys(b.orders || {})[0]]?.createdAt || 0).getTime();
-        return timeA - timeB; // Ascending = oldest first
+        const getLatestTime = (group) => {
+            let time = group.createdAt ? new Date(group.createdAt).getTime() : 0;
+            // Also check internal orders for latest activity
+            if (group.orders) {
+                const orderTimes = Object.values(group.orders).map(o => new Date(o.createdAt).getTime());
+                if (orderTimes.length > 0) {
+                    const maxOrderTime = Math.max(...orderTimes);
+                    if (maxOrderTime > time) time = maxOrderTime;
+                }
+            }
+            // Also check orderBatches if structured that way
+            if (group.orderBatches) {
+                const batchTimes = group.orderBatches.map(b => new Date(b.createdAt).getTime());
+                if (batchTimes.length > 0) {
+                    const maxBatchTime = Math.max(...batchTimes);
+                    if (maxBatchTime > time) time = maxBatchTime;
+                }
+            }
+            return time;
+        };
+
+        const timeA = getLatestTime(a);
+        const timeB = getLatestTime(b);
+        return timeB - timeA; // Descending = Newest first
     });
 
     // Color palette for multi-tab visual distinction
