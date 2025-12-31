@@ -532,6 +532,25 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 <span className="text-muted-foreground">Order Total:</span>
                                                                 <span className="text-foreground">{formatCurrency(orderBatch.totalAmount)}</span>
                                                             </div>
+
+                                                            {/* Individual Reject Button for this batch (only if pending/confirmed) */}
+                                                            {orderBatch.canCancel && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="w-full mt-2 text-red-500 hover:text-red-600 hover:bg-red-500/10 text-xs h-7"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (confirm(`Cancel Order #${batchIndex + 1}?`)) {
+                                                                            onRejectOrder(orderBatch.id);
+                                                                        }
+                                                                    }}
+                                                                    disabled={buttonLoading !== null}
+                                                                >
+                                                                    <X size={12} className="mr-1" />
+                                                                    Cancel This Order
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}
@@ -575,15 +594,66 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         {/* Action Buttons based on status */}
                                         <div className="mt-4 space-y-2">
                                             {isPending ? (
-                                                /* PENDING: Confirm/Reject buttons */
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); onRejectOrder(firstPendingOrderId); }} disabled={buttonLoading === `reject_${firstPendingOrderId}`}>
-                                                        {buttonLoading === `reject_${firstPendingOrderId}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <X size={16} className="mr-2" />} Reject
+                                                /* PENDING: Bulk Confirm All + Individual Reject per batch */
+                                                <>
+                                                    {/* Bulk Confirm All Pending Orders */}
+                                                    {(() => {
+                                                        const pendingBatches = group.orderBatches?.filter(b => ['pending', 'confirmed'].includes(b.status)) || [];
+                                                        const pendingOrderIds = pendingBatches.map(b => b.id);
+
+                                                        return pendingBatches.length > 0 && (
+                                                            <Button
+                                                                size="sm"
+                                                                className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Confirm all pending orders at once
+                                                                    pendingOrderIds.forEach(orderId => onConfirmOrder(orderId));
+                                                                }}
+                                                                disabled={buttonLoading !== null}
+                                                            >
+                                                                {buttonLoading ? (
+                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Check className="mr-2 h-4 w-4" />
+                                                                )}
+                                                                🔄 Confirm All Pending ({pendingBatches.length} order{pendingBatches.length > 1 ? 's' : ''})
+                                                            </Button>
+                                                        );
+                                                    })()}
+
+                                                    {/* Reject All Pending (Optional) */}
+                                                    {(() => {
+                                                        const pendingBatches = group.orderBatches?.filter(b => b.status === 'pending') || [];
+                                                        const pendingOrderIds = pendingBatches.map(b => b.id);
+
+                                                        return pendingBatches.length > 1 && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="w-full border-red-500/50 text-red-500 hover:bg-red-500/10"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (confirm(`Reject all ${pendingBatches.length} pending orders?`)) {
+                                                                        pendingOrderIds.forEach(orderId => onRejectOrder(orderId));
+                                                                    }
+                                                                }}
+                                                                disabled={buttonLoading !== null}
+                                                            >
+                                                                <X className="mr-2 h-4 w-4" />
+                                                                Reject All Pending ({pendingBatches.length})
+                                                            </Button>
+                                                        );
+                                                    })()}
+                                                </>
+                                            ) : isActiveTab ? (
+                                                /* CONFIRMED/PREPARING/READY: Next step button */
+                                                actionDetails && ActionIcon && orderIdToUpdate ? (
+                                                    <Button size="sm" className={actionDetails.className} onClick={(e) => { e.stopPropagation(); onUpdateOrderStatus(orderIdToUpdate, actionDetails.nextStatus); }} disabled={buttonLoading === `update_${orderIdToUpdate}`}>
+                                                        {buttonLoading === `update_${orderIdToUpdate}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ActionIcon className="mr-2 h-4 w-4" />}
+                                                        {actionDetails.label}
                                                     </Button>
-                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={(e) => { e.stopPropagation(); onConfirmOrder(firstPendingOrderId); }} disabled={buttonLoading === `status_${firstPendingOrderId}`}>
-                                                        {buttonLoading === `status_${firstPendingOrderId}` ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Check size={16} className="mr-2" />} Confirm
-                                                    </Button>
-                                                </div>
+                                                ) : null
                                             ) : (
                                                 /* ACTIVE: Show status and appropriate action button */
                                                 <>
