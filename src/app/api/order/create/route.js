@@ -472,9 +472,11 @@ export async function POST(req) {
                     tab_name: tab_name || name,
                     status: 'active',
                     firstOrderPlacedAt: FieldValue.serverTimestamp(),
-                    createdAt: FieldValue.serverTimestamp()
+                    createdAt: FieldValue.serverTimestamp(),
+                    totalBill: FieldValue.increment(grandTotal), // Increment total bill with this order's amount
+                    restaurantId: restaurantId // Add restaurantId for easier querying
                 }, { merge: true }); // merge:true updates if exists, creates if not
-                console.log(`[API /order/create] Activating tab: ${dineInTabId}`);
+                console.log(`[API /order/create] Activating tab: ${dineInTabId}, adding ₹${grandTotal} to totalBill`);
             }
 
             await batch.commit();
