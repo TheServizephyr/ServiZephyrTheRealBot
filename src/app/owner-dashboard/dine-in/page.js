@@ -827,26 +827,6 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         );
                                                     })()}
 
-                                                    {/* Progression Action Button (Confirmed → Preparing → Ready → Served) */}
-                                                    {actionDetails && ActionIcon && orderIdToUpdate && (
-                                                        <Button
-                                                            size="sm"
-                                                            className={actionDetails.className + " w-full"}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onUpdateOrderStatus(orderIdToUpdate, actionDetails.nextStatus);
-                                                            }}
-                                                            disabled={buttonLoading === `update_${orderIdToUpdate}`}
-                                                        >
-                                                            {buttonLoading === `update_${orderIdToUpdate}` ? (
-                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                            ) : (
-                                                                <ActionIcon className="mr-2 h-4 w-4" />
-                                                            )}
-                                                            {actionDetails.label}
-                                                        </Button>
-                                                    )}
-
                                                     {/* Status Display */}
                                                     {mainStatus && mainStatus !== 'pending' && (
                                                         <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground mt-2">
