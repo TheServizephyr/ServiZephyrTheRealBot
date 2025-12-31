@@ -205,7 +205,6 @@ export async function GET(req) {
                 items: orders.flatMap(o => o.items || []), // Legacy merged items
                 // Add orderBatches array with individual order metadata
                 orderBatches: orders
-                    .filter(o => o.status !== 'cancelled')
                     .map(o => ({
                         id: o.id,
                         items: o.items || [],
@@ -264,7 +263,6 @@ export async function GET(req) {
 
                     // CRITICAL: Return orders as ARRAY not object, sorted by timestamp
                     tab.orderBatches = orders
-                        .filter(o => o.status !== 'cancelled') // Exclude cancelled orders
                         .map(o => ({
                             id: o.id,
                             items: o.items || [],

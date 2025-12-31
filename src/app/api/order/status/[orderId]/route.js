@@ -173,7 +173,7 @@ export async function GET(request, { params }) {
                             ...tabOrder
                         });
 
-                        // AGGREGATE BILL (Exclude cancelled/rejected)
+                        // AGGREGATE BILL (Exclude cancelled/rejected for strict billing, but keep in list)
                         if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
                             if (tabOrder.items) {
                                 aggregatedItems = aggregatedItems.concat(tabOrder.items);

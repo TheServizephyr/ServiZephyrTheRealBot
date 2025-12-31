@@ -221,15 +221,24 @@ function DineInTrackingContent() {
     };
 
 
-    const handleCancelOrder = async (batchId) => {
-        if (!confirm("Are you sure you want to cancel this order?")) return;
-        setCancellingId(batchId);
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [batchToCancel, setBatchToCancel] = useState(null);
+
+    const initiateCancel = (batchId) => {
+        setBatchToCancel(batchId);
+        setCancelModalOpen(true);
+    };
+
+    const handleCancelConfirmation = async () => {
+        if (!batchToCancel) return;
+        setCancellingId(batchToCancel);
+        setCancelModalOpen(false); // Close modal immediately
         try {
             const res = await fetch('/api/order/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    orderId: batchId,
+                    orderId: batchToCancel,
                     cancelledBy: 'customer',
                     restaurantId: orderData.restaurant?.id,
                     dineInTabId: orderData.order?.dineInTabId
@@ -242,6 +251,7 @@ function DineInTrackingContent() {
             alert(err.message);
         } finally {
             setCancellingId(null);
+            setBatchToCancel(null);
         }
     };
 
@@ -404,12 +414,12 @@ function DineInTrackingContent() {
                                                 ))}
                                             </div>
 
-                                            {isPending && (
+                                            {(isPending || batch.status === 'confirmed') && (
                                                 <div className="mt-3 pt-2 border-t border-border flex justify-end">
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        onClick={() => handleCancelOrder(batch.id)}
+                                                        onClick={() => initiateCancel(batch.id)}
                                                         disabled={cancellingId === batch.id}
                                                         className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 px-2"
                                                     >
@@ -424,6 +434,25 @@ function DineInTrackingContent() {
                             </div>
                         </div>
                     )}
+
+                    <Dialog open={cancelModalOpen} onOpenChange={setCancelModalOpen}>
+                        <DialogContent className="bg-card border-border text-foreground max-w-sm">
+                            <DialogHeader>
+                                <DialogTitle>Cancel Order?</DialogTitle>
+                                <DialogDescription>
+                                    Are you sure you want to cancel this order? This action cannot be undone.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="flex gap-2 mt-4">
+                                <Button variant="outline" onClick={() => setCancelModalOpen(false)}>
+                                    No, Keep It
+                                </Button>
+                                <Button variant="destructive" onClick={handleCancelConfirmation}>
+                                    Yes, Cancel Order
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     {/* Bill Details Section */}
                     {billDetails && (

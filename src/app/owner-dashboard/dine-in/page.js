@@ -502,6 +502,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         'preparing': 'border-orange-500/50 bg-orange-500/5',
                                                         'ready_for_pickup': 'border-green-500/50 bg-green-500/5',
                                                         'delivered': 'border-green-600/50 bg-green-600/5',
+                                                        'cancelled': 'border-red-500/50 bg-red-500/5 opacity-70',
+                                                        'rejected': 'border-red-500/50 bg-red-500/5 opacity-70',
                                                     };
 
                                                     const statusBadgeColors = {
@@ -510,6 +512,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         'preparing': 'bg-orange-500 text-white',
                                                         'ready_for_pickup': 'bg-green-500 text-white',
                                                         'delivered': 'bg-green-600 text-white',
+                                                        'cancelled': 'bg-red-500 text-white',
+                                                        'rejected': 'bg-red-500 text-white',
                                                     };
 
                                                     return (
@@ -553,7 +557,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             </div>
 
                                                             {/* Items in this order batch */}
-                                                            <div className="space-y-0.5 text-xs">
+                                                            <div className={cn("space-y-0.5 text-xs", (orderBatch.status === 'cancelled' || orderBatch.status === 'rejected') && "line-through text-muted-foreground")}>
                                                                 {orderBatch.items && orderBatch.items.map((item, itemIdx) => (
                                                                     <div key={itemIdx} className="flex justify-between items-center text-muted-foreground">
                                                                         <span>{item.quantity || item.qty} × {item.name}</span>
@@ -872,10 +876,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 'delivered': 'ready_for_pickup'
                                                             };
                                                             const prevStatus = reverseConfig[mainStatus];
-                                                            
+
                                                             // Recalculate batches for this scope
                                                             const statusBatches = group.orderBatches?.filter(b => b.status === mainStatus) || [];
-                                                            
+
                                                             // Show if previous status exists AND (more than 1 item OR status is delivered where main button is hidden)
                                                             if (!prevStatus || statusBatches.length === 0) return null;
                                                             if (statusBatches.length <= 1 && mainStatus !== 'delivered') return null;
@@ -925,8 +929,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         </div>
                                                     )}
 
-                                                    {/* Pay at Counter Action */}
-                                                    {isPayAtCounter && !isPaid && (
+                                                    {/* Pay at Counter Action or Served & Unpaid */}
+                                                    {(isPayAtCounter || isServed) && !isPaid && (
                                                         <Button
                                                             size="sm"
                                                             onClick={(e) => {
