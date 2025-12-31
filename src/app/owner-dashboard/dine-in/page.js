@@ -486,6 +486,41 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 statusColors[orderBatch.status] || 'border-border/50 bg-muted/5'
                                                             )}
                                                         >
+                                                            {/* Corner Undo Button - Small icon only */}
+                                                            {(() => {
+                                                                const undoMap = {
+                                                                    'confirmed': 'pending',
+                                                                    'preparing': 'confirmed',
+                                                                    'ready_for_pickup': 'preparing',
+                                                                    'delivered': 'ready_for_pickup'
+                                                                };
+                                                                const undoPrev = undoMap[orderBatch.status];
+
+                                                                return undoPrev && (
+                                                                    <button
+                                                                        className="absolute top-1 right-1 p-1 rounded hover:bg-background/80 text-muted-foreground hover:text-orange-500 transition-colors z-10"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setConfirmationState({
+                                                                                isOpen: true,
+                                                                                title: "Undo Order",
+                                                                                description: `Undo Order #${batchIndex + 1} back to ${undoPrev}?`,
+                                                                                confirmText: "Undo",
+                                                                                paymentMethod: 'cod',
+                                                                                onConfirm: async () => {
+                                                                                    handleUpdateStatus(orderBatch.id, undoPrev);
+                                                                                    setConfirmationState({ isOpen: false });
+                                                                                }
+                                                                            });
+                                                                        }}
+                                                                        disabled={buttonLoading !== null}
+                                                                        title="Undo"
+                                                                    >
+                                                                        <History size={12} />
+                                                                    </button>
+                                                                );
+                                                            })()}
+
                                                             {/* Order Header with Batch Number, Time, and Status */}
                                                             <div className="flex justify-between items-center mb-1.5">
                                                                 <div className="flex items-center gap-2">
@@ -546,74 +581,45 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     const batchAction = batchActionConfig[orderBatch.status];
 
                                                                     return batchAction && (
-                                                                        <div className="grid grid-cols-2 gap-1">
-                                                                            <Button
-                                                                                size="sm"
-                                                                                className={batchAction.className + " text-white text-xs h-7"}
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    handleUpdateStatus(orderBatch.id, batchAction.next);
-                                                                                }}
-                                                                                disabled={buttonLoading !== null}
-                                                                            >
-                                                                                {batchAction.label}
-                                                                            </Button>
-
-                                                                            {(() => {
-                                                                                const undoMap = {
-                                                                                    'confirmed': 'pending',
-                                                                                    'preparing': 'confirmed',
-                                                                                    'ready_for_pickup': 'preparing',
-                                                                                    'delivered': 'ready_for_pickup'
-                                                                                };
-
-                                                                                const undoPrev = undoMap[orderBatch.status];
-
-                                                                                return undoPrev && (
-                                                                                    <Button
-                                                                                        size="sm"
-                                                                                        variant="outline"
-                                                                                        className="text-xs h-7 border-orange-500/50 text-orange-500 hover:bg-orange-500/10"
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setConfirmationState({
-                                                                                                isOpen: true,
-                                                                                                title: "Undo Order",
-                                                                                                description: `Undo Order #${batchIndex + 1} back to ${undoPrev} status?`,
-                                                                                                confirmText: "Undo",
-                                                                                                paymentMethod: 'cod',
-                                                                                                onConfirm: async () => {
-                                                                                                    handleUpdateStatus(orderBatch.id, undoPrev);
-                                                                                                    setConfirmationState({ isOpen: false });
-                                                                                                }
-                                                                                            });
-                                                                                        }}
-                                                                                        disabled={buttonLoading !== null}
-                                                                                    >
-                                                                                        Undo
-                                                                                    </Button>
-                                                                                );
-                                                                            })()}
-                                                                        </div>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            className={batchAction.className + " w-full text-white text-xs h-6"}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleUpdateStatus(orderBatch.id, batchAction.next);
+                                                                            }}
+                                                                            disabled={buttonLoading !== null}
+                                                                        >
+                                                                            {batchAction.label}
+                                                                        </Button>
                                                                     );
                                                                 })()}
 
-                                                                {/* Cancel button (only for pending/confirmed) */}
+                                                                {/* Cancel button (only for pending/confirmed) - Compact */}
                                                                 {orderBatch.canCancel && (
                                                                     <Button
                                                                         size="sm"
                                                                         variant="ghost"
-                                                                        className="w-full text-red-500 hover:text-red-600 hover:bg-red-500/10 text-xs h-7"
+                                                                        className="w-full text-red-500 hover:text-red-600 hover:bg-red-500/10 text-xs h-6"
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            if (confirm(`Cancel Order #${batchIndex + 1}?`)) {
-                                                                                onRejectOrder(orderBatch.id);
-                                                                            }
+                                                                            setConfirmationState({
+                                                                                isOpen: true,
+                                                                                title: "Cancel Order",
+                                                                                description: `Cancel Order #${batchIndex + 1}?`,
+                                                                                confirmText: "Cancel Order",
+                                                                                paymentMethod: 'cod',
+                                                                                isDestructive: true,
+                                                                                onConfirm: async () => {
+                                                                                    onRejectOrder(orderBatch.id);
+                                                                                    setConfirmationState({ isOpen: false });
+                                                                                }
+                                                                            });
                                                                         }}
                                                                         disabled={buttonLoading !== null}
                                                                     >
-                                                                        <X size={12} className="mr-1" />
-                                                                        Cancel This Order
+                                                                        <X size={10} className="mr-1" />
+                                                                        Cancel
                                                                     </Button>
                                                                 )}
                                                             </div>
