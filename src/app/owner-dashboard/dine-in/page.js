@@ -943,15 +943,23 @@ const DineInPageContent = () => {
     };
 
     const handleDeleteTable = async (tableId) => {
-        if (window.confirm(`Are you sure you want to delete table "${tableId}"? This cannot be undone.`)) {
-            try {
-                await handleApiCall('DELETE', { tableId }, '/api/owner/dine-in-tables');
-                setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableId}" has been deleted.` });
-                await fetchData(true);
-            } catch (error) {
-                setInfoDialog({ isOpen: true, title: "Error", message: `Could not delete table: ${error.message}` });
-            }
-        }
+        setConfirmationState({
+            isOpen: true,
+            title: "Delete Table",
+            description: `Are you sure you want to delete table "${tableId}"? This action cannot be undone.`,
+            confirmText: "Delete Table",
+            paymentMethod: 'cod', // Not used but required by ConfirmationModal
+            onConfirm: async () => {
+                try {
+                    await handleApiCall('DELETE', { tableId }, '/api/owner/dine-in-tables');
+                    setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableId}" has been deleted.` });
+                    await fetchData(true);
+                } catch (error) {
+                    setInfoDialog({ isOpen: true, title: "Error", message: `Could not delete table: ${error.message}` });
+                }
+                setConfirmationState({ isOpen: false });
+            },
+        });
     };
 
     useEffect(() => {
