@@ -802,71 +802,74 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 /* NON-PENDING: Show bulk progression buttons + individual actions */
                                                 <>
                                                     {/* BULK PROGRESSION BUTTONS */}
-                                                    {(() => {
-                                                        const bulkProgressionConfig = {
-                                                            'confirmed': {
-                                                                label: 'Start Preparing All',
-                                                                next: 'preparing',
-                                                                className: 'bg-orange-500 hover:bg-orange-600',
-                                                                icon: CookingPot
-                                                            },
-                                                            'preparing': {
-                                                                label: 'Mark All Ready',
-                                                                next: 'ready_for_pickup',
-                                                                className: 'bg-green-500 hover:bg-green-600',
-                                                                icon: ShoppingBag
-                                                            },
-                                                            'ready_for_pickup': {
-                                                                label: 'Mark All Served',
-                                                                next: 'delivered',
-                                                                className: 'bg-emerald-600 hover:bg-emerald-700',
-                                                                icon: Home
-                                                            }
-                                                        };
+                                                    <div className="mt-2 flex gap-1">
+                                                        {/* BULK PROGRESSION BUTTON */}
+                                                        {(() => {
+                                                            const bulkProgressionConfig = {
+                                                                'confirmed': {
+                                                                    label: 'Start Preparing All',
+                                                                    next: 'preparing',
+                                                                    className: 'bg-orange-500 hover:bg-orange-600',
+                                                                    icon: CookingPot
+                                                                },
+                                                                'preparing': {
+                                                                    label: 'Mark All Ready',
+                                                                    next: 'ready_for_pickup',
+                                                                    className: 'bg-green-500 hover:bg-green-600',
+                                                                    icon: ShoppingBag
+                                                                },
+                                                                'ready_for_pickup': {
+                                                                    label: 'Mark All Served',
+                                                                    next: 'delivered',
+                                                                    className: 'bg-emerald-600 hover:bg-emerald-700',
+                                                                    icon: Home
+                                                                }
+                                                            };
 
-                                                        // Find all orders with current mainStatus
-                                                        const statusBatches = group.orderBatches?.filter(b => b.status === mainStatus) || [];
-                                                        const statusOrderIds = statusBatches.map(b => b.id);
-                                                        const bulkAction = bulkProgressionConfig[mainStatus];
-                                                        const BulkIcon = bulkAction?.icon;
+                                                            // Find all orders with current mainStatus
+                                                            const statusBatches = group.orderBatches?.filter(b => b.status === mainStatus) || [];
+                                                            const statusOrderIds = statusBatches.map(b => b.id);
+                                                            const bulkAction = bulkProgressionConfig[mainStatus];
+                                                            const BulkIcon = bulkAction?.icon;
 
-                                                        return bulkAction && statusBatches.length > 1 && (
-                                                            <Button
-                                                                size="sm"
-                                                                className={bulkAction.className + " w-full text-white font-semibold h-auto py-1.5 whitespace-normal leading-tight"}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    // Track bulk action for undo
-                                                                    setLastBulkAction({
-                                                                        type: 'bulk_progress',
-                                                                        orderIds: statusOrderIds,
-                                                                        prevStatus: mainStatus,
-                                                                        tableId: tableData.id,
-                                                                        tabId: effectiveTabId,
-                                                                        timestamp: Date.now()
-                                                                    });
-                                                                    // Update all orders at once
-                                                                    statusOrderIds.forEach(orderId => onUpdateStatus(orderId, bulkAction.next));
-                                                                }}
-                                                                disabled={buttonLoading !== null}
-                                                            >
-                                                                {buttonLoading ? (
-                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
-                                                                ) : (
-                                                                    BulkIcon && <BulkIcon className="mr-2 h-4 w-4 shrink-0" />
-                                                                )}
-                                                                <span>{bulkAction.label} ({statusBatches.length})</span>
-                                                            </Button>
-                                                        );
-                                                    })()}
+                                                            if (!bulkAction || statusBatches.length <= 1) return null;
 
-                                                    {/* Global Undo for Bulk Actions - Using effectiveTabId */}
-                                                    {lastBulkAction && lastBulkAction.tabId === effectiveTabId && (
-                                                        <div className="mt-2">
+                                                            return (
+                                                                <Button
+                                                                    size="sm"
+                                                                    className={bulkAction.className + " flex-1 text-white font-semibold h-auto py-1.5 whitespace-normal leading-tight"}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        // Track bulk action for undo
+                                                                        setLastBulkAction({
+                                                                            type: 'bulk_progress',
+                                                                            orderIds: statusOrderIds,
+                                                                            prevStatus: mainStatus,
+                                                                            tableId: tableData.id,
+                                                                            tabId: effectiveTabId,
+                                                                            timestamp: Date.now()
+                                                                        });
+                                                                        // Update all orders at once
+                                                                        statusOrderIds.forEach(orderId => onUpdateStatus(orderId, bulkAction.next));
+                                                                    }}
+                                                                    disabled={buttonLoading !== null}
+                                                                >
+                                                                    {buttonLoading ? (
+                                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                                                                    ) : (
+                                                                        BulkIcon && <BulkIcon className="mr-2 h-4 w-4 shrink-0" />
+                                                                    )}
+                                                                    <span>{bulkAction.label} ({statusBatches.length})</span>
+                                                                </Button>
+                                                            );
+                                                        })()}
+
+                                                        {/* GLOBAL UNDO BUTTON (Side-by-side) */}
+                                                        {lastBulkAction && lastBulkAction.tabId === effectiveTabId && (
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
-                                                                className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 h-7"
+                                                                className="border-orange-500 text-orange-500 hover:bg-orange-500/10 h-auto px-3"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     const { orderIds, prevStatus } = lastBulkAction;
@@ -883,12 +886,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                         }
                                                                     });
                                                                 }}
+                                                                title="Undo Last Bulk Action"
                                                             >
-                                                                <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                                                                Undo Last Bulk Action ({lastBulkAction.orderIds.length})
+                                                                <RotateCcw className="h-4 w-4" />
                                                             </Button>
-                                                        </div>
-                                                    )}
+                                                        )}
+                                                    </div>
 
                                                     {/* Status Display */}
                                                     {mainStatus && mainStatus !== 'pending' && (
