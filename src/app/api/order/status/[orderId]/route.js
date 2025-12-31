@@ -99,7 +99,7 @@ export async function GET(request, { params }) {
                     .collection('orders')
                     .where('restaurantId', '==', orderData.restaurantId)
                     .where('dineInTabId', '==', orderData.dineInTabId)
-                    .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
+                    .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled']) // Fetch ALL relevant statuses
                     .get();
 
                 if (!tabOrdersSnapshot.empty) {
@@ -108,23 +108,40 @@ export async function GET(request, { params }) {
                     aggregatedCgst = 0;
                     aggregatedSgst = 0;
                     aggregatedTotal = 0;
+                    const batchesList = [];
 
                     tabOrdersSnapshot.forEach(doc => {
                         const tabOrder = doc.data();
-                        if (tabOrder.items) {
-                            aggregatedItems = aggregatedItems.concat(tabOrder.items);
+                        // Add to batches list
+                        batchesList.push({
+                            id: doc.id,
+                            ...tabOrder
+                        });
+
+                        // Only aggregate items for non-cancelled/rejected orders if we want the "Bill" to be valid?
+                        // Usually Bill excludes cancelled.
+                        if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
+                            if (tabOrder.items) {
+                                aggregatedItems = aggregatedItems.concat(tabOrder.items);
+                            }
+                            aggregatedSubtotal += tabOrder.subtotal || 0;
+                            aggregatedCgst += tabOrder.cgst || 0;
+                            aggregatedSgst += tabOrder.sgst || 0;
+                            aggregatedTotal += tabOrder.totalAmount || 0;
                         }
-                        aggregatedSubtotal += tabOrder.subtotal || 0;
-                        aggregatedCgst += tabOrder.cgst || 0;
-                        aggregatedSgst += tabOrder.sgst || 0;
-                        aggregatedTotal += tabOrder.totalAmount || 0;
                     });
 
-                    console.log(`[API][Order Status] Aggregated ${tabOrdersSnapshot.size} orders. Total items: ${aggregatedItems.length}, Total: ${aggregatedTotal}`);
+                    // Sort batches: Newest First? Or Oldest First? 
+                    // Let's do Oldest First (Order 1, Order 2...)
+                    batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+
+                    // Assign to a variable to use in response
+                    orderData.batches = batchesList;
+
+                    console.log(`[API][Order Status] Aggregated ${tabOrdersSnapshot.size} orders.`);
                 }
             } catch (err) {
                 console.error("[API][Order Status] Error aggregating tab orders:", err);
-                // Fall back to single order data
             }
         }
 
@@ -137,7 +154,8 @@ export async function GET(request, { params }) {
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
-                items: aggregatedItems, // Aggregated items
+                items: aggregatedItems, // Aggregated items (Active)
+                batches: orderData.batches || [], // NEW FIELD
                 subtotal: aggregatedSubtotal, // Aggregated subtotal
                 cgst: aggregatedCgst, // Aggregated cgst
                 sgst: aggregatedSgst, // Aggregated sgst
@@ -147,6 +165,7 @@ export async function GET(request, { params }) {
                 dineInToken: orderData.dineInToken,
                 tableId: orderData.tableId,
                 dineInTabId: orderData.dineInTabId,
+
                 trackingToken: orderData.trackingToken || null, // Make sure to send the token
             },
             restaurant: {

@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus } from 'lucide-react';
+import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
@@ -18,6 +18,7 @@ const statusConfig = {
     ready_for_pickup: { title: 'Ready', icon: <ShoppingBag size={24} />, step: 3, description: "Your order is ready to be served." },
     delivered: { title: 'Served', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
     rejected: { title: 'Order Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "We're sorry, the restaurant could not accept your order." },
+    cancelled: { title: 'Order Cancelled', icon: <XCircle size={24} />, step: 4, isError: true, description: "This order was cancelled." },
 };
 
 
@@ -85,6 +86,7 @@ function DineInTrackingContent() {
     const [error, setError] = useState(null);
     const [isPayModalOpen, setIsPayModalOpen] = useState(false);
     const [isMarkingDone, setIsMarkingDone] = useState(false);
+    const [cancellingId, setCancellingId] = useState(null);
 
     const fetchData = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
@@ -219,6 +221,30 @@ function DineInTrackingContent() {
     };
 
 
+    const handleCancelOrder = async (batchId) => {
+        if (!confirm("Are you sure you want to cancel this order?")) return;
+        setCancellingId(batchId);
+        try {
+            const res = await fetch('/api/order/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orderId: batchId,
+                    cancelledBy: 'customer',
+                    restaurantId: orderData.restaurant?.id,
+                    dineInTabId: orderData.order?.dineInTabId
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to cancel');
+            fetchData(true);
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setCancellingId(null);
+        }
+    };
+
     if (loading && !orderData) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
@@ -333,6 +359,71 @@ function DineInTrackingContent() {
                         <h3 className="text-xl font-bold">{currentStatusInfo.title}</h3>
                         <p className="mt-1 text-sm text-muted-foreground">{currentStatusInfo.description}</p>
                     </motion.div>
+
+                    {/* Batches List */}
+                    {orderData.order?.batches?.length > 0 && (
+                        <div className="mt-8 space-y-4">
+                            <h3 className="font-bold flex items-center gap-2 text-lg">
+                                <History className="w-5 h-5 text-primary" /> Order History
+                            </h3>
+                            <div className="space-y-3">
+                                {orderData.order.batches.map((batch, index) => {
+                                    const batchStatus = statusConfig[batch.status] || statusConfig.pending;
+                                    const isPending = batch.status === 'pending';
+                                    const items = batch.items || [];
+                                    const batchTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+                                    return (
+                                        <div key={batch.id} className="bg-card border border-border rounded-lg p-4 shadow-sm relative overflow-hidden">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                                        Order #{index + 1}
+                                                    </p>
+                                                    <div className="flex items-center gap-1 mt-1">
+                                                        {batchStatus.icon && React.cloneElement(batchStatus.icon, { size: 14, className: batchStatus.isError ? "text-destructive" : "text-primary" })}
+                                                        <span className={`text-sm font-semibold ${batchStatus.isError ? "text-destructive" : "text-foreground"}`}>
+                                                            {batchStatus.title}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-bold">{formatCurrency(batch.totalAmount || batchTotal)}</p>
+                                                    <p className="text-xs text-muted-foreground flex items-center justify-end gap-1">
+                                                        <Clock size={10} />
+                                                        {new Date(batch.createdAt?._seconds * 1000 || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1 mt-2 pl-2 border-l-2 border-border/50">
+                                                {items.map((item, i) => (
+                                                    <div key={i} className="flex justify-between text-sm">
+                                                        <span>{item.quantity}x {item.name}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {isPending && (
+                                                <div className="mt-3 pt-2 border-t border-border flex justify-end">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleCancelOrder(batch.id)}
+                                                        disabled={cancellingId === batch.id}
+                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 px-2"
+                                                    >
+                                                        {cancellingId === batch.id ? <RefreshCw className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
+                                                        Cancel Order
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Bill Details Section */}
                     {billDetails && (
