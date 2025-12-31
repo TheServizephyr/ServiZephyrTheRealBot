@@ -960,7 +960,7 @@ const DineInPageContent = () => {
             else setLoading(false);
         });
 
-        const interval = setInterval(() => fetchData(true), 30000);
+        const interval = setInterval(() => fetchData(true), 5000); // Poll every 5 seconds for real-time updates
         return () => {
             unsubscribe();
             clearInterval(interval);
