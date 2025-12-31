@@ -941,7 +941,16 @@ const OrderPageInternal = () => {
 
                     try {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
-                        if (!tableRes.ok) throw new Error((await tableRes.json()).message);
+
+                        if (!tableRes.ok) {
+                            const errorData = await tableRes.json();
+                            // Table doesn't exist
+                            setError(`Table "${tableIdFromUrl}" does not exist at this restaurant. Please check the QR code or contact the staff.`);
+                            setLoading(false);
+                            setDineInState('error');
+                            return;
+                        }
+
                         const tableData = await tableRes.json();
 
                         let state = 'available';
@@ -949,11 +958,24 @@ const OrderPageInternal = () => {
                         if (occupiedSeats >= tableData.max_capacity) state = 'full';
                         else if (occupiedSeats > 0) state = 'occupied';
 
-                        setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
-                        setDineInState('needs_setup');
-                        setIsDineInModalOpen(true);
-                    } catch (err) {
-                        setError(err.message);
+                        setTableStatus({
+                            ...tableData,
+                            state,
+                            activeTabs: tableData.activeTabs || [],
+                            tableId: tableIdFromUrl,
+                        });
+
+                        if (state === 'full') {
+                            setDineInState('full');
+                        } else {
+                            setDineInState('ready_to_select'); // Allow starting new tab or joining
+                            setIsDineInModalOpen(true);
+                        }
+                    } catch (error) {
+                        console.error('[Dine-In] Error fetching table:', error);
+                        setError(`Unable to load table information: ${error.message}`);
+                        setLoading(false);
+                        setDineInState('error');
                     }
                 }
 
