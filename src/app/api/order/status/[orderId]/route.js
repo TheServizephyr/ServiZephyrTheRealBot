@@ -95,31 +95,46 @@ export async function GET(request, { params }) {
             try {
                 const currentTabId = orderData.dineInTabId || orderData.tabId;
 
-                // Robust aggregation: Query by Table ID
-                const tableOrdersSnapshot = await firestore
-                    .collection('orders')
-                    .where('restaurantId', '==', orderData.restaurantId)
-                    .where('tableId', '==', orderData.tableId)
-                    .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled'])
-                    .get();
+                if (currentTabId) {
+                    // Query both dineInTabId and tabId to catch all orders in the tab
+                    const [snapshotByDineInTabId, snapshotByTabId] = await Promise.all([
+                        firestore.collection('orders')
+                            .where('restaurantId', '==', orderData.restaurantId)
+                            .where('dineInTabId', '==', currentTabId)
+                            .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled'])
+                            .get(),
+                        firestore.collection('orders')
+                            .where('restaurantId', '==', orderData.restaurantId)
+                            .where('tabId', '==', currentTabId)
+                            .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled'])
+                            .get()
+                    ]);
 
-                if (!tableOrdersSnapshot.empty) {
-                    aggregatedItems = [];
-                    aggregatedSubtotal = 0;
-                    aggregatedCgst = 0;
-                    aggregatedSgst = 0;
-                    aggregatedTotal = 0;
-                    const batchesList = [];
+                    const uniqueOrders = new Map();
 
-                    tableOrdersSnapshot.forEach(doc => {
-                        const tabOrder = doc.data();
-                        const orderTabId = tabOrder.dineInTabId || tabOrder.tabId;
+                    const processSnapshot = (snapshot) => {
+                        if (!snapshot.empty) {
+                            snapshot.forEach(doc => {
+                                uniqueOrders.set(doc.id, doc.data());
+                            });
+                        }
+                    };
 
-                        // Robust ID check
-                        if (orderTabId === currentTabId) {
+                    processSnapshot(snapshotByDineInTabId);
+                    processSnapshot(snapshotByTabId);
+
+                    if (uniqueOrders.size > 0) {
+                        aggregatedItems = [];
+                        aggregatedSubtotal = 0;
+                        aggregatedCgst = 0;
+                        aggregatedSgst = 0;
+                        aggregatedTotal = 0;
+                        const batchesList = [];
+
+                        uniqueOrders.forEach((tabOrder, docId) => {
                             // Add to batches list
                             batchesList.push({
-                                id: doc.id,
+                                id: docId,
                                 ...tabOrder
                             });
 
@@ -133,14 +148,14 @@ export async function GET(request, { params }) {
                                 aggregatedSgst += tabOrder.sgst || 0;
                                 aggregatedTotal += tabOrder.totalAmount || 0;
                             }
-                        }
-                    });
+                        });
 
-                    // Sort batches: Oldest First
-                    batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+                        // Sort batches: Oldest First
+                        batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
 
-                    orderData.batches = batchesList;
-                    console.log(`[API][Order Status] Aggregated ${batchesList.length} orders.`);
+                        orderData.batches = batchesList;
+                        console.log(`[API][Order Status] Aggregated ${uniqueOrders.size} unique orders.`);
+                    }
                 }
             } catch (err) {
                 console.error("[API][Order Status] Error aggregating tab orders:", err);
