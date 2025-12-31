@@ -95,99 +95,107 @@ export async function GET(request, { params }) {
         if (orderData.deliveryType === 'dine-in' && orderData.dineInTabId) {
             console.log(`[API][Order Status] Dine-in order detected. Aggregating all orders for tabId: ${orderData.dineInTabId}`);
             try {
-                const tabOrdersSnapshot = await firestore
-                    .collection('orders')
-                    .where('restaurantId', '==', orderData.restaurantId)
-                    .where('dineInTabId', '==', orderData.dineInTabId)
-                    .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled']) // Fetch ALL relevant statuses
-                    .get();
+                // Robust aggregation: Query by Table ID and filter, to handle legacy tabId/dineInTabId mismatch
+                const currentTabId = orderData.dineInTabId || orderData.tabId;
 
-                if (!tabOrdersSnapshot.empty) {
-                    aggregatedItems = [];
-                    aggregatedSubtotal = 0;
-                    aggregatedCgst = 0;
-                    aggregatedSgst = 0;
-                    aggregatedTotal = 0;
-                    const batchesList = [];
+                if (currentTabId) {
+                    const tableOrdersSnapshot = await firestore
+                        .collection('orders')
+                        .where('restaurantId', '==', orderData.restaurantId)
+                        .where('tableId', '==', orderData.tableId) // Broader query
+                        .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled'])
+                        .get();
 
-                    tabOrdersSnapshot.forEach(doc => {
-                        const tabOrder = doc.data();
-                        // Add to batches list
-                        batchesList.push({
-                            id: doc.id,
-                            ...tabOrder
+                    if (!tableOrdersSnapshot.empty) {
+                        aggregatedItems = [];
+                        aggregatedSubtotal = 0;
+                        aggregatedCgst = 0;
+                        aggregatedSgst = 0;
+                        aggregatedTotal = 0;
+                        const batchesList = [];
+
+                        tableOrdersSnapshot.forEach(doc => {
+                            const tabOrder = doc.data();
+                            // Robust ID check
+                            const orderTabId = tabOrder.dineInTabId || tabOrder.tabId;
+
+                            if (orderTabId === currentTabId) {
+                                // Add to batches list
+                                batchesList.push({
+                                    id: doc.id,
+                                    ...tabOrder
+                                });
+
+                                // Aggregate totals (excluding cancelled/rejected)
+                                if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
+                                    if (tabOrder.items) {
+                                        aggregatedItems = aggregatedItems.concat(tabOrder.items);
+                                    }
+                                    aggregatedSubtotal += tabOrder.subtotal || 0;
+                                    aggregatedCgst += tabOrder.cgst || 0;
+                                    aggregatedSgst += tabOrder.sgst || 0;
+                                    aggregatedTotal += tabOrder.totalAmount || 0;
+                                }
+                            }
                         });
 
-                        // Only aggregate items for non-cancelled/rejected orders if we want the "Bill" to be valid?
-                        // Usually Bill excludes cancelled.
-                        if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
-                            if (tabOrder.items) {
-                                aggregatedItems = aggregatedItems.concat(tabOrder.items);
-                            }
-                            aggregatedSubtotal += tabOrder.subtotal || 0;
-                            aggregatedCgst += tabOrder.cgst || 0;
-                            aggregatedSgst += tabOrder.sgst || 0;
-                            aggregatedTotal += tabOrder.totalAmount || 0;
-                        }
-                    });
+                        // Sort batches: Newest First? Or Oldest First? 
+                        // Let's do Oldest First (Order 1, Order 2...)
+                        batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
 
-                    // Sort batches: Newest First? Or Oldest First? 
-                    // Let's do Oldest First (Order 1, Order 2...)
-                    batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+                        // Assign to a variable to use in response
+                        orderData.batches = batchesList;
 
-                    // Assign to a variable to use in response
-                    orderData.batches = batchesList;
-
-                    console.log(`[API][Order Status] Aggregated ${tabOrdersSnapshot.size} orders.`);
+                        console.log(`[API][Order Status] Aggregated ${tabOrdersSnapshot.size} orders.`);
+                    }
+                } catch (err) {
+                    console.error("[API][Order Status] Error aggregating tab orders:", err);
                 }
-            } catch (err) {
-                console.error("[API][Order Status] Error aggregating tab orders:", err);
             }
-        }
 
         const responsePayload = {
-            order: {
-                id: orderSnap.id,
-                status: orderData.status,
-                customerLocation: orderData.customerLocation,
-                restaurantLocation: restaurantLocationForMap,
-                customerName: orderData.customerName,
-                customerAddress: orderData.customerAddress,
-                customerPhone: orderData.customerPhone,
-                items: aggregatedItems, // Aggregated items (Active)
-                batches: orderData.batches || [], // NEW FIELD
-                subtotal: aggregatedSubtotal, // Aggregated subtotal
-                cgst: aggregatedCgst, // Aggregated cgst
-                sgst: aggregatedSgst, // Aggregated sgst
-                totalAmount: aggregatedTotal, // Aggregated total
-                paymentDetails: orderData.paymentDetails,
-                deliveryType: orderData.deliveryType,
-                dineInToken: orderData.dineInToken,
-                tableId: orderData.tableId,
-                dineInTabId: orderData.dineInTabId,
+                order: {
+                    id: orderSnap.id,
+                    status: orderData.status,
+                    customerLocation: orderData.customerLocation,
+                    restaurantLocation: restaurantLocationForMap,
+                    customerName: orderData.customerName,
+                    customerAddress: orderData.customerAddress,
+                    customerPhone: orderData.customerPhone,
+                    items: aggregatedItems, // Aggregated items (Active)
+                    batches: orderData.batches || [], // NEW FIELD
+                    subtotal: aggregatedSubtotal, // Aggregated subtotal
+                    cgst: aggregatedCgst, // Aggregated cgst
+                    sgst: aggregatedSgst, // Aggregated sgst
+                    totalAmount: aggregatedTotal, // Aggregated total
+                    paymentDetails: orderData.paymentDetails,
+                    deliveryType: orderData.deliveryType,
+                    dineInToken: orderData.dineInToken,
+                    tableId: orderData.tableId,
+                    dineInTabId: orderData.dineInTabId,
 
-                trackingToken: orderData.trackingToken || null, // Make sure to send the token
-            },
-            restaurant: {
-                id: businessDoc.id,
-                name: businessData.name,
-                address: businessData.address
-            },
-            deliveryBoy: deliveryBoyData ? {
-                id: deliveryBoyData.id,
-                name: deliveryBoyData.name,
-                photoUrl: deliveryBoyData.profilePictureUrl,
-                rating: deliveryBoyData.avgRating || 4.5,
-                phone: deliveryBoyData.phone,
-                location: deliveryBoyData.currentLocation
-            } : null
-        };
+                    trackingToken: orderData.trackingToken || null, // Make sure to send the token
+                },
+                restaurant: {
+                    id: businessDoc.id,
+                    name: businessData.name,
+                    address: businessData.address
+                },
+                deliveryBoy: deliveryBoyData ? {
+                    id: deliveryBoyData.id,
+                    name: deliveryBoyData.name,
+                    photoUrl: deliveryBoyData.profilePictureUrl,
+                    rating: deliveryBoyData.avgRating || 4.5,
+                    phone: deliveryBoyData.phone,
+                    location: deliveryBoyData.currentLocation
+                } : null
+            };
 
-        console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
-        return NextResponse.json(responsePayload, { status: 200 });
+            console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
+            return NextResponse.json(responsePayload, { status: 200 });
 
-    } catch (error) {
-        console.error("[API][Order Status] CRITICAL ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        } catch (error) {
+            console.error("[API][Order Status] CRITICAL ERROR:", error);
+            return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        }
     }
-}
