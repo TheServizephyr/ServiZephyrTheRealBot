@@ -552,7 +552,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                 className={batchAction.className + " text-white text-xs h-7"}
                                                                                 onClick={(e) => {
                                                                                     e.stopPropagation();
-                                                                                    onUpdateOrderStatus(orderBatch.id, batchAction.next);
+                                                                                    handleUpdateStatus(orderBatch.id, batchAction.next);
                                                                                 }}
                                                                                 disabled={buttonLoading !== null}
                                                                             >
@@ -576,9 +576,17 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                         className="text-xs h-7 border-orange-500/50 text-orange-500 hover:bg-orange-500/10"
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
-                                                                                            if (confirm(`Undo Order #${batchIndex + 1}?`)) {
-                                                                                                onUpdateOrderStatus(orderBatch.id, undoPrev);
-                                                                                            }
+                                                                                            setConfirmationState({
+                                                                                                isOpen: true,
+                                                                                                title: "Undo Order",
+                                                                                                description: `Undo Order #${batchIndex + 1} back to ${undoPrev} status?`,
+                                                                                                confirmText: "Undo",
+                                                                                                paymentMethod: 'cod',
+                                                                                                onConfirm: async () => {
+                                                                                                    handleUpdateStatus(orderBatch.id, undoPrev);
+                                                                                                    setConfirmationState({ isOpen: false });
+                                                                                                }
+                                                                                            });
                                                                                         }}
                                                                                         disabled={buttonLoading !== null}
                                                                                     >
@@ -697,14 +705,22 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             className="w-full border-orange-500 text-orange-500 hover:bg-orange-500/10 font-semibold"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                if (confirm(`Undo last bulk action? ${lastBulkAction.orderIds.length} orders will revert to ${lastBulkAction.prevStatus}.`)) {
-                                                                    // Revert all orders to previous status
-                                                                    lastBulkAction.orderIds.forEach(orderId => {
-                                                                        handleUpdateStatus(orderId, lastBulkAction.prevStatus);
-                                                                    });
-                                                                    // Clear the bulk action
-                                                                    setLastBulkAction(null);
-                                                                }
+                                                                setConfirmationState({
+                                                                    isOpen: true,
+                                                                    title: "Undo Bulk Action",
+                                                                    description: `Undo last bulk action? ${lastBulkAction.orderIds.length} orders will revert to ${lastBulkAction.prevStatus} status.`,
+                                                                    confirmText: "Undo All",
+                                                                    paymentMethod: 'cod',
+                                                                    onConfirm: async () => {
+                                                                        // Revert all orders to previous status
+                                                                        lastBulkAction.orderIds.forEach(orderId => {
+                                                                            handleUpdateStatus(orderId, lastBulkAction.prevStatus);
+                                                                        });
+                                                                        // Clear the bulk action
+                                                                        setLastBulkAction(null);
+                                                                        setConfirmationState({ isOpen: false });
+                                                                    }
+                                                                });
                                                             }}
                                                             disabled={buttonLoading !== null}
                                                         >
