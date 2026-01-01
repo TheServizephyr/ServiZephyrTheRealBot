@@ -930,49 +930,35 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     )}
 
                                                     {/* Pay at Counter Action or Served & Unpaid */}
-                                                    {(isPayAtCounter || isServed) && !isPaid && (
+                                                    {(isPayAtCounter || (isServed && !isPaid)) && (
                                                         <Button
                                                             size="sm"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 onMarkAsPaid(tableData.id, group.id);
                                                             }}
-                                                            className="w-full bg-green-500 hover:bg-green-600 animate-pulse mt-2"
+                                                            className="w-full bg-green-500 hover:bg-green-600 animate-pulse mt-2 shadow-sm"
                                                         >
                                                             <Wallet className="mr-2 h-4 w-4" />
                                                             Mark as Paid
                                                         </Button>
                                                     )}
 
-                                                    {/* After paid: Need Cleaning button (doesn't clear yet) */}
-                                                    {isServed && isPaid && !group.needsCleaning && (
+                                                    {/* Payment Received -> Clean Table Button */}
+                                                    {/* This consolidated button appears when tab is Paid, replacing the 2-step Need Cleaning -> Clear process */}
+                                                    {(isPaid || group.needsCleaning) && (
                                                         <Button
-                                                            variant="outline"
+                                                            variant="default" // Changed to default (primary) for positive action
                                                             size="sm"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                onMarkForCleaning(group.id, tableData.id);
-                                                            }}
-                                                            className="w-full mt-2"
-                                                        >
-                                                            <Wind className="mr-2 h-4 w-4" />
-                                                            Need Cleaning
-                                                        </Button>
-                                                    )}
-
-                                                    {/* After cleaning marked: Clear Table button */}
-                                                    {group.needsCleaning && (
-                                                        <Button
-                                                            variant="destructive"
-                                                            size="sm"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
+                                                                // Use clear tab directly as "Clean Table" implies finishing the session
                                                                 onClearTab(group.dineInTabId, tableData.id, group.pax_count);
                                                             }}
-                                                            className="w-full mt-2"
+                                                            className="w-full mt-2 bg-blue-600 hover:bg-blue-700"
                                                         >
-                                                            <CheckCircle className="mr-2 h-4 w-4" />
-                                                            Clear Table
+                                                            <Wind className="mr-2 h-4 w-4" />
+                                                            Clean Table
                                                         </Button>
                                                     )}
 

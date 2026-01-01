@@ -77,15 +77,35 @@ export async function POST(req) {
 
         // For Pay at Counter - just mark as pending payment
         if (paymentMethod === 'cod' || paymentMethod === 'counter') {
-            // Update all orders for this tab  
-            const ordersQuery = await businessRef.collection('orders')
-                .where('dineInTabId', '==', tabId)
-                .where('status', 'not-in', ['rejected', 'picked_up'])
-                .get();
+            // ROBUST UPDATE: Use Deep Search to find ALL orders for this tab (Token + ID)
+            const [snap1, snap2] = await Promise.all([
+                businessRef.collection('orders').where('dineInTabId', '==', tabId).where('status', 'not-in', ['rejected', 'picked_up']).get(),
+                businessRef.collection('orders').where('tabId', '==', tabId).where('status', 'not-in', ['rejected', 'picked_up']).get()
+            ]);
+
+            const uniqueDocs = new Map();
+            snap1.forEach(doc => uniqueDocs.set(doc.id, doc));
+            snap2.forEach(doc => uniqueDocs.set(doc.id, doc));
+
+            // Token Fallback (Deep Search)
+            let dineInToken = null;
+            if (uniqueDocs.size > 0) {
+                dineInToken = uniqueDocs.values().next().value.data().dineInToken;
+            }
+            if (dineInToken) {
+                console.log(`[Settle Payment] Deep searching with token: ${dineInToken}`);
+                const tokenQuery = await businessRef.collection('orders')
+                    .where('dineInToken', '==', dineInToken)
+                    .where('status', 'not-in', ['rejected', 'picked_up'])
+                    .get();
+                tokenQuery.forEach(doc => uniqueDocs.set(doc.id, doc));
+            }
+
+            console.log(`[Settle Payment] Marking ${uniqueDocs.size} orders as 'pay_at_counter'`);
 
             const batch = firestore.batch();
 
-            ordersQuery.docs.forEach(doc => {
+            uniqueDocs.forEach(doc => {
                 batch.update(doc.ref, {
                     paymentStatus: 'pay_at_counter',
                     paymentMethod: 'counter',
