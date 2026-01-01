@@ -17,15 +17,13 @@ export async function GET(req) {
         const firestore = await getFirestore();
 
         // Fetch ALL orders for this dine-in tab using Dual-Strategy (Robust)
-        // Check both 'dineInTabId' and 'tabId' fields
+        // Query by ID only to avoid "Missing Index" errors with status filters
         const [snap1, snap2] = await Promise.all([
             firestore.collection('orders')
                 .where('dineInTabId', '==', tabId)
-                .where('status', 'not-in', ['rejected', 'picked_up']) // Note: Firestore limits 'not-in' to 10
                 .get(),
             firestore.collection('orders')
                 .where('tabId', '==', tabId)
-                .where('status', 'not-in', ['rejected', 'picked_up'])
                 .get()
         ]);
 
@@ -34,7 +32,13 @@ export async function GET(req) {
         snap1.forEach(doc => uniqueDocs.set(doc.id, doc));
         snap2.forEach(doc => uniqueDocs.set(doc.id, doc));
 
+        console.log(`[API /order/active] TabId: ${tabId}`);
+        console.log(`[API /order/active] Snap1 (dineInTabId) found: ${snap1.size}`);
+        console.log(`[API /order/active] Snap2 (tabId) found: ${snap2.size}`);
+        console.log(`[API /order/active] Total unique docs: ${uniqueDocs.size}`);
+
         if (uniqueDocs.size === 0) {
+            console.log('[API /order/active] No documents found. Returning 404.');
             return NextResponse.json({ message: 'No orders found for this tab' }, { status: 404 });
         }
 
@@ -51,9 +55,13 @@ export async function GET(req) {
 
         sortedDocs.forEach(doc => {
             const order = doc.data();
+            console.log(`[API /order/active] Processing Order: ${doc.id} | Status: ${order.status} | Amount: ${order.totalAmount || 0}`);
 
-            // Skip cancelled orders for billing
-            if (order.status === 'cancelled') return;
+            // Filter statuses in MEMORY (Robust)
+            if (['cancelled', 'rejected', 'picked_up'].includes(order.status)) {
+                console.log(`[API /order/active] Skipping order (status: ${order.status}): ${doc.id}`);
+                return;
+            }
 
             allItems = allItems.concat(order.items || []);
             // Use totalAmount if available, otherwise subtotal (legacy)
@@ -64,6 +72,8 @@ export async function GET(req) {
             if (!tab_name) tab_name = order.tab_name || order.customerName || '';
             if (!customerName) customerName = order.customerName || '';
         });
+
+        console.log(`[API /order/active] Final Aggregated Subtotal: ${subtotal}`);
 
         return NextResponse.json({
             items: allItems,
