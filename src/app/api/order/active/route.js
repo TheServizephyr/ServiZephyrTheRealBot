@@ -35,7 +35,39 @@ export async function GET(req) {
         console.log(`[API /order/active] TabId: ${tabId}`);
         console.log(`[API /order/active] Snap1 (dineInTabId) found: ${snap1.size}`);
         console.log(`[API /order/active] Snap2 (tabId) found: ${snap2.size}`);
-        console.log(`[API /order/active] Total unique docs: ${uniqueDocs.size}`);
+
+        let initialDocs = [];
+        snap1.forEach(doc => initialDocs.push(doc));
+        snap2.forEach(doc => initialDocs.push(doc));
+
+        // --- ENHANCED AGGREGATION: Token based fallback ---
+        // If orders found have a dineInToken, fetch ALL orders with that token.
+        // This fixes the case where older orders might miss the tabId but share the token.
+        let dineInToken = null;
+        let restaurantId = null;
+
+        if (initialDocs.length > 0) {
+            const firstData = initialDocs[0].data();
+            dineInToken = firstData.dineInToken;
+            restaurantId = firstData.restaurantId;
+        }
+
+        if (dineInToken && restaurantId) {
+            console.log(`[API /order/active] Found dineInToken: ${dineInToken}. Fetching related orders...`);
+            const tokenQuery = await firestore.collection('orders')
+                .where('restaurantId', '==', restaurantId)
+                .where('dineInToken', '==', dineInToken)
+                .get();
+
+            console.log(`[API /order/active] Token query found: ${tokenQuery.size} docs.`);
+            tokenQuery.forEach(doc => uniqueDocs.set(doc.id, doc));
+        }
+        // --------------------------------------------------
+
+        snap1.forEach(doc => uniqueDocs.set(doc.id, doc));
+        snap2.forEach(doc => uniqueDocs.set(doc.id, doc));
+
+        console.log(`[API /order/active] Total unique docs after token merge: ${uniqueDocs.size}`);
 
         if (uniqueDocs.size === 0) {
             console.log('[API /order/active] No documents found. Returning 404.');
