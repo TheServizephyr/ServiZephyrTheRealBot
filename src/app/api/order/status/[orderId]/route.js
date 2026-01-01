@@ -89,6 +89,7 @@ export async function GET(request, { params }) {
         let aggregatedCgst = orderData.cgst || 0;
         let aggregatedSgst = orderData.sgst || 0;
         let aggregatedTotal = orderData.totalAmount || 0;
+        let aggregatedPaymentStatus = orderData.paymentStatus || 'pending'; // Start with current order's status
 
         if (orderData.deliveryType === 'dine-in') {
             console.log(`[API][Order Status] Dine-in order detected. Attempting aggregation...`);
@@ -153,6 +154,12 @@ export async function GET(request, { params }) {
                     aggregatedCgst = 0;
                     aggregatedSgst = 0;
                     aggregatedTotal = 0;
+                    // Reset payment status to pending before checking all docs (unless we want to prioritize 'paid')
+                    // Logic: If ANY order is paid, the bill is PAID.
+                    // If ANY order is pay_at_counter (and not paid), status is pay_at_counter.
+                    let hasPaid = false;
+                    let hasPayAtCounter = false;
+
                     const batchesList = [];
                     const processedIds = new Set();
 
@@ -173,6 +180,10 @@ export async function GET(request, { params }) {
                             ...tabOrder
                         });
 
+                        // Check payment status from this order
+                        if (tabOrder.paymentStatus === 'paid') hasPaid = true;
+                        if (tabOrder.paymentStatus === 'pay_at_counter') hasPayAtCounter = true;
+
                         // AGGREGATE BILL (Exclude cancelled/rejected for strict billing, but keep in list)
                         if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
                             if (tabOrder.items) {
@@ -185,11 +196,16 @@ export async function GET(request, { params }) {
                         }
                     }
 
+                    // Determination logic
+                    if (hasPaid) aggregatedPaymentStatus = 'paid';
+                    else if (hasPayAtCounter) aggregatedPaymentStatus = 'pay_at_counter';
+                    else aggregatedPaymentStatus = 'pending';
+
                     // Sort batches: Oldest First
                     batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
 
                     orderData.batches = batchesList;
-                    console.log(`[API][Order Status] Aggregated ${batchesList.length} orders via ${aggregationMethod}.`);
+                    console.log(`[API][Order Status] Aggregated ${batchesList.length} orders via ${aggregationMethod}. Payment Status: ${aggregatedPaymentStatus}`);
 
                     // CALCULATE COMPOSITE STATUS
                     // Don't just take the latest order's status (which might be cancelled)
@@ -232,6 +248,7 @@ export async function GET(request, { params }) {
                 cgst: aggregatedCgst, // Aggregated cgst
                 sgst: aggregatedSgst, // Aggregated sgst
                 totalAmount: aggregatedTotal, // Aggregated total
+                paymentStatus: aggregatedPaymentStatus, // <--- ADDED THIS FIELD
                 paymentDetails: orderData.paymentDetails,
                 deliveryType: orderData.deliveryType,
                 dineInToken: orderData.dineInToken,
