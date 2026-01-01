@@ -96,7 +96,8 @@ function PreOrderTrackingContent() {
         const unsubscribe = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = { id: docSnap.id, ...docSnap.data() };
-                if (data.trackingToken !== tokenFromUrl) {
+                if (!data.trackingToken || data.trackingToken.trim() !== (tokenFromUrl || '').trim()) {
+                    console.log(`[Track Page] Token Mismatch! Expected: ${data.trackingToken}, Got: ${tokenFromUrl}`);
                     setError("Invalid token. You do not have permission to view this order.");
                     setOrder(null);
                 } else {
