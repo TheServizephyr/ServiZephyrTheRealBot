@@ -16,13 +16,25 @@ export async function GET(req) {
 
         const firestore = await getFirestore();
 
-        // Fetch ALL orders for this dine-in tab
-        const ordersQuery = await firestore.collection('orders')
-            .where('dineInTabId', '==', tabId)
-            .where('status', 'not-in', ['rejected', 'picked_up'])
-            .get();
+        // Fetch ALL orders for this dine-in tab using Dual-Strategy (Robust)
+        // Check both 'dineInTabId' and 'tabId' fields
+        const [snap1, snap2] = await Promise.all([
+            firestore.collection('orders')
+                .where('dineInTabId', '==', tabId)
+                .where('status', 'not-in', ['rejected', 'picked_up']) // Note: Firestore limits 'not-in' to 10
+                .get(),
+            firestore.collection('orders')
+                .where('tabId', '==', tabId)
+                .where('status', 'not-in', ['rejected', 'picked_up'])
+                .get()
+        ]);
 
-        if (ordersQuery.empty) {
+        // Merge results using Map to handle duplicates
+        const uniqueDocs = new Map();
+        snap1.forEach(doc => uniqueDocs.set(doc.id, doc));
+        snap2.forEach(doc => uniqueDocs.set(doc.id, doc));
+
+        if (uniqueDocs.size === 0) {
             return NextResponse.json({ message: 'No orders found for this tab' }, { status: 404 });
         }
 
@@ -32,10 +44,23 @@ export async function GET(req) {
         let tab_name = '';
         let customerName = '';
 
-        ordersQuery.docs.forEach(doc => {
+        // Sort by creation time to keep order consistent
+        const sortedDocs = Array.from(uniqueDocs.values()).sort((a, b) => {
+            return (a.data().createdAt?.toMillis() || 0) - (b.data().createdAt?.toMillis() || 0);
+        });
+
+        sortedDocs.forEach(doc => {
             const order = doc.data();
+
+            // Skip cancelled orders for billing
+            if (order.status === 'cancelled') return;
+
             allItems = allItems.concat(order.items || []);
-            subtotal += order.subtotal || order.totalAmount || 0;
+            // Use totalAmount if available, otherwise subtotal (legacy)
+            // Ensure we don't double count if fields exist differently
+            const orderTotal = order.totalAmount || order.grandTotal || order.subtotal || 0;
+            subtotal += orderTotal;
+
             if (!tab_name) tab_name = order.tab_name || order.customerName || '';
             if (!customerName) customerName = order.customerName || '';
         });
