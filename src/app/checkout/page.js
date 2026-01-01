@@ -620,7 +620,7 @@ const CheckoutPageInternal = () => {
 
                 if (activeOrderId) {
                     localStorage.removeItem(`cart_${restaurantId}`); // Clear cart after adding items
-                    const redirectUrl = `/track/pre-order/${activeOrderId}?token=${data.token || token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                    const redirectUrl = `/track/pre-order/${activeOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
                     router.push(redirectUrl);
                     return;
                 }
