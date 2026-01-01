@@ -554,13 +554,14 @@ function DineInTrackingContent() {
                     )}
 
                     {/* Pay Bill Button OR Status Message */}
-                    {(orderData?.order?.paymentStatus === 'pay_at_counter' || paymentHash === 'counter') ? (
-                        <div className="w-full h-14 bg-orange-100 text-orange-800 border-orange-200 border rounded flex items-center justify-center font-bold text-lg animate-pulse">
-                            🏪 Please Pay at Counter
-                        </div>
-                    ) : orderData?.order?.paymentStatus === 'paid' ? (
+                    {/* Pay Bill Button OR Status Message */}
+                    {orderData?.order?.paymentStatus === 'paid' ? (
                         <div className="w-full h-14 bg-green-100 text-green-800 border-green-200 border rounded flex items-center justify-center font-bold text-lg">
                             ✅ Bill Paid
+                        </div>
+                    ) : (orderData?.order?.paymentStatus === 'pay_at_counter' || paymentHash === 'counter') ? (
+                        <div className="w-full h-14 bg-orange-100 text-orange-800 border-orange-200 border rounded flex items-center justify-center font-bold text-lg animate-pulse">
+                            🏪 Please Pay at Counter
                         </div>
                     ) : (
                         <Button
