@@ -190,6 +190,27 @@ export async function GET(request, { params }) {
 
                     orderData.batches = batchesList;
                     console.log(`[API][Order Status] Aggregated ${batchesList.length} orders via ${aggregationMethod}.`);
+
+                    // CALCULATE COMPOSITE STATUS
+                    // Don't just take the latest order's status (which might be cancelled)
+                    // Instead, look at ALL batches to determine the "Global" status
+                    const activeBatches = batchesList.filter(b => !['cancelled', 'rejected'].includes(b.status));
+
+                    if (activeBatches.length > 0) {
+                        // Priority: Ready > Preparing > Confirmed > Pending > Delivered
+                        // We want to show the most "active/urgent" status to the user
+                        const hasStatus = (s) => activeBatches.some(b => b.status === s);
+
+                        if (hasStatus('ready_for_pickup')) orderData.status = 'ready_for_pickup';
+                        else if (hasStatus('preparing')) orderData.status = 'preparing';
+                        else if (hasStatus('confirmed')) orderData.status = 'confirmed';
+                        else if (hasStatus('pending')) orderData.status = 'pending';
+                        else orderData.status = 'delivered'; // All active batches are delivered
+                    } else if (batchesList.length > 0) {
+                        // All batches are cancelled or rejected
+                        // Use the status of the LATEST batch (likely 'cancelled')
+                        // orderData.status is already set from the doc, which is fine
+                    }
                 }
             } catch (err) {
                 console.error("[API][Order Status] Error aggregating tab orders:", err);
