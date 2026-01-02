@@ -118,9 +118,16 @@ export default function RootLayout({ children }) {
             }
           `}
         </Script>
+        import GlobalHapticHandler from '@/components/GlobalHapticHandler';
+        import RedirectHandler from '@/components/RedirectHandler';
+        import {FirebaseClientProvider} from '@/firebase/client-provider';
+
+        // ... existing code ...
+
         <FirebaseClientProvider>
           <PWARecoveryHandler />
           <GlobalHapticHandler />
+          <RedirectHandler />
           <LayoutWrapper>
             {children}
           </LayoutWrapper>

@@ -10,15 +10,14 @@ import { X } from "lucide-react";
 
 // --- START: CORRECT FIREBASE IMPORT ---
 import { auth, googleProvider } from "@/lib/firebase";
-import { signInWithPopup } from "firebase/auth";
-// --- END: CORRECT FIREBASE IMPORT ---
-
+import { signInWithPopup, signInWithRedirect, getRedirectResult } from "firebase/auth";
 
 export default function AuthModal({ isOpen, onClose }) {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState(""); // info, success, error
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [isRedirectCheckDone, setIsRedirectCheckDone] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -29,6 +28,7 @@ export default function AuthModal({ isOpen, onClose }) {
     return () => (document.body.style.overflow = "auto");
   }, [isOpen]);
 
+  // Redundant check removed. RedirectHandler handles this globally now.
 
   const resetForm = () => {
     setMsg("");
@@ -41,18 +41,11 @@ export default function AuthModal({ isOpen, onClose }) {
     onClose();
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setMsg("Opening Google sign-in...");
+  const handleAuthSuccess = async (user) => {
+    setMsg("Verifying user details...");
     setMsgType("info");
-    console.log("[DEBUG] AuthModal: handleGoogleLogin started.");
+
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      console.log("[DEBUG] AuthModal: Google sign-in successful. User:", user.email);
-
-      setMsg("Verifying user details...");
-
       // Correctly check the user's role from our backend
       const idToken = await user.getIdToken();
       console.log("[DEBUG] AuthModal: Got ID token. Calling /api/auth/check-role...");
@@ -73,9 +66,12 @@ export default function AuthModal({ isOpen, onClose }) {
           setMsg("✅ New user detected! Redirecting to complete your profile...");
           setMsgType("success");
           localStorage.setItem("role", "none");
-          // CRITICAL FIX: Redirect immediately to avoid race conditions
-          closeModal();
-          router.push("/complete-profile");
+
+          // Allow state update to reflect before redirecting
+          setTimeout(() => {
+            closeModal();
+            router.push("/complete-profile");
+          }, 500);
           return;
         }
         // For any other error, display it.
@@ -120,46 +116,59 @@ export default function AuthModal({ isOpen, onClose }) {
       setTimeout(() => {
         closeModal();
         if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
-          console.log("[DEBUG] AuthModal: Redirecting to /owner-dashboard.");
           router.push("/owner-dashboard");
         } else if (role === "admin") {
-          console.log("[DEBUG] AuthModal: Redirecting to /admin-dashboard.");
           router.push("/admin-dashboard");
         } else if (role === "rider") {
-          console.log("[DEBUG] AuthModal: Redirecting to /rider-dashboard.");
           router.push("/rider-dashboard");
         } else if (role === "street-vendor") {
-          console.log("[DEBUG] AuthModal: Redirecting to /street-vendor-dashboard.");
           router.push("/street-vendor-dashboard");
         } else {
-          console.log("[DEBUG] AuthModal: Redirecting to /customer-dashboard.");
           router.push("/customer-dashboard");
         }
       }, 1500);
 
     } catch (err) {
-      let errorMessage = "An unexpected error occurred. Please try again.";
-      if (err.code) {
-        switch (err.code) {
-          case 'auth/popup-closed-by-user':
-            errorMessage = 'Sign-in popup closed before completion.';
-            break;
-          case 'auth/cancelled-popup-request':
-            errorMessage = 'Multiple sign-in attempts detected. Please try again.';
-            break;
-          case 'auth/permission-denied':
-            errorMessage = 'This domain is not authorized. Please contact support.';
-            break;
-          default:
-            errorMessage = `Error: ${err.code}. Please try again.`;
+      console.error("Auth Success processing error:", err);
+      setMsg(`Error: ${err.message}`);
+      setMsgType("error");
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setMsg("Opening Google sign-in...");
+    setMsgType("info");
+    console.log("[DEBUG] AuthModal: handleGoogleLogin started.");
+
+    try {
+      // Try Popup first (Preferred for Desktop)
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      console.log("[DEBUG] AuthModal: Google sign-in successful via Popup.");
+      await handleAuthSuccess(user);
+
+    } catch (err) {
+      console.error("[DEBUG] AuthModal: Popup failed.", err);
+
+      // If Popup fails (likely on mobile/webview), Fallback to Redirect
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/internal-error' || err.message.includes('popup')) {
+        console.log("[DEBUG] Switching to signInWithRedirect...");
+        setMsg("Popup blocked. Switching to standard login...");
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          // The page will redirect, so no further code here will run until return
+        } catch (redirectErr) {
+          console.error("Redirect login failed:", redirectErr);
+          setMsg(`Login Failed: ${redirectErr.message}`);
+          setMsgType("error");
+          setLoading(false);
         }
       } else {
-        errorMessage = err.message;
+        setMsg(`Login Error: ${err.message}`);
+        setMsgType("error");
+        setLoading(false);
       }
-      console.error("[DEBUG] AuthModal: Login failed.", err);
-      setMsg(`❌ Login Failed: ${errorMessage}`);
-      setMsgType("error");
-      setLoading(false);
     }
   };
 
