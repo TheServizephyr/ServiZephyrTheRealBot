@@ -13,20 +13,40 @@ export default function RedirectHandler() {
     const router = useRouter();
 
     useEffect(() => {
+        let unsubscribe = () => { };
+
         const handleRedirectResult = async () => {
             console.log("[RedirectHandler] Starting redirect check...");
             try {
                 const result = await getRedirectResult(auth);
                 if (result && result.user) {
                     console.log("[RedirectHandler] User returned from redirect:", result.user.email);
+                    sessionStorage.removeItem('isLoggingIn'); // Cleanup
                     setLoading(true);
                     setMsg("Verifying login details...");
                     await processLogin(result.user);
                 } else {
-                    console.log("[RedirectHandler] No redirect result found. Checking current auth state...");
-                    // Optional: Check if user is already logged in but caught in a reload loop?
-                    // For now, just stop loading to allow normal app usage.
-                    setLoading(false);
+                    console.log("[RedirectHandler] No redirect result found. Checking fallback...");
+
+                    // Fallback: Check if we are in a 'logging in' state but redirect result was lost
+                    if (sessionStorage.getItem('isLoggingIn') === 'true') {
+                        console.log("[RedirectHandler] 'isLoggingIn' flag found. Waiting for auth state...");
+
+                        unsubscribe = onAuthStateChanged(auth, async (user) => {
+                            if (user) {
+                                console.log("[RedirectHandler] Fallback: User detected via onAuthStateChanged:", user.email);
+                                sessionStorage.removeItem('isLoggingIn');
+                                setLoading(true);
+                                setMsg("Recovering login session...");
+                                await processLogin(user);
+                            } else {
+                                console.log("[RedirectHandler] Fallback: No user found even with flag.");
+                                setLoading(false);
+                            }
+                        });
+                    } else {
+                        setLoading(false);
+                    }
                 }
             } catch (error) {
                 console.error("[RedirectHandler] Redirect error:", error);
@@ -40,6 +60,8 @@ export default function RedirectHandler() {
         };
 
         handleRedirectResult();
+
+        return () => unsubscribe();
     }, []);
 
     const processLogin = async (user) => {

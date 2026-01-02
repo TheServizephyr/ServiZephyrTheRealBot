@@ -156,6 +156,7 @@ export default function AuthModal({ isOpen, onClose }) {
         console.log("[DEBUG] Switching to signInWithRedirect...");
         setMsg("Popup blocked. Switching to standard login...");
         try {
+          sessionStorage.setItem('isLoggingIn', 'true');
           await signInWithRedirect(auth, googleProvider);
           // The page will redirect, so no further code here will run until return
         } catch (redirectErr) {
