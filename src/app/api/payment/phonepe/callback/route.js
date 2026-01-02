@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 
 // PhonePe Webhook Credentials (set these in Vercel environment variables)
@@ -78,6 +78,7 @@ export async function POST(req) {
 
 // Handler for Order Completed
 async function handleOrderCompleted(payload) {
+    const adminDb = await getFirestore();
     const { merchantOrderId, orderId, state, amount, paymentDetails } = payload;
 
     console.log(`[PhonePe Webhook] Order COMPLETED: ${merchantOrderId}`);
@@ -202,6 +203,7 @@ async function handleOrderCompleted(payload) {
 
 // Handler for Order Failed
 async function handleOrderFailed(payload) {
+    const adminDb = await getFirestore();
     const { merchantOrderId, orderId, state, errorCode, detailedErrorCode } = payload;
 
     console.log(`[PhonePe Webhook] Order FAILED: ${merchantOrderId}`);
@@ -224,6 +226,7 @@ async function handleOrderFailed(payload) {
 
 // Handler for Refund Completed
 async function handleRefundCompleted(payload) {
+    const adminDb = await getFirestore();
     const { originalMerchantOrderId, refundId, amount, state, timestamp } = payload;
 
     console.log(`[PhonePe Webhook] Refund COMPLETED: ${refundId} for order ${originalMerchantOrderId}`);
@@ -245,6 +248,7 @@ async function handleRefundCompleted(payload) {
 
 // Handler for Refund Failed
 async function handleRefundFailed(payload) {
+    const adminDb = await getFirestore();
     const { originalMerchantOrderId, refundId, errorCode, detailedErrorCode } = payload;
 
     console.log(`[PhonePe Webhook] Refund FAILED: ${refundId} for order ${originalMerchantOrderId}`);

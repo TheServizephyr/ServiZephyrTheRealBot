@@ -3,6 +3,7 @@ import "./globals.css";
 import LayoutWrapper from '@/components/LayoutWrapper';
 import PWARecoveryHandler from '@/components/PWARecoveryHandler';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
+import RedirectHandler from '@/components/RedirectHandler';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import Script from 'next/script';
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { adminDb } from '@/lib/firebase-admin';
+import { getFirestore } from '@/lib/firebase-admin';
 
 // PhonePe API Configuration
 const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox";
@@ -11,6 +11,7 @@ const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL || "https://api-preprod.ph
 
 export async function POST(req) {
     try {
+        const adminDb = await getFirestore();
         const { orderId, amount, reason } = await req.json();
 
         if (!orderId || !amount) {
