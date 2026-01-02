@@ -30,18 +30,29 @@ export default function RedirectHandler() {
 
                     // Fallback: Check if we are in a 'logging in' state but redirect result was lost
                     if (sessionStorage.getItem('isLoggingIn') === 'true') {
-                        console.log("[RedirectHandler] 'isLoggingIn' flag found. Waiting for auth state...");
+                        console.log("[RedirectHandler] 'isLoggingIn' flag found. Waiting for auth state update...");
+
+                        // Safety timeout: If no user is found within 15 seconds, give up.
+                        const timeoutId = setTimeout(() => {
+                            console.log("[RedirectHandler] Fallback timeout. No user found.");
+                            setLoading(false);
+                            sessionStorage.removeItem('isLoggingIn');
+                            setError("Login timed out. Please try again.");
+                        }, 15000);
 
                         unsubscribe = onAuthStateChanged(auth, async (user) => {
                             if (user) {
                                 console.log("[RedirectHandler] Fallback: User detected via onAuthStateChanged:", user.email);
+                                clearTimeout(timeoutId); // Cancel timeout
                                 sessionStorage.removeItem('isLoggingIn');
                                 setLoading(true);
                                 setMsg("Recovering login session...");
                                 await processLogin(user);
                             } else {
-                                console.log("[RedirectHandler] Fallback: No user found even with flag.");
-                                setLoading(false);
+                                // IMPORTANT: Do NOT stop loading here. 
+                                // Firebase often fires 'null' initially before the actual user object.
+                                // We wait for the next event or the timeout.
+                                console.log("[RedirectHandler] Fallback: Auth state is null, waiting for update...");
                             }
                         });
                     } else {
