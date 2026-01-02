@@ -11,5 +11,4 @@ const googleProvider = new GoogleAuthProvider();
 const db = firestore; // Alias for consistency with older code if needed
 const app = firebaseApp;
 
-
 export { app, auth, googleProvider, db, storage };

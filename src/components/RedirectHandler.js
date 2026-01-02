@@ -17,14 +17,19 @@ export default function RedirectHandler() {
 
         const handleRedirectResult = async () => {
             // Check if we are expecting a login immediately to show loader
-            if (sessionStorage.getItem('isLoggingIn') === 'true') {
+            const initialFlag = sessionStorage.getItem('isLoggingIn');
+            if (initialFlag) {
                 setLoading(true);
                 setMsg("Finishing login...");
             }
 
             console.log("[RedirectHandler] Starting redirect check...");
+            console.log("[RedirectHandler] Current user:", auth.currentUser?.email || "null");
             try {
+                console.log("[RedirectHandler] Calling getRedirectResult...");
                 const result = await getRedirectResult(auth);
+                console.log("[RedirectHandler] getRedirectResult returned:", result ? `User: ${result.user.email}` : "null");
+
                 if (result && result.user) {
                     console.log("[RedirectHandler] User returned from redirect:", result.user.email);
                     sessionStorage.removeItem('isLoggingIn'); // Cleanup
@@ -35,32 +40,77 @@ export default function RedirectHandler() {
                     console.log("[RedirectHandler] No redirect result found. Checking fallback...");
 
                     // Fallback: Check if we are in a 'logging in' state but redirect result was lost
-                    if (sessionStorage.getItem('isLoggingIn') === 'true') {
-                        console.log("[RedirectHandler] 'isLoggingIn' flag found. Waiting for auth state update...");
+                    // Use timestamp-based validation to avoid stale flags
+                    const loginFlagData = sessionStorage.getItem('isLoggingIn');
+                    const isDashboard = window.location.pathname.includes('dashboard');
 
-                        // Safety timeout: If no user is found within 15 seconds, give up.
-                        const timeoutId = setTimeout(() => {
-                            console.log("[RedirectHandler] Fallback timeout. No user found.");
-                            setLoading(false);
-                            sessionStorage.removeItem('isLoggingIn');
-                            setError("Login timed out. Please try again.");
-                        }, 15000);
+                    if (loginFlagData) {
+                        let shouldProceed = false;
+                        let flagAge = 0;
 
-                        unsubscribe = onAuthStateChanged(auth, async (user) => {
-                            if (user) {
-                                console.log("[RedirectHandler] Fallback: User detected via onAuthStateChanged:", user.email);
-                                clearTimeout(timeoutId); // Cancel timeout
+                        // Try to parse timestamp
+                        try {
+                            if (loginFlagData === 'true') {
+                                // Old format - treat as stale
+                                console.log("[RedirectHandler] Old format flag detected. Clearing.");
                                 sessionStorage.removeItem('isLoggingIn');
-                                setLoading(true);
-                                setMsg("Recovering login session...");
-                                await processLogin(user);
-                            } else {
-                                // IMPORTANT: Do NOT stop loading here. 
-                                // Firebase often fires 'null' initially before the actual user object.
-                                // We wait for the next event or the timeout.
-                                console.log("[RedirectHandler] Fallback: Auth state is null, waiting for update...");
+                                setLoading(false);
+                                return;
                             }
-                        });
+
+                            const { timestamp } = JSON.parse(loginFlagData);
+                            flagAge = (Date.now() - timestamp) / 1000;
+
+                            // If flag is older than 30 seconds, it's stale
+                            if (flagAge > 30) {
+                                console.log(`[RedirectHandler] Stale login flag (${flagAge.toFixed(0)}s old). Clearing.`);
+                                sessionStorage.removeItem('isLoggingIn');
+                                setLoading(false);
+                                return;
+                            }
+
+                            shouldProceed = true;
+                        } catch (e) {
+                            // Invalid format - clear it
+                            console.log("[RedirectHandler] Invalid flag format. Clearing.");
+                            sessionStorage.removeItem('isLoggingIn');
+                            setLoading(false);
+                            return;
+                        }
+
+                        // If already logged in or on dashboard, clear flag
+                        if (shouldProceed && (auth.currentUser || isDashboard)) {
+                            console.log("[RedirectHandler] Already authenticated/on dashboard. Clearing flag.");
+                            sessionStorage.removeItem('isLoggingIn');
+                            setLoading(false);
+                            return;
+                        }
+
+                        if (shouldProceed) {
+                            console.log(`[RedirectHandler] Fresh login flag (${flagAge.toFixed(0)}s old). Checking auth state...`);
+
+                            // Longer timeout for slow networks and Firebase auth restoration
+                            const timeoutId = setTimeout(() => {
+                                console.log("[RedirectHandler] Auth state timeout (15s). No user authenticated.");
+                                setLoading(false);
+                                sessionStorage.removeItem('isLoggingIn');
+                            }, 15000); // 15 seconds
+
+                            unsubscribe = onAuthStateChanged(auth, async (user) => {
+                                if (user) {
+                                    console.log("[RedirectHandler] ✓ User authenticated:", user.email);
+                                    clearTimeout(timeoutId);
+                                    sessionStorage.removeItem('isLoggingIn');
+                                    setLoading(true);
+                                    setMsg("Recovering login session...");
+                                    await processLogin(user);
+                                } else {
+                                    console.log("[RedirectHandler] Auth state: null (waiting for Firebase to restore session...)");
+                                }
+                            });
+                        } else {
+                            setLoading(false);
+                        }
                     } else {
                         setLoading(false);
                     }

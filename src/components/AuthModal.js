@@ -146,6 +146,7 @@ export default function AuthModal({ isOpen, onClose }) {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       console.log("[DEBUG] AuthModal: Google sign-in successful via Popup.");
+      sessionStorage.removeItem('isLoggingIn'); // Ensure no stale flags trigger RedirectHandler
       await handleAuthSuccess(user);
 
     } catch (err) {
@@ -156,7 +157,12 @@ export default function AuthModal({ isOpen, onClose }) {
         console.log("[DEBUG] Switching to signInWithRedirect...");
         setMsg("Popup blocked. Switching to standard login...");
         try {
-          sessionStorage.setItem('isLoggingIn', 'true');
+          // CRITICAL: Ensure persistence is set BEFORE redirect
+          const { setPersistence, browserLocalPersistence } = await import('firebase/auth');
+          await setPersistence(auth, browserLocalPersistence);
+          console.log("[AuthModal] ✓ Persistence set before redirect");
+
+          sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
           await signInWithRedirect(auth, googleProvider);
           // The page will redirect, so no further code here will run until return
         } catch (redirectErr) {

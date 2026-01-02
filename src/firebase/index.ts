@@ -2,7 +2,7 @@
 
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -18,9 +18,21 @@ export function initializeFirebase() {
 }
 
 export function getSdks(firebaseApp: FirebaseApp) {
+  const auth = getAuth(firebaseApp);
+
+  // CRITICAL: Set persistence immediately (non-blocking)
+  // This MUST execute for redirect flow to work
+  setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+      console.log('[Firebase] ✓ Auth persistence configured: LOCAL');
+    })
+    .catch((error) => {
+      console.error('[Firebase] ✗ Failed to set persistence:', error);
+    });
+
   return {
     firebaseApp,
-    auth: getAuth(firebaseApp),
+    auth,
     firestore: getFirestore(firebaseApp),
     storage: getStorage(firebaseApp)
   };
