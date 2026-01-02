@@ -87,7 +87,17 @@ export default function RedirectHandler() {
                         }
 
                         if (shouldProceed) {
-                            console.log(`[RedirectHandler] Fresh login flag (${flagAge.toFixed(0)}s old). Checking auth state...`);
+                            // Check if user is already authenticated (Firebase restored the session)
+                            if (auth.currentUser) {
+                                console.log(`[RedirectHandler] ✓ User already authenticated: ${auth.currentUser.email}`);
+                                sessionStorage.removeItem('isLoggingIn');
+                                setLoading(true);
+                                setMsg("Completing login...");
+                                await processLogin(auth.currentUser);
+                                return;
+                            }
+
+                            console.log(`[RedirectHandler] Fresh login flag (${flagAge.toFixed(0)}s old). Waiting for auth state...`);
 
                             // Longer timeout for slow networks and Firebase auth restoration
                             const timeoutId = setTimeout(() => {
