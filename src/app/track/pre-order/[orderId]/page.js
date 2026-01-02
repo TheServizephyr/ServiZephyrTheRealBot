@@ -10,106 +10,210 @@ import QRCode from 'qrcode.react';
 import { db, auth } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
-// ... (imports remain)
+import { format } from 'date-fns';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
-// ...
+const statusConfig = {
+    pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been placed successfully." },
+    confirmed: { title: 'Confirmed', icon: <Check size={24} />, step: 1, description: "Restaurant has confirmed your order." },
+    preparing: { title: 'Preparing', icon: <ShoppingBag size={24} />, step: 2, description: "Your food is being prepared." },
+    Ready: { title: 'Ready', icon: <CheckCircle size={24} />, step: 3, description: "Your order is ready for pickup!" },
+    completed: { title: 'Collected', icon: <User size={24} />, step: 4, description: "Order collected. Enjoy!" },
+    rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "Order was rejected." },
+    cancelled: { title: 'Cancelled', icon: <XCircle size={24} />, step: 4, isError: true, description: "Order was cancelled." },
+};
 
-useEffect(() => {
-    let unsubscribe = () => { };
+const StatusTimeline = ({ currentStatus }) => {
+    const activeStatus = (currentStatus === 'paid') ? 'pending' : currentStatus;
+    const currentStepConfig = statusConfig[activeStatus] || { step: 0, isError: false };
+    const currentStep = currentStepConfig.step;
+    const isError = currentStepConfig.isError;
 
-    const setupListener = async () => {
-        if (!orderId) {
-            setError("Order ID is missing.");
-            setLoading(false);
-            return;
-        }
+    const uniqueSteps = Object.values(statusConfig)
+        .filter((value, index, self) =>
+            !value.isError && self.findIndex(v => v.step === value.step) === index
+        );
 
-        try {
-            // Ensure anonymous auth for guest users
-            if (!auth.currentUser) {
-                await signInAnonymously(auth);
+    return (
+        <div className="flex justify-between items-start w-full px-2 sm:px-4 pt-4">
+            {uniqueSteps.map(({ title, icon, step }) => {
+                const isCompleted = step <= currentStep;
+                const isCurrent = step === currentStep;
+                return (
+                    <React.Fragment key={step}>
+                        <div className="flex flex-col items-center text-center w-20">
+                            <motion.div
+                                className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isError ? 'bg-destructive border-destructive text-destructive-foreground' :
+                                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
+                                    }`}
+                                animate={{ scale: isCurrent ? 1.1 : 1 }}
+                                transition={{ type: 'spring' }}
+                            >
+                                {icon}
+                            </motion.div>
+                            <p className={`mt-2 text-xs font-semibold ${isError ? 'text-destructive' :
+                                isCompleted ? 'text-foreground' : 'text-muted-foreground'
+                                }`}>
+                                {isError ? statusConfig[currentStatus]?.title : title}
+                            </p>
+                        </div>
+                        {step < uniqueSteps.length - 1 && (
+                            <div className="flex-1 h-1 mt-6 mx-1 sm:mx-2 rounded-full bg-border">
+                                <motion.div
+                                    className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
+                                    initial={{ width: '0%' }}
+                                    animate={{ width: isCompleted ? '100%' : '0%' }}
+                                    transition={{ duration: 0.5, delay: 0.2 }}
+                                />
+                            </div>
+                        )}
+                    </React.Fragment>
+                );
+            })}
+        </div>
+    );
+};
+
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+function PreOrderTrackingContent() {
+    const router = useRouter();
+    const { orderId } = useParams();
+    const searchParams = useSearchParams();
+    const tokenFromUrl = searchParams.get('token');
+
+    const [order, setOrder] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    // Animation states
+    const [showRipple, setShowRipple] = useState(false);
+    const [animationState, setAnimationState] = useState('drop');
+    const [isFlipped, setIsFlipped] = useState(false);
+    const tiltWrapperRef = useRef(null);
+
+    const isOrderComplete = order?.status === 'Ready' || order?.status === 'completed';
+    const isOrderRejected = order?.status === 'rejected' || order?.status === 'cancelled';
+
+    useEffect(() => {
+        let unsubscribe = () => { };
+
+        const setupListener = async () => {
+            if (!orderId) {
+                setError("Order ID is missing.");
+                setLoading(false);
+                return;
             }
 
-            const docRef = doc(db, 'orders', orderId);
-            unsubscribe = onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = { id: docSnap.id, ...docSnap.data() };
-                    // Robust token check with trim()
-                    if (!data.trackingToken || data.trackingToken.trim() !== (tokenFromUrl || '').trim()) {
-                        console.log(`[Track Page] Token Mismatch! Expected: ${data.trackingToken}, Got: ${tokenFromUrl}`);
-                        setError("Invalid token. You do not have permission to view this order.");
-                        setOrder(null);
+            try {
+                // Ensure anonymous auth for guest users
+                if (!auth.currentUser) {
+                    await signInAnonymously(auth);
+                }
+
+                const docRef = doc(db, 'orders', orderId);
+                unsubscribe = onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = { id: docSnap.id, ...docSnap.data() };
+                        // Robust token check with trim()
+                        if (!data.trackingToken || data.trackingToken.trim() !== (tokenFromUrl || '').trim()) {
+                            console.log(`[Track Page] Token Mismatch! Expected: ${data.trackingToken}, Got: ${tokenFromUrl}`);
+                            setError("Invalid token. You do not have permission to view this order.");
+                            setOrder(null);
+                        } else {
+                            setOrder(data);
+                            setError(null);
+                        }
                     } else {
-                        setOrder(data);
-                        setError(null);
+                        setError("This order could not be found.");
                     }
-                } else {
-                    setError("This order could not be found.");
-                }
+                    setLoading(false);
+                }, (err) => {
+                    console.error("Firestore onSnapshot error:", err);
+                    // Explicitly handle permission errors visually
+                    if (err.code === 'permission-denied') {
+                        setError("Access Denied: Please refresh the page or try again.");
+                    } else {
+                        setError("Could not load the order session.");
+                    }
+                    setLoading(false);
+                });
+
+            } catch (e) {
+                console.error("Auth/Setup Error:", e);
+                setError("Failed to initialize secure session.");
                 setLoading(false);
-            }, (err) => {
-                console.error("Firestore onSnapshot error:", err);
-                // Explicitly handle permission errors visually
-                if (err.code === 'permission-denied') {
-                    setError("Access Denied: Please refresh the page or try again.");
-                } else {
-                    setError("Could not load the order session.");
-                }
-                setLoading(false);
-            });
+            }
+        };
 
-        } catch (e) {
-            console.error("Auth/Setup Error:", e);
-            setError("Failed to initialize secure session.");
-            setLoading(false);
-        }
-    };
+        setupListener();
 
-    setupListener();
+        return () => unsubscribe();
+    }, [orderId, tokenFromUrl]);
 
-    return () => unsubscribe();
-}, [orderId, tokenFromUrl]);
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setAnimationState('float');
+            setShowRipple(true);
+            if (navigator.vibrate) navigator.vibrate([50, 20, 50]);
+        }, 1200);
 
-useEffect(() => {
-    const timer = setTimeout(() => {
-        setAnimationState('float');
-        setShowRipple(true);
-        if (navigator.vibrate) navigator.vibrate([50, 20, 50]);
-    }, 1200);
+        const rippleTimer = setTimeout(() => setShowRipple(false), 2200);
 
-    const rippleTimer = setTimeout(() => setShowRipple(false), 2200);
+        return () => { clearTimeout(timer); clearTimeout(rippleTimer); };
+    }, []);
 
-    return () => { clearTimeout(timer); clearTimeout(rippleTimer); };
-}, []);
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!tiltWrapperRef.current) return;
+            const x = e.clientX / window.innerWidth;
+            const y = e.clientY / window.innerHeight;
+            const rotateY = (x - 0.5) * 40;
+            const rotateX = (0.5 - y) * 40;
+            tiltWrapperRef.current.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        };
+        document.addEventListener('mousemove', handleMouseMove);
+        return () => document.removeEventListener('mousemove', handleMouseMove);
+    }, []);
 
-useEffect(() => {
-    const handleMouseMove = (e) => {
-        if (!tiltWrapperRef.current) return;
-        const x = e.clientX / window.innerWidth;
-        const y = e.clientY / window.innerHeight;
-        const rotateY = (x - 0.5) * 40;
-        const rotateX = (0.5 - y) * 40;
-        tiltWrapperRef.current.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    return () => document.removeEventListener('mousemove', handleMouseMove);
-}, []);
+    // Intercept Back Button to prevent going back to Checkout
+    useEffect(() => {
+        if (!order) return;
 
-// Intercept Back Button to prevent going back to Checkout
-useEffect(() => {
-    if (!order) return;
+        // Add delay to prevent race condition with Next.js router after navigation
+        const historyTimer = setTimeout(() => {
+            // Push a dummy state to the history stack
+            window.history.pushState(null, '', window.location.href);
+        }, 300);
 
-    // Add delay to prevent race condition with Next.js router after navigation
-    const historyTimer = setTimeout(() => {
-        // Push a dummy state to the history stack
-        window.history.pushState(null, '', window.location.href);
-    }, 300);
+        const handlePopState = (event) => {
+            // When user presses back, redirect to Menu instead of previous page (Checkout/Cart)
+            event.preventDefault();
+            if (order.restaurantId) {
+                // Construct URL with query params to maintain session
+                const phone = searchParams.get('phone') || order.customerPhone;
+                const params = new URLSearchParams();
+                params.set('restaurantId', order.restaurantId);
+                if (tokenFromUrl) params.set('token', tokenFromUrl);
+                if (phone) params.set('phone', phone);
+                if (order.id) params.set('activeOrderId', order.id);
 
-    const handlePopState = (event) => {
-        // When user presses back, redirect to Menu instead of previous page (Checkout/Cart)
-        event.preventDefault();
-        if (order.restaurantId) {
-            // Construct URL with query params to maintain session
+                router.replace(`/order/${order.restaurantId}?${params.toString()}`);
+            } else {
+                router.replace('/');
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            clearTimeout(historyTimer);
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [order, router, tokenFromUrl, searchParams]);
+
+    const handleBackToMenu = () => {
+        if (order?.restaurantId) {
             const phone = searchParams.get('phone') || order.customerPhone;
             const params = new URLSearchParams();
             params.set('restaurantId', order.restaurantId);
@@ -117,278 +221,255 @@ useEffect(() => {
             if (phone) params.set('phone', phone);
             if (order.id) params.set('activeOrderId', order.id);
 
-            router.replace(`/order/${order.restaurantId}?${params.toString()}`);
+            router.push(`/order/${order.restaurantId}?${params.toString()}`);
         } else {
-            router.replace('/');
+            router.push('/');
         }
     };
 
-    window.addEventListener('popstate', handlePopState);
+    const coinTheme = useMemo(() => {
+        if (!order) return 'bronze-theme';
+        const amount = order.totalAmount || 0;
+        if (amount > 500) return 'gold-theme';
+        if (amount >= 150) return 'silver-theme';
+        return 'bronze-theme';
+    }, [order]);
 
-    return () => {
-        clearTimeout(historyTimer);
-        window.removeEventListener('popstate', handlePopState);
-    };
-}, [order, router, tokenFromUrl, searchParams]);
+    const qrColor = useMemo(() => {
+        switch (coinTheme) {
+            case 'gold-theme': return '#5c3c00';
+            case 'silver-theme': return '#4a4a4a';
+            case 'bronze-theme':
+            default: return '#4a3318';
+        }
+    }, [coinTheme]);
 
-const handleBackToMenu = () => {
-    if (order?.restaurantId) {
-        const phone = searchParams.get('phone') || order.customerPhone;
-        const params = new URLSearchParams();
-        params.set('restaurantId', order.restaurantId);
-        if (tokenFromUrl) params.set('token', tokenFromUrl);
-        if (phone) params.set('phone', phone);
-        if (order.id) params.set('activeOrderId', order.id);
 
-        router.push(`/order/${order.restaurantId}?${params.toString()}`);
-    } else {
-        router.push('/');
+    if (loading) {
+        return <div className="fixed inset-0 bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
-};
 
-const coinTheme = useMemo(() => {
-    if (!order) return 'bronze-theme';
-    const amount = order.totalAmount || 0;
-    if (amount > 500) return 'gold-theme';
-    if (amount >= 150) return 'silver-theme';
-    return 'bronze-theme';
-}, [order]);
-
-const qrColor = useMemo(() => {
-    switch (coinTheme) {
-        case 'gold-theme': return '#5c3c00';
-        case 'silver-theme': return '#4a4a4a';
-        case 'bronze-theme':
-        default: return '#4a3318';
+    if (error) {
+        return <div className="fixed inset-0 bg-background flex flex-col items-center justify-center text-red-500 p-4 text-center">
+            <p>{error}</p>
+            <Button onClick={handleBackToMenu} className="mt-4"><ArrowLeft size={16} className="mr-2" /> Back to Menu</Button>
+        </div>;
     }
-}, [coinTheme]);
 
+    if (!order) {
+        return <div className="fixed inset-0 bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>;
+    }
 
-if (loading) {
-    return <div className="fixed inset-0 bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
-}
+    const token = order?.dineInToken || '----';
+    const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
+    const qrValue = orderId ? `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}` : '';
+    const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date();
+    const formattedDate = format(orderDate, 'dd MMM, p');
 
-if (error) {
-    return <div className="fixed inset-0 bg-background flex flex-col items-center justify-center text-red-500 p-4 text-center">
-        <p>{error}</p>
-        <Button onClick={handleBackToMenu} className="mt-4"><ArrowLeft size={16} className="mr-2" /> Back to Menu</Button>
-    </div>;
-}
-
-if (!order) {
-    return <div className="fixed inset-0 bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>;
-}
-
-const token = order?.dineInToken || '----';
-const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
-const qrValue = orderId ? `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}` : '';
-const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date();
-const formattedDate = format(orderDate, 'dd MMM, p');
-
-return (
-    <div className={cn("fixed inset-0 bg-background text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
-        <AnimatePresence>
-            {isOrderComplete && (
-                <div className="confetti-container">
-                    {[...Array(100)].map((_, i) => {
-                        const style = {
-                            left: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 4}s`,
-                            animationDuration: `${Math.random() * 3 + 3}s`,
-                            backgroundColor: `hsl(${Math.random() * 360}, 70%, 60%)`
-                        };
-                        return <div key={i} className="confetti" style={style}></div>
-                    })}
-                </div>
-            )}
-        </AnimatePresence>
-        {/* Layer 1 Security: Only show Back to Menu if order is pending */}
-        <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-            {order?.status === 'pending' && (
-                <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
-                    <ArrowLeft className="mr-2" /> Back to Menu
-                </Button>
-            )}
-        </header>
-
-        <AnimatePresence>
-            {isOrderComplete ? (
-                <motion.div
-                    key="completion-screen"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="flex-grow flex flex-col items-center justify-center text-center"
-                >
-                    <CheckCircle size={80} className="text-green-500 mb-6" />
-                    <h2 className="text-4xl font-bold text-foreground">Order Collected!</h2>
-                    <p className="mt-2 text-muted-foreground">Thank you for your order. Enjoy your meal!</p>
-                    <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
-                        Order Again
+    return (
+        <div className={cn("fixed inset-0 bg-background text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
+            <AnimatePresence>
+                {isOrderComplete && (
+                    <div className="confetti-container">
+                        {[...Array(100)].map((_, i) => {
+                            const style = {
+                                left: `${Math.random() * 100}%`,
+                                animationDelay: `${Math.random() * 4}s`,
+                                animationDuration: `${Math.random() * 3 + 3}s`,
+                                backgroundColor: `hsl(${Math.random() * 360}, 70%, 60%)`
+                            };
+                            return <div key={i} className="confetti" style={style}></div>
+                        })}
+                    </div>
+                )}
+            </AnimatePresence>
+            {/* Layer 1 Security: Only show Back to Menu if order is pending */}
+            <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
+                {order?.status === 'pending' && (
+                    <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
+                        <ArrowLeft className="mr-2" /> Back to Menu
                     </Button>
-                </motion.div>
-            ) : isOrderRejected ? (
-                <motion.div
-                    key="rejection-screen"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="flex-grow flex flex-col items-center justify-center text-center"
-                >
-                    <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.2 }}>
-                        <XCircle size={80} className="text-destructive mb-6" />
+                )}
+            </header>
+
+            <AnimatePresence>
+                {isOrderComplete ? (
+                    <motion.div
+                        key="completion-screen"
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="flex-grow flex flex-col items-center justify-center text-center"
+                    >
+                        <CheckCircle size={80} className="text-green-500 mb-6" />
+                        <h2 className="text-4xl font-bold text-foreground">Order Collected!</h2>
+                        <p className="mt-2 text-muted-foreground">Thank you for your order. Enjoy your meal!</p>
+                        <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
+                            Order Again
+                        </Button>
                     </motion.div>
-                    <h2 className="text-4xl font-bold text-foreground">Order Cancelled</h2>
-                    <p className="mt-2 text-muted-foreground">We're sorry, your order could not be processed.</p>
-                    <p className="mt-4 text-sm font-semibold bg-destructive/10 text-destructive p-2 rounded-md">Reason: {order.rejectionReason || 'Not specified'}</p>
-                    <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
-                        Try Again
-                    </Button>
-                </motion.div>
-            ) : (
-                <motion.div
-                    key="coin-view"
-                    initial={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.8, opacity: 0 }}
-                    className="flex-grow flex flex-col items-center justify-center"
-                >
-                    <AnimatePresence>
-                        {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
-                    </AnimatePresence>
+                ) : isOrderRejected ? (
+                    <motion.div
+                        key="rejection-screen"
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="flex-grow flex flex-col items-center justify-center text-center"
+                    >
+                        <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.2 }}>
+                            <XCircle size={80} className="text-destructive mb-6" />
+                        </motion.div>
+                        <h2 className="text-4xl font-bold text-foreground">Order Cancelled</h2>
+                        <p className="mt-2 text-muted-foreground">We're sorry, your order could not be processed.</p>
+                        <p className="mt-4 text-sm font-semibold bg-destructive/10 text-destructive p-2 rounded-md">Reason: {order.rejectionReason || 'Not specified'}</p>
+                        <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
+                            Try Again
+                        </Button>
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="coin-view"
+                        initial={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.8, opacity: 0 }}
+                        className="flex-grow flex flex-col items-center justify-center"
+                    >
+                        <AnimatePresence>
+                            {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
+                        </AnimatePresence>
 
-                    <div className="scene">
-                        <div className="tilt-wrapper" ref={tiltWrapperRef}>
-                            <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
-                                <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
+                        <div className="scene">
+                            <div className="tilt-wrapper" ref={tiltWrapperRef}>
+                                <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
+                                    <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
 
-                                    <div className="coin-face coin-front">
-                                        <div className="texture-overlay"></div>
-                                        <div className="sheen"></div>
-                                        <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                            <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
-                                            <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ {formattedDate} ★</textPath></text>
-                                        </svg>
-                                        <div className="token-label">TOKEN</div>
-                                        <div className="token-number">
-                                            <span className="token-number-main">{tokenPart1}-</span>
-                                            <span className="token-number-sub">{tokenPart2}</span>
+                                        <div className="coin-face coin-front">
+                                            <div className="texture-overlay"></div>
+                                            <div className="sheen"></div>
+                                            <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                                <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
+                                                <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ {formattedDate} ★</textPath></text>
+                                            </svg>
+                                            <div className="token-label">TOKEN</div>
+                                            <div className="token-number">
+                                                <span className="token-number-main">{tokenPart1}-</span>
+                                                <span className="token-number-sub">{tokenPart2}</span>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    <div className="coin-face coin-back">
-                                        <div className="texture-overlay"></div>
-                                        <div className="sheen"></div>
-                                        <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                            <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
-                                            <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY ServiZephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
-                                        </svg>
-                                        <div className="qr-box">
-                                            <QRCode
-                                                value={qrValue}
-                                                size={140}
-                                                level={"H"}
-                                                bgColor="transparent"
-                                                fgColor={qrColor}
-                                            />
+                                        <div className="coin-face coin-back">
+                                            <div className="texture-overlay"></div>
+                                            <div className="sheen"></div>
+                                            <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                                <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
+                                                <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY ServiZephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
+                                            </svg>
+                                            <div className="qr-box">
+                                                <QRCode
+                                                    value={qrValue}
+                                                    size={140}
+                                                    level={"H"}
+                                                    bgColor="transparent"
+                                                    fgColor={qrColor}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </motion.div>
-            )}
-        </AnimatePresence>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-        {!(isOrderComplete || isOrderRejected) && (
-            <footer className="w-full flex flex-col items-center gap-6 z-20 pb-8">
-                <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={cn(
-                        "border p-4 rounded-xl shadow-lg w-full max-w-sm transition-colors duration-500",
-                        (order.status === 'pending' || order.status === 'confirmed') && "bg-yellow-100 border-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-700",
-                        order.status === 'Ready' && "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700",
-                        !['pending', 'confirmed', 'Ready'].includes(order.status) && "bg-card border-border"
-                    )}
-                >
-                    <div className="space-y-2">
-                        <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
-                        {order.diningPreference && (
-                            <p className="text-sm">
-                                <strong>Dining Preference: </strong>
-                                <span className={cn(
-                                    "font-semibold px-2 py-0.5 rounded-full text-xs",
-                                    order.diningPreference === 'takeaway' ? "bg-orange-100 text-orange-700 border border-orange-200" :
-                                        order.diningPreference === 'dine-in' ? "bg-cyan-100 text-cyan-700 border border-cyan-200" :
-                                            "bg-gray-100 text-gray-700 border border-gray-200"
-                                )}>
-                                    {order.diningPreference === 'takeaway' ? 'Takeaway' : order.diningPreference === 'dine-in' ? 'Dine-In' : order.diningPreference}
-                                </span>
-                            </p>
+            {!(isOrderComplete || isOrderRejected) && (
+                <footer className="w-full flex flex-col items-center gap-6 z-20 pb-8">
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                            "border p-4 rounded-xl shadow-lg w-full max-w-sm transition-colors duration-500",
+                            (order.status === 'pending' || order.status === 'confirmed') && "bg-yellow-100 border-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-700",
+                            order.status === 'Ready' && "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700",
+                            !['pending', 'confirmed', 'Ready'].includes(order.status) && "bg-card border-border"
                         )}
-                        {order.items.map((item, index) => (
-                            <div key={index} className="flex justify-between text-muted-foreground text-sm">
-                                <span>{item.quantity} x {item.name}</span>
-                                <span>{formatCurrency(item.totalPrice)}</span>
+                    >
+                        <div className="space-y-2">
+                            <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
+                            {order.diningPreference && (
+                                <p className="text-sm">
+                                    <strong>Dining Preference: </strong>
+                                    <span className={cn(
+                                        "font-semibold px-2 py-0.5 rounded-full text-xs",
+                                        order.diningPreference === 'takeaway' ? "bg-orange-100 text-orange-700 border border-orange-200" :
+                                            order.diningPreference === 'dine-in' ? "bg-cyan-100 text-cyan-700 border border-cyan-200" :
+                                                "bg-gray-100 text-gray-700 border border-gray-200"
+                                    )}>
+                                        {order.diningPreference === 'takeaway' ? 'Takeaway' : order.diningPreference === 'dine-in' ? 'Dine-In' : order.diningPreference}
+                                    </span>
+                                </p>
+                            )}
+                            {order.items.map((item, index) => (
+                                <div key={index} className="flex justify-between text-muted-foreground text-sm">
+                                    <span>{item.quantity} x {item.name}</span>
+                                    <span>{formatCurrency(item.totalPrice)}</span>
+                                </div>
+                            ))}
+
+                            <div className="border-t border-dashed my-2"></div>
+
+                            <div className="space-y-1 text-sm">
+                                {(order.packagingCharge > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Packaging Charge</span>
+                                        <span>{formatCurrency(order.packagingCharge)}</span>
+                                    </div>
+                                )}
+
+                                {(order.deliveryCharge > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Delivery Charge</span>
+                                        <span>{formatCurrency(order.deliveryCharge)}</span>
+                                    </div>
+                                )}
+
+                                {((order.cgst > 0) || (order.sgst > 0)) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Taxes (GST)</span>
+                                        <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
+                                    </div>
+                                )}
+
+                                {(order.convenienceFee > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Platform Fee</span>
+                                        <span>{formatCurrency(order.convenienceFee)}</span>
+                                    </div>
+                                )}
+
+                                {(order.tipAmount > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Tip</span>
+                                        <span>{formatCurrency(order.tipAmount)}</span>
+                                    </div>
+                                )}
+
+                                {(order.discount > 0) && (
+                                    <div className="flex justify-between text-green-600">
+                                        <span>Discount</span>
+                                        <span>- {formatCurrency(order.discount)}</span>
+                                    </div>
+                                )}
                             </div>
-                        ))}
 
-                        <div className="border-t border-dashed my-2"></div>
-
-                        <div className="space-y-1 text-sm">
-                            {(order.packagingCharge > 0) && (
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Packaging Charge</span>
-                                    <span>{formatCurrency(order.packagingCharge)}</span>
-                                </div>
-                            )}
-
-                            {(order.deliveryCharge > 0) && (
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Delivery Charge</span>
-                                    <span>{formatCurrency(order.deliveryCharge)}</span>
-                                </div>
-                            )}
-
-                            {((order.cgst > 0) || (order.sgst > 0)) && (
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Taxes (GST)</span>
-                                    <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
-                                </div>
-                            )}
-
-                            {(order.convenienceFee > 0) && (
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Platform Fee</span>
-                                    <span>{formatCurrency(order.convenienceFee)}</span>
-                                </div>
-                            )}
-
-                            {(order.tipAmount > 0) && (
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Tip</span>
-                                    <span>{formatCurrency(order.tipAmount)}</span>
-                                </div>
-                            )}
-
-                            {(order.discount > 0) && (
-                                <div className="flex justify-between text-green-600">
-                                    <span>Discount</span>
-                                    <span>- {formatCurrency(order.discount)}</span>
-                                </div>
-                            )}
+                            <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
+                                <span>Grand Total</span>
+                                <span>{formatCurrency(order.grandTotal || order.totalAmount)}</span>
+                            </div>
                         </div>
-
-                        <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
-                            <span>Grand Total</span>
-                            <span>{formatCurrency(order.grandTotal || order.totalAmount)}</span>
-                        </div>
-                    </div>
-                </motion.div>
-                <StatusTimeline currentStatus={order.status} />
-            </footer>
-        )}
-    </div>
-);
+                    </motion.div>
+                    <StatusTimeline currentStatus={order.status} />
+                </footer>
+            )}
+        </div>
+    );
 }
 
 export default function PreOrderTrackingPage() {
