@@ -7,8 +7,8 @@ import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { Loader2 } from "lucide-react";
 
 export default function RedirectHandler() {
-    const [loading, setLoading] = useState(true);
-    const [msg, setMsg] = useState("Initializing...");
+    const [loading, setLoading] = useState(false);
+    const [msg, setMsg] = useState("");
     const [error, setError] = useState(null);
     const router = useRouter();
 
@@ -16,6 +16,12 @@ export default function RedirectHandler() {
         let unsubscribe = () => { };
 
         const handleRedirectResult = async () => {
+            // Check if we are expecting a login immediately to show loader
+            if (sessionStorage.getItem('isLoggingIn') === 'true') {
+                setLoading(true);
+                setMsg("Finishing login...");
+            }
+
             console.log("[RedirectHandler] Starting redirect check...");
             try {
                 const result = await getRedirectResult(auth);
