@@ -202,9 +202,17 @@ function OrderTrackingContent() {
     const currentStatusKey = (orderData.order.status === 'paid') ? 'pending' : orderData.order.status;
     const currentStatusInfo = statusConfig[currentStatusKey] || statusConfig.pending;
 
+    // FIXED: Extract coordinates from actual API format
     const mapLocations = {
-        restaurantLocation: orderData.restaurant.restaurantLocation,
-        customerLocation: orderData.order.customerLocation,
+        restaurantLocation: orderData.restaurant?.address
+            ? { lat: orderData.restaurant.address.latitude, lng: orderData.restaurant.address.longitude }
+            : orderData.restaurant?.restaurantLocation, // Fallback if format changes
+        customerLocation: orderData.order?.customerLocation
+            ? {
+                lat: orderData.order.customerLocation._latitude || orderData.order.customerLocation.lat,
+                lng: orderData.order.customerLocation._longitude || orderData.order.customerLocation.lng
+            }
+            : null,
         riderLocation: orderData.deliveryBoy?.location,
     };
 
