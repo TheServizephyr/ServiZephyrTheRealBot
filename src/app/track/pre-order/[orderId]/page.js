@@ -16,7 +16,7 @@ import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 const statusConfig = {
     confirmed: { title: 'Confirmed', icon: <Check size={24} />, step: 0, description: "Your order has been confirmed." },
     Ready: { title: 'Ready', icon: <CheckCircle size={24} />, step: 1, description: "Your order is ready for pickup!" },
-    completed: { title: 'Collected', icon: <User size={24} />, step: 2, description: "Order collected. Enjoy!" },
+    delivered: { title: 'Collected', icon: <User size={24} />, step: 2, description: "Order collected. Enjoy!" },
     rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 2, isError: true, description: "Order was rejected." },
     cancelled: { title: 'Cancelled', icon: <XCircle size={24} />, step: 2, isError: true, description: "Order was cancelled." },
 };
@@ -90,7 +90,7 @@ function PreOrderTrackingContent() {
     const [isFlipped, setIsFlipped] = useState(false);
     const tiltWrapperRef = useRef(null);
 
-    const isOrderComplete = order?.status === 'completed';
+    const isOrderComplete = order?.status === 'delivered';
     const isOrderRejected = order?.status === 'rejected' || order?.status === 'cancelled';
 
     useEffect(() => {
