@@ -28,52 +28,40 @@ const statusConfig = {
 };
 
 
-const StatusTimeline = ({ currentStatus, deliveryType }) => {
-    const activeStatus = (currentStatus === 'paid') ? 'pending' : currentStatus;
-    const currentStepConfig = statusConfig[activeStatus] || { step: 0, isError: false };
-    const currentStep = currentStepConfig.step;
-    const isError = currentStepConfig.isError;
-
-    const flow = deliveryType === 'pickup' ? ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'] : ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
-    const uniqueSteps = flow.map(statusKey => statusConfig[statusKey]);
-
-    return (
-        <div className="flex justify-between items-start w-full px-2 sm:px-4 pt-4">
-            {uniqueSteps.map(({ title, icon, step }, index) => {
-                const isCompleted = step <= currentStep;
-                const isCurrent = step === currentStep;
-                return (
-                    <React.Fragment key={step}>
-                        <div className="flex flex-col items-center text-center w-20">
-                            <motion.div
-                                className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isError ? 'bg-destructive border-destructive text-destructive-foreground' :
-                                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
-                                    }`}
-                                animate={{ scale: isCurrent ? 1.1 : 1 }}
-                                transition={{ type: 'spring' }}
-                            >
-                                {icon}
-                            </motion.div>
-                            <p className={`mt-2 text-xs font-semibold ${isError ? 'text-destructive' :
-                                isCompleted ? 'text-foreground' : 'text-muted-foreground'
-                                }`}>
-                                {isError ? statusConfig[currentStatus].title : title}
-                            </p>
-                        </div>
-                        {index < uniqueSteps.length - 1 && (
-                            <div className="flex-1 h-1 mt-6 mx-1 sm:mx-2 rounded-full bg-border">
-                                <motion.div
-                                    className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
-                                    initial={{ width: '0%' }}
-                                    animate={{ width: isCompleted ? '100%' : '0%' }}
-                                    transition={{ duration: 0.5, delay: 0.2 }}
-                                />
-                            </div>
-                        )}
-                    </React.Fragment>
-                );
-            })}
+const isCompleted = step <= currentStep;
+const isCurrent = step === currentStep;
+return (
+    <React.Fragment key={step}>
+        <div className="flex flex-col items-center text-center w-20">
+            <motion.div
+                className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isError ? 'bg-destructive border-destructive text-destructive-foreground' :
+                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
+                    }`}
+                animate={{ scale: isCurrent ? 1.1 : 1 }}
+                transition={{ type: 'spring' }}
+            >
+                {icon}
+            </motion.div>
+            <p className={`mt-2 text-xs font-semibold ${isError ? 'text-destructive' :
+                isCompleted ? 'text-foreground' : 'text-muted-foreground'
+                }`}>
+                {isError ? statusConfig[currentStatus].title : title}
+            </p>
         </div>
+        {index < uniqueSteps.length - 1 && (
+            <div className="flex-1 h-1 mt-6 mx-1 sm:mx-2 rounded-full bg-border">
+                <motion.div
+                    className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
+                    initial={{ width: '0%' }}
+                    animate={{ width: isCompleted ? '100%' : '0%' }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                />
+            </div>
+        )}
+    </React.Fragment>
+);
+            })}
+        </div >
     );
 };
 

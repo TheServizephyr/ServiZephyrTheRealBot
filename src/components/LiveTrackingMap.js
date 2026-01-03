@@ -63,7 +63,14 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         [customerLocations]
     );
 
+    // FIXED: Dynamic Route Origin
+    // If rider is assigned (riderLatLng exists), route is Rider -> Customer
+    // Otherwise, route is Restaurant -> Customer
     const routeOrigin = riderLatLng || restaurantLatLng;
+
+    // Logic: If rider is present, they are the moving origin.
+    // If no rider yet, show path from Restaurant to Customer (static).
+
     const routeDestination = customerLatLngs.length > 0 ? customerLatLngs[customerLatLngs.length - 1] : null;
     const routeWaypoints = customerLatLngs.length > 1 ? customerLatLngs.slice(0, -1) : [];
 
@@ -210,16 +217,34 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     }, [map, onMapLoad]);
 
 
+    const markerContainerStyle = {
+        backgroundColor: 'white',
+        borderRadius: '50%',
+        padding: '8px',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '40px',
+        height: '40px',
+        fontSize: '1.5rem',
+        border: '2px solid white'
+    };
+
     return (
         <>
             {restaurantLatLng && (
                 <AdvancedMarker position={restaurantLatLng} title="Restaurant">
-                    <div style={{ fontSize: '2rem' }}>�️</div>
+                    <div style={markerContainerStyle}>
+                        🍴
+                    </div>
                 </AdvancedMarker>
             )}
             {customerLatLngs.map(loc => (
                 <AdvancedMarker key={loc.id} position={loc} title="Customer">
-                    <div style={{ fontSize: '2rem' }}>🤵</div>
+                    <div style={markerContainerStyle}>
+                        🤵
+                    </div>
                 </AdvancedMarker>
             ))}
             {riderLatLng && (
