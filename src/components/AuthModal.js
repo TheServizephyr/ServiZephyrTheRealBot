@@ -141,8 +141,33 @@ export default function AuthModal({ isOpen, onClose }) {
     setMsgType("info");
     console.log("[DEBUG] AuthModal: handleGoogleLogin started.");
 
+    // TASK 3: Detect mobile browsers that lose window.opener (Vivo/Oppo/Realme)
+    const isMobileZonal = /Vivo|Oppo|Realme/i.test(navigator.userAgent);
+
+    if (isMobileZonal) {
+      console.log("[DEBUG] Mobile zonal browser detected. Skipping popup, using redirect.");
+      setMsg("Redirecting to Google sign-in...");
+
+      try {
+        // Set persistence BEFORE redirect
+        const { setPersistence, browserLocalPersistence } = await import('firebase/auth');
+        await setPersistence(auth, browserLocalPersistence);
+        console.log("[AuthModal] ✓ Persistence set before redirect (Mobile)");
+
+        sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+        await signInWithRedirect(auth, googleProvider);
+        // Page will redirect away
+      } catch (redirectErr) {
+        console.error("Mobile redirect login failed:", redirectErr);
+        setMsg(`Login Failed: ${redirectErr.message}`);
+        setMsgType("error");
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
-      // Try Popup first (Preferred for Desktop)
+      // Try Popup first (Preferred for Desktop & modern browsers)
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       console.log("[DEBUG] AuthModal: Google sign-in successful via Popup.");
