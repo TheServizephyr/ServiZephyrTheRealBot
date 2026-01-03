@@ -281,9 +281,9 @@ function PreOrderTrackingContent() {
                     </div>
                 )}
             </AnimatePresence>
-            {/* Layer 1 Security: Only show Back to Menu if order is confirmed */}
+            {/* Back to Menu button - visible for active orders */}
             <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-                {order?.status === 'confirmed' && (
+                {(order?.status === 'confirmed' || order?.status === 'Ready') && (
                     <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
                         <ArrowLeft className="mr-2" /> Back to Menu
                     </Button>
