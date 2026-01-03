@@ -67,8 +67,22 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const routeDestination = customerLatLngs.length > 0 ? customerLatLngs[customerLatLngs.length - 1] : null;
     const routeWaypoints = customerLatLngs.length > 1 ? customerLatLngs.slice(0, -1) : [];
 
+    console.log('[LiveTrackingMap] Route data:', {
+        origin: routeOrigin,
+        destination: routeDestination,
+        waypoints: routeWaypoints,
+        hasDirectionsService: !!directionsService,
+        hasDirectionsRenderer: !!directionsRenderer
+    });
+
     useEffect(() => {
         if (!directionsService || !directionsRenderer || !routeOrigin || !routeDestination) {
+            console.log('[LiveTrackingMap] Missing required data for directions:', {
+                hasService: !!directionsService,
+                hasRenderer: !!directionsRenderer,
+                hasOrigin: !!routeOrigin,
+                hasDestination: !!routeDestination
+            });
             if (directionsRenderer) directionsRenderer.setDirections({ routes: [] });
             return;
         }
@@ -81,15 +95,51 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
             optimizeWaypoints: true,
         };
 
+        console.log('[LiveTrackingMap] Requesting directions:', request);
+
         directionsService.route(request, (result, status) => {
+            console.log('[LiveTrackingMap] Directions response:', { status, result });
             if (status === window.google.maps.DirectionsStatus.OK) {
                 directionsRenderer.setDirections(result);
+                // Clear fallback line if directions succeed
+                if (window.fallbackPolyline) {
+                    window.fallbackPolyline.setMap(null);
+                    window.fallbackPolyline = null;
+                }
+                console.log('[LiveTrackingMap] ✅ Directions rendered successfully!');
             } else {
-                console.error(`[Directions Error] Failed to fetch directions, status: ${status}`);
+                console.error(`[LiveTrackingMap] ❌ Directions failed, status: ${status}`);
+                // FALLBACK: Draw direct dashed line if Directions API fails (e.g. not enabled)
+                console.log('[LiveTrackingMap] ⚠️ Using fallback dashed line');
+
+                if (window.fallbackPolyline) window.fallbackPolyline.setMap(null);
+
+                window.fallbackPolyline = new window.google.maps.Polyline({
+                    path: [routeOrigin, routeDestination],
+                    geodesic: true, // Makes it slightly curved (great circle)
+                    strokeColor: '#000000',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 4,
+                    icons: [{
+                        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 4 },
+                        offset: '0',
+                        repeat: '20px'
+                    }],
+                    map: map
+                });
             }
         });
-        // --- FIX: Change the dependency array --- 
-    }, [routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]);
+    }, [routeOrigin, routeDestination, JSON.stringify(routeWaypoints), directionsService, directionsRenderer, map]);
+
+    // Cleanup fallback on unmount
+    useEffect(() => {
+        return () => {
+            if (window.fallbackPolyline) {
+                window.fallbackPolyline.setMap(null);
+                window.fallbackPolyline = null;
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (map && window.google) {
