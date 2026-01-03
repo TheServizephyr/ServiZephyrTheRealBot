@@ -214,12 +214,12 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         <>
             {restaurantLatLng && (
                 <AdvancedMarker position={restaurantLatLng} title="Restaurant">
-                    <div style={{ fontSize: '2rem' }}>🏢</div>
+                    <div style={{ fontSize: '2rem' }}>�️</div>
                 </AdvancedMarker>
             )}
             {customerLatLngs.map(loc => (
                 <AdvancedMarker key={loc.id} position={loc} title="Customer">
-                    <div style={{ fontSize: '2rem' }}>🏠</div>
+                    <div style={{ fontSize: '2rem' }}>🤵</div>
                 </AdvancedMarker>
             ))}
             {riderLatLng && (
