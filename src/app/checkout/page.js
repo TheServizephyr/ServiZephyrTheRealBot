@@ -158,15 +158,13 @@ const CheckoutPageInternal = () => {
 
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
 
-            // Fix: If adding to an existing order (activeOrderId), default to 'dine-in' if not specified
-            // This ensures we use Dine-In payment settings (where online might be disabled) instead of Delivery settings
+            // Fix: If adding to an existing order (activeOrderId), use cart's delivery type
+            // Don't assume dine-in for add-ons - respect the original order type
             let derivedDeliveryType = 'delivery';
             if (tableId) {
                 derivedDeliveryType = 'dine-in';
-            } else if (activeOrderId) {
-                // For add-ons, prefer dine-in unless cart explicitly says otherwise
-                derivedDeliveryType = savedCart.deliveryType || 'dine-in';
             } else {
+                // FIXED: Always use cart's deliveryType, don't default to dine-in for activeOrderId
                 derivedDeliveryType = savedCart.deliveryType || 'delivery';
             }
 
@@ -194,14 +192,19 @@ const CheckoutPageInternal = () => {
             }
 
             // --- FIX: Logic to determine if details form is needed ---
+            // FIXED: Properly check delivery type to show correct form flow
             if (activeOrderId) {
                 setDetailsConfirmed(true); // Don't ask for name on add-on orders
             } else if (deliveryType === 'street-vendor-pre-order') {
                 setDetailsConfirmed(true); // Skip old form, use new inline UI for name/phone
             } else if (deliveryType === 'delivery' && !isLoggedInUser) {
-                setDetailsConfirmed(false); // Ask for details for guest delivery
+                // CRITICAL FIX: Show address/details form for guest delivery orders
+                setDetailsConfirmed(false);
+            } else if (deliveryType === 'delivery' && isLoggedInUser) {
+                // FIXED: Even logged-in users need to confirm address for delivery
+                setDetailsConfirmed(false);
             } else {
-                setDetailsConfirmed(true); // Otherwise, assume details are known (dine-in, logged-in user)
+                setDetailsConfirmed(true); // Otherwise, assume details are known (dine-in, pickup)
             }
 
 
