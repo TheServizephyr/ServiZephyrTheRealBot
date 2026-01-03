@@ -428,7 +428,7 @@ const CartPageInternal = () => {
                 cgst: cgst,
                 sgst: sgst,
                 grandTotal: grandTotal,
-                deliveryType: 'dine-in',
+                deliveryType: deliveryType, // FIXED: Use dynamic deliveryType instead of hardcoded
                 tableId: tableId,
                 businessType: cartData?.businessType || 'restaurant',
                 pax_count: cartData?.pax_count || 1,
@@ -460,8 +460,8 @@ const CartPageInternal = () => {
 
             localStorage.removeItem(`cart_${restaurantId}`);
 
-            // Redirect to track page for dine-in orders
-            router.push(`/track/dine-in/${data.order_id}?token=${data.token}`);
+            // FIXED: Redirect through central router instead of direct page
+            router.push(`/track/${data.order_id}?token=${data.token}`);
         } catch (err) {
             console.error("[Cart Page] Post-paid checkout error:", err.message);
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });
@@ -662,17 +662,10 @@ const CartPageInternal = () => {
 
     const getTrackingUrl = () => {
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
-        const businessType = cartData?.businessType || 'restaurant';
 
-        let path;
-        if (businessType === 'street-vendor') {
-            path = `/track/pre-order/${liveOrder.orderId}`;
-        } else if (deliveryType === 'dine-in') {
-            path = `/track/dine-in/${liveOrder.orderId}`;
-        } else {
-            path = `/track/${liveOrder.orderId}`;
-        }
-
+        // FIXED: Use central router for all flows
+        // Router will automatically determine correct tracking page
+        const path = `/track/${liveOrder.orderId}`;
         return `${path}?token=${liveOrder.trackingToken}`;
     };
     const trackingUrl = getTrackingUrl();
