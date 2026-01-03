@@ -68,7 +68,7 @@ function OwnerDashboardContent({ children }) {
     restrictedFeatures: [],
     suspensionRemark: ''
   });
-  const [restaurantName, setRestaurantName] = useState('');
+  const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const [userRole, setUserRole] = useState(null); // For RBAC
   const router = useRouter();
@@ -215,10 +215,17 @@ function OwnerDashboardContent({ children }) {
           fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
         ]);
 
+        console.log('[Layout] About to fetch settings...');
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
-          setRestaurantName(settingsData.restaurantName || '');
+          console.log('[Layout] Settings API response:', settingsData);
+          console.log('[Layout] Restaurant name from API:', settingsData.restaurantName);
+          const nameToSet = settingsData.restaurantName || 'My Dashboard';
+          console.log('[Layout] Setting restaurant name to:', nameToSet);
+          setRestaurantName(nameToSet);
           setRestaurantLogo(settingsData.logoUrl || null);
+        } else {
+          console.log('[Layout] Settings API failed with status:', settingsRes.status);
         }
 
         if (statusRes.ok) {
