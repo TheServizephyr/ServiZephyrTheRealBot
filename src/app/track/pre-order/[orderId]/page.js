@@ -283,11 +283,14 @@ function PreOrderTrackingContent() {
             </AnimatePresence>
             {/* Back to Menu button - visible for active orders */}
             <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-                {(order?.status === 'confirmed' || order?.status === 'Ready') && (
-                    <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
-                        <ArrowLeft className="mr-2" /> Back to Menu
-                    </Button>
-                )}
+                {(() => {
+                    console.log('[BackButton] Order status:', order?.status, 'Should show:', order?.status === 'pending' || order?.status === 'confirmed' || order?.status === 'Ready');
+                    return (order?.status === 'pending' || order?.status === 'confirmed' || order?.status === 'Ready') && (
+                        <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
+                            <ArrowLeft className="mr-2" /> Back to Menu
+                        </Button>
+                    );
+                })()}
             </header>
 
             <AnimatePresence>
