@@ -590,14 +590,14 @@ const CheckoutPageInternal = () => {
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
-                    handler: function (response) {
-                        console.log("[Checkout Page] Razorpay payment successful:", response);
+                    handler: async (response) => {
+                        console.log(`[Checkout Page] Razorpay payment successful:`, response);
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        const isPreOrder = deliveryType === 'street-vendor-pre-order';
+                        // FIXED: Use central router for all flows
                         const phoneParam = phoneFromUrl ? `&phone=${phoneFromUrl}` : '';
-                        const trackingUrl = isPreOrder
-                            ? `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}${phoneParam}`
-                            : `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}${phoneParam}`;
+                        const trackingUrl = (orderData.deliveryType === 'dine-in' && !!tableId)
+                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${phoneParam}`
+                            : `/track/${data.firestore_order_id}?token=${data.token}${phoneParam}`;
                         router.push(trackingUrl);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
@@ -623,7 +623,8 @@ const CheckoutPageInternal = () => {
 
                 if (activeOrderId) {
                     localStorage.removeItem(`cart_${restaurantId}`); // Clear cart after adding items
-                    const redirectUrl = `/track/pre-order/${activeOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                    // FIXED: Use central router instead of hardcoded pre-order
+                    const redirectUrl = `/track/${activeOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
                     router.push(redirectUrl);
                     return;
                 }
@@ -636,7 +637,8 @@ const CheckoutPageInternal = () => {
                         router.replace(newUrl);
                     }, 2000);
                 } else {
-                    router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}`);
+                    // FIXED: Use central router for non-dine-in orders
+                    router.push(`/track/${data.firestore_order_id}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
                 }
             }
         } catch (err) {
@@ -1081,8 +1083,9 @@ const CheckoutPageInternal = () => {
                                     </ul>
                                 </div>
 
-                                {/* CUSTOMER DETAILS (Conditional based on payment method) - Hidden for Add-on Orders */}
-                                {selectedPaymentMethod && !activeOrderId && (
+                                {/* CUSTOMER DETAILS (Conditional based on payment method) - Hidden for Add-on Orders and Delivery */}
+                                {/* FIXED: Hide for delivery since details already collected in address form */}
+                                {selectedPaymentMethod && !activeOrderId && deliveryType !== 'delivery' && (
                                     <div className="bg-card p-4 rounded-lg border border-border mb-6">
                                         <h3 className="font-bold text-lg mb-3">📝 Your Details</h3>
                                         <div className="space-y-3">
