@@ -109,21 +109,66 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                 console.log('[LiveTrackingMap] ✅ Directions rendered successfully!');
             } else {
                 console.error(`[LiveTrackingMap] ❌ Directions failed, status: ${status}`);
-                // FALLBACK: Draw direct dashed line if Directions API fails (e.g. not enabled)
-                console.log('[LiveTrackingMap] ⚠️ Using fallback dashed line');
+                // FALLBACK: Draw dashed CURVED line (Bézier curve) if Directions API fails
+                console.log('[LiveTrackingMap] ⚠️ Using fallback CURVED dashed line');
 
                 if (window.fallbackPolyline) window.fallbackPolyline.setMap(null);
 
+                // Helper to calculate Quadratic Bézier Curve points
+                const getCurvedPath = (p1, p2) => {
+                    const lat1 = p1.lat;
+                    const lng1 = p1.lng;
+                    const lat2 = p2.lat;
+                    const lng2 = p2.lng;
+
+                    // Calculate midpoint
+                    const midLat = (lat1 + lat2) / 2;
+                    const midLng = (lng1 + lng2) / 2;
+
+                    // Calculate perpendicular offset for control point (curvature)
+                    // Difference vector
+                    const dLat = lat2 - lat1;
+                    const dLng = lng2 - lng1;
+
+                    // Perpendicular vector (-y, x) scaled by curvature factor (0.2)
+                    // Adjust scale based on distance to keep curve proportional
+                    const curvatureKey = 0.2;
+                    const controlLat = midLat - (dLng * curvatureKey);
+                    const controlLng = midLng + (dLat * curvatureKey);
+
+                    const points = [];
+                    for (let t = 0; t <= 1; t += 0.05) {
+                        // Quadratic Bezier: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+                        const l1 = (1 - t) * (1 - t);
+                        const l2 = 2 * (1 - t) * t;
+                        const l3 = t * t;
+
+                        points.push({
+                            lat: l1 * lat1 + l2 * controlLat + l3 * lat2,
+                            lng: l1 * lng1 + l2 * controlLng + l3 * lng2
+                        });
+                    }
+                    return points;
+                };
+
+                const curvedPath = getCurvedPath(routeOrigin, routeDestination);
+
                 window.fallbackPolyline = new window.google.maps.Polyline({
-                    path: [routeOrigin, routeDestination],
-                    geodesic: true, // Makes it slightly curved (great circle)
+                    path: curvedPath,
+                    geodesic: true,
                     strokeColor: '#000000',
-                    strokeOpacity: 0.8,
-                    strokeWeight: 4,
+                    strokeOpacity: 0, // Hide main line, show only icons for better dash effect
+                    strokeWeight: 0,
                     icons: [{
-                        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 4 },
+                        icon: {
+                            path: 'M 0,-1 0,1',
+                            strokeOpacity: 1,
+                            scale: 3,
+                            strokeColor: '#000000',
+                            strokeWeight: 2
+                        },
                         offset: '0',
-                        repeat: '20px'
+                        repeat: '15px' // Tighter dots
                     }],
                     map: map
                 });
