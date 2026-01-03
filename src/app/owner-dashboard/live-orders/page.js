@@ -520,9 +520,9 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
                                 <div key={index} className="flex justify-between items-center border-b border-border/50 pb-1">
                                     <div className="flex items-center gap-2">
                                         <span>{item.quantity} x {item.name}</span>
-                                        {item.isAddon && (
+                                        {item.addedAt && (
                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
-                                                🆕 Added {item.addedAt ? format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a') : ''}
+                                                🆕 Added {format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a')}
                                             </span>
                                         )}
                                     </div>
@@ -971,9 +971,9 @@ export default function LiveOrdersPage() {
                                             {(order.items || []).slice(0, 2).map((item, index) => (
                                                 <div key={index} className="text-xs text-muted-foreground flex items-center gap-2">
                                                     <span>{item.quantity}x {item.name}</span>
-                                                    {item.isAddon && (
+                                                    {item.addedAt && (
                                                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] font-semibold">
-                                                            🆕 Added {item.addedAt ? format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a') : ''}
+                                                            🆕 Added {format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a')}
                                                         </span>
                                                     )}
                                                 </div>
