@@ -1283,16 +1283,9 @@ const OrderPageInternal = () => {
     const getTrackingUrl = () => {
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
 
-        const businessType = restaurantData.businessType || 'restaurant';
-
-        let path;
-        if (businessType === 'street-vendor') {
-            path = `/track/pre-order/${liveOrder.orderId}`;
-        } else if (deliveryType === 'dine-in') {
-            path = `/track/dine-in/${liveOrder.orderId}`;
-        } else {
-            path = `/track/${liveOrder.orderId}`;
-        }
+        // UPDATED: Use central router for all flows
+        // Router will automatically determine correct tracking page based on order data
+        const path = `/track/${liveOrder.orderId}`;
 
         return `${path}?token=${liveOrder.trackingToken}${phone ? `&phone=${phone}` : ''}`;
     };
