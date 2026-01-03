@@ -11,16 +11,26 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const map = useMap();
     const [directionsService, setDirectionsService] = useState(null);
     const [directionsRenderer, setDirectionsRenderer] = useState(null);
-    
+
     useEffect(() => {
         if (!map || !window.google) return;
         setDirectionsService(new window.google.maps.DirectionsService());
         setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
             suppressMarkers: true,
             polylineOptions: {
-                strokeColor: '#000000',
-                strokeOpacity: 0.9,
-                strokeWeight: 6,
+                strokeColor: '#000000',  // Black color
+                strokeOpacity: 0.8,
+                strokeWeight: 4,
+                // FIXED: Add dotted/dashed pattern like Zomato
+                icons: [{
+                    icon: {
+                        path: 'M 0,-1 0,1',  // Dash pattern
+                        strokeOpacity: 1,
+                        scale: 4
+                    },
+                    offset: '0',
+                    repeat: '20px'  // Space between dashes
+                }]
             },
         }));
     }, [map]);
@@ -36,7 +46,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         // FIX: Added checks for .latitude and .longitude
         const lat = loc.lat ?? loc.latitude ?? loc._latitude;
         const lng = loc.lng ?? loc.longitude ?? loc._longitude;
-        
+
         if (typeof lat === 'number' && typeof lng === 'number') {
             return { lat, lng };
         }
@@ -78,9 +88,9 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                 console.error(`[Directions Error] Failed to fetch directions, status: ${status}`);
             }
         });
-    // --- FIX: Change the dependency array --- 
-    }, [routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]); 
-    
+        // --- FIX: Change the dependency array --- 
+    }, [routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]);
+
     useEffect(() => {
         if (map && window.google) {
             const bounds = new window.google.maps.LatLngBounds();
@@ -97,7 +107,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
             }
         }
     }, [restaurantLatLng, customerLatLngs, riderLatLng, map]);
-    
+
     useEffect(() => {
         if (map && onMapLoad) {
             onMapLoad(map);
@@ -119,7 +129,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
             ))}
             {riderLatLng && (
                 <AdvancedMarker position={riderLatLng} title="Rider">
-                     <div style={{ fontSize: '2.5rem' }}>🛵</div>
+                    <div style={{ fontSize: '2.5rem' }}>🛵</div>
                 </AdvancedMarker>
             )}
         </>
@@ -134,24 +144,24 @@ const LiveTrackingMap = (props) => {
     }
 
     const getCenter = () => {
-      const riderLat = riderLocation?.lat ?? riderLocation?.latitude ?? riderLocation?._latitude;
-      const riderLng = riderLocation?.lng ?? riderLocation?.longitude ?? riderLocation?._longitude;
-      if(riderLat && riderLng) return {lat: riderLat, lng: riderLng};
-      
-      const restoLat = restaurantLocation?.lat ?? restaurantLocation?.latitude ?? restaurantLocation?._latitude;
-      const restoLng = restaurantLocation?.lng ?? restaurantLocation?.longitude ?? restaurantLocation?._longitude;
-      if(restoLat && restoLng) return {lat: restoLat, lng: restoLng};
-      
-      const firstCustomer = Array.isArray(props.customerLocations) && props.customerLocations[0] ? props.customerLocations[0] : customerLocation;
-      const custLat = firstCustomer?.lat ?? firstCustomer?.latitude ?? firstCustomer?._latitude;
-      const custLng = firstCustomer?.lng ?? firstCustomer?.longitude ?? firstCustomer?._longitude;
-      if(custLat && custLng) return {lat: custLat, lng: custLng};
+        const riderLat = riderLocation?.lat ?? riderLocation?.latitude ?? riderLocation?._latitude;
+        const riderLng = riderLocation?.lng ?? riderLocation?.longitude ?? riderLocation?._longitude;
+        if (riderLat && riderLng) return { lat: riderLat, lng: riderLng };
 
-      return { lat: 28.6139, lng: 77.2090 };
+        const restoLat = restaurantLocation?.lat ?? restaurantLocation?.latitude ?? restaurantLocation?._latitude;
+        const restoLng = restaurantLocation?.lng ?? restaurantLocation?.longitude ?? restaurantLocation?._longitude;
+        if (restoLat && restoLng) return { lat: restoLat, lng: restoLng };
+
+        const firstCustomer = Array.isArray(props.customerLocations) && props.customerLocations[0] ? props.customerLocations[0] : customerLocation;
+        const custLat = firstCustomer?.lat ?? firstCustomer?.latitude ?? firstCustomer?._latitude;
+        const custLng = firstCustomer?.lng ?? firstCustomer?.longitude ?? firstCustomer?._longitude;
+        if (custLat && custLng) return { lat: custLat, lng: custLng };
+
+        return { lat: 28.6139, lng: 77.2090 };
     }
 
     const center = getCenter();
-    
+
     const handleMapLoad = (mapInstance) => {
         if (mapRef) {
             mapRef.current = mapInstance;
@@ -170,10 +180,10 @@ const LiveTrackingMap = (props) => {
                 disableDefaultUI={true}
             >
                 <MapComponent
-                     restaurantLocation={restaurantLocation}
-                     customerLocations={Array.isArray(props.customerLocations) ? props.customerLocations : (customerLocation ? [customerLocation] : [])}
-                     riderLocation={riderLocation}
-                     onMapLoad={handleMapLoad}
+                    restaurantLocation={restaurantLocation}
+                    customerLocations={Array.isArray(props.customerLocations) ? props.customerLocations : (customerLocation ? [customerLocation] : [])}
+                    riderLocation={riderLocation}
+                    onMapLoad={handleMapLoad}
                 />
             </Map>
         </APIProvider>
