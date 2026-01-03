@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
@@ -14,7 +13,6 @@ const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), {
     loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>
 });
 
-
 const statusConfig = {
     pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
     paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
@@ -27,44 +25,84 @@ const statusConfig = {
     ready_for_pickup: { title: 'Ready for Pickup', icon: <PackageCheck size={24} />, step: 3, description: 'Your order is ready for pickup.' }
 };
 
-
-const isCompleted = step <= currentStep;
-const isCurrent = step === currentStep;
-return (
-    <React.Fragment key={step}>
-        <div className="flex flex-col items-center text-center w-20">
-            <motion.div
-                className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isError ? 'bg-destructive border-destructive text-destructive-foreground' :
-                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
-                    }`}
-                animate={{ scale: isCurrent ? 1.1 : 1 }}
-                transition={{ type: 'spring' }}
-            >
-                {icon}
-            </motion.div>
-            <p className={`mt-2 text-xs font-semibold ${isError ? 'text-destructive' :
-                isCompleted ? 'text-foreground' : 'text-muted-foreground'
-                }`}>
-                {isError ? statusConfig[currentStatus].title : title}
-            </p>
-        </div>
-        {index < uniqueSteps.length - 1 && (
-            <div className="flex-1 h-1 mt-6 mx-1 sm:mx-2 rounded-full bg-border">
-                <motion.div
-                    className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
-                    initial={{ width: '0%' }}
-                    animate={{ width: isCompleted ? '100%' : '0%' }}
-                    transition={{ duration: 0.5, delay: 0.2 }}
-                />
+// Internal Components
+const RiderCard = ({ rider }) => {
+    if (!rider) return null;
+    return (
+        <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="bg-white/80 backdrop-blur-md border border-white/20 shadow-xl rounded-2xl p-5 mb-6"
+        >
+            <div className="flex items-center gap-4">
+                <div className="relative">
+                    <img
+                        src={rider.photoUrl || 'https://cdn-icons-png.flaticon.com/512/10664/10664883.png'}
+                        alt={rider.name}
+                        className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-md"
+                    />
+                    <div className="absolute -bottom-1 -right-1 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white">
+                        4.8 ★
+                    </div>
+                </div>
+                <div className="flex-1">
+                    <h3 className="font-bold text-lg text-gray-800">{rider.name}</h3>
+                    <p className="text-xs text-gray-500 font-medium">Delivery Partner • <span className="text-green-600">Vaccinated</span></p>
+                    <div className="flex items-center gap-2 mt-2">
+                        <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700 rounded-full px-4 text-xs">
+                            <Phone size={12} className="mr-1" /> Call
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-8 rounded-full px-4 text-xs border-gray-200">
+                            Message
+                        </Button>
+                    </div>
+                </div>
             </div>
-        )}
-    </React.Fragment>
-);
-            })}
-        </div >
+        </motion.div>
     );
 };
 
+const EnhancedTimeline = ({ currentStatus }) => {
+    const steps = [
+        { key: 'confirmed', label: 'Order Confirmed', icon: <CheckCircle size={16} /> },
+        { key: 'preparing', label: 'Cooking', icon: <CookingPot size={16} /> },
+        { key: 'dispatched', label: 'Out for Delivery', icon: <Bike size={16} /> },
+        { key: 'delivered', label: 'Delivered', icon: <Home size={16} /> },
+    ];
+
+    const currentStepIndex = steps.findIndex(s => s.key === currentStatus) === -1
+        ? (currentStatus === 'placed' || currentStatus === 'pending' || currentStatus === 'paid' ? -1 : 3)
+        : steps.findIndex(s => s.key === currentStatus);
+
+    return (
+        <div className="relative pl-4 border-l-2 border-gray-100 space-y-8 my-8 ml-2">
+            {steps.map((step, index) => {
+                const isActive = index <= currentStepIndex;
+                const isCurrent = index === currentStepIndex;
+
+                return (
+                    <div key={step.key} className="relative flex items-center group">
+                        <motion.div
+                            initial={false}
+                            animate={{
+                                scale: isCurrent ? 1.2 : 1,
+                                backgroundColor: isActive ? '#10B981' : '#E5E7EB',
+                                borderColor: isActive ? '#059669' : '#D1D5DB'
+                            }}
+                            className={`absolute -left-[21px] w-10 h-10 rounded-full border-4 flex items-center justify-center text-white shadow-sm z-10 transition-colors duration-300`}
+                        >
+                            {step.icon}
+                        </motion.div>
+                        <div className={`ml-8 transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+                            <p className="font-bold text-sm text-gray-800">{step.label}</p>
+                            {isCurrent && <p className="text-xs text-green-600 font-medium animate-pulse">In Progress</p>}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 
 function OrderTrackingContent() {
     const { orderId } = useParams();
@@ -92,9 +130,10 @@ function OrderTrackingContent() {
                 throw new Error(errData.message || 'Failed to fetch order status.');
             }
             const data = await res.json();
-
             const status = data.order?.status;
-            if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
+
+            // Clean up live order if finalized
+            if (['delivered', 'picked_up', 'rejected'].includes(status)) {
                 const liveOrderKey = `liveOrder_${data.restaurant?.id}`;
                 localStorage.removeItem(liveOrderKey);
             }
@@ -108,14 +147,12 @@ function OrderTrackingContent() {
     }, [orderId, sessionToken]);
 
     useEffect(() => {
+        // Payment Verification Logic
         const verifyPayment = async () => {
             const paymentStatus = searchParams.get('payment_status');
             if (paymentStatus === 'success' && orderId) {
                 try {
-                    console.log("Verifying payment status with PhonePe...");
-                    // Call the status API which now updates Firestore if paid
                     await fetch(`/api/payment/phonepe/status/${orderId}`);
-                    // Fetch latest order data immediately after verification
                     await fetchData();
                 } catch (e) {
                     console.error("Error verifying payment:", e);
@@ -124,77 +161,36 @@ function OrderTrackingContent() {
                 fetchData();
             }
         };
-
         verifyPayment();
 
-        const interval = setInterval(() => fetchData(true), 10000); // Poll every 10 seconds for faster updates
+        const interval = setInterval(() => fetchData(true), 10000);
         return () => clearInterval(interval);
     }, [orderId, searchParams, fetchData]);
 
     const handleRecenter = () => {
         if (!mapRef.current) return;
         const bounds = new window.google.maps.LatLngBounds();
-        if (orderData.restaurant?.restaurantLocation) bounds.extend(orderData.restaurant.restaurantLocation);
+        if (orderData.restaurant?.address) bounds.extend({ lat: orderData.restaurant.address.latitude, lng: orderData.restaurant.address.longitude });
         if (orderData.deliveryBoy?.location) bounds.extend(orderData.deliveryBoy.location);
-        if (orderData.order?.customerLocation) bounds.extend(orderData.order.customerLocation);
+        if (orderData.order?.customerLocation) bounds.extend({
+            lat: orderData.order.customerLocation._latitude || orderData.order.customerLocation.lat,
+            lng: orderData.order.customerLocation._longitude || orderData.order.customerLocation.lng
+        });
 
         if (!bounds.isEmpty()) {
             mapRef.current.fitBounds(bounds, 80);
         }
     };
 
-    const handleBackToMenu = () => {
-        if (orderData?.restaurant?.id) {
-            const phone = searchParams.get('phone') || orderData.order?.customerPhone;
-            const token = searchParams.get('token');
-            let url = `/order/${orderData.restaurant.id}`;
-            const params = new URLSearchParams();
-            if (phone) params.append('phone', phone);
-            if (token) params.append('token', token);
+    if (loading && !orderData) return <div className="h-screen flex items-center justify-center bg-gray-50"><GoldenCoinSpinner /></div>;
+    if (error) return <div className="h-screen flex items-center justify-center text-red-500">{error}</div>;
+    if (!orderData) return null;
 
-            if (params.toString()) url += `?${params.toString()}`;
-
-            router.push(url);
-        } else {
-            router.push('/');
-        }
-    };
-
-    if (loading && !orderData) {
-        return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <GoldenCoinSpinner />
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <h1 className="text-2xl font-bold text-destructive">Error Loading Order</h1>
-                <p className="text-muted-foreground mt-2">{error}</p>
-                <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4" /> Go Back</Button>
-            </div>
-        )
-    }
-
-    if (!orderData || !orderData.order) {
-        return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <h1 className="text-2xl font-bold">Order Not Found</h1>
-                <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4" /> Go Back</Button>
-            </div>
-        )
-    }
-
-    const currentStatusKey = (orderData.order.status === 'paid') ? 'pending' : orderData.order.status;
-    const currentStatusInfo = statusConfig[currentStatusKey] || statusConfig.pending;
-
-    // FIXED: Extract coordinates from actual API format
+    // Location Logic
     const mapLocations = {
         restaurantLocation: orderData.restaurant?.address
             ? { lat: orderData.restaurant.address.latitude, lng: orderData.restaurant.address.longitude }
-            : orderData.restaurant?.restaurantLocation, // Fallback if format changes
+            : orderData.restaurant?.restaurantLocation,
         customerLocation: orderData.order?.customerLocation
             ? {
                 lat: orderData.order.customerLocation._latitude || orderData.order.customerLocation.lat,
@@ -204,96 +200,88 @@ function OrderTrackingContent() {
         riderLocation: orderData.deliveryBoy?.location,
     };
 
-    const isCompleted = ['delivered', 'picked_up'].includes(orderData.order.status);
-    const isRejected = orderData.order.status === 'rejected';
-
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row green-theme">
-            <div className="w-full md:w-1/2 lg:w-2/3 h-64 md:h-screen relative">
+        <div className="h-screen w-full flex flex-col md:flex-row bg-gray-50 overflow-hidden font-sans">
+            {/* LEFT: Live Map Section */}
+            <div className="relative w-full md:w-[60%] h-[50vh] md:h-full bg-gray-200">
+                <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+                    <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    <span className="text-sm font-bold text-gray-700">Live Tracking</span>
+                </div>
+
                 <LiveTrackingMap {...mapLocations} mapRef={mapRef} />
-                <Button onClick={handleRecenter} variant="secondary" size="icon" className="absolute top-4 right-4 z-10 h-12 w-12 rounded-full shadow-lg" aria-label="Recenter map"><Navigation /></Button>
+
+                <Button
+                    onClick={handleRecenter}
+                    className="absolute bottom-6 right-6 z-10 rounded-full w-12 h-12 shadow-xl bg-white text-gray-700 hover:bg-gray-100"
+                >
+                    <Navigation size={20} />
+                </Button>
             </div>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full md:w-1/2 lg:w-1/3 flex-shrink-0 p-4 md:p-8 space-y-6 overflow-y-auto">
-                <div className="flex justify-between items-center">
+
+            {/* RIGHT: Info Panel */}
+            <div className="w-full md:w-[40%] h-[50vh] md:h-full bg-white shadow-2xl z-20 flex flex-col">
+                {/* Header */}
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
                     <div>
-                        <p className="text-xs text-muted-foreground">Order from</p>
-                        <h1 className="font-bold text-2xl">{orderData.restaurant.name}</h1>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Order #{orderId.slice(0, 8)}</p>
+                        <h1 className="text-xl font-bold text-gray-800 mt-1">{orderData.restaurant.name}</h1>
                     </div>
-                    <Button onClick={() => fetchData(true)} variant="outline" size="icon" disabled={loading}>
-                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                    <Button variant="ghost" size="icon" onClick={() => fetchData(true)} className="text-gray-400 hover:text-gray-600">
+                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                     </Button>
                 </div>
 
-                <div className="p-4 bg-card border-b border-border text-center">
-                    <h2 className="text-lg font-semibold text-muted-foreground">Order ID</h2>
-                    <p className="text-xl font-mono tracking-widest text-foreground">{orderId}</p>
-                </div>
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
 
-                <div className="p-6 bg-card rounded-lg border">
-                    <StatusTimeline currentStatus={orderData.order.status} deliveryType={orderData.order.deliveryType} />
-                </div>
+                    {/* Rider Card (Only if assigned) */}
+                    {orderData.deliveryBoy && (
+                        <RiderCard rider={orderData.deliveryBoy} />
+                    )}
 
-                {(isCompleted || isRejected) ? (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className={`text-center bg-card p-6 rounded-lg border-2 ${isRejected ? 'border-destructive' : 'border-primary'}`}
-                    >
-                        {isRejected ? (
-                            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15 }}>
-                                <XCircle size={40} className="mx-auto text-destructive" />
-                            </motion.div>
-                        ) : (
-                            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }}>
-                                <CheckCircle size={40} className="mx-auto text-primary" />
-                            </motion.div>
-                        )}
-                        <h3 className="text-2xl font-bold mt-4">{currentStatusInfo.title}</h3>
-                        <p className="mt-2 text-muted-foreground">
-                            {isRejected ? `Reason: ${orderData.order.rejectionReason || currentStatusInfo.description}` : currentStatusInfo.description}
-                        </p>
-                        <Button onClick={handleBackToMenu} className="mt-6 bg-primary hover:bg-primary/90">
-                            {isRejected ? 'Try Ordering Again' : 'Order Something Else'}
-                        </Button>
-                    </motion.div>
-                ) : (
-                    <motion.div
-                        key={orderData.order.status}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3 }}
-                        className="text-center bg-card p-6 rounded-lg border border-border"
-                    >
-                        <h3 className="text-xl font-bold">{currentStatusInfo.title}</h3>
-                        <p className="mt-2 text-muted-foreground text-sm">{currentStatusInfo.description}</p>
-                    </motion.div>
-                )}
+                    {/* Order Status */}
+                    <div className="mb-8">
+                        <div className="flex justify-between items-end mb-4">
+                            <h2 className="text-lg font-bold text-gray-800">Estimated Arrival</h2>
+                            <span className="text-2xl font-black text-gray-900">25-30 <span className="text-sm font-medium text-gray-400">min</span></span>
+                        </div>
 
-                {orderData.deliveryBoy && (
-                    <div className="bg-card p-4 rounded-lg border border-border">
-                        <h4 className="font-semibold mb-2">Your Delivery Hero</h4>
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-3">
-                                <img src={orderData.deliveryBoy.photoUrl || 'https://picsum.photos/seed/rider/100'} alt="Delivery Boy" className="w-12 h-12 rounded-full object-cover" />
-                                <div>
-                                    <p className="font-bold text-foreground">{orderData.deliveryBoy.name}</p>
-                                    <div className="flex items-center gap-1 text-xs text-yellow-400"><Star size={12} className="fill-current" /> {orderData.deliveryBoy.rating}</div>
+                        {/* Custom Timeline */}
+                        <EnhancedTimeline currentStatus={orderData.order.status} />
+                    </div>
+
+                    {/* Order Items Summary */}
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="font-bold text-gray-600 text-sm">Order Summary</h3>
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">Paid</span>
+                        </div>
+                        <div className="space-y-2">
+                            {orderData.order.items?.map((item, i) => (
+                                <div key={i} className="flex justify-between text-sm text-gray-600">
+                                    <span>{item.quantity}x {item.name}</span>
+                                    <span className="font-medium">₹{item.price * item.quantity}</span>
                                 </div>
-                            </div>
-                            <Button asChild variant="outline">
-                                <a href={`tel:${orderData.deliveryBoy.phone}`}><Phone className="mr-2 h-4 w-4" /> Call</a>
-                            </Button>
+                            ))}
+                        </div>
+                        <div className="border-t border-gray-200 mt-3 pt-3 flex justify-between font-bold text-gray-800">
+                            <span>Total</span>
+                            <span>₹{orderData.order.totalAmount}</span>
                         </div>
                     </div>
-                )}
-                {!isCompleted && !isRejected && (
-                    <div className="pt-4 text-center">
-                        <Button onClick={handleBackToMenu} variant="ghost" className="text-muted-foreground">
-                            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Menu
-                        </Button>
-                    </div>
-                )}
-            </motion.div>
+                </div>
+
+                {/* Footer Actions */}
+                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                    <Button className="w-full h-12 text-lg font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl">
+                        Need Help?
+                    </Button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -305,4 +293,3 @@ export default function OrderTrackingPage() {
         </Suspense>
     )
 }
-
