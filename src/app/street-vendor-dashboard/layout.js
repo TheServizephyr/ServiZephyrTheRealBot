@@ -68,7 +68,7 @@ function OwnerDashboardContent({ children }) {
     restrictedFeatures: [],
     suspensionRemark: ''
   });
-  const [restaurantName, setRestaurantName] = useState('My Dashboard');
+  const [restaurantName, setRestaurantName] = useState('');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const [userRole, setUserRole] = useState(null); // For RBAC
   const router = useRouter();
@@ -217,7 +217,7 @@ function OwnerDashboardContent({ children }) {
 
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
-          setRestaurantName(settingsData.restaurantName || 'My Dashboard');
+          setRestaurantName(settingsData.restaurantName || '');
           setRestaurantLogo(settingsData.logoUrl || null);
         }
 
