@@ -14,17 +14,15 @@ import { format } from 'date-fns';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const statusConfig = {
-    pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been placed successfully." },
-    confirmed: { title: 'Confirmed', icon: <Check size={24} />, step: 1, description: "Restaurant has confirmed your order." },
-    preparing: { title: 'Preparing', icon: <ShoppingBag size={24} />, step: 2, description: "Your food is being prepared." },
-    Ready: { title: 'Ready', icon: <CheckCircle size={24} />, step: 3, description: "Your order is ready for pickup!" },
-    completed: { title: 'Collected', icon: <User size={24} />, step: 4, description: "Order collected. Enjoy!" },
-    rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "Order was rejected." },
-    cancelled: { title: 'Cancelled', icon: <XCircle size={24} />, step: 4, isError: true, description: "Order was cancelled." },
+    confirmed: { title: 'Confirmed', icon: <Check size={24} />, step: 0, description: "Your order has been confirmed." },
+    Ready: { title: 'Ready', icon: <CheckCircle size={24} />, step: 1, description: "Your order is ready for pickup!" },
+    completed: { title: 'Collected', icon: <User size={24} />, step: 2, description: "Order collected. Enjoy!" },
+    rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 2, isError: true, description: "Order was rejected." },
+    cancelled: { title: 'Cancelled', icon: <XCircle size={24} />, step: 2, isError: true, description: "Order was cancelled." },
 };
 
 const StatusTimeline = ({ currentStatus }) => {
-    const activeStatus = (currentStatus === 'paid') ? 'pending' : currentStatus;
+    const activeStatus = (currentStatus === 'paid') ? 'confirmed' : currentStatus;
     const currentStepConfig = statusConfig[activeStatus] || { step: 0, isError: false };
     const currentStep = currentStepConfig.step;
     const isError = currentStepConfig.isError;
@@ -92,7 +90,7 @@ function PreOrderTrackingContent() {
     const [isFlipped, setIsFlipped] = useState(false);
     const tiltWrapperRef = useRef(null);
 
-    const isOrderComplete = order?.status === 'Ready' || order?.status === 'completed';
+    const isOrderComplete = order?.status === 'completed';
     const isOrderRejected = order?.status === 'rejected' || order?.status === 'cancelled';
 
     useEffect(() => {
@@ -283,9 +281,9 @@ function PreOrderTrackingContent() {
                     </div>
                 )}
             </AnimatePresence>
-            {/* Layer 1 Security: Only show Back to Menu if order is pending */}
+            {/* Layer 1 Security: Only show Back to Menu if order is confirmed */}
             <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-                {order?.status === 'pending' && (
+                {order?.status === 'confirmed' && (
                     <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
                         <ArrowLeft className="mr-2" /> Back to Menu
                     </Button>
