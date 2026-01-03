@@ -383,9 +383,9 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                                         {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
                                         {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
                                     </span>
-                                    {item.isAddon && (
+                                    {item.addedAt && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold whitespace-nowrap">
-                                            🆕 Added {item.addedAt ? format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a') : ''}
+                                            🆕 Added {format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a')}
                                         </span>
                                     )}
                                 </li>
