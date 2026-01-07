@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
 import { sendNewOrderToOwner } from '@/lib/notifications';
+import { checkRateLimit } from '@/lib/rateLimiter';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
@@ -29,7 +30,7 @@ export async function POST(req) {
         const body = await req.json();
         console.log("[API /order/create] Request body parsed:", JSON.stringify(body, null, 2));
 
-        const {
+        let {
             name, address, phone, restaurantId, items, notes,
             coupon = null,
             loyaltyDiscount = 0,
@@ -54,45 +55,136 @@ export async function POST(req) {
             ordered_by_name = null // Waiter's name if applicable
         } = body;
 
+        // --- IDEMPOTENCY KEY VALIDATION (CRITICAL) ---
+        const { idempotencyKey } = body;
+
+        // Validate idempotency key
+        if (!idempotencyKey) {
+            console.error('[API /order/create] Missing idempotency key in request');
+            return NextResponse.json(
+                { error: 'Missing idempotency key. Please refresh and try again.' },
+                { status: 400 }
+            );
+        }
+        console.log(`[API /order/create] Idempotency key: ${idempotencyKey}`);
+
+        // Normalize tableId to uppercase for case-insensitive matching
+        if (tableId) {
+            tableId = tableId.toUpperCase();
+            console.log(`[API /order/create] Normalized tableId: ${tableId}`);
+        }
+
+        // --- RATE LIMITING (Per-Restaurant) ---
+        // Check AFTER idempotency so retries aren't blocked
+        console.log(`[API /order/create] Checking rate limit for restaurant: ${restaurantId}`);
+        const rateCheck = await checkRateLimit(restaurantId, 50);
+
+        if (!rateCheck.allowed) {
+            console.error(`[API /order/create] Rate limit exceeded for ${restaurantId} (50 orders/minute)`);
+            return new Response(
+                JSON.stringify({
+                    error: 'Too many orders right now. Please try again in a minute.',
+                    restaurantId,
+                    limit: 50
+                }),
+                {
+                    status: 429,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Retry-After': '60'
+                    }
+                }
+            );
+        }
+        console.log(`[API /order/create] Rate limit check passed for ${restaurantId}`);
+
         // --- START: ADD-ON ORDER LOGIC ---
         if (existingOrderId && items && items.length > 0) {
             console.log(`[API /order/create] ADD-ON FLOW: Adding items to existing order ${existingOrderId}`);
             console.log(`[API /order/create] ADD-ON FLOW: Payment Method: ${paymentMethod}`);
 
             // Handle Online Payment for Add-ons
+            // Handle Online Payment for Add-ons
             if (paymentMethod === 'online') {
                 try {
                     if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                         throw new Error("Razorpay credentials not configured.");
                     }
+                    // STEP 1: RESERVE idempotency key (transaction)
+                    const reservation = await firestore.runTransaction(async (transaction) => {
+                        const keyRef = firestore.collection('idempotency_keys').doc(idempotencyKey);
+                        const keySnap = await transaction.get(keyRef);
 
+                        // Duplicate check
+                        if (keySnap.exists) {
+                            console.log(`[Add-on Idempotency] Key ${idempotencyKey} already used`);
+                            const data = keySnap.data();
+
+                            // If completed, return existing order
+                            if (data.status === 'completed') {
+                                return {
+                                    duplicate: true,
+                                    razorpayOrderId: data.razorpayOrderId,
+                                    orderId: data.orderId
+                                };
+                            }
+
+                            // If reserved but not completed (edge case: previous request failed)
+                            // Allow retry after 30 seconds
+                            const reservedAt = data.createdAt?.toDate();
+                            if (reservedAt && (Date.now() - reservedAt.getTime() < 30000)) {
+                                throw new Error('Request already in progress. Please wait.');
+                            }
+                        }
+
+                        // RESERVE the key
+                        transaction.set(keyRef, {
+                            status: 'reserved',
+                            orderId: existingOrderId,
+                            type: 'addon',
+                            createdAt: FieldValue.serverTimestamp()
+                        }, { merge: true });
+
+                        return { duplicate: false };
+                    });
+
+                    // If duplicate, return existing order
+                    if (reservation.duplicate) {
+                        return NextResponse.json({
+                            razorpay_order_id: reservation.razorpayOrderId,
+                            firestore_order_id: reservation.orderId
+                        });
+                    }
+
+                    // STEP 2: CREATE Razorpay order (OUTSIDE transaction)
                     const razorpay = new Razorpay({
                         key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                         key_secret: process.env.RAZORPAY_KEY_SECRET,
                     });
 
-                    // Create Razorpay Order with items in notes
-                    // Note: Razorpay notes have a size limit. For very large orders, this might need a different approach (e.g. pendingAddons collection).
-                    // But for typical food orders, it's fine.
-                    const razorpayOrderOptions = {
+                    const razorpayOrder = await razorpay.orders.create({
                         amount: Math.round(grandTotal * 100),
                         currency: 'INR',
                         receipt: `addon_${existingOrderId}_${Date.now()}`,
                         notes: {
                             type: 'addon',
                             orderId: existingOrderId,
-                            items: JSON.stringify(items), // Store items to add upon payment
-                            subtotal: subtotal,
-                            cgst: cgst,
-                            sgst: sgst,
-                            grandTotal: grandTotal
+                            items: JSON.stringify(items),
+                            subtotal,
+                            cgst,
+                            sgst,
+                            grandTotal
                         }
-                    };
+                    });
 
-                    const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
-                    console.log(`[API /order/create] ADD-ON FLOW: Razorpay order created: ${razorpayOrder.id}`);
+                    // STEP 3: MARK key as completed
+                    await firestore.collection('idempotency_keys').doc(idempotencyKey).update({
+                        razorpayOrderId: razorpayOrder.id,
+                        status: 'completed',
+                        completedAt: FieldValue.serverTimestamp()
+                    });
 
-                    // Fetch token to return (optional, but good for consistency)
+                    // Fetch token
                     const orderDoc = await firestore.collection('orders').doc(existingOrderId).get();
                     const trackingToken = orderDoc.exists ? orderDoc.data().trackingToken : null;
 
@@ -102,8 +194,14 @@ export async function POST(req) {
                         firestore_order_id: existingOrderId,
                         token: trackingToken,
                     }, { status: 200 });
-
                 } catch (error) {
+                    // Razorpay failed - mark key as failed
+                    await firestore.collection('idempotency_keys').doc(idempotencyKey).update({
+                        status: 'failed',
+                        error: error.message,
+                        failedAt: FieldValue.serverTimestamp()
+                    });
+
                     console.error(`[API /order/create] ADD-ON FLOW: Razorpay creation failed:`, error);
                     return NextResponse.json({ message: error.message }, { status: 500 });
                 }
@@ -579,6 +677,57 @@ export async function POST(req) {
             : null;
         console.log(`[API /order/create] Customer location set: ${!!customerLocation}`);
 
+        // --- IDEMPOTENCY CHECK FOR NEW ORDERS (CRITICAL) ---
+        // Check if this idempotency key has already been used
+        console.log(`[Idempotency] Checking key: ${idempotencyKey}`);
+        const idempotencyResult = await firestore.runTransaction(async (transaction) => {
+            const keyRef = firestore.collection('idempotency_keys').doc(idempotencyKey);
+            const keySnap = await transaction.get(keyRef);
+            if (keySnap.exists) {
+                const keyData = keySnap.data();
+                console.log(`[Idempotency] Key exists with status: ${keyData.status}`);
+                // If already completed, return existing order
+                if (keyData.status === 'completed' && keyData.orderId) {
+                    const existingOrderRef = firestore.collection('orders').doc(keyData.orderId);
+                    const existingOrderSnap = await transaction.get(existingOrderRef);
+                    if (existingOrderSnap.exists) {
+                        return {
+                            isDuplicate: true,
+                            orderId: keyData.orderId,
+                            razorpayOrderId: keyData.razorpayOrderId,
+                            trackingToken: existingOrderSnap.data().trackingToken
+                        };
+                    }
+                }
+                // If reserved but not completed, check if it's stale (>30s)
+                if (keyData.status === 'reserved') {
+                    const reservedAt = keyData.createdAt?.toDate();
+                    if (reservedAt && (Date.now() - reservedAt.getTime() < 30000)) {
+                        throw new Error('Request already in progress. Please wait.');
+                    }
+                }
+            }
+            // Reserve the key (mark as in progress)
+            transaction.set(keyRef, {
+                status: 'reserved',
+                restaurantId,
+                paymentMethod,
+                createdAt: FieldValue.serverTimestamp()
+            }, { merge: true });
+            return { isDuplicate: false };
+        });
+        // If duplicate request, return existing order data
+        if (idempotencyResult.isDuplicate) {
+            console.log(`[Idempotency] Returning existing order: ${idempotencyResult.orderId}`);
+            return NextResponse.json({
+                message: 'Order already exists',
+                razorpay_order_id: idempotencyResult.razorpayOrderId,
+                firestore_order_id: idempotencyResult.orderId,
+                token: idempotencyResult.trackingToken,
+            }, { status: 200 });
+        }
+        // Continue with new order creation (key is now reserved)
+        console.log('[Idempotency] Key reserved, proceeding with order creation');
         if (paymentMethod === 'razorpay') {
             console.log("[API /order/create] Payment method is Razorpay.");
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -622,7 +771,14 @@ export async function POST(req) {
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             console.log(`[API /order/create] Razorpay order created: ${razorpayOrder.id}`);
-
+            // Mark idempotency key as completed
+            await firestore.collection('idempotency_keys').doc(idempotencyKey).update({
+                status: 'completed',
+                orderId: firestoreOrderId,
+                razorpayOrderId: razorpayOrder.id,
+                completedAt: FieldValue.serverTimestamp()
+            });
+            console.log(`[Idempotency] Key marked as completed: ${idempotencyKey}`);
             return NextResponse.json({
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrder.id,
@@ -923,7 +1079,7 @@ export async function POST(req) {
             businessType, deliveryType, pickupTime: pickupTime || '', tipAmount: tipAmount || 0,
             items: processedItems,
             dineInToken: dineInToken,
-            tableId: tableId || null,
+            tableId: tableId || null,  // Already normalized to uppercase
             dineInTabId: dineInTabId || null,
             pax_count: pax_count || null,
             tab_name: tab_name || null,
@@ -955,6 +1111,31 @@ export async function POST(req) {
 
         await batch.commit();
         console.log(`[API /order/create] Batch committed successfully. Order ${newOrderRef.id} created.`);
+        // Mark idempotency key as completed
+        await firestore.collection('idempotency_keys').doc(idempotencyKey).update({
+            status: 'completed',
+            orderId: newOrderRef.id,
+            completedAt: FieldValue.serverTimestamp()
+        });
+
+        // CRITICAL: Activate the tab if it's a dine-in order with a tab
+        if (deliveryType === 'dine-in' && dineInTabId) {
+            try {
+                const tabRef = firestore.collection('restaurants').doc(restaurantId).collection('dineInTabs').doc(dineInTabId);
+                const tabSnap = await tabRef.get();
+
+                if (tabSnap.exists && tabSnap.data().status !== 'active') {
+                    await tabRef.update({
+                        status: 'active',
+                        firstOrderAt: FieldValue.serverTimestamp()
+                    });
+                    console.log(`[API /order/create] ✅ Tab ${dineInTabId} activated successfully`);
+                }
+            } catch (tabError) {
+                console.error(`[API /order/create] Failed to activate tab:`, tabError);
+                // Don't fail order if tab activation fails
+            }
+        }
 
         if (businessData && businessData.ownerPhone && businessData.botPhoneNumberId) {
             console.log(`[API /order/create] Sending new order notification to owner.`);
@@ -964,10 +1145,14 @@ export async function POST(req) {
             });
         }
 
+
         return NextResponse.json({
             message: 'Order created successfully.',
+            order_id: newOrderRef.id,
             firestore_order_id: newOrderRef.id,
-            token: trackingToken
+            token: trackingToken,
+            dineInTabId: finalOrderData.dineInTabId || null,  // Actual tab ID used
+            tableId: finalOrderData.tableId || null  // Actual table ID used
         }, { status: 200 });
 
     } catch (error) {

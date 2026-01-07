@@ -808,6 +808,28 @@ const OrderPageInternal = () => {
         }
     };
 
+    const handleStartTab = () => {
+        // Generate new tab ID
+        const newTabId = `tab_${Date.now()}`;
+
+        // Create tab info
+        const newTabInfo = {
+            id: newTabId,
+            name: newTabName || 'Guest',
+            pax_count: newTabPax || 1
+        };
+
+        // Save to localStorage
+        const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
+        localStorage.setItem(dineInTabKey, JSON.stringify(newTabInfo));
+        console.log('[Dine-In] New tab created:', newTabInfo);
+
+        // Update state
+        setActiveTabInfo(newTabInfo);
+        setDineInState('ready');
+        setIsDineInModalOpen(false);
+    };
+
     const handleJoinTab = (tabId) => {
         const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
         setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
@@ -1395,7 +1417,7 @@ const OrderPageInternal = () => {
                     )}
 
                     {/* Track Live Order Button - Only for Dine-In with existing order */}
-                    {deliveryType === 'dine-in' && trackingUrl && liveOrder && liveOrder.restaurantId === restaurantId && (
+                    {deliveryType === 'dine-in' && liveOrder && liveOrder.restaurantId === restaurantId && (
                         <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -1415,7 +1437,7 @@ const OrderPageInternal = () => {
                                     asChild
                                     className="bg-white text-black hover:bg-white/90 font-bold"
                                 >
-                                    <a href={trackingUrl}>
+                                    <a href={`/track/dine-in/${liveOrder.orderId}?tabId=${searchParams.get('tabId') || ''}&token=${liveOrder.trackingToken}`}>
                                         Track Order
                                     </a>
                                 </Button>

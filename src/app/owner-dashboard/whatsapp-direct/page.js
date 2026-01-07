@@ -5,7 +5,8 @@ import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut } from 'lucide-react';
 import Image from 'next/image';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -192,31 +193,110 @@ function WhatsAppDirectPageContent() {
         }
     };
 
+    // Real-time listener for conversations
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) fetchConversations();
-            else setLoadingConversations(false);
-        });
-
-        const interval = setInterval(() => fetchConversations(true), 30000);
-
-        return () => {
-            unsubscribe();
-            clearInterval(interval);
-        };
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
-
-    useEffect(() => {
-        let interval;
-        if (activeConversation) {
-            interval = setInterval(() => {
-                fetchMessages(activeConversation.id);
-            }, 30000);
+        const user = auth.currentUser;
+        if (!user) {
+            setLoadingConversations(false);
+            return;
         }
+
+        // For impersonation or employee access, use API
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+            console.log('[WhatsApp] Using API for impersonation/employee access');
+            fetchConversations();
+            const interval = setInterval(() => fetchConversations(true), 30000);
+            return () => clearInterval(interval);
+        }
+
+        // For owner's own dashboard - use REAL-TIME listener
+        setLoadingConversations(true);
+        const ownerId = user.uid;
+
+        const conversationsQuery = query(
+            collection(db, 'whatsapp_conversations'),
+            where('restaurantId', '==', ownerId),
+            orderBy('lastMessageTimestamp', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(
+            conversationsQuery,
+            (querySnapshot) => {
+                const fetchedConversations = [];
+                querySnapshot.forEach((doc) => {
+                    fetchedConversations.push({ id: doc.id, ...doc.data() });
+                });
+
+                console.log(`[WhatsApp] Real-time update: ${fetchedConversations.length} conversations`);
+                setConversations(fetchedConversations);
+                setLoadingConversations(false);
+            },
+            (error) => {
+                console.error('[WhatsApp] Firestore listener error:', error);
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Connection Error',
+                    message: 'Could not connect to WhatsApp conversations. Please refresh.'
+                });
+                setLoadingConversations(false);
+            }
+        );
+
+        // Cleanup - CRITICAL
         return () => {
-            if (interval) clearInterval(interval);
+            console.log('[WhatsApp] Cleaning up conversations listener');
+            unsubscribe();
         };
-    }, [activeConversation]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, fetchConversations]);
+
+    // Real-time listener for messages in active conversation
+    useEffect(() => {
+        if (!activeConversation) {
+            setMessages([]);
+            return;
+        }
+
+        // For impersonation or employee access, use API polling
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+            console.log('[WhatsApp] Using API polling for messages (impersonation/employee)');
+            fetchMessages(activeConversation.id);
+            const interval = setInterval(() => fetchMessages(activeConversation.id), 30000);
+            return () => clearInterval(interval);
+        }
+
+        // For owner's own dashboard - use REAL-TIME listener for messages
+        setLoadingMessages(true);
+
+        const messagesQuery = query(
+            collection(db, 'whatsapp_conversations', activeConversation.id, 'messages'),
+            orderBy('timestamp', 'asc'),
+            limit(100) // Last 100 messages
+        );
+
+        const unsubscribe = onSnapshot(
+            messagesQuery,
+            (querySnapshot) => {
+                const fetchedMessages = [];
+                querySnapshot.forEach((doc) => {
+                    fetchedMessages.push({ id: doc.id, ...doc.data() });
+                });
+
+                console.log(`[WhatsApp] Real-time messages update: ${fetchedMessages.length} messages`);
+                setMessages(fetchedMessages);
+                setLoadingMessages(false);
+            },
+            (error) => {
+                console.error('[WhatsApp] Messages listener error:', error);
+                setLoadingMessages(false);
+            }
+        );
+
+        // Cleanup - CRITICAL
+        return () => {
+            console.log('[WhatsApp] Cleaning up messages listener');
+            unsubscribe();
+        };
+    }, [activeConversation, impersonatedOwnerId, employeeOfOwnerId, fetchMessages]);
 
     const handleConversationClick = async (conversation) => {
         setActiveConversation(conversation);

@@ -16,7 +16,15 @@ import InfoDialog from '@/components/InfoDialog';
 import { format, setHours, setMinutes, getHours, getMinutes, addMinutes } from 'date-fns';
 import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { v4 as uuidv4 } from 'uuid';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+const ORDER_STATE = {
+    IDLE: 'idle',
+    CREATING_ORDER: 'creating_order',
+    SUCCESS: 'success',
+    ERROR: 'error'
+};
 
 
 const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
@@ -196,6 +204,8 @@ const CartPageInternal = () => {
     const [outOfStockItems, setOutOfStockItems] = useState([]);
     const [diningPreference, setDiningPreference] = useState(null);
     const [packagingConfig, setPackagingConfig] = useState({ enabled: false, amount: 0 });
+    const [orderState, setOrderState] = useState(ORDER_STATE.IDLE);
+    const [orderError, setOrderError] = useState(null);
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
@@ -416,11 +426,27 @@ const CartPageInternal = () => {
 
     const handlePostPaidCheckout = async () => {
         console.log("[Cart Page] Initiating post-paid checkout.");
+
+        // Prevent double-click
+        if (orderState !== ORDER_STATE.IDLE) return;
+
+        setOrderState(ORDER_STATE.CREATING_ORDER);
+        setOrderError(null);
         setIsCheckoutFlow(true);
         setInfoDialog({ isOpen: true, title: "Processing...", message: "Placing your order. Please wait." });
 
         try {
+            // Generate idempotency key for this order
+            const idempotencyKey = typeof window !== 'undefined'
+                ? (localStorage.getItem('current_order_key') || `order_${uuidv4()}`)
+                : `order_${uuidv4()}`;
+
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('current_order_key', idempotencyKey);
+            }
+
             const orderData = {
+                idempotencyKey,  // ← Idempotency key
                 restaurantId,
                 items: cart,
                 notes: cartData?.notes || '',
@@ -435,7 +461,7 @@ const CartPageInternal = () => {
                 tab_name: cartData?.tab_name || 'Guest',
                 diningPreference: diningPreference,
                 packagingCharge: (diningPreference === 'takeaway' && packagingConfig.enabled) ? packagingConfig.amount : 0,
-                dineInTabId: tabId || null, // Add to existing tab if tabId present
+                dineInTabId: cartData?.dineInTabId || null, // Use cartData.dineInTabId
             };
 
             console.log("[Cart Page] Sending post-paid order to /api/order/create:", orderData);
@@ -449,6 +475,13 @@ const CartPageInternal = () => {
 
             console.log("[Cart Page] Post-paid order successful. Response:", data);
 
+            setOrderState(ORDER_STATE.SUCCESS);
+
+            // Clear idempotency key on success
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('current_order_key');
+            }
+
             // Save liveOrder to localStorage so track button shows on order page
             const liveOrderData = {
                 orderId: data.order_id,
@@ -460,12 +493,33 @@ const CartPageInternal = () => {
 
             localStorage.removeItem(`cart_${restaurantId}`);
 
-            // FIXED: Redirect through central router instead of direct page
-            router.push(`/track/${data.order_id}?token=${data.token}`);
+            // Redirect to tracking page with only token (no tabId needed)
+            router.push(`/track/dine-in/${data.order_id}?token=${data.token}`);
         } catch (err) {
             console.error("[Cart Page] Post-paid checkout error:", err.message);
-            setInfoDialog({ isOpen: true, title: "Error", message: err.message });
+
+            // Set ORDER_STATE.ERROR
+            setOrderState(ORDER_STATE.ERROR);
             setIsCheckoutFlow(false);
+
+            // Human-friendly error messages
+            let friendlyError = 'Something went wrong. Please try again.';
+
+            if (err.message.includes('network') || err.message.includes('fetch')) {
+                friendlyError = 'Connection issue. Please check your internet and try again.';
+            } else if (err.message.includes('429') || err.message.toLowerCase().includes('too many requests')) {
+                friendlyError = 'Restaurant is busy right now. Please wait a minute and try again.';
+            } else if (err.message.includes('400') || err.message.includes('invalid')) {
+                friendlyError = 'Invalid order details. Please check and try again.';
+            } else if (err.message.includes('timeout')) {
+                friendlyError = 'Request timed out. Please try again.';
+            } else if (err.message) {
+                const isUserFriendly = !err.message.match(/[A-Z_]{3,}/) && err.message.length < 100;
+                friendlyError = isUserFriendly ? err.message : friendlyError;
+            }
+
+            setOrderError(friendlyError);
+            setInfoDialog({ isOpen: true, title: "Error", message: friendlyError });
         }
     };
 
@@ -1054,13 +1108,18 @@ const CartPageInternal = () => {
                                 disabled={
                                     cart.length === 0 ||
                                     isCheckoutFlow ||
+                                    orderState === ORDER_STATE.CREATING_ORDER ||
                                     outOfStockItems.length > 0 ||
                                     (cartData?.businessType === 'street-vendor' && !diningPreference)
                                 }
                             >
-                                {isCheckoutFlow ? <Loader2 className="animate-spin mr-2" /> : null}
-                                {(liveOrder && liveOrder.restaurantId === restaurantId) ? <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </> :
-                                    (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')}
+                                {orderState === ORDER_STATE.CREATING_ORDER ? <Loader2 className="animate-spin mr-2" /> : null}
+                                {orderState === ORDER_STATE.CREATING_ORDER
+                                    ? 'Processing Order...'
+                                    : (liveOrder && liveOrder.restaurantId === restaurantId)
+                                        ? <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </>
+                                        : (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')
+                                }
                             </Button>
                         ) : deliveryType === 'dine-in' ? (
                             <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">

@@ -184,6 +184,17 @@ export async function POST(req) {
         await batch.commit();
         console.log(`[Bulk Upload] Successfully added ${allItems.length} items and ${newCategories.length} new categories`);
 
+        // Increment menuVersion for automatic cache invalidation
+        try {
+            await businessRef.update({
+                menuVersion: FieldValue.increment(1)
+            });
+            console.log(`[Bulk Upload] ✅ menuVersion incremented for business ${restaurantId}`);
+        } catch (versionError) {
+            console.error('[Bulk Upload] ❌ menuVersion increment failed:', versionError);
+            // Non-fatal - items saved successfully
+        }
+
         return NextResponse.json({
             message: `Successfully added ${allItems.length} items to your menu!`,
             categoriesAdded: newCategories.length

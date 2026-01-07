@@ -9,10 +9,6 @@ export async function GET(req, { params }) {
     const phone = searchParams.get('phone');
     const firestore = await getFirestore();
 
-    // FIX: Single cache key for all users (not per-user)
-    // This dramatically improves cache hit rate from ~10% to ~95%
-    const cacheKey = `menu:${restaurantId}`;
-
     if (!restaurantId) {
         return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
     }
@@ -23,33 +19,13 @@ export async function GET(req, { params }) {
     const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
 
     try {
-        // Step 1: Check Redis cache first (1-hour TTL) - only if KV is available
-        if (isKvAvailable) {
-            const cachedData = await kv.get(cacheKey);
-            if (cachedData) {
-                console.log(`[Menu API] ✅ Cache HIT for ${restaurantId}`);
-                return NextResponse.json(cachedData, {
-                    status: 200,
-                    headers: {
-                        'X-Cache': 'HIT',
-                        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    }
-                });
-            }
-            console.log(`[Menu API] ❌ Cache MISS - Fetching from Firestore for ${restaurantId}`);
-        } else {
-            console.log(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${restaurantId}`);
-        }
-
-        // Step 2: Cache miss - fetch from Firestore (OPTIMIZED)
+        // STEP 1: Fetch restaurant/vendor doc to get menuVersion
         let businessData = null;
         let businessRef = null;
         let collectionName = '';
+        let menuVersion = 1; // Default version
 
-        // OPTIMIZATION: Try most common collection first (restaurants)
-        const collectionsToTry = ['street_vendors', 'restaurants', 'shops'];
+        const collectionsToTry = ['restaurants', 'street_vendors', 'shops'];
         for (const name of collectionsToTry) {
             const docRef = firestore.collection(name).doc(restaurantId);
             const docSnap = await docRef.get();
@@ -57,6 +33,7 @@ export async function GET(req, { params }) {
                 businessData = docSnap.data();
                 businessRef = docRef;
                 collectionName = name;
+                menuVersion = businessData.menuVersion || 1; // Get version or default to 1
                 break;
             }
         }
@@ -66,10 +43,36 @@ export async function GET(req, { params }) {
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
+        // STEP 2: Build version-based cache key
+        const cacheKey = `menu:${restaurantId}:v${menuVersion}`;
+        console.log(`[Menu API] 🔑 Cache key: ${cacheKey} (menuVersion: ${menuVersion})`);
+
+        // STEP 3: Check Redis cache with version-specific key
+        if (isKvAvailable) {
+            const cachedData = await kv.get(cacheKey);
+            if (cachedData) {
+                console.log(`[Menu API] ✅ Cache HIT for ${cacheKey}`);
+                return NextResponse.json(cachedData, {
+                    status: 200,
+                    headers: {
+                        'X-Cache': 'HIT',
+                        'X-Menu-Version': menuVersion.toString(),
+                        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                });
+            }
+            console.log(`[Menu API] ❌ Cache MISS - Fetching from Firestore for ${cacheKey}`);
+        } else {
+            console.log(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${restaurantId}`);
+        }
+
+        // STEP 4: Cache miss - fetch from Firestore
         console.log(`[Menu API] ✅ Found business: ${businessData.name} in ${collectionName}`);
         console.log(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${restaurantId}/coupons`);
 
-        // OPTIMIZATION: Fetch menu in parallel with other data
+        // Fetch menu and coupons in parallel
         const [menuSnap, couponsSnap] = await Promise.all([
             businessRef.collection('menu').get(),
             businessRef.collection('coupons').where('status', '==', 'active').get()
@@ -119,13 +122,12 @@ export async function GET(req, { params }) {
             }
         });
 
-        // Sort items in memory by order field
+        // Sort items by order field
         Object.keys(menuData).forEach(key => {
             menuData[key].sort((a, b) => (a.order || 999) - (b.order || 999));
         });
 
-        // OPTIMIZATION: Skip user-specific data for cache (fetch separately if needed)
-        // This allows ALL users to share same cache
+        // Process coupons
         const now = new Date();
         console.log('[Menu API] Fetched', couponsSnap.size, 'coupons with status=active');
         console.log('[Menu API] Current time:', now);
@@ -165,13 +167,13 @@ export async function GET(req, { params }) {
             businessAddress: businessData.address,
             businessType: businessType,
             dineInModel: businessData.dineInModel,
-            isOpen: businessData.isOpen === true, // Restaurant open/closed status
+            isOpen: businessData.isOpen === true,
         };
 
-        // Write to Redis cache with 1-hour TTL (invalidated on vendor changes) - only if KV available
+        // STEP 5: Cache with version-based key and 12-hour TTL
         if (isKvAvailable) {
-            kv.set(cacheKey, responseData, { ex: 3600 }) // 1 hour TTL
-                .then(() => console.log(`[Menu API] ✅ Cached data for ${restaurantId} (TTL: 1 hour)`))
+            kv.set(cacheKey, responseData, { ex: 43200 }) // 12 hours = 43200 seconds
+                .then(() => console.log(`[Menu API] ✅ Cached as ${cacheKey} (TTL: 12 hours)`))
                 .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
         }
 
@@ -180,6 +182,7 @@ export async function GET(req, { params }) {
             status: 200,
             headers: {
                 'X-Cache': 'MISS',
+                'X-Menu-Version': menuVersion.toString(),
                 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                 'Pragma': 'no-cache',
                 'Expires': '0'

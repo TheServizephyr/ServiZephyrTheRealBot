@@ -7,6 +7,7 @@ import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -1413,18 +1414,71 @@ const DineInPageContent = () => {
         });
     };
 
-    useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) fetchData();
-            else setLoading(false);
-        });
 
-        const interval = setInterval(() => fetchData(true), 5000); // Poll every 5 seconds for real-time updates
+    // Real-time listener for dine-in tables (replaces 5-second polling)
+    useEffect(() => {
+        const user = auth.currentUser;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        // For impersonation or employee access, keep API polling (can't use Firestore directly)
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+            console.log('[Dine-In] Using API polling for impersonation/employee access');
+            fetchData();
+            const interval = setInterval(() => fetchData(true), 10000); // Reduced to 10s (was 5s)
+            return () => clearInterval(interval);
+        }
+
+        // For owner's own dashboard - use REAL-TIME Firestore listener
+        setLoading(true);
+        const ownerId = user.uid;
+
+        // Note: This assumes dine_in_tables collection exists in Firestore
+        // If API creates this data differently, might need backend updates
+        const tablesQuery = query(
+            collection(db, 'dine_in_tables'),
+            where('ownerId', '==', ownerId)
+        );
+
+        const unsubscribe = onSnapshot(
+            tablesQuery,
+            (querySnapshot) => {
+                const tables = [];
+                querySnapshot.forEach((doc) => {
+                    tables.push({ id: doc.id, ...doc.data() });
+                });
+
+                console.log(`[Dine-In] Real-time update: ${tables.length} tables`);
+
+                // Update state with real-time data
+                // Note: serviceRequests and closedTabs might need separate listeners
+                setAllData(prev => ({
+                    tables: tables,
+                    serviceRequests: prev.serviceRequests || [],
+                    closedTabs: prev.closedTabs || []
+                }));
+
+                setLoading(false);
+            },
+            (error) => {
+                console.error('[Dine-In] Firestore listener error:', error);
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Connection Error',
+                    message: 'Could not connect to live tables. Please refresh the page.'
+                });
+                setLoading(false);
+            }
+        );
+
+        // Cleanup function - CRITICAL for preventing zombie listeners
         return () => {
+            console.log('[Dine-In] Cleaning up real-time listener');
             unsubscribe();
-            clearInterval(interval);
         };
-    }, [impersonatedOwnerId, fetchData]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, fetchData]);
 
     const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({

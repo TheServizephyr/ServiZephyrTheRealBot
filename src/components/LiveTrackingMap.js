@@ -18,19 +18,9 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
             suppressMarkers: true,
             polylineOptions: {
-                strokeColor: '#000000',  // Black color
+                strokeColor: '#000000',
                 strokeOpacity: 0.8,
-                strokeWeight: 4,
-                // FIXED: Add dotted/dashed pattern like Zomato
-                icons: [{
-                    icon: {
-                        path: 'M 0,-1 0,1',  // Dash pattern
-                        strokeOpacity: 1,
-                        scale: 4
-                    },
-                    offset: '0',
-                    repeat: '20px'  // Space between dashes
-                }]
+                strokeWeight: 5,
             },
         }));
     }, [map]);
@@ -158,13 +148,16 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                     return points;
                 };
 
+                // FALLBACK: Revert to Curved Dotted Line (Aesthetically better than straight line over houses)
+                // "straight nahi yarrrr... kisi ghar ya nadi ke upar se mat nikalo" -> Curved looks like a "flight path" which is acceptable as abstract.
+
                 const curvedPath = getCurvedPath(routeOrigin, routeDestination);
 
                 window.fallbackPolyline = new window.google.maps.Polyline({
                     path: curvedPath,
                     geodesic: true,
                     strokeColor: '#000000',
-                    strokeOpacity: 0, // Hide main line, show only icons for better dash effect
+                    strokeOpacity: 0,
                     strokeWeight: 0,
                     icons: [{
                         icon: {
@@ -175,10 +168,27 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                             strokeWeight: 2
                         },
                         offset: '0',
-                        repeat: '15px' // Tighter dots
+                        repeat: '20px'
                     }],
                     map: map
                 });
+
+                // Show Error on Map for the User
+                const errorDiv = document.createElement('div');
+                errorDiv.style.position = 'absolute';
+                errorDiv.style.top = '10px';
+                errorDiv.style.left = '50%';
+                errorDiv.style.transform = 'translateX(-50%)';
+                errorDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.9)';
+                errorDiv.style.color = 'white';
+                errorDiv.style.padding = '8px 12px';
+                errorDiv.style.borderRadius = '20px';
+                errorDiv.style.fontSize = '12px';
+                errorDiv.style.fontWeight = 'bold';
+                errorDiv.style.zIndex = '1000';
+                errorDiv.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+                errorDiv.innerText = '⚠️ Maps API Error: Setup Billing for Road Path';
+                map.getDiv().appendChild(errorDiv);
             }
         });
     }, [routeOrigin, routeDestination, JSON.stringify(routeWaypoints), directionsService, directionsRenderer, map]);

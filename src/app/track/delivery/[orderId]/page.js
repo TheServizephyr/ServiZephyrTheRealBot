@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, MapPin, CheckCircle, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTimer, POLLING_MAX_TIME } from '@/lib/trackingConstants';
 import dynamic from 'next/dynamic';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
@@ -113,6 +114,7 @@ function OrderTrackingContent() {
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [isVisible, setIsVisible] = useState(true); // RULE 1: Visibility tracking
     const mapRef = useRef(null);
 
     const fetchData = useCallback(async (isBackground = false) => {
@@ -146,6 +148,27 @@ function OrderTrackingContent() {
         }
     }, [orderId, sessionToken]);
 
+    // RULE 1: Visibility API
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            const visible = !document.hidden;
+            setIsVisible(visible);
+
+            if (visible) {
+                console.log('[DeliveryTrack] Page visible - resuming polling');
+                fetchData(true); // Immediate fetch on return
+            } else {
+                console.log('[DeliveryTrack] Page hidden - pausing polling');
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [fetchData]);
+
     useEffect(() => {
         // Payment Verification Logic
         const verifyPayment = async () => {
@@ -162,10 +185,60 @@ function OrderTrackingContent() {
             }
         };
         verifyPayment();
-
-        const interval = setInterval(() => fetchData(true), 10000);
-        return () => clearInterval(interval);
     }, [orderId, searchParams, fetchData]);
+
+    // RULE 2, 3, 4: Adaptive polling with final state detection and timeout
+    useEffect(() => {
+        // RULE 2: Don't poll if order is in final state
+        if (orderData && isFinalState(orderData.order?.status)) {
+            console.log('[DeliveryTrack] Final state reached - stopping polling');
+            clearPollingTimer(orderId);
+            return;
+        }
+
+        // Don't poll if page is hidden
+        if (!isVisible) {
+            console.log('[DeliveryTrack] Page hidden - skipping polling setup');
+            return;
+        }
+
+        // RULE 4: Get polling start time (localStorage-based, refresh-safe)
+        const pollingStartTime = getPollingStartTime(orderId);
+
+        // RULE 3: Get adaptive interval based on order status
+        const pollingInterval = orderData?.order?.status
+            ? getPollingInterval(orderData.order.status)
+            : 30000; // Default 30s if no status yet
+
+        if (!pollingInterval) {
+            // Final state - no polling needed
+            console.log('[DeliveryTrack] No polling interval for status:', orderData?.order?.status);
+            clearPollingTimer(orderId);
+            return;
+        }
+
+        console.log(`[DeliveryTrack] Polling every ${pollingInterval / 1000}s for status:`, orderData?.order?.status);
+
+        const interval = setInterval(() => {
+            // Check visibility and timeout before each poll
+            if (document.hidden) {
+                console.log('[DeliveryTrack] Skipping poll - page hidden');
+                return;
+            }
+
+            // RULE 4: Check hard timeout
+            if (Date.now() - pollingStartTime > POLLING_MAX_TIME) {
+                console.warn('[DeliveryTrack] Max polling time (60min) exceeded - stopping');
+                clearInterval(interval);
+                clearPollingTimer(orderId);
+                return;
+            }
+
+            fetchData(true);
+        }, pollingInterval);
+
+        return () => clearInterval(interval);
+    }, [orderData, orderId, fetchData, isVisible]);
 
     const handleRecenter = () => {
         if (!mapRef.current) return;
@@ -258,25 +331,67 @@ function OrderTrackingContent() {
                     <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                         <div className="flex justify-between items-center mb-3">
                             <h3 className="font-bold text-gray-600 text-sm">Order Summary</h3>
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">Paid</span>
+                            {/* Dynamic Payment Status Badge */}
+                            {(() => {
+                                // FIXED: Access nested paymentDetails from Firestore structure
+                                const paymentDetails = orderData.order.paymentDetails || {};
+                                const method = (paymentDetails.method || orderData.order.paymentMethod || '').toLowerCase();
+
+                                console.log('[Page] Resolved Method:', method, 'from:', orderData.order);
+
+                                const isPOD = method.includes('cod') ||
+                                    method.includes('cash') ||
+                                    method.includes('delivery') ||
+                                    method === 'pay_on_delivery' ||
+                                    method === 'pay_at_counter';
+
+                                return isPOD ? (
+                                    <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-bold">Pay on Delivery</span>
+                                ) : (
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">Paid Online</span>
+                                    </div>
+                                );
+                            })()}
                         </div>
                         <div className="space-y-2">
-                            {orderData.order.items?.map((item, i) => (
-                                <div key={i} className="flex justify-between text-sm text-gray-600">
-                                    <span>{item.quantity}x {item.name}</span>
-                                    <span className="font-medium">₹{item.price * item.quantity}</span>
-                                </div>
-                            ))}
+                            {orderData.order.items?.map((item, i) => {
+                                console.log(`[OrderTracking] Item ${i}:`, item); // DEBUG ITEM
+
+                                // Price Calculation Strategy:
+                                // 1. Try unit price fields (price, itemPrice)
+                                // 2. If 0, try total fields (totalPrice, total) and divide by quantity
+                                // 3. Ensure we don't divide by zero
+
+                                let unitPrice = Number(item.price) || Number(item.itemPrice) || 0;
+                                const quantity = Number(item.quantity) || 1;
+
+                                if (unitPrice === 0) {
+                                    const totalField = Number(item.totalPrice) || Number(item.total) || 0;
+                                    if (totalField > 0) {
+                                        unitPrice = totalField / quantity;
+                                    }
+                                }
+
+                                const totalItemPrice = unitPrice * quantity;
+
+                                return (
+                                    <div key={i} className="flex justify-between text-sm text-gray-600">
+                                        <span>{quantity}x {item.name}</span>
+                                        <span className="font-medium">₹{totalItemPrice}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                         <div className="border-t border-gray-200 mt-3 pt-3 flex justify-between font-bold text-gray-800">
-                            <span>Total</span>
+                            <span>Total Bill</span>
                             <span>₹{orderData.order.totalAmount}</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Footer Actions */}
-                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                {/* Footer Actions - Stick to bottom on mobile */}
+                <div className="p-4 border-t border-gray-100 bg-white sticky bottom-0 z-30">
                     <Button className="w-full h-12 text-lg font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl">
                         Need Help?
                     </Button>

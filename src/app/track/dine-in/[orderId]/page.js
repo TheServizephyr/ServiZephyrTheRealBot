@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTimer, POLLING_MAX_TIME } from '@/lib/trackingConstants';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
@@ -84,6 +85,7 @@ function DineInTrackingContent() {
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [isVisible, setIsVisible] = useState(true); // RULE 1
     const [isPayModalOpen, setIsPayModalOpen] = useState(false);
     const [isMarkingDone, setIsMarkingDone] = useState(false);
     const [cancellingId, setCancellingId] = useState(null);
@@ -111,11 +113,61 @@ function DineInTrackingContent() {
         }
     }, [orderId]);
 
+    // RULE 1: Visibility API
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            const visible = !document.hidden;
+            setIsVisible(visible);
+            if (visible) {
+                console.log('[DineInTrack] Visible - resuming');
+                fetchData(true);
+            } else {
+                console.log('[DineInTrack] Hidden - pausing');
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchData]);
+
+    // Initial fetch
     useEffect(() => {
         fetchData();
-        const interval = setInterval(() => fetchData(true), 20000);
-        return () => clearInterval(interval);
     }, [fetchData]);
+
+    // RULE 2, 3, 4: Adaptive polling with final state and timeout
+    useEffect(() => {
+        if (orderData && isFinalState(orderData.order?.status)) {
+            console.log('[DineInTrack] Final state - stopping');
+            clearPollingTimer(orderId);
+            return;
+        }
+        if (!isVisible) return;
+
+        const pollingStartTime = getPollingStartTime(orderId);
+        const pollingInterval = orderData?.order?.status
+            ? getPollingInterval(orderData.order.status)
+            : 30000;
+
+        if (!pollingInterval) {
+            clearPollingTimer(orderId);
+            return;
+        }
+
+        console.log(`[DineInTrack] Polling every ${pollingInterval / 1000}s`);
+
+        const interval = setInterval(() => {
+            if (document.hidden) return;
+            if (Date.now() - pollingStartTime > POLLING_MAX_TIME) {
+                console.warn('[DineInTrack] 60min exceeded');
+                clearInterval(interval);
+                clearPollingTimer(orderId);
+                return;
+            }
+            fetchData(true);
+        }, pollingInterval);
+
+        return () => clearInterval(interval);
+    }, [orderData, orderId, fetchData, isVisible]);
 
     // Calculate bill details - AGGREGATE ALL ORDERS IN SAME TAB
     const billDetails = useMemo(() => {
