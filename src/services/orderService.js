@@ -1,14 +1,10 @@
 /**
- * ORDER SERVICE V2 (Under Development)
+ * ORDER SERVICE V2 (READY FOR TESTING)
  * 
- * This is the new service layer implementation for order creation.
- * Phase 5 Step 1: Skeleton created, NOT YET IMPLEMENTED.
+ * Main entry point for V2 order creation.
+ * Currently implements COD flow with security fixes.
  * 
- * DO NOT ENABLE FEATURE FLAG until V2 is fully implemented and tested.
+ * Phase 5 Step 2 - Complete
  */
 
-export async function createOrderV2(req) {
-    throw new Error(
-        'OrderService V2 not implemented yet. Feature flag NEXT_PUBLIC_USE_NEW_ORDER_SERVICE should be OFF.'
-    );
-}
+export { createOrderV2 } from './order/createOrder.service';
