@@ -3,6 +3,8 @@
  * 
  * MAIN ORCHESTRATOR - Integrates all V2 services
  * 
+ * Stage 3: Added hybrid fallback + online payments (Razorpay/PhonePe)
+ * 
  * CRITICAL RULES (NON-NEGOTIABLE):
  * - Same response keys as V1
  * - Same status transitions  
@@ -11,12 +13,16 @@
  * - NO optimization of V1 logic
  * - Refactor ≠ Rewrite
  * 
- * Phase 5 Step 2.6
+ * Phase 5 Stage 3.4
  */
 
 import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
+import { FEATURE_FLAGS } from '@/lib/featureFlags';
+
+// V1 Fallback
+import { createOrderV1 } from '@/app/api/order/create/legacy/createOrderV1';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
@@ -40,14 +46,14 @@ import {
 } from './orderResponseBuilder';
 
 /**
- * CREATE ORDER V2 (COD FLOW ONLY - FIRST IMPLEMENTATION)
+ * CREATE ORDER V2 with HYBRID FALLBACK
  * 
  * Following exact orchestration order:
  * 1. Parse + validate request
  * 2. Business lookup
  * 3. Idempotency reservation
  * 4. Server-side pricing (SECURITY)
- * 5. Branch by payment type
+ * 5. Branch by payment type (WITH HYBRID FALLBACK)
  * 6. Persist order
  * 7. Return response
  */
@@ -84,6 +90,18 @@ export async function createOrderV2(req) {
             idempotencyKey,
             existingOrderId, // Add-on flow
         } = body;
+
+        // ========================================
+        // HYBRID FALLBACK (CRITICAL FOR MONEY SAFETY)
+        // ========================================
+        const isOnlinePayment = paymentMethod === 'online' ||
+            paymentMethod === 'razorpay' ||
+            paymentMethod === 'phonepe';
+
+        if (isOnlinePayment && !FEATURE_FLAGS.USE_V2_ONLINE_PAYMENT) {
+            console.log('[createOrderV2] 🔄 Online payment fallback to V1 (flag OFF)');
+            return await createOrderV1(req);
+        }
 
         // Basic validation
         if (!idempotencyKey) {
@@ -192,22 +210,6 @@ export async function createOrderV2(req) {
         // STEP 5: BRANCH BY PAYMENT TYPE
         // ========================================
 
-        // For now, ONLY implementing COD flow
-        // Online payments will be added in next iteration
-
-        if (paymentMethod !== 'cod' && paymentMethod !== 'counter') {
-            return buildErrorResponse({
-                message: 'V2 currently supports COD/Counter only. Use V1 for online payments.',
-                code: 'UNSUPPORTED_PAYMENT',
-                status: 400
-            });
-        }
-
-        // ========================================
-        // STEP 6: PERSIST ORDER (COD FLOW)
-        // ========================================
-        console.log(`[createOrderV2] Creating COD order`);
-
         // Normalize phone
         const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
         const userId = normalizedPhone || `anon_${nanoid(10)}`;
@@ -219,6 +221,99 @@ export async function createOrderV2(req) {
 
         // Generate tracking token
         const trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+
+        // ========================================
+        // ONLINE PAYMENT FLOW (Razorpay/PhonePe)
+        // ========================================
+        if (isOnlinePayment) {
+            console.log(`[createOrderV2] Handling online payment: ${paymentMethod}`);
+
+            // CRITICAL: Create Firestore order FIRST (same as V1)
+            // Status: 'awaiting_payment' (webhook will change to 'pending')
+            const firestoreOrderId = firestore.collection('orders').doc().id;
+
+            const orderData = {
+                customerName: name,
+                customerId: userId,
+                customerAddress: address?.full || null,
+                customerPhone: normalizedPhone,
+                customerLocation: customerLocation,
+                restaurantId: restaurantId,
+                restaurantName: business.data.name,
+                businessType: business.type,
+                deliveryType,
+                pickupTime: body.pickupTime || '',
+                tipAmount: tipAmount || 0,
+                items: pricing.validatedItems, // Server-validated
+                subtotal: pricing.serverSubtotal, // Server-calculated
+                cgst: cgst || 0,
+                sgst: sgst || 0,
+                deliveryCharge: deliveryCharge || 0,
+                diningPreference: diningPreference,
+                packagingCharge: packagingCharge || 0,
+                totalAmount: grandTotal,
+                status: 'awaiting_payment', // SAME as V1
+                orderDate: FieldValue.serverTimestamp(),
+                notes: notes || null,
+                paymentDetails: [],
+                trackingToken: trackingToken
+            };
+
+            // Create order in Firestore
+            await orderRepository.create(orderData, firestoreOrderId);
+            console.log(`[createOrderV2] Firestore order created: ${firestoreOrderId}`);
+
+            // Build servizephyr_payload for webhook (V1 parity)
+            const servizephyrPayload = {
+                customerDetails: { name, phone: normalizedPhone, address },
+                billDetails: { subtotal: pricing.serverSubtotal, grandTotal, cgst, sgst, deliveryCharge, tipAmount },
+                items: pricing.validatedItems,
+                restaurantId,
+                userId,
+                businessType: business.type,
+                deliveryType,
+                trackingToken,
+                isNewUser: false // TODO: implement customer check
+            };
+
+            // Create payment gateway order
+            const gateway = paymentService.determineGateway(paymentMethod);
+            const paymentOrder = await paymentService.createPaymentOrder({
+                gateway,
+                amount: grandTotal,
+                orderId: firestoreOrderId,
+                metadata: { restaurantName: business.data.name },
+                servizephyrPayload
+            });
+
+            // Mark idempotency as completed
+            await idempotencyRepository.complete(idempotencyKey, {
+                orderId: firestoreOrderId,
+                razorpayOrderId: paymentOrder.id,
+                paymentMethod
+            });
+
+            // Return response based on gateway
+            if (gateway === 'razorpay') {
+                return buildRazorpayResponse({
+                    razorpayOrderId: paymentOrder.id,
+                    orderId: firestoreOrderId,
+                    token: trackingToken
+                });
+            } else {
+                return buildPhonePeResponse({
+                    phonePeOrderId: paymentOrder.id,
+                    orderId: firestoreOrderId,
+                    token: trackingToken,
+                    amount: grandTotal
+                });
+            }
+        }
+
+        // ========================================
+        // STEP 6: COD/COUNTER FLOW
+        // ========================================
+        console.log(`[createOrderV2] Creating COD/Counter order`);
 
         // Build order data (SAME structure as V1)
         const orderData = {

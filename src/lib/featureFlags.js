@@ -7,14 +7,28 @@
 
 export const FEATURE_FLAGS = {
     /**
-     * Phase 5 Step 1: Service Layer for Order Create
+     * Phase 5 Step 1-2: Service Layer for Order Create
      * 
      * When TRUE: Uses new orderService.createOrderV2()
      * When FALSE: Uses legacy inline implementation
      * 
-     * Status: IN DEVELOPMENT
-     * Default: FALSE (safe fallback to legacy)
-     * Rollout: Will enable after full V2 implementation + testing
+     * Status: READY (COD tested)
+     * Default: FALSE (gradual rollout)
      */
     USE_NEW_ORDER_SERVICE: process.env.NEXT_PUBLIC_USE_NEW_ORDER_SERVICE === 'true',
+
+    /**
+     * Phase 5 Stage 3: Online Payments in V2
+     * 
+     * When TRUE: V2 handles online payments (Razorpay/PhonePe)
+     * When FALSE: V2 falls back to V1 for online payments
+     * 
+     * Status: IN DEVELOPMENT
+     * Default: FALSE (safe fallback to V1)
+     * 
+     * Hybrid Strategy:
+     * - COD/Counter → V2 (already working)
+     * - Online → V1 fallback (until this flag enabled)
+     */
+    USE_V2_ONLINE_PAYMENT: process.env.NEXT_PUBLIC_USE_V2_ONLINE_PAYMENT === 'true',
 };

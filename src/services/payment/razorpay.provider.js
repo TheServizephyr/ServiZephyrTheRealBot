@@ -2,8 +2,9 @@
  * RAZORPAY PROVIDER
  * 
  * Handles Razorpay payment gateway integration.
+ * Stage 3: V1 parity with servizephyr_payload for webhook compatibility.
  * 
- * Phase 5 Step 2.5
+ * Phase 5 Stage 3.2
  */
 
 import Razorpay from 'razorpay';
@@ -22,24 +23,33 @@ export class RazorpayProvider {
     }
 
     /**
-     * Create Razorpay order
+     * Create Razorpay order with V1 parity
+     * 
+     * CRITICAL: Must include servizephyr_payload in notes for webhook compatibility
      */
-    async createOrder({ amount, orderId, metadata = {} }) {
+    async createOrder({ amount, orderId, metadata = {}, servizephyrPayload = null }) {
         if (!this.client) {
             throw new Error('Razorpay not configured');
+        }
+
+        const notes = {
+            ...metadata,
+            firestore_order_id: orderId
+        };
+
+        // CRITICAL: Add servizephyr_payload for webhook (V1 parity)
+        if (servizephyrPayload) {
+            notes.servizephyr_payload = JSON.stringify(servizephyrPayload);
         }
 
         const options = {
             amount: Math.round(amount * 100), // Convert to paise
             currency: 'INR',
             receipt: orderId,
-            notes: {
-                ...metadata,
-                firestore_order_id: orderId
-            }
+            notes
         };
 
-        console.log(`[RazorpayProvider] Creating order for ₹${amount}`);
+        console.log(`[RazorpayProvider] Creating order for ₹${amount}, orderId: ${orderId}`);
         const razorpayOrder = await this.client.orders.create(options);
 
         console.log(`[RazorpayProvider] Order created: ${razorpayOrder.id}`);
