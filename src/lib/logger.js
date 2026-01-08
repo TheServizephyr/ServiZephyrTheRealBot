@@ -16,7 +16,7 @@ export const LOG_LEVELS = {
 
 /**
  * Core logging function
- * Outputs structured JSON logs
+ * Outputs structured JSON logs with optional correlationId for distributed tracing
  */
 export function log(level, message, context = {}) {
     const logEntry = {
@@ -25,6 +25,12 @@ export function log(level, message, context = {}) {
         timestamp: new Date().toISOString(),
         ...context
     };
+
+    // Add correlationId for distributed tracing (auto-extracted from context)
+    // Enables tracing: webhook → order → notification flow
+    if (context.correlationId || context.orderId || context.eventId) {
+        logEntry.correlationId = context.correlationId || context.orderId || context.eventId;
+    }
 
     // Output as JSON for searchability
     const output = JSON.stringify(logEntry);

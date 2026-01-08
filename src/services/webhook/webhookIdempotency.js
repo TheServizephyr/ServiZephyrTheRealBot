@@ -7,6 +7,7 @@
  * - Razorpay: Use event.id (NOT orderId)
  * - PhonePe: Use transaction/callback ID (NOT orderId)
  * - Atomic transaction for race-proof processing
+ * - 14-day TTL to prevent unbounded growth
  * 
  * Phase 5 Stage 4.1
  */
@@ -120,14 +121,18 @@ export async function processWebhookIdempotent(eventId, gateway, orderId, eventT
             return { isDuplicate: true, processed: false };
         }
 
-        // 2. Mark as processed
+        // 2. Mark as processed with TTL
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 14); // 14 days TTL
+
         transaction.set(webhookRef, {
             eventId,
             gateway,
             orderId,
             eventType,
             processedAt: FieldValue.serverTimestamp(),
-            createdAt: new Date()
+            createdAt: new Date(),
+            expiresAt // Auto-cleanup after 14 days
         });
 
         // 3. Execute processing function with transaction
