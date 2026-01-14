@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock } from 'lucide-react';
+import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock, UtensilsCrossed, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTimer, POLLING_MAX_TIME } from '@/lib/trackingConstants';
@@ -128,6 +128,30 @@ function DineInTrackingContent() {
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [fetchData]);
+
+    // ✅ BROWSER BACK BUTTON INTERCEPTION
+    // Intercept hardware/browser back to go to order page (not cart/checkout)
+    useEffect(() => {
+        const handlePopState = (event) => {
+            event.preventDefault();
+            const restaurantId = orderData?.restaurant?.id;
+            const tableId = orderData?.order?.tableId || orderData?.order?.table;
+            const tabId = orderData?.order?.dineInTabId;
+
+            if (restaurantId) {
+                const params = new URLSearchParams();
+                if (tableId) params.set('table', tableId);
+                if (tabId) params.set('tabId', tabId);
+
+                const url = `/order/${restaurantId}${params.toString() ? '?' + params.toString() : ''}`;
+                console.log('[DineInTrack] Browser back intercepted → redirecting to:', url);
+                router.replace(url);
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [orderData, router]);
 
     // Initial fetch
     useEffect(() => {
@@ -338,7 +362,7 @@ function DineInTrackingContent() {
     const isServed = orderData.order.status === 'delivered';
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
+        <div className="h-screen bg-background text-foreground flex flex-col green-theme overflow-hidden">
             {/* Pay Modal */}
             <Dialog open={isPayModalOpen} onOpenChange={setIsPayModalOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-sm">
@@ -376,11 +400,22 @@ function DineInTrackingContent() {
                 <div className="flex items-center gap-3">
                     <Button
                         onClick={() => {
-                            // Navigate back to order page with table and tab params
-                            const params = new URLSearchParams();
-                            if (orderData.order?.tableId) params.set('table', orderData.order.tableId);
-                            if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
-                            router.push(`/order/${orderData.restaurant?.id}?${params.toString()}`);
+                            // ✅ Preserve table & tab context for dine-in session
+                            const restaurantId = orderData.restaurant?.id;
+                            const tableId = orderData.order?.tableId || orderData.order?.table;
+                            const tabId = orderData.order?.dineInTabId;
+
+                            if (restaurantId) {
+                                const params = new URLSearchParams();
+                                if (tableId) params.set('table', tableId);
+                                if (tabId) params.set('tabId', tabId);
+
+                                const url = `/order/${restaurantId}${params.toString() ? '?' + params.toString() : ''}`;
+                                console.log('[DineInTrack] Back navigation to:', url);
+                                router.replace(url);
+                            } else {
+                                router.back(); // Fallback
+                            }
                         }}
                         variant="ghost"
                         size="icon"
@@ -399,14 +434,49 @@ function DineInTrackingContent() {
 
             <main className="flex-grow flex flex-col p-4 md:p-8 overflow-y-auto pb-32">
                 <div className="w-full max-w-2xl mx-auto">
-                    {/* Token Display */}
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                        <div className="p-4 bg-card rounded-t-lg border border-border text-center">
-                            <h2 className="text-sm font-semibold text-muted-foreground">Your Token</h2>
-                            <p className="text-4xl font-bold text-primary tracking-widest">{orderData.order.dineInToken || "N/A"}</p>
+                    {/* Premium Info Card - Token + Summary */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-primary/80 p-6 shadow-2xl"
+                    >
+                        {/* Decorative Background Pattern */}
+                        <div className="absolute inset-0 opacity-10">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -mr-32 -mt-32" />
+                            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full -ml-24 -mb-24" />
                         </div>
-                        <div className="p-4 bg-card rounded-b-lg border-x border-b border-border">
-                            <StatusTimeline currentStatus={orderData.order.status} />
+
+                        {/* Content */}
+                        <div className="relative z-10">
+                            {/* Top Row - Table & Orders Info */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2.5">
+                                        <UtensilsCrossed className="h-6 w-6 text-white" />
+                                    </div>
+                                    <div>
+                                        <p className="text-white/80 text-sm font-medium">Table {orderData.order?.tableId || 'N/A'}</p>
+                                        <p className="text-white text-lg font-bold">{orderData.order?.batches?.length || 0} Active Orders</p>
+                                    </div>
+                                </div>
+                                <div className="text-right bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
+                                    <p className="text-white/80 text-xs font-medium">Pending Amount</p>
+                                    <p className="text-white text-2xl font-bold">{formatCurrency(orderData.order?.batches?.reduce((sum, b) => sum + (b.totalAmount || 0), 0) || 0)}</p>
+                                </div>
+                            </div>
+
+                            {/* Token Display - Centered & Prominent */}
+                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center border border-white/20">
+                                <p className="text-white/90 text-sm font-semibold mb-2 tracking-wider">YOUR TOKEN</p>
+                                <motion.p
+                                    initial={{ scale: 0.9 }}
+                                    animate={{ scale: 1 }}
+                                    className="text-white text-5xl md:text-6xl font-black tracking-wider drop-shadow-2xl"
+                                    style={{ textShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                                >
+                                    {orderData.order.dineInToken || "N/A"}
+                                </motion.p>
+                            </div>
                         </div>
                     </motion.div>
 
@@ -428,7 +498,7 @@ function DineInTrackingContent() {
                             <h3 className="font-bold flex items-center gap-2 text-lg">
                                 <History className="w-5 h-5 text-primary" /> Order History
                             </h3>
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {orderData.order.batches.map((batch, index) => {
                                     const batchStatus = statusConfig[batch.status] || statusConfig.pending;
                                     const isPending = batch.status === 'pending';
@@ -436,50 +506,117 @@ function DineInTrackingContent() {
                                     const batchTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
                                     return (
-                                        <div key={batch.id} className="bg-card border border-border rounded-lg p-4 shadow-sm relative overflow-hidden">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                        Order #{index + 1}
-                                                    </p>
-                                                    <div className="flex items-center gap-1 mt-1">
-                                                        {batchStatus.icon && React.cloneElement(batchStatus.icon, { size: 14, className: batchStatus.isError ? "text-destructive" : "text-primary" })}
-                                                        <span className={`text-sm font-semibold ${batchStatus.isError ? "text-destructive" : "text-foreground"}`}>
-                                                            {batchStatus.title}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="font-bold">{formatCurrency(batch.totalAmount || batchTotal)}</p>
-                                                    <p className="text-xs text-muted-foreground flex items-center justify-end gap-1">
-                                                        <Clock size={10} />
-                                                        {new Date(batch.createdAt?._seconds * 1000 || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </p>
+                                        <div key={batch.id} className="bg-card border-2 border-border rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+                                            {/* Timeline Header - Inside Card */}
+                                            <div className="bg-gradient-to-r from-primary/5 to-primary/10 px-4 py-3 border-b border-border/50">
+                                                <div className="scale-90 origin-center">
+                                                    <StatusTimeline currentStatus={batch.status} />
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-1 mt-2 pl-2 border-l-2 border-border/50">
-                                                {items.map((item, i) => (
-                                                    <div key={i} className="flex justify-between text-sm">
-                                                        <span>{item.quantity}x {item.name}</span>
+                                            {/* Order Details */}
+                                            <div className="p-4">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                                                            Order #{index + 1}
+                                                        </p>
+                                                        <div className="flex items-center gap-2">
+                                                            {batchStatus.icon && React.cloneElement(batchStatus.icon, { size: 16, className: batchStatus.isError ? "text-destructive" : "text-primary" })}
+                                                            <span className={`text-base font-bold ${batchStatus.isError ? "text-destructive" : "text-foreground"}`}>
+                                                                {batchStatus.title}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                ))}
-                                            </div>
-
-                                            {(isPending || batch.status === 'confirmed') && (
-                                                <div className="mt-3 pt-2 border-t border-border flex justify-end">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => initiateCancel(batch.id)}
-                                                        disabled={cancellingId === batch.id}
-                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 px-2"
-                                                    >
-                                                        {cancellingId === batch.id ? <RefreshCw className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
-                                                        Cancel Order
-                                                    </Button>
+                                                    <div className="text-right">
+                                                        <p className="text-xl font-bold text-primary">{formatCurrency(batch.totalAmount || batchTotal)}</p>
+                                                        <p className="text-xs text-muted-foreground flex items-center justify-end gap-1 mt-1">
+                                                            <Clock size={12} />
+                                                            {new Date(batch.createdAt?._seconds * 1000 || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            )}
+
+                                                <div className="space-y-2 pt-3 border-t border-border/30">
+                                                    {items.map((item, i) => {
+                                                        // Calculate price - check Firestore fields (camelCase!)
+                                                        const unitPrice = item.serverVerifiedTotal || item.totalPrice || item.portion?.price || item.price || 0;
+                                                        const itemTotal = unitPrice;  // Already total for this item
+
+                                                        return (
+                                                            <div key={i} className="flex justify-between text-sm bg-muted/30 rounded-md px-3 py-2">
+                                                                <span className="font-medium">{item.quantity}x {item.name}</span>
+                                                                <span className="text-muted-foreground font-semibold">{formatCurrency(itemTotal)}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Cancel Button - Always visible but disabled during preparing */}
+                                                <div className="mt-4 pt-3 border-t border-border/50 space-y-2">
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                if (['pending', 'confirmed'].includes(batch.status)) {
+                                                                    initiateCancel(batch.id);
+                                                                } else {
+                                                                    // Show info when disabled button is clicked
+                                                                    const infoBox = document.getElementById(`cancel-info-${batch.id}`);
+                                                                    if (infoBox) {
+                                                                        infoBox.classList.remove('hidden');
+                                                                        setTimeout(() => infoBox.classList.add('hidden'), 5000);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            disabled={cancellingId === batch.id}
+                                                            className={`flex-1 ${['pending', 'confirmed'].includes(batch.status)
+                                                                ? 'text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30'
+                                                                : 'text-muted-foreground border-muted opacity-60'
+                                                                }`}
+                                                        >
+                                                            {cancellingId === batch.id ? (
+                                                                <><RefreshCw className="h-4 w-4 animate-spin mr-2" /> Cancelling...</>
+                                                            ) : (
+                                                                <><XCircle className="h-4 w-4 mr-2" /> Cancel Order</>
+                                                            )}
+                                                        </Button>
+
+                                                        {/* Info Icon - Shows on tap when cancel not available */}
+                                                        {!['pending', 'confirmed'].includes(batch.status) && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    const infoBox = document.getElementById(`cancel-info-${batch.id}`);
+                                                                    if (infoBox) {
+                                                                        infoBox.classList.toggle('hidden');
+                                                                    }
+                                                                }}
+                                                                className="px-3 border-muted-foreground/30 text-muted-foreground hover:bg-muted"
+                                                            >
+                                                                <Info className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Info message - Hidden by default, shows on tap */}
+                                                    {!['pending', 'confirmed'].includes(batch.status) && (
+                                                        <div
+                                                            id={`cancel-info-${batch.id}`}
+                                                            className="hidden flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-3 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in slide-in-from-top-2 duration-300"
+                                                        >
+                                                            <Info className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                                                            <p>
+                                                                <strong className="font-semibold block mb-1">This order is currently being prepared 🍳</strong>
+                                                                To avoid food wastage, cancellation is no longer available at this stage.
+                                                                <span className="block mt-1.5">If you need any assistance, please reach out to the restaurant—they can help you directly.</span>
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -558,17 +695,6 @@ function DineInTrackingContent() {
                         </motion.div>
                     )}
 
-                    {/* Add More Items Button */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="mt-6"
-                    >
-                        <Button onClick={handleAddMoreItems} variant="outline" className="w-full h-12">
-                            <PlusCircle className="mr-2 h-5 w-5" /> Add More Items
-                        </Button>
-                    </motion.div>
 
                     {/* I'm Done Button - Only show when served */}
                     {isServed && (

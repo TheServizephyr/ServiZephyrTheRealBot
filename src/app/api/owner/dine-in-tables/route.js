@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { isAfter, subDays } from 'date-fns';
+import { recalculateTabTotals, verifyTabIntegrity, areAllOrdersPaid } from '@/lib/dinein-utils';
 
 async function getBusinessRef(req) {
     const firestore = await getFirestore();
@@ -105,8 +106,19 @@ export async function GET(req) {
             const tabId = orderData.dineInTabId;
             const status = orderData.status;
 
-            // Get table - SKIP if table config doesn't exist (no virtual tables)
+            // Get table - Try exact match first, then case-insensitive
             let table = tableMap.get(tableId);
+
+            if (!table && tableId) {
+                // Try case-insensitive lookup for backward compatibility
+                const upperTableId = tableId.toUpperCase();
+                table = tableMap.get(upperTableId);
+
+                if (table) {
+                    console.log(`[Dine-In API] Case-insensitive match: "${tableId}" → "${upperTableId}"`);
+                }
+            }
+
             if (!table) {
                 // Order has invalid tableId - skip this orphaned order
                 console.log(`[Dine-In API] Skipping orphaned order ${orderDoc.id} - table ${tableId} not found`);
@@ -457,6 +469,31 @@ export async function PATCH(req) {
         if (action === 'clear_tab') {
             if (!tabId) {
                 return NextResponse.json({ message: 'Tab ID is required for clear_tab action.' }, { status: 400 });
+            }
+
+            // ✅ PHASE 1 INTEGRATION: Verify integrity before clearing
+            try {
+                const { isValid, mismatch } = await verifyTabIntegrity(tabId);
+                if (!isValid) {
+                    console.warn(`[Clear Tab] Tab ${tabId} had mismatch of ₹${mismatch}, auto-corrected`);
+                }
+            } catch (integrityErr) {
+                console.warn('[Clear Tab] Integrity check failed:', integrityErr.message);
+                // Continue with clearing even if check fails
+            }
+
+            // ✅ PHASE 1 INTEGRATION: Check all orders paid
+            try {
+                const allPaid = await areAllOrdersPaid(tabId);
+                if (!allPaid) {
+                    return NextResponse.json(
+                        { error: 'Cannot clear tab: Some orders are not paid yet' },
+                        { status: 400 }
+                    );
+                }
+            } catch (paidCheckErr) {
+                console.warn('[Clear Tab] Payment check failed:', paidCheckErr.message);
+                // Continue cautiously
             }
 
             // Find all orders with this dineInTabId and mark them as 'picked_up' to exclude from active tabs

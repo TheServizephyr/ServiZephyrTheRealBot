@@ -523,7 +523,36 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                             <motion.div key="new_tab">
                                 <DialogHeader className="p-6 pb-4">
                                     <DialogTitle>Start a New Tab</DialogTitle>
-                                    <DialogDescription>Welcome to Table {tableStatus?.tableId}! (Capacity: {tableStatus?.max_capacity}). Let's get your tab started.</DialogDescription>
+                                    <DialogDescription asChild>
+                                        <div className="space-y-3">
+                                            <div className="text-base">
+                                                Welcome to Table {tableStatus?.tableId}! (Capacity: {tableStatus?.max_capacity})
+                                            </div>
+
+                                            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                                                <Users className="h-5 w-5 text-muted-foreground" />
+                                                <div className="flex-1">
+                                                    <div className="text-sm font-medium">Current Occupancy</div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {tableStatus?.current_pax || 0} / {tableStatus?.max_capacity} seats occupied
+                                                        {tableStatus?.current_pax >= tableStatus?.max_capacity && (
+                                                            <span className="ml-2 text-destructive font-semibold">Table Full!</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col text-xs">
+                                                    <span className="font-semibold text-amber-600">{tableStatus?.current_pax || 0} Occupied</span>
+                                                    <span className="font-semibold text-green-600">{(tableStatus?.max_capacity || 0) - (tableStatus?.current_pax || 0)} Available</span>
+                                                </div>
+                                            </div>
+
+                                            {(tableStatus?.max_capacity || 0) - (tableStatus?.current_pax || 0) <= 0 && (
+                                                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium">
+                                                    ⚠️ Table is at full capacity!
+                                                </div>
+                                            )}
+                                        </div>
+                                    </DialogDescription>
                                 </DialogHeader>
                                 <div className="px-6 pb-6 space-y-4">
                                     <div>

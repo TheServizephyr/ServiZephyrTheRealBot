@@ -1,80 +1,184 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { auth, googleProvider } from "@/lib/firebase";
-import { signInWithPopup, signInWithRedirect } from "firebase/auth";
+import { signInWithPopup, signInWithRedirect, getRedirectResult } from "firebase/auth";
 
 export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [msg, setMsg] = useState(""); // Message to show user
     const router = useRouter();
     const searchParams = useSearchParams();
     const redirectTo = searchParams.get("redirect") || "/";
+    const hasProcessedRedirect = useRef(false); // Prevent React Strict Mode double call
+
+    // Handle redirect result when user returns from Google
+    useEffect(() => {
+        // CRITICAL: Prevent double execution in React Strict Mode (dev)
+        if (hasProcessedRedirect.current) {
+            console.log("[Login] Already processed, skipping duplicate call");
+            return;
+        }
+
+        const handleRedirectResult = async () => {
+            try {
+                console.log("[Login] Checking for redirect result...");
+                const result = await getRedirectResult(auth);
+
+                if (result && result.user) {
+                    console.log("[Login] Redirect result found:", result.user.email);
+                    hasProcessedRedirect.current = true; // Mark as processed
+                    setLoading(true);
+                    setMsg("Verifying user details..."); // ✅ THIS MESSAGE!
+                    sessionStorage.removeItem('isLoggingIn'); // Cleanup
+                    await handleAuthSuccess(result.user);
+                } else {
+                    console.log("[Login] No redirect result, checking fallback...");
+
+                    // Only process if user JUST came back from Google (isLoggingIn flag exists)
+                    const loginFlag = sessionStorage.getItem('isLoggingIn');
+
+                    if (auth.currentUser && loginFlag) {
+                        console.log("[Login] Fallback - User authenticated:", auth.currentUser.email);
+                        hasProcessedRedirect.current = true;
+                        setLoading(true);
+                        setMsg("Verifying user details...");
+                        sessionStorage.removeItem('isLoggingIn');
+                        await handleAuthSuccess(auth.currentUser);
+                    } else {
+                        console.log("[Login] No processing needed");
+                    }
+                }
+            } catch (err) {
+                console.error("[Login] Redirect error:", err);
+                setError(err.message || "Login failed. Please try again.");
+                setLoading(false);
+            }
+        };
+        handleRedirectResult();
+    }, []);
 
     const handleGoogleLogin = async () => {
         setLoading(true);
         setError("");
 
         try {
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            // Use popup for localhost (redirect doesn't work well on localhost)
+            // Use redirect for production (better for mobile)
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-            if (isMobile) {
-                // Mobile: Use redirect
-                await signInWithRedirect(auth, googleProvider);
-            } else {
-                // Desktop: Use popup
+            if (isLocalhost) {
+                console.log("[Login] Localhost detected - using popup...");
                 const result = await signInWithPopup(auth, googleProvider);
+                console.log("[Login] Popup successful, processing...");
+                setLoading(true);
+                setMsg("Verifying user details...");
                 await handleAuthSuccess(result.user);
+            } else {
+                console.log("[Login] Production - using redirect...");
+                sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+                await signInWithRedirect(auth, googleProvider);
             }
         } catch (err) {
             console.error("Login error:", err);
             setError(err.message || "Login failed. Please try again.");
             setLoading(false);
+            sessionStorage.removeItem('isLoggingIn');
         }
     };
 
     const handleAuthSuccess = async (user) => {
+        console.log("[Login] handleAuthSuccess called with user:", user.email);
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch("/api/auth/check-role", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ idToken }),
-            });
+            console.log("[Login] Got ID token, calling check-role API...");
 
-            const data = await res.json();
+            let res, data;
+            try {
+                res = await fetch("/api/auth/check-role", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${idToken}`
+                    },
+                });
+                console.log("[Login] Fetch completed, status:", res.status);
+
+                data = await res.json();
+                console.log("[Login] API Response:", { status: res.status, data });
+            } catch (fetchError) {
+                console.error("[Login] Fetch error:", fetchError);
+                throw new Error(`API call failed: ${fetchError.message}`);
+            }
 
             if (res.status === 404) {
                 // New user - redirect to role selection
+                console.log("[Login] New user detected, redirecting to select-role");
                 return router.push("/select-role");
+            }
+
+            // PRIORITY 1: Check if API returned specific redirectTo (for employees, etc.)
+            if (data.redirectTo) {
+                console.log("[Login] API returned redirectTo:", data.redirectTo);
+                sessionStorage.setItem('justLoggedIn', JSON.stringify({ timestamp: Date.now() }));
+                window.location.href = data.redirectTo;
+                return;
             }
 
             if (data.role) {
                 const { role, businessType } = data;
+                console.log("[Login] Role found:", role, "Business Type:", businessType);
 
-                // Redirect based on role
-                if (role === "admin") {
-                    return router.push(redirectTo || "/admin-dashboard");
-                } else if (role === "owner") {
-                    const dashboardPath = businessType === "street-vendor"
-                        ? "/street-vendor-dashboard"
-                        : "/owner-dashboard";
-                    return router.push(redirectTo || dashboardPath);
-                } else if (role === "customer") {
-                    return router.push(redirectTo || "/");
+                // Show success message before redirect
+                const dashboardName =
+                    role === "admin" ? "admin dashboard"
+                        : (role === "owner" || role === "restaurant-owner" || role === "shop-owner") ? "owner dashboard"
+                            : role === "street-vendor" ? "street-vendor dashboard"
+                                : role === "rider" || role === "delivery-boy" ? "rider dashboard"
+                                    : role === "employee" ? "employee dashboard"
+                                        : "customer dashboard";
+
+                setMsg(`✅ Login successful! Redirecting to ${dashboardName}...`);
+
+                // Redirect based on role - MATCH RedirectHandler logic exactly
+                if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
+                    console.log("[Login] Redirecting to owner dashboard");
+                    sessionStorage.setItem('justLoggedIn', JSON.stringify({ timestamp: Date.now() }));
+                    window.location.href = redirectTo || "/owner-dashboard";
+                    return;
+                } else if (role === "admin") {
+                    console.log("[Login] Redirecting to admin dashboard");
+                    window.location.href = redirectTo || "/admin-dashboard";
+                    return;
+                } else if (role === "rider" || role === "delivery-boy") {
+                    console.log("[Login] Redirecting to rider dashboard");
+                    window.location.href = redirectTo || "/rider-dashboard";
+                    return;
+                } else if (role === "street-vendor") {
+                    console.log("[Login] Redirecting to street-vendor dashboard");
+                    sessionStorage.setItem('justLoggedIn', JSON.stringify({ timestamp: Date.now() }));
+                    window.location.href = redirectTo || "/street-vendor-dashboard";
+                    return;
                 } else if (role === "employee") {
-                    return router.push(redirectTo || "/employee-dashboard");
-                } else if (role === "delivery-boy") {
-                    return router.push(redirectTo || "/rider-dashboard");
+                    console.log("[Login] Redirecting to employee dashboard");
+                    window.location.href = redirectTo || "/employee-dashboard";
+                    return;
+                } else {
+                    // customer or unknown
+                    console.log("[Login] Redirecting to customer dashboard");
+                    window.location.href = redirectTo || "/customer-dashboard";
+                    return;
                 }
             }
 
             // Fallback
+            console.log("[Login] No role matched or found, redirecting to home");
             router.push(redirectTo || "/");
         } catch (err) {
-            console.error("Auth error:", err);
+            console.error("[Login] Auth error:", err);
             setError("Authentication failed. Please try again.");
             setLoading(false);
         }
@@ -158,6 +262,20 @@ export default function LoginPage() {
                             </>
                         )}
                     </button>
+
+                    {/* Loading/Success Message - Like AuthModal! */}
+                    {msg && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-purple-700 dark:text-purple-300 text-sm text-center flex items-center justify-center gap-2"
+                        >
+                            {loading && (
+                                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                            )}
+                            {msg}
+                        </motion.div>
+                    )}
 
                     {/* Divider */}
                     <div className="relative my-6">

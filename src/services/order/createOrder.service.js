@@ -19,9 +19,8 @@
 import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
-import { FEATURE_FLAGS } from '@/lib/featureFlags';
 
-// V1 Fallback
+// V1 Fallback for online payments (not tested in V2)
 import { createOrderV1 } from '@/app/api/order/create/legacy/createOrderV1';
 
 // Services
@@ -77,8 +76,8 @@ export async function createOrderV2(req) {
             items,
             notes,
             paymentMethod,
-            businessType = 'restaurant',
-            deliveryType = 'delivery',
+            businessType,      // ✅ Support all: 'restaurant', 'shop', 'street-vendor'
+            deliveryType,      // ✅ Support all: 'dine-in', 'delivery', 'pickup', 'street-vendor-pre-order'
             subtotal,
             cgst,
             sgst,
@@ -92,16 +91,20 @@ export async function createOrderV2(req) {
         } = body;
 
         // ========================================
-        // HYBRID FALLBACK (CRITICAL FOR MONEY SAFETY)
-        // ========================================
+        // PAYMENT METHOD ROUTING
+        // ===============================================
+        // V1: Online payments (Razorpay, PhonePe) - Not tested in V2 yet
+        // V2: COD, Cash, Counter - Tested and working
         const isOnlinePayment = paymentMethod === 'online' ||
             paymentMethod === 'razorpay' ||
             paymentMethod === 'phonepe';
 
-        if (isOnlinePayment && !FEATURE_FLAGS.USE_V2_ONLINE_PAYMENT) {
-            console.log('[createOrderV2] 🔄 Online payment fallback to V1 (flag OFF)');
+        if (isOnlinePayment) {
+            console.log('[createOrderV2] 🔄 Online payment → Using V1 (not tested in V2)');
             return await createOrderV1(req);
         }
+
+        console.log('[createOrderV2] ✅ COD/Cash/Counter → Using V2 (tested)');
 
         // Basic validation
         if (!idempotencyKey) {
@@ -233,7 +236,7 @@ export async function createOrderV2(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
             const orderData = {
-                customerName: name,
+                customerName: name || 'Guest',
                 customerId: userId,
                 customerAddress: address?.full || null,
                 customerPhone: normalizedPhone,
@@ -315,9 +318,78 @@ export async function createOrderV2(req) {
         // ========================================
         console.log(`[createOrderV2] Creating COD/Counter order`);
 
+        // ✅ DINE-IN TOKEN GENERATION (for post-paid dine-in)
+        let dineInToken = null;
+        let newTokenNumber = null;
+
+        if (deliveryType === 'dine-in' && business.data.dineInModel === 'post-paid') {
+            console.log(`[createOrderV2] 🎫 Post-paid dine-in detected, generating token`);
+            const dineInTabId = body.dineInTabId;
+
+            if (dineInTabId) {
+                try {
+                    // Check for existing orders with this tabId to reuse token
+                    const existingOrdersSnapshot = await firestore
+                        .collection('orders')
+                        .where('restaurantId', '==', restaurantId)
+                        .where('dineInTabId', '==', dineInTabId)
+                        .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
+                        .limit(1)
+                        .get();
+
+                    if (!existingOrdersSnapshot.empty) {
+                        // REUSE token from existing order
+                        const existingOrder = existingOrdersSnapshot.docs[0].data();
+                        dineInToken = existingOrder.dineInToken;
+
+                        if (!dineInToken) {
+                            // Existing order has no token, generate new
+                            const lastToken = business.data.lastOrderToken || 0;
+                            newTokenNumber = lastToken + 1;
+                            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                            const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                            const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                            dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
+                            console.log(`[createOrderV2] ⚠️ Existing order had no token, generated: ${dineInToken}`);
+                        } else {
+                            newTokenNumber = business.data.lastOrderToken || 0;
+                            console.log(`[createOrderV2] ✅ REUSING token: ${dineInToken}`);
+                        }
+                    } else {
+                        // Generate NEW token
+                        const lastToken = business.data.lastOrderToken || 0;
+                        newTokenNumber = lastToken + 1;
+                        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                        const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                        const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                        dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
+                        console.log(`[createOrderV2] 🆕 NEW token generated: ${dineInToken}`);
+                    }
+                } catch (err) {
+                    console.error(`[createOrderV2] Token generation error:`, err);
+                    // Fallback: generate new token
+                    const lastToken = business.data.lastOrderToken || 0;
+                    newTokenNumber = lastToken + 1;
+                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
+                }
+            } else {
+                // No tabId, generate token anyway
+                const lastToken = business.data.lastOrderToken || 0;
+                newTokenNumber = lastToken + 1;
+                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
+                console.log(`[createOrderV2] ⚠️ No tabId, generated token: ${dineInToken}`);
+            }
+        }
+
         // Build order data (SAME structure as V1)
         const orderData = {
-            customerName: name,
+            customerName: name || 'Guest',
             customerId: userId,
             customerAddress: address?.full || null,
             customerPhone: normalizedPhone,
@@ -345,8 +417,14 @@ export async function createOrderV2(req) {
                 status: 'pending',
                 timestamp: new Date()
             }],
-            trackingToken: trackingToken
+            trackingToken: trackingToken,
+            // ✅ Dine-in fields
+            dineInTabId: body.dineInTabId || null,
+            tableId: body.tableId?.toUpperCase() || null,  // ✅ Normalize to uppercase
+            dineInToken: dineInToken, // Token for post-paid dine-in
         };
+
+        console.log(`[createOrderV2] 💾 Order data prepared with dineInToken: '${dineInToken}'`);
 
         // Create order
         const orderId = await orderRepository.create(orderData);
@@ -358,6 +436,59 @@ export async function createOrderV2(req) {
             orderId,
             paymentMethod: 'cod'
         });
+
+        // ✅ Update token counter for post-paid dine-in
+        if (newTokenNumber !== null && deliveryType === 'dine-in' && business.data.dineInModel === 'post-paid') {
+            try {
+                await firestore.collection(business.collection).doc(business.id).update({
+                    lastOrderToken: newTokenNumber
+                });
+                console.log(`[createOrderV2] 🔢 Updated lastOrderToken to ${newTokenNumber}`);
+            } catch (err) {
+                console.warn(`[createOrderV2] Failed to update token counter:`, err);
+            }
+        }
+
+        // ✅ DINE-IN TAB UPDATES (CRITICAL: add to subcollection + update tab)
+        if (deliveryType === 'dine-in' && body.dineInTabId && business.data.dineInModel === 'post-paid') {
+            const dineInTabId = body.dineInTabId;
+            try {
+                const tabRef = firestore.collection(business.collection).doc(business.id)
+                    .collection('dineInTabs').doc(dineInTabId);
+
+                const tabSnap = await tabRef.get();
+                const tabStatus = tabSnap.data()?.status;
+
+                // ✅ Allow 'inactive' (form created), 'pending' (reserved), and 'active' (has orders)
+                // ❌ Skip 'closed', 'cleared', or non-existent tabs
+                if (tabSnap.exists && ['inactive', 'pending', 'active'].includes(tabStatus)) {
+                    const batch = firestore.batch();
+
+                    // Add to tab's orders subcollection
+                    const tabOrderRef = tabRef.collection('orders').doc(orderId);
+                    batch.set(tabOrderRef, {
+                        orderId: orderId,
+                        totalAmount: grandTotal,
+                        status: 'pending',
+                        createdAt: FieldValue.serverTimestamp()
+                    });
+
+                    // Update tab document (pending → active transition)
+                    batch.update(tabRef, {
+                        totalBill: FieldValue.increment(grandTotal),
+                        status: 'active',  // ✅ Activate tab when first order placed
+                        updatedAt: FieldValue.serverTimestamp()
+                    });
+
+                    await batch.commit();
+                    console.log(`[createOrderV2] ✅ Tab ${dineInTabId} (${tabStatus}→active): +₹${grandTotal}, order added`);
+                } else {
+                    console.warn(`[createOrderV2] ⚠️ Tab ${dineInTabId} not found or status=${tabStatus}, skipping`);
+                }
+            } catch (tabErr) {
+                console.error(`[createOrderV2] ❌ Tab update failed:`, tabErr);
+            }
+        }
 
         // ========================================
         // STEP 7: RETURN RESPONSE

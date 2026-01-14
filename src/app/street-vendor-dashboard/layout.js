@@ -159,7 +159,7 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     if (isUserLoading) return;
 
-    // Give auth time to settle (race condition fix)
+    // Simple check - no redirect, just mark as ready
     const timer = setTimeout(() => {
       setAuthChecked(true);
     }, 500);
@@ -170,11 +170,8 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     if (!authChecked) return;
 
-    if (!user) {
-      console.log('[Street Vendor Layout] No user after auth check, redirecting');
-      router.push('/');
-      return;
-    }
+    // REMOVED AUTH REDIRECT - Let RedirectHandler handle all auth
+    // Dashboard should always load if user reaches it
 
     // Log impersonation when detected
     if (user && impersonatedOwnerId) {

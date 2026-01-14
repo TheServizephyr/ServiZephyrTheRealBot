@@ -427,8 +427,16 @@ const CartPageInternal = () => {
     const handlePostPaidCheckout = async () => {
         console.log("[Cart Page] Initiating post-paid checkout.");
 
+        // ✅ Haptic feedback on click
+        if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+            navigator.vibrate(50); // Quick tap feedback
+        }
+
         // Prevent double-click
-        if (orderState !== ORDER_STATE.IDLE) return;
+        if (orderState !== ORDER_STATE.IDLE) {
+            console.log('[Cart Page] ⚠️ Order already in progress, ignoring click');
+            return;
+        }
 
         setOrderState(ORDER_STATE.CREATING_ORDER);
         setOrderError(null);
@@ -462,6 +470,11 @@ const CartPageInternal = () => {
                 diningPreference: diningPreference,
                 packagingCharge: (diningPreference === 'takeaway' && packagingConfig.enabled) ? packagingConfig.amount : 0,
                 dineInTabId: cartData?.dineInTabId || null, // Use cartData.dineInTabId
+                paymentMethod: 'post-paid', // ✅ CRITICAL FIX: Required for post-paid orders
+                paymentStatus: 'pending', // Will be settled at counter later
+                // ✅ Customer details for post-paid
+                customerName: cartData?.tab_name || 'Guest',
+                customerPhone: cartData?.phone || null,
             };
 
             console.log("[Cart Page] Sending post-paid order to /api/order/create:", orderData);
@@ -516,6 +529,16 @@ const CartPageInternal = () => {
             } else if (err.message) {
                 const isUserFriendly = !err.message.match(/[A-Z_]{3,}/) && err.message.length < 100;
                 friendlyError = isUserFriendly ? err.message : friendlyError;
+            }
+            setInfoDialog({
+                isOpen: true,
+                title: "Error",
+                message: friendlyError
+            });
+
+            // ✅ Haptic feedback on error
+            if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+                navigator.vibrate([100, 50, 100]); // Error pattern
             }
 
             setOrderError(friendlyError);

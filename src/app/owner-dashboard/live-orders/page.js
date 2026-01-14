@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth, db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDocs, limit } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
 import { formatSafeDate, formatSafeTime, formatSafeRelativeTime, formatSafeDateShort, safeToDate } from '@/lib/safeDateFormat';
@@ -652,7 +652,7 @@ export default function LiveOrdersPage() {
             return;
         }
 
-        // For impersonation or employee access, still use API polling (can't use Firestore directly)
+        // For impersonation or employee access, use API polling (can't use Firestore directly)
         if (impersonatedOwnerId || employeeOfOwnerId) {
             console.log('[LiveOrders] Using API polling for impersonation/employee access');
             fetchInitialData();
@@ -660,7 +660,7 @@ export default function LiveOrdersPage() {
             return () => clearInterval(interval);
         }
 
-        // For owner's own dashboard - use REAL-TIME Firestore listener
+        // ✅ For owner's own dashboard - use REAL-TIME Firestore listener
         setLoading(true);
 
         // Fetch restaurant ID from user's document
@@ -695,42 +695,80 @@ export default function LiveOrdersPage() {
 
         fetchStaticData();
 
-        // Real-time listener for orders
-        // Query for active orders (pending, confirmed, preparing, dispatched, ready_for_pickup)
-        const ordersQuery = query(
-            collection(db, 'orders'),
-            where('ownerId', '==', ownerId),
-            where('status', 'in', ['pending', 'confirmed', 'preparing', 'dispatched', 'ready_for_pickup']),
-            orderBy('orderDate', 'desc')
-        );
+        // ✅ CRITICAL FIX: Get restaurantId first (orders use restaurantId, not ownerId!)
+        const setupListener = async () => {
+            try {
+                // Fetch owner's restaurant document to get restaurantId
+                const restaurantsQuery = query(
+                    collection(db, 'restaurants'),
+                    where('ownerId', '==', ownerId),
+                    limit(1)
+                );
 
-        const unsubscribe = onSnapshot(
-            ordersQuery,
-            (querySnapshot) => {
-                const fetchedOrders = [];
-                querySnapshot.forEach((doc) => {
-                    fetchedOrders.push({ id: doc.id, ...doc.data() });
-                });
+                const restaurantSnapshot = await getDocs(restaurantsQuery);
 
-                console.log(`[LiveOrders] Real-time update: ${fetchedOrders.length} active orders`);
-                setOrders(fetchedOrders);
+                if (restaurantSnapshot.empty) {
+                    console.error('[LiveOrders] No restaurant found for owner:', ownerId);
+                    setLoading(false);
+                    return;
+                }
+
+                const restaurantId = restaurantSnapshot.docs[0].id;
+                console.log('[LiveOrders] Found restaurantId:', restaurantId);
+
+                // Real-time listener for ACTIVE orders only (performance optimization)
+                console.log('[LiveOrders] Setting up query with restaurantId:', restaurantId);
+                const ordersQuery = query(
+                    collection(db, 'orders'),
+                    where('restaurantId', '==', restaurantId),
+                    where('status', 'in', ['pending', 'confirmed', 'preparing', 'dispatched', 'ready_for_pickup']), // ✅ Active orders only
+                    orderBy('orderDate', 'desc')
+                );
+
+                const unsubscribe = onSnapshot(
+                    ordersQuery,
+                    (querySnapshot) => {
+                        const fetchedOrders = [];
+                        querySnapshot.forEach((doc) => {
+                            const orderData = doc.data();
+                            console.log('[LiveOrders] Order found:', { id: doc.id, restaurantId: orderData.restaurantId, status: orderData.status });
+                            fetchedOrders.push({ id: doc.id, ...orderData });
+                        });
+
+                        console.log(`[LiveOrders] Real-time update: ${fetchedOrders.length} active orders`);
+                        setOrders(fetchedOrders);
+                        setLoading(false);
+                    },
+                    (error) => {
+                        console.error('[LiveOrders] Firestore listener error:', error);
+                        setInfoDialog({
+                            isOpen: true,
+                            title: 'Connection Error',
+                            message: 'Could not connect to live orders. Please refresh the page.'
+                        });
+                        setLoading(false);
+                    }
+                );
+
+                // Return cleanup function
+                return unsubscribe;
+            } catch (error) {
+                console.error('[LiveOrders] Error setting up listener:', error);
                 setLoading(false);
-            },
-            (error) => {
-                console.error('[LiveOrders] Firestore listener error:', error);
-                setInfoDialog({
-                    isOpen: true,
-                    title: 'Connection Error',
-                    message: 'Could not connect to live orders. Please refresh the page.'
-                });
-                setLoading(false);
+                return () => { }; // No-op cleanup
             }
-        );
+        };
 
-        // Cleanup function - CRITICAL for preventing zombie listeners
+        // Call setup function and store cleanup
+        let cleanupFn = () => { };
+        setupListener().then(unsubscribe => {
+            if (unsubscribe) cleanupFn = unsubscribe;
+        });
+
+        // Cleanup function when component unmounts
         return () => {
             console.log('[LiveOrders] Cleaning up real-time listener');
-            unsubscribe();
+            cleanupFn();
         };
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
@@ -999,6 +1037,12 @@ export default function LiveOrdersPage() {
                             <span className="ml-2 hidden sm:inline">Custom Bill</span>
                         </Button>
                     </Link>
+                    <Link href="/owner-dashboard/order-history" passHref>
+                        <Button variant="outline" className="flex-shrink-0">
+                            <History size={16} />
+                            <span className="ml-2 hidden sm:inline">History</span>
+                        </Button>
+                    </Link>
                     <Button onClick={() => fetchInitialData(true)} variant="outline" className="flex-shrink-0">
                         <RefreshCw size={16} className={cn(loading && "animate-spin")} />
                         <span className="ml-2 hidden sm:inline">{loading ? 'Loading...' : 'Refresh'}</span>
@@ -1007,14 +1051,12 @@ export default function LiveOrdersPage() {
             </div>
 
             <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
-                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 md:grid-cols-7 h-auto p-1 bg-muted">
+                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 md:grid-cols-5 h-auto p-1 bg-muted">
                     <TabsTrigger value="All">All</TabsTrigger>
                     <TabsTrigger value="New">New</TabsTrigger>
                     <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
                     <TabsTrigger value="Preparing">Preparing</TabsTrigger>
                     <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>
-                    <TabsTrigger value="Delivered">Delivered</TabsTrigger>
-                    <TabsTrigger value="Rejected">Rejected</TabsTrigger>
                 </TabsList>
             </Tabs>
 

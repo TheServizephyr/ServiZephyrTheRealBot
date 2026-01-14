@@ -169,6 +169,21 @@ function OrderTrackingContent() {
         };
     }, [fetchData]);
 
+    // ✅ BROWSER BACK BUTTON INTERCEPTION
+    useEffect(() => {
+        const handlePopState = (event) => {
+            event.preventDefault();
+            const restaurantId = orderData?.order?.restaurantId;
+            if (restaurantId) {
+                console.log('[DeliveryTrack] Browser back intercepted → redirecting to order page');
+                router.replace(`/order/${restaurantId}`);
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [orderData, router]);
+
     useEffect(() => {
         // Payment Verification Logic
         const verifyPayment = async () => {

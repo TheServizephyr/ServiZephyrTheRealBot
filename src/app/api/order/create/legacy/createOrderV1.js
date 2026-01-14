@@ -1,11 +1,11 @@
 
-
 import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { recalculateTabTotals, validateTabToken } from '@/lib/dinein-utils';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
@@ -478,8 +478,9 @@ export async function createOrderV1(req) {
         });
 
         // --- Post-paid Dine-In ---
+        console.log(`[API /order/create] 🔍 Checking dine-in conditions: deliveryType='${deliveryType}', dineInModel='${businessData.dineInModel}'`);
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
-            console.log("[API /order/create] Handling post-paid dine-in order.");
+            console.log("[API /order/create] ✅ Handling post-paid dine-in order.");
             const newOrderRef = firestore.collection('orders').doc();
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
@@ -487,6 +488,8 @@ export async function createOrderV1(req) {
             let dineInToken = null;
             let newTokenNumber = null; // Define outside for batch.update
             let existingTabStatus = null;
+
+            console.log(`[API /order/create] 🎫 Token generation starting - dineInTabId: ${dineInTabId}`);
 
             if (dineInTabId) {
                 console.log(`[API /order/create] POST-PAID: Checking for existing token for tabId: ${dineInTabId}`);
@@ -506,15 +509,26 @@ export async function createOrderV1(req) {
                         // REUSE existing token
                         const existingOrder = existingOrdersSnapshot.docs[0].data();
                         dineInToken = existingOrder.dineInToken;
-                        newTokenNumber = businessData.lastOrderToken || 0; // Don't increment when reusing
+
+                        // ✅ FIX: If existing order has no token, generate new one
+                        if (!dineInToken) {
+                            const lastToken = businessData.lastOrderToken || 0;
+                            newTokenNumber = lastToken + 1;
+                            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                            const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                            const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                            dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
+                            console.log(`[API /order/create] POST-PAID ⚠️ Existing order had no token, generated NEW: ${dineInToken}`);
+                        } else {
+                            newTokenNumber = businessData.lastOrderToken || 0; // Don't increment when reusing
+                            console.log(`[API /order/create] POST-PAID ✅ REUSING token: ${dineInToken} from order ${existingOrdersSnapshot.docs[0].id}`);
+                        }
 
                         // Check if tab is already marked for payment
                         const tabDoc = await firestore.collection('restaurants').doc(restaurantId).collection('dineInTabs').doc(dineInTabId).get();
                         if (tabDoc.exists) {
                             existingTabStatus = tabDoc.data().paymentStatus;
                         }
-
-                        console.log(`[API /order/create] POST-PAID ✅ REUSING token: ${dineInToken} from order ${existingOrdersSnapshot.docs[0].id}. Tab Status: ${existingTabStatus}`);
                     } else {
                         // Generate NEW token with random characters for security
                         const lastToken = businessData.lastOrderToken || 0;
@@ -553,7 +567,7 @@ export async function createOrderV1(req) {
                 subtotal, cgst, sgst, totalAmount: grandTotal,
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
-                customerName: tab_name,
+                customerName: tab_name || 'Guest',
                 status: (dineInToken && existingTabStatus === 'pay_at_counter') ? 'pay_at_counter' : 'pending',
                 paymentStatus: (dineInToken && existingTabStatus === 'pay_at_counter') ? 'pay_at_counter' : 'pending',
                 paymentMethod: (dineInToken && existingTabStatus === 'pay_at_counter') ? 'counter' : null,
@@ -566,6 +580,8 @@ export async function createOrderV1(req) {
                 orderDate: FieldValue.serverTimestamp(),
                 trackingToken: trackingToken,
             });
+
+            console.log(`[API /order/create] 💾 Saving order with dineInToken: '${dineInToken}'`);
 
             // Update last token counter
             batch.update(businessRef, { lastOrderToken: newTokenNumber });
@@ -587,6 +603,17 @@ export async function createOrderV1(req) {
             }
 
             await batch.commit();
+
+            // ✅ PHASE 1 INTEGRATION: Recalculate tab totals after order
+            if (dineInTabId) {
+                try {
+                    await recalculateTabTotals(dineInTabId);
+                    console.log(`[Order Create] ✅ Tab ${dineInTabId} totals recalculated`);
+                } catch (recalcErr) {
+                    console.warn('[Order Create] Tab recalculation failed:', recalcErr.message);
+                    // Don't fail order creation if recalc fails
+                }
+            }
 
             console.log(`[API /order/create] Post-paid dine-in order created with ID: ${newOrderRef.id}, Token: ${dineInToken}`);
             return NextResponse.json({
@@ -643,7 +670,7 @@ export async function createOrderV1(req) {
                 const batch = firestore.batch();
 
                 batch.set(newOrderRef, {
-                    customerName: tab_name, customerId: `dine-in|${dineInTabId}`, customerAddress: `Table ${tableId}`,
+                    customerName: tab_name || 'Guest', customerId: `dine-in|${dineInTabId}`, customerAddress: `Table ${tableId}`,
                     restaurantId, businessType, deliveryType, tableId, dineInTabId, items,
                     subtotal, coupon, loyaltyDiscount, discount: coupon?.discount || 0, cgst, sgst,
                     totalAmount: grandTotal, status: 'pending', orderDate: FieldValue.serverTimestamp(),
@@ -865,7 +892,7 @@ export async function createOrderV1(req) {
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
 
             const finalOrderData = {
-                customerName: name,
+                customerName: name || 'Guest',
                 customerId: userId,
                 customerAddress: address?.full || null,
                 customerPhone: normalizedPhone,

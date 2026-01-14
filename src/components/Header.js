@@ -4,12 +4,10 @@
 import { motion } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
-import AuthModal from './AuthModal'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 const Header = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
@@ -27,7 +25,7 @@ const Header = () => {
 
   return (
     <>
-      <motion.header 
+      <motion.header
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ duration: 0.5 }}
@@ -62,15 +60,14 @@ const Header = () => {
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
           </nav>
-          <button 
-            onClick={() => setIsModalOpen(true)}
+          <Link
+            href="/login"
             className="btn-shine inline-flex h-10 items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             Get Started
-          </button>
+          </Link>
         </div>
       </motion.header>
-      <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </>
   )
 }

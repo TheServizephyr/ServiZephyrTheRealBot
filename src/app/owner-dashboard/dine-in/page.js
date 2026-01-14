@@ -595,9 +595,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                 e.stopPropagation();
                                                                                 onUpdateStatus(orderBatch.id, batchAction.next);
                                                                             }}
-                                                                            disabled={buttonLoading !== null}
+                                                                            disabled={buttonLoading === `status_${orderBatch.id}`}
                                                                         >
-                                                                            {ActionIcon && <ActionIcon size={12} className="mr-1" />}
+                                                                            {buttonLoading === `status_${orderBatch.id}` && ActionIcon && <ActionIcon size={12} className="mr-1" />}
                                                                             {batchAction.label}
                                                                         </Button>
                                                                     );
@@ -632,7 +632,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                     }
                                                                                 });
                                                                             }}
-                                                                            disabled={buttonLoading !== null}
+                                                                            disabled={buttonLoading === `status_${orderBatch.id}`}
                                                                             title="Undo"
                                                                         >
                                                                             <RotateCcw size={14} />
@@ -661,7 +661,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                                 }
                                                                             });
                                                                         }}
-                                                                        disabled={buttonLoading !== null}
+                                                                        disabled={buttonLoading === `status_${orderBatch.id}`}
                                                                     >
                                                                         <X size={11} className="mr-0.5" />
                                                                         Cancel
@@ -736,9 +736,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     // Confirm all pending orders at once
                                                                     pendingOrderIds.forEach(orderId => onConfirmOrder(orderId));
                                                                 }}
-                                                                disabled={buttonLoading !== null}
+                                                                disabled={buttonLoading !== null && pendingOrderIds.some(id => buttonLoading === `status_${id}`)}
                                                             >
-                                                                {buttonLoading ? (
+                                                                {(buttonLoading !== null && pendingOrderIds.some(id => buttonLoading === `status_${id}`)) ? (
                                                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                                                 ) : (
                                                                     <Check className="mr-2 h-4 w-4" />
@@ -1423,23 +1423,26 @@ const DineInPageContent = () => {
             return;
         }
 
-        // For impersonation or employee access, keep API polling (can't use Firestore directly)
-        if (impersonatedOwnerId || employeeOfOwnerId) {
-            console.log('[Dine-In] Using API polling for impersonation/employee access');
-            fetchData();
-            const interval = setInterval(() => fetchData(true), 10000); // Reduced to 10s (was 5s)
-            return () => clearInterval(interval);
-        }
+        // 🔧 PERMANENT FIX: Always use API polling for reliability
+        // Firestore listener was querying wrong collection causing tables to disappear
+        console.log('[Dine-In] Using API polling for reliable data loading');
+        fetchData();
+        const interval = setInterval(() => fetchData(true), 15000); // Refresh every 15s
+        return () => clearInterval(interval);
 
         // For owner's own dashboard - use REAL-TIME Firestore listener
+        if (!restaurantDetails?.id) {
+            console.log('[Dine-In] Waiting for restaurant ID...');
+            fetchData(); // Fallback to API
+            return;
+        }
         setLoading(true);
-        const ownerId = user.uid;
+        const restaurantId = restaurantDetails.id;
 
         // Note: This assumes dine_in_tables collection exists in Firestore
         // If API creates this data differently, might need backend updates
         const tablesQuery = query(
-            collection(db, 'dine_in_tables'),
-            where('ownerId', '==', ownerId)
+            collection(db, 'restaurants', restaurantDetails.id, 'tables')
         );
 
         const unsubscribe = onSnapshot(
@@ -1478,7 +1481,7 @@ const DineInPageContent = () => {
             console.log('[Dine-In] Cleaning up real-time listener');
             unsubscribe();
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId, fetchData]);
+    }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id]);
 
     const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({
@@ -1571,7 +1574,13 @@ const DineInPageContent = () => {
         });
 
         try {
-            await handleApiCall('PATCH', { action: 'clear_tab', tabId, tableId, paxCount }, '/api/owner/dine-in-tables');
+            // ✅ Using new dine-in cleanup endpoint
+            const cleanupEndpoint = '/api/dine-in/clean-table';
+            const payload = { tabId };
+
+            console.log(`[Owner Dashboard] Cleaning tab with endpoint: ${cleanupEndpoint}`);
+
+            await handleApiCall('PATCH', payload, cleanupEndpoint);
             setInfoDialog({ isOpen: true, title: "Success", message: `Tab on Table ${tableId} has been cleared.` });
         } catch (error) {
             await fetchData(true);

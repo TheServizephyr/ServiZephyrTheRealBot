@@ -59,15 +59,39 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
     let serverSubtotal = 0;
     const validatedItems = [];
 
-    // Fetch all categories once (optimization)
-    const categoriesSnapshot = await menuRef.get();
+    // ✅ FIX: Fetch individual item documents and group by categoryId
+    // Database structure: menu/{itemId} with categoryId field
+    // NOT: menu/{categoryId}/items array
+    const itemsSnapshot = await menuRef.get();
     const categoriesMap = new Map();
 
-    categoriesSnapshot.forEach(doc => {
-        categoriesMap.set(doc.id, doc.data());
+    itemsSnapshot.forEach(doc => {
+        const itemData = doc.data();
+        const categoryId = itemData.categoryId;
+
+        if (!categoryId) {
+            console.warn(`[OrderPricing] Item ${doc.id} has no categoryId, skipping`);
+            return;
+        }
+
+        // Group items by categoryId
+        if (!categoriesMap.has(categoryId)) {
+            categoriesMap.set(categoryId, {
+                id: categoryId,
+                items: []
+            });
+        }
+
+        categoriesMap.get(categoryId).items.push({
+            ...itemData,
+            id: doc.id
+        });
     });
 
-    console.log(`[OrderPricing] Found ${categoriesMap.size} menu categories`);
+    console.log(`[OrderPricing] Grouped ${itemsSnapshot.size} items into ${categoriesMap.size} categories`);
+    categoriesMap.forEach((cat, id) => {
+        console.log(`  - ${id}: ${cat.items.length} items`);
+    });
 
     for (const item of items) {
         try {

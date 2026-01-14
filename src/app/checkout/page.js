@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -522,15 +521,21 @@ const CheckoutPageInternal = () => {
             // DINE-IN POST-PAID SETTLEMENT: Use settlement API for existing orders
             if (tabId && deliveryType === 'dine-in') {
                 console.log(`[Checkout Page] POST-PAID SETTLEMENT for tabId: ${tabId}`);
+
+                // ✅ Using new dine-in settlement endpoint
+                const settlementEndpoint = '/api/dine-in/initiate-payment';
+
                 const settlementData = {
-                    idempotencyKey,  // ← Add idempotency key
+                    idempotencyKey,
                     tabId,
                     restaurantId,
                     paymentMethod: effectivePaymentMethod,
                     grandTotal
                 };
 
-                const res = await fetch('/api/order/settle-payment', {
+                console.log(`[Checkout] Settlement endpoint: ${settlementEndpoint}`);
+
+                const res = await fetch(settlementEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(settlementData)

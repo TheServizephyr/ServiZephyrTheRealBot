@@ -164,7 +164,7 @@ function OwnerDashboardContent({ children }) {
       return;
     }
 
-    // Give auth a moment to settle (race condition fix for login redirect)
+    // Simple check - just mark as ready, no redirect
     const timer = setTimeout(() => {
       setAuthChecked(true);
     }, 500);
@@ -174,17 +174,15 @@ function OwnerDashboardContent({ children }) {
 
   useEffect(() => {
     console.log('[Layout] 🔄 useEffect triggered', { authChecked, hasUser: !!user, isUserLoading });
+
     // Only redirect after auth has been properly checked
     if (!authChecked) {
       console.log('[Layout] ⏸️ Auth not checked yet, waiting...');
       return;
     }
 
-    if (!user) {
-      console.log('[Layout] No user after auth check, redirecting to home');
-      router.push('/');
-      return;
-    }
+    // REMOVED AUTH REDIRECT - Let RedirectHandler on main page handle all auth
+    // Dashboard should always load if user reaches it
 
     // Log impersonation when detected
     if (user && impersonatedOwnerId) {
