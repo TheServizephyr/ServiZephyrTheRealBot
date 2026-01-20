@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import ThemeColorUpdater from '@/components/ThemeColorUpdater';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
 
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), {
@@ -349,7 +350,10 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             } else if (tableStatus?.state === 'full') {
                 setActiveModal('full');
             } else {
-                setActiveModal('main');
+                // ✅ FIX: Default to 'new_tab' form instead of 'main' 
+                // This ensures users MUST create a tab even if tableStatus is still loading
+                // Prevents orders from being placed as "Guest" without dineInTabId
+                setActiveModal('new_tab');
             }
         }
     }, [isOpen, tableStatus]);
@@ -397,9 +401,12 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             setInfoDialog({ isOpen: true, title: "Input Error", message: "Please enter a name for your tab." });
             return;
         }
-        const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
+        // Use availableSeats from backend (includes uncleaned pax subtraction)
+        const availableCapacity = tableStatus.availableSeats !== undefined
+            ? tableStatus.availableSeats
+            : tableStatus.max_capacity - (tableStatus.current_pax || 0);
         if (pax > availableCapacity) {
-            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
+            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s). ${tableStatus.hasUncleanedOrders ? 'Some seats are being cleaned.' : ''}` });
             return;
         }
 
@@ -542,11 +549,28 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                                 </div>
                                                 <div className="flex flex-col text-xs">
                                                     <span className="font-semibold text-amber-600">{tableStatus?.current_pax || 0} Occupied</span>
-                                                    <span className="font-semibold text-green-600">{(tableStatus?.max_capacity || 0) - (tableStatus?.current_pax || 0)} Available</span>
+                                                    <span className="font-semibold text-green-600">
+                                                        {tableStatus?.availableSeats !== undefined
+                                                            ? tableStatus.availableSeats
+                                                            : (tableStatus?.max_capacity || 0) - (tableStatus?.current_pax || 0)
+                                                        } Available
+                                                    </span>
                                                 </div>
                                             </div>
 
-                                            {(tableStatus?.max_capacity || 0) - (tableStatus?.current_pax || 0) <= 0 && (
+                                            {/* NEW: Show cleaning warning if uncleaned orders exist */}
+                                            {tableStatus?.hasUncleanedOrders && tableStatus?.uncleanedOrdersCount > 0 && (
+                                                <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 px-3 py-2 rounded-md text-sm">
+                                                    <div className="flex items-center gap-2">
+                                                        <Wind className="h-4 w-4" />
+                                                        <span className="font-medium">
+                                                            {tableStatus.uncleanedOrdersCount} seat{tableStatus.uncleanedOrdersCount > 1 ? 's' : ''} being cleaned
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {(tableStatus?.availableSeats !== undefined ? tableStatus.availableSeats : (tableStatus?.max_capacity || 0) - (tableStatus?.current_pax || 0)) <= 0 && (
                                                 <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium">
                                                     ⚠️ Table is at full capacity!
                                                 </div>
@@ -726,24 +750,47 @@ const OrderPageInternal = () => {
                 }
             };
             pollStatus();
+
+            // ✅ Poll every 5 seconds to auto-hide Track button when order completes
+            const intervalId = setInterval(pollStatus, 5000);
+
+            return () => clearInterval(intervalId);
         } else if (activeOrderId && activeOrderToken) {
             // Check if the order from URL is still active before showing track button
+            let intervalId = null; // Move declaration outside
+
             const checkOrderStatus = async () => {
                 try {
                     const res = await fetch(`/api/order/status/${activeOrderId}`);
                     if (res.ok) {
                         const statusData = await res.json();
                         const status = statusData.order?.status;
-                        // Only set liveOrder if status is active
-                        if (!['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'].includes(status)) {
-                            setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId });
+
+                        // ✅ CRITICAL: Stop polling if order reached final state
+                        const finalStates = ['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'];
+                        if (finalStates.includes(status)) {
+                            console.log(`[Order Page] activeOrderId ${activeOrderId} reached final state: ${status} - Stopping polling`);
+                            if (intervalId) clearInterval(intervalId); // Stop polling!
+                            setLiveOrder(null); // Clear live order completely
+                            return;
                         }
+
+                        // Only set liveOrder if status is still active
+                        setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId });
                     }
                 } catch (e) {
                     console.error("Failed to check order status from URL", e);
                 }
             };
-            checkOrderStatus();
+
+            // ✅ CRITICAL FIX: Assign interval FIRST, THEN run initial check
+            // This ensures intervalId is set when clearInterval is called!
+            intervalId = setInterval(checkOrderStatus, 5000);
+            checkOrderStatus(); // Initial check (intervalId is now set!)
+
+            return () => {
+                if (intervalId) clearInterval(intervalId);
+            };
         } else if (phone && token && restaurantId) {
             // FIX: Check for active order on server if not in local storage
             const checkActiveOrder = async () => {
@@ -799,6 +846,12 @@ const OrderPageInternal = () => {
     const [dineInState, setDineInState] = useState('loading');
     const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
 
+    // NEW: Persistent user details management
+    const [userDetails, setUserDetails] = useState(null);
+    const [detailsProvided, setDetailsProvided] = useState(false);
+    const [showWelcome, setShowWelcome] = useState(false);
+
+
 
     const handleStartNewTab = async (paxCount, tabName) => {
         try {
@@ -827,6 +880,18 @@ const OrderPageInternal = () => {
             const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
             localStorage.setItem(dineInTabKey, JSON.stringify(tabInfo));
             console.log('[Dine-In] Saved tab to localStorage:', tabInfo);
+
+            // NEW: Save to PERMANENT storage (persists across sessions)
+            saveDineInDetails(restaurantId, tableIdFromUrl, {
+                tab_name: tabName,
+                pax_count: paxCount,
+                tabId: data.tabId
+            });
+
+            // NEW: Update UI states
+            setUserDetails({ tab_name: tabName, pax_count: paxCount });
+            setDetailsProvided(true);
+            setShowWelcome(true);
 
             setDineInState('ready');
             setIsDineInModalOpen(false);
@@ -987,6 +1052,30 @@ const OrderPageInternal = () => {
 
                         const tableData = await tableRes.json();
 
+                        // NEW: Smart cleaning status handling
+                        if (tableData.hasUncleanedOrders) {
+                            // ONLY block if NO seats available
+                            if (tableData.availableSeats <= 0) {
+                                const message = `This table is fully occupied and being cleaned. Please wait or choose another table.\n\n📊 Table Status:\n• Available seats: ${tableData.availableSeats}\n• Orders awaiting cleanup: ${tableData.uncleanedOrdersCount}`;
+                                setError(message);
+                                setLoading(false);
+                                setDineInState('cleaning_pending');
+                                console.log(`[Dine-In] Table ${tableIdFromUrl} BLOCKED - No available seats while cleaning`);
+                                return;
+                            } else {
+                                // Seats available - show info but ALLOW ordering
+                                console.log(`[Dine-In] Table ${tableIdFromUrl} has ${tableData.availableSeats} available seats, ${tableData.uncleanedOrdersCount} orders cleaning - ALLOWING order`);
+                                // Optional: Store cleaning info to show later as warning banner
+                                setTableStatus(prev => ({
+                                    ...prev,
+                                    cleaningWarning: {
+                                        availableSeats: tableData.availableSeats,
+                                        uncleanedCount: tableData.uncleanedOrdersCount
+                                    }
+                                }));
+                            }
+                        }
+
                         // Check localStorage for existing tab AFTER fetching server data
                         const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
                         const savedTabData = localStorage.getItem(dineInTabKey);
@@ -1053,6 +1142,41 @@ const OrderPageInternal = () => {
         };
 
         if (isTokenValid) {
+            handleDineInSetup();
+        }
+    }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
+
+    // NEW: Load persistent user details on mount (for dine-in only)
+    useEffect(() => {
+        if (tableIdFromUrl && restaurantId && isTokenValid) {
+            const savedDetails = getDineInDetails(restaurantId, tableIdFromUrl);
+
+            if (savedDetails) {
+                console.log('[Dine-In] Found saved user details:', savedDetails);
+
+                // Auto-populate details
+                setUserDetails(savedDetails);
+                setDetailsProvided(true);
+                setShowWelcome(true);
+
+                // Auto-populate tab info
+                setActiveTabInfo({
+                    id: savedDetails.tabId || `tab_${Date.now()}`,
+                    name: savedDetails.tab_name,
+                    pax_count: savedDetails.pax_count
+                });
+
+                // Prevent modal from auto-opening
+                setDineInState('ready');
+            } else {
+                console.log('[Dine-In] No saved details found - will show modal');
+                // Modal will open from handleDineInSetup
+            }
+        }
+    }, [tableIdFromUrl, restaurantId, isTokenValid]);
+
+    useEffect(() => {
+        if (isTokenValid) {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
@@ -1069,9 +1193,8 @@ const OrderPageInternal = () => {
                     }
                 }
             }
-            handleDineInSetup();
         }
-    }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
+    }, [isTokenValid, restaurantId, tableIdFromUrl]);
 
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
@@ -1184,6 +1307,17 @@ const OrderPageInternal = () => {
     }, []);
 
     const handleIncrement = (item) => {
+        // NEW: Block item selection for dine-in if details not provided
+        if (deliveryType === 'dine-in' && tableIdFromUrl && !detailsProvided) {
+            setInfoDialog({
+                isOpen: true,
+                title: "Details Required",
+                message: "Please enter your name and party size before ordering. The modal will open automatically."
+            });
+            setIsDineInModalOpen(true); // Force modal open
+            return;
+        }
+
         if (item.portions?.length === 1 && (item.addOnGroups?.length || 0) === 0) {
             const portion = item.portions[0];
             handleAddToCart(item, portion, [], portion.price);
@@ -1267,6 +1401,9 @@ const OrderPageInternal = () => {
                 params.append('tabId', tabId);
             }
         }
+        // ✅ Keep liveOrder for Track button (works for ALL business types)
+        // - For street vendors: Shows LATEST order, track page has tabs for all orders
+        // - For restaurants: Can be used for add-on orders
         if (liveOrder && liveOrder.restaurantId === restaurantId) {
             params.append('activeOrderId', liveOrder.orderId);
             params.append('token', liveOrder.trackingToken);
@@ -1277,6 +1414,17 @@ const OrderPageInternal = () => {
     };
 
     const handleCloseDineInModal = () => {
+        // NEW: Block closing if dine-in user hasn't provided details yet
+        if (tableIdFromUrl && !detailsProvided) {
+            console.log('[Dine-In] Cannot close modal - details required');
+            setInfoDialog({
+                isOpen: true,
+                title: "Details Required",
+                message: "Please enter your name and party size to continue. This helps us provide better service!"
+            });
+            return; // Prevent closing
+        }
+
         setIsDineInModalOpen(false);
         if (dineInState === 'needs_setup') {
             setDeliveryType('delivery');
@@ -1305,6 +1453,34 @@ const OrderPageInternal = () => {
     }
 
     if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
+        // NEW: Special handling for cleaning_pending state
+        if (dineInState === 'cleaning_pending') {
+            return (
+                <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+                    <div className="max-w-md w-full space-y-6">
+                        <div className="flex flex-col items-center">
+                            <Wind size={64} className="mb-4 text-orange-500 animate-pulse" />
+                            <h1 className="text-2xl font-bold text-foreground">Table Being Cleaned</h1>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+                            <p className="text-muted-foreground whitespace-pre-line">{error}</p>
+                            <Button
+                                onClick={() => window.location.reload()}
+                                className="w-full"
+                                size="lg"
+                            >
+                                <RefreshCw className="mr-2 h-5 w-5" />
+                                Refresh to Check Again
+                            </Button>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                            Please wait for staff to finish cleaning the table. This usually takes just a few minutes.
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center text-destructive p-4">
                 <HardHat size={48} className="mb-4" />
@@ -1334,11 +1510,12 @@ const OrderPageInternal = () => {
     const getTrackingUrl = () => {
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
 
-        // UPDATED: Use central router for all flows
-        // Router will automatically determine correct tracking page based on order data
-        const path = `/track/${liveOrder.orderId}`;
+        // ✅ FIX: Route based on business type
+        const trackingPath = restaurantData.businessType === 'street-vendor'
+            ? `/track/pre-order/${liveOrder.orderId}`
+            : `/track/${liveOrder.orderId}`;
 
-        return `${path}?token=${liveOrder.trackingToken}${phone ? `&phone=${phone}` : ''}`;
+        return `${trackingPath}?token=${liveOrder.trackingToken}${phone ? `&phone=${phone}` : ''}`;
     };
 
     const trackingUrl = getTrackingUrl();
@@ -1376,6 +1553,43 @@ const OrderPageInternal = () => {
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
                 </header>
 
+                {/* NEW: Welcome Message for Dine-In Users */}
+                {showWelcome && detailsProvided && userDetails && tableIdFromUrl && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="container mx-auto px-4 mt-4"
+                    >
+                        <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-lg p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
+                                <div>
+                                    <h3 className="font-semibold text-lg text-foreground">
+                                        Welcome back, {userDetails.tab_name}!
+                                    </h3>
+                                    <p className="text-sm text-muted-foreground">
+                                        Party of {userDetails.pax_count} • Table {tableIdFromUrl}
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    // Pre-fill modal fields with current details
+                                    setNewTabPax(userDetails.pax_count || 1);
+                                    setNewTabName(userDetails.tab_name || '');
+                                    setIsDineInModalOpen(true);
+                                }}
+                                className="gap-2"
+                            >
+                                <Edit2 className="h-4 w-4" />
+                                Edit
+                            </Button>
+                        </div>
+                    </motion.div>
+                )}
+
                 <div className="container mx-auto px-4 mt-6 space-y-4">
 
                     {/* Restaurant Closed Warning */}
@@ -1388,6 +1602,18 @@ const OrderPageInternal = () => {
                             </AlertDescription>
                         </Alert>
                     )}
+
+                    {/* NEW: Cleaning Info Banner - When seats available but cleaning pending */}
+                    {tableStatus?.cleaningWarning && (
+                        <Alert className="border-orange-500 bg-orange-500/10">
+                            <Wind className="h-4 w-4 text-orange-500" />
+                            <AlertTitle className="text-orange-600 dark:text-orange-400 font-bold">Table Partially Occupied</AlertTitle>
+                            <AlertDescription className="text-orange-600/90 dark:text-orange-400/90">
+                                Some guests are finishing up. <strong>{tableStatus.cleaningWarning.availableSeats} seat{tableStatus.cleaningWarning.availableSeats > 1 ? 's' : ''} available</strong> for you to order. {tableStatus.cleaningWarning.uncleanedCount} order{tableStatus.cleaningWarning.uncleanedCount > 1 ? 's' : ''} being cleaned.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
 
                     {restaurantData.businessType !== 'street-vendor' && !tableIdFromUrl && (
                         <div className="bg-card p-4 rounded-lg border border-border">

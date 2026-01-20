@@ -725,12 +725,19 @@ const CheckoutPageInternal = () => {
                 console.warn(`[Checkout Page] NO Razorpay ID found in response!`);
                 console.log("[Checkout Page] No Razorpay ID. Clearing cart and handling redirection.");
 
-                if (activeOrderId) {
-                    localStorage.removeItem(`cart_${restaurantId}`); // Clear cart after adding items
-                    localStorage.removeItem('current_order_key'); // ← Clear idempotency key
-                    console.log('[Idempotency] Key cleared after successful add-on order');
-                    // FIXED: Use central router instead of hardcoded pre-order
-                    const redirectUrl = `/track/${activeOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                // ✅ CRITICAL: Use NEW order ID from response (not activeOrderId!)
+                // For street vendors, even if activeOrderId exists, NEW order was created
+                const finalOrderId = data.order_id || data.firestore_order_id;
+
+                if (finalOrderId) {
+                    localStorage.removeItem(`cart_${restaurantId}`);
+                    localStorage.removeItem('current_order_key');
+                    console.log(`[Idempotency] Key cleared after successful order creation`);
+
+                    // ✅ Route to NEW order (not old activeOrderId!)
+                    const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
+                    const redirectUrl = `/track/${trackingPath}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                    console.log(`[Checkout] Redirecting to NEW order: ${finalOrderId}`);
                     router.push(redirectUrl);
                     return;
                 }

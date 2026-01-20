@@ -466,14 +466,14 @@ const CartPageInternal = () => {
                 tableId: tableId,
                 businessType: cartData?.businessType || 'restaurant',
                 pax_count: cartData?.pax_count || 1,
-                tab_name: cartData?.tab_name || 'Guest',
+                tab_name: cartData?.tab_name || cartData?.name || 'Guest',
                 diningPreference: diningPreference,
                 packagingCharge: (diningPreference === 'takeaway' && packagingConfig.enabled) ? packagingConfig.amount : 0,
                 dineInTabId: cartData?.dineInTabId || null, // Use cartData.dineInTabId
                 paymentMethod: 'post-paid', // ✅ CRITICAL FIX: Required for post-paid orders
                 paymentStatus: 'pending', // Will be settled at counter later
                 // ✅ Customer details for post-paid
-                customerName: cartData?.tab_name || 'Guest',
+                customerName: cartData?.tab_name || cartData?.name || 'Guest',
                 customerPhone: cartData?.phone || null,
             };
 
@@ -1140,7 +1140,9 @@ const CartPageInternal = () => {
                                 {orderState === ORDER_STATE.CREATING_ORDER
                                     ? 'Processing Order...'
                                     : (liveOrder && liveOrder.restaurantId === restaurantId)
-                                        ? <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </>
+                                        ? cartData?.businessType === 'street-vendor'
+                                            ? <> <ShoppingBag size={20} className="mr-2" /> Place New Order </>
+                                            : <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </>
                                         : (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')
                                 }
                             </Button>

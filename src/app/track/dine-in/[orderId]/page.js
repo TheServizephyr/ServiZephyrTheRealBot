@@ -3,12 +3,13 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock, UtensilsCrossed, Info } from 'lucide-react';
+import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock, UtensilsCrossed, Info, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTimer, POLLING_MAX_TIME } from '@/lib/trackingConstants';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { getDineInDetails } from '@/lib/dineInStorage';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -90,6 +91,28 @@ function DineInTrackingContent() {
     const [isMarkingDone, setIsMarkingDone] = useState(false);
     const [cancellingId, setCancellingId] = useState(null);
 
+    // Check if ALL orders are cancelled
+    const allOrdersCancelled = useMemo(() => {
+        if (!orderData?.order?.batches || orderData.order.batches.length === 0) {
+            // Single order case - check if current order is cancelled/rejected
+            return ['cancelled', 'rejected'].includes(orderData?.order?.status);
+        }
+        // Multi-order case - ALL batches must be cancelled/rejected
+        return orderData.order.batches.every(batch =>
+            ['cancelled', 'rejected'].includes(batch.status)
+        );
+    }, [orderData]);
+
+    // ✅ Check if ALL orders are PAID (celebration condition!)
+    const allOrdersPaid = useMemo(() => {
+        if (!orderData?.order) return false;
+
+        const paymentStatus = orderData.order.paymentStatus;
+
+        // Check if payment is marked as 'paid'
+        return paymentStatus === 'paid';
+    }, [orderData]);
+
     const fetchData = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
         if (!orderId) {
@@ -99,12 +122,18 @@ function DineInTrackingContent() {
         }
 
         try {
-            const res = await fetch(`/api/order/status/${orderId}`);
+            // Cache-busting: Add timestamp to prevent stale data
+            const cacheBuster = `?t=${Date.now()}`;
+            const res = await fetch(`/api/order/status/${orderId}${cacheBuster}`, {
+                cache: 'no-store' // Disable Next.js caching
+            });
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to fetch order status.');
             }
             const data = await res.json();
+            console.log('[DineIn Track] Order data received:', data);
+            console.log('[DineIn Track] Status:', data.order?.status);
             setOrderData(data);
         } catch (err) {
             setError(err.message);
@@ -160,24 +189,33 @@ function DineInTrackingContent() {
 
     // RULE 2, 3, 4: Adaptive polling with final state and timeout
     useEffect(() => {
-        if (orderData && isFinalState(orderData.order?.status)) {
-            console.log('[DineInTrack] Final state - stopping');
+        const currentStatus = orderData?.order?.status;
+
+        // EARLY EXIT: Stop polling if final state
+        if (currentStatus && isFinalState(currentStatus)) {
+            console.log(`[DineInTrack] Final state (${currentStatus}) - stopping all polling`);
             clearPollingTimer(orderId);
             return;
         }
-        if (!isVisible) return;
+
+        // Don't poll if page not visible
+        if (!isVisible) {
+            console.log('[DineInTrack] Page hidden - pausing polling');
+            return;
+        }
 
         const pollingStartTime = getPollingStartTime(orderId);
-        const pollingInterval = orderData?.order?.status
-            ? getPollingInterval(orderData.order.status)
+        const pollingInterval = currentStatus
+            ? getPollingInterval(currentStatus)
             : 30000;
 
         if (!pollingInterval) {
+            console.log('[DineInTrack] No interval for status - stopping');
             clearPollingTimer(orderId);
             return;
         }
 
-        console.log(`[DineInTrack] Polling every ${pollingInterval / 1000}s`);
+        console.log(`[DineInTrack] Status: ${currentStatus}, Polling every ${pollingInterval / 1000}s`);
 
         const interval = setInterval(() => {
             if (document.hidden) return;
@@ -190,8 +228,11 @@ function DineInTrackingContent() {
             fetchData(true);
         }, pollingInterval);
 
-        return () => clearInterval(interval);
-    }, [orderData, orderId, fetchData, isVisible]);
+        return () => {
+            console.log('[DineInTrack] Cleaning up interval');
+            clearInterval(interval);
+        };
+    }, [orderData?.order?.status, orderId, fetchData, isVisible]); // Fixed dependency
 
     // Calculate bill details - AGGREGATE ALL ORDERS IN SAME TAB
     const billDetails = useMemo(() => {
@@ -213,10 +254,17 @@ function DineInTrackingContent() {
     }, [orderData]);
 
     const handleAddMoreItems = () => {
+        console.log('[DineIn Track] Add More Items - orderData:', orderData);
+        console.log('[DineIn Track] tableId:', orderData.order?.tableId);
+        console.log('[DineIn Track] dineInTabId:', orderData.order?.dineInTabId);
+
         const params = new URLSearchParams();
         if (orderData.restaurant?.id) params.set('table', orderData.order.tableId);
         if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
-        router.push(`/order/${orderData.restaurant?.id}?${params.toString()}`);
+
+        const url = `/order/${orderData.restaurant?.id}?${params.toString()}`;
+        console.log('[DineIn Track] Navigating to:', url);
+        router.push(url);
     };
 
     const handlePayAtCounter = async () => {
@@ -358,6 +406,137 @@ function DineInTrackingContent() {
         )
     }
 
+    // ✅ FULL-SCREEN CANCELLATION VIEW - When ALL orders cancelled
+    if (allOrdersCancelled) {
+        const cancellationReason = orderData.order?.rejectionReason ||
+            orderData.order?.batches?.find(b => b.rejectionReason)?.rejectionReason ||
+            'This order was cancelled by the restaurant.';
+
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
+                <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5 }}
+                    className="w-full max-w-md"
+                >
+                    <div className="bg-destructive/10 border-2 border-destructive rounded-full w-24 h-24 mx-auto flex items-center justify-center mb-6">
+                        <XCircle className="w-16 h-16 text-destructive" />
+                    </div>
+                    <h1 className="text-3xl font-bold text-foreground mb-2">
+                        {orderData.order?.batches?.length > 1 ? 'All Orders Cancelled' : 'Order Cancelled'}
+                    </h1>
+                    <p className="text-muted-foreground text-lg mb-6">
+                        {cancellationReason}
+                    </p>
+                    <Button
+                        onClick={() => {
+                            // \u2705 CRITICAL: Clear localStorage FIRST!
+                            const restaurantId = orderData.restaurant?.id;
+                            const tableId = orderData.order?.tableId;
+
+                            if (restaurantId) {
+                                // Remove cancelled order from localStorage
+                                const liveOrderKey = `liveOrder_${restaurantId}`;
+                                localStorage.removeItem(liveOrderKey);
+                                console.log('[DineIn Track] Cleared cancelled order from localStorage:', liveOrderKey);
+
+                                const params = new URLSearchParams();
+                                if (tableId) params.set('table', tableId);
+                                router.replace(`/order/${restaurantId}?${params.toString()}`);
+                            } else {
+                                router.replace('/');
+                            }
+                        }}
+                        className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                    >
+                        <Home className="mr-2 h-5 w-5" />
+                        Back to Menu
+                    </Button>
+                </motion.div>
+            </div>
+        );
+    }
+
+    // ✅ FULL-SCREEN CELEBRATION VIEW - When ALL orders PAID!
+    if (allOrdersPaid) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center relative overflow-hidden">
+                {/* Balloons */}
+                {Array.from({ length: 12 }).map((_, i) => (
+                    <div
+                        key={`balloon-${i}`}
+                        className="balloon"
+                        style={{
+                            left: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 2}s`,
+                            animationDuration: `${4 + Math.random() * 3}s`,
+                            background: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F'][Math.floor(Math.random() * 6)]
+                        }}
+                    />
+                ))}
+
+                {/* Confetti */}
+                {Array.from({ length: 25 }).map((_, i) => (
+                    <div
+                        key={`confetti-${i}`}
+                        className="confetti-celebration"
+                        style={{
+                            left: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 3}s`,
+                            animationDuration: `${3 + Math.random() * 2}s`,
+                            background: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#FFD700'][Math.floor(Math.random() * 7)]
+                        }}
+                    />
+                ))}
+
+                <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.6 }}
+                    className="w-full max-w-md relative z-10"
+                >
+                    <div className="bg-green-500/10 border-2 border-green-500 rounded-full w-24 h-24 mx-auto flex items-center justify-center mb-6">
+                        <CheckCircle className="w-16 h-16 text-green-500" />
+                    </div>
+                    <h1 className="text-4xl font-bold text-foreground mb-2">
+                        Payment Successful! 🎉
+                    </h1>
+                    <p className="text-muted-foreground text-lg mb-4">
+                        Your bill has been paid successfully
+                    </p>
+                    <p className="text-2xl font-bold text-primary mb-6">
+                        Thank you for dining with us!
+                    </p>
+                    <Button
+                        onClick={() => {
+                            // ✅ CRITICAL: Clear localStorage FIRST!
+                            const restaurantId = orderData.restaurant?.id;
+                            const tableId = orderData.order?.tableId;
+
+                            if (restaurantId) {
+                                // Remove paid order from localStorage
+                                const liveOrderKey = `liveOrder_${restaurantId}`;
+                                localStorage.removeItem(liveOrderKey);
+                                console.log('[DineIn Track] Cleared paid order from localStorage:', liveOrderKey);
+
+                                const params = new URLSearchParams();
+                                if (tableId) params.set('table', tableId);
+                                router.replace(`/order/${restaurantId}?${params.toString()}`);
+                            } else {
+                                router.replace('/');
+                            }
+                        }}
+                        className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                    >
+                        <Home className="mr-2 h-5 w-5" />
+                        Back to Menu
+                    </Button>
+                </motion.div>
+            </div>
+        );
+    }
+
     const currentStatusInfo = statusConfig[orderData.order.status] || statusConfig.pending;
     const isServed = orderData.order.status === 'delivered';
 
@@ -425,6 +604,11 @@ function DineInTrackingContent() {
                     <div>
                         <p className="text-xs text-muted-foreground">Tracking Dine-In Order</p>
                         <h1 className="font-bold text-lg">{orderData.restaurant?.name}</h1>
+                        {orderData.order?.customerOrderId && (
+                            <p className="text-xs text-primary font-mono font-semibold mt-0.5">
+                                Order ID: {orderData.order.customerOrderId}
+                            </p>
+                        )}
                     </div>
                 </div>
                 <Button onClick={() => fetchData(true)} variant="outline" size="icon" disabled={loading}>
@@ -434,6 +618,35 @@ function DineInTrackingContent() {
 
             <main className="flex-grow flex flex-col p-4 md:p-8 overflow-y-auto pb-32">
                 <div className="w-full max-w-2xl mx-auto">
+                    {/* NEW: Welcome Message for Returning Users */}
+                    {(() => {
+                        const restaurantId = orderData.restaurant?.id;
+                        const tableId = orderData.order?.tableId;
+                        if (restaurantId && tableId) {
+                            const savedDetails = getDineInDetails(restaurantId, tableId);
+                            if (savedDetails) {
+                                return (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="mb-4 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-lg p-4 flex items-center gap-3"
+                                    >
+                                        <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                        <div>
+                                            <h3 className="font-semibold text-foreground">
+                                                Welcome back, {savedDetails.tab_name}!
+                                            </h3>
+                                            <p className="text-sm text-muted-foreground">
+                                                Party of {savedDetails.pax_count}
+                                            </p>
+                                        </div>
+                                    </motion.div>
+                                );
+                            }
+                        }
+                        return null;
+                    })()}
+
                     {/* Premium Info Card - Token + Summary */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -544,9 +757,22 @@ function DineInTrackingContent() {
                                                         const itemTotal = unitPrice;  // Already total for this item
 
                                                         return (
-                                                            <div key={i} className="flex justify-between text-sm bg-muted/30 rounded-md px-3 py-2">
-                                                                <span className="font-medium">{item.quantity}x {item.name}</span>
-                                                                <span className="text-muted-foreground font-semibold">{formatCurrency(itemTotal)}</span>
+                                                            <div key={i} className="bg-muted/30 rounded-md px-3 py-2">
+                                                                <div className="flex justify-between text-sm">
+                                                                    <span className="font-medium">{item.quantity}x {item.name}</span>
+                                                                    <span className="text-muted-foreground font-semibold">{formatCurrency(itemTotal)}</span>
+                                                                </div>
+                                                                {/* ✅ Show Addons */}
+                                                                {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                                                    <div className="ml-4 mt-1 space-y-0.5">
+                                                                        {item.selectedAddOns.map((addon, addonIdx) => (
+                                                                            <div key={addonIdx} className="flex justify-between text-xs text-muted-foreground">
+                                                                                <span>+ {addon.name} {addon.quantity > 1 ? `(x${addon.quantity})` : ''}</span>
+                                                                                <span>₹{addon.price * (addon.quantity || 1)}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}

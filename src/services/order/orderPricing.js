@@ -173,7 +173,23 @@ async function validateAndCalculateItemPrice(item, categoriesMap) {
     // Validate and add addon prices
     if (item.selectedAddOns && Array.isArray(item.selectedAddOns)) {
         for (const selectedAddon of item.selectedAddOns) {
-            const addon = menuItem.addons?.find(a => a.name === selectedAddon.name);
+            // ✅ FIX: Support both flat addons array AND addOnGroups structure
+            let addon = null;
+
+            // Try flat addons array (legacy)
+            if (menuItem.addons && Array.isArray(menuItem.addons)) {
+                addon = menuItem.addons.find(a => a.name === selectedAddon.name);
+            }
+
+            // Try addOnGroups structure (new format)
+            if (!addon && menuItem.addOnGroups && Array.isArray(menuItem.addOnGroups)) {
+                for (const group of menuItem.addOnGroups) {
+                    if (group.options && Array.isArray(group.options)) {
+                        addon = group.options.find(opt => opt.name === selectedAddon.name);
+                        if (addon) break; // Found it!
+                    }
+                }
+            }
 
             if (!addon) {
                 throw new PricingError(

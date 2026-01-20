@@ -90,6 +90,14 @@ export async function createOrderV2(req) {
             existingOrderId, // Add-on flow
         } = body;
 
+        // ✅ CRITICAL: Street vendors DON'T support add-ons!
+        // Force new order creation by ignoring existingOrderId
+        const finalExistingOrderId = (businessType === 'street-vendor') ? null : existingOrderId;
+
+        if (businessType === 'street-vendor' && existingOrderId) {
+            console.log(`[createOrderV2] 🚫 Street vendor detected - IGNORING existingOrderId ${existingOrderId}, creating NEW order`);
+        }
+
         // ========================================
         // PAYMENT METHOD ROUTING
         // ===============================================
@@ -222,8 +230,45 @@ export async function createOrderV2(req) {
             ? new GeoPoint(address.latitude, address.longitude)
             : null;
 
-        // Generate tracking token
-        const trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+        // ✅ CRITICAL: For dine-in, lookup actual table ID (case-insensitive)
+        let actualTableId = body.tableId;
+        if (deliveryType === 'dine-in' && body.tableId) {
+            try {
+                const tablesSnap = await business.ref.collection('tables').get();
+                tablesSnap.forEach(doc => {
+                    if (doc.id.toLowerCase() === body.tableId.toLowerCase()) {
+                        actualTableId = doc.id; // Use actual cased ID from DB
+                    }
+                });
+                console.log(`[createOrderV2] Table ID normalized: ${body.tableId} → ${actualTableId}`);
+            } catch (err) {
+                console.warn(`[createOrderV2] Failed to lookup table ID:`, err);
+                // Fallback to provided ID
+            }
+        }
+
+        // ✅ CRITICAL FIX: For add-on orders, reuse existing order's token
+        let trackingToken;
+
+        if (finalExistingOrderId) {
+            console.log(`[createOrderV2] Add-on order detected - fetching existing order token from ${finalExistingOrderId}`);
+            try {
+                const existingOrderDoc = await firestore.collection('orders').doc(finalExistingOrderId).get();
+                if (existingOrderDoc.exists) {
+                    trackingToken = existingOrderDoc.data().trackingToken;
+                    console.log(`[createOrderV2] ✅ Reusing existing order token: ${trackingToken}`);
+                } else {
+                    console.warn(`[createOrderV2] Existing order ${finalExistingOrderId} not found! Generating new token.`);
+                    trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+                }
+            } catch (err) {
+                console.error(`[createOrderV2] Failed to fetch existing order token:`, err);
+                trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+            }
+        } else {
+            // New order - generate fresh token
+            trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+        }
 
         // ========================================
         // ONLINE PAYMENT FLOW (Razorpay/PhonePe)
@@ -318,12 +363,20 @@ export async function createOrderV2(req) {
         // ========================================
         console.log(`[createOrderV2] Creating COD/Counter order`);
 
-        // ✅ DINE-IN TOKEN GENERATION (for post-paid dine-in)
+        // ✅ DINE-IN TOKEN GENERATION (for post-paid dine-in AND street-vendor orders)
         let dineInToken = null;
         let newTokenNumber = null;
 
-        if (deliveryType === 'dine-in' && business.data.dineInModel === 'post-paid') {
-            console.log(`[createOrderV2] 🎫 Post-paid dine-in detected, generating token`);
+        // Generate token for:
+        // 1. Post-paid dine-in orders (existing)
+        // 2. Street vendor orders (NEW - they also need physical pickup tokens!)
+        const needsPhysicalToken = (
+            (deliveryType === 'dine-in' && business.data.dineInModel === 'post-paid') ||
+            (business.type === 'street-vendor')
+        );
+
+        if (needsPhysicalToken) {
+            console.log(`[createOrderV2] 🎫 Physical token needed (dine-in or street-vendor), generating token`);
             const dineInTabId = body.dineInTabId;
 
             if (dineInTabId) {
@@ -376,7 +429,7 @@ export async function createOrderV2(req) {
                     dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
                 }
             } else {
-                // No tabId, generate token anyway
+                // No tabId, generate token anyway (street vendors always get tokens!)
                 const lastToken = business.data.lastOrderToken || 0;
                 newTokenNumber = lastToken + 1;
                 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -389,7 +442,7 @@ export async function createOrderV2(req) {
 
         // Build order data (SAME structure as V1)
         const orderData = {
-            customerName: name || 'Guest',
+            customerName: (deliveryType === 'dine-in' ? (body.tab_name || body.customerName || 'Guest') : (name || 'Guest')),
             customerId: userId,
             customerAddress: address?.full || null,
             customerPhone: normalizedPhone,
@@ -411,6 +464,13 @@ export async function createOrderV2(req) {
             status: 'pending', // SAME status as V1
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
+            // ✅ Dine-in specific fields
+            ...(deliveryType === 'dine-in' && {
+                tableId: actualTableId, // Use normalized table ID
+                pax_count: body.pax_count,
+                tab_name: body.tab_name,
+                dineInTabId: body.dineInTabId
+            }),
             paymentDetails: [{
                 method: 'cod',
                 amount: grandTotal,
@@ -420,7 +480,7 @@ export async function createOrderV2(req) {
             trackingToken: trackingToken,
             // ✅ Dine-in fields
             dineInTabId: body.dineInTabId || null,
-            tableId: body.tableId?.toUpperCase() || null,  // ✅ Normalize to uppercase
+            tableId: actualTableId || null,  // USE normalized table ID
             dineInToken: dineInToken, // Token for post-paid dine-in
         };
 
@@ -437,19 +497,20 @@ export async function createOrderV2(req) {
             paymentMethod: 'cod'
         });
 
-        // ✅ Update token counter for post-paid dine-in
-        if (newTokenNumber !== null && deliveryType === 'dine-in' && business.data.dineInModel === 'post-paid') {
+        // ✅ Update token counter for post-paid dine-in AND street vendors
+        if (newTokenNumber !== null) {
             try {
                 await firestore.collection(business.collection).doc(business.id).update({
                     lastOrderToken: newTokenNumber
                 });
-                console.log(`[createOrderV2] 🔢 Updated lastOrderToken to ${newTokenNumber}`);
+                console.log(`[createOrderV2] 🔢 Updated lastOrderToken to ${newTokenNumber} for ${business.type}`);
             } catch (err) {
                 console.warn(`[createOrderV2] Failed to update token counter:`, err);
             }
         }
 
         // ✅ DINE-IN TAB UPDATES (CRITICAL: add to subcollection + update tab)
+        // PERMANENT FIX: ALWAYS create/update tab document for proper lifecycle tracking
         if (deliveryType === 'dine-in' && body.dineInTabId && business.data.dineInModel === 'post-paid') {
             const dineInTabId = body.dineInTabId;
             try {
@@ -457,12 +518,52 @@ export async function createOrderV2(req) {
                     .collection('dineInTabs').doc(dineInTabId);
 
                 const tabSnap = await tabRef.get();
-                const tabStatus = tabSnap.data()?.status;
+                const batch = firestore.batch();
 
-                // ✅ Allow 'inactive' (form created), 'pending' (reserved), and 'active' (has orders)
-                // ❌ Skip 'closed', 'cleared', or non-existent tabs
-                if (tabSnap.exists && ['inactive', 'pending', 'active'].includes(tabStatus)) {
-                    const batch = firestore.batch();
+                if (tabSnap.exists) {
+                    // ✅ Tab exists - update it
+                    const tabStatus = tabSnap.data()?.status;
+
+                    // Only update if not completed/closed
+                    if (['inactive', 'pending', 'active'].includes(tabStatus)) {
+                        // Add to tab's orders subcollection
+                        const tabOrderRef = tabRef.collection('orders').doc(orderId);
+                        batch.set(tabOrderRef, {
+                            orderId: orderId,
+                            totalAmount: grandTotal,
+                            status: 'pending',
+                            createdAt: FieldValue.serverTimestamp()
+                        });
+
+                        // Update tab document
+                        batch.update(tabRef, {
+                            totalBill: FieldValue.increment(grandTotal),
+                            status: 'active',
+                            updatedAt: FieldValue.serverTimestamp()
+                        });
+
+                        await batch.commit();
+                        console.log(`[createOrderV2] ✅ Updated existing tab ${dineInTabId} (${tabStatus}→active): +₹${grandTotal}`);
+                    } else {
+                        console.warn(`[createOrderV2] ⚠️ Tab ${dineInTabId} status=${tabStatus}, cannot add order`);
+                    }
+                } else {
+                    // ✅ Tab doesn't exist - CREATE IT (PERMANENT FIX)
+                    console.log(`[createOrderV2] 🆕 Creating new tab document for ${dineInTabId}`);
+
+                    // Create tab document
+                    batch.set(tabRef, {
+                        id: dineInTabId,
+                        tableId: actualTableId, // Use normalized table ID
+                        tab_name: body.tab_name || 'Guest',
+                        pax_count: body.pax_count || 1,
+                        status: 'active',
+                        totalBill: grandTotal,
+                        paidAmount: 0,
+                        pendingAmount: grandTotal,
+                        createdAt: FieldValue.serverTimestamp(),
+                        updatedAt: FieldValue.serverTimestamp()
+                    });
 
                     // Add to tab's orders subcollection
                     const tabOrderRef = tabRef.collection('orders').doc(orderId);
@@ -473,17 +574,8 @@ export async function createOrderV2(req) {
                         createdAt: FieldValue.serverTimestamp()
                     });
 
-                    // Update tab document (pending → active transition)
-                    batch.update(tabRef, {
-                        totalBill: FieldValue.increment(grandTotal),
-                        status: 'active',  // ✅ Activate tab when first order placed
-                        updatedAt: FieldValue.serverTimestamp()
-                    });
-
                     await batch.commit();
-                    console.log(`[createOrderV2] ✅ Tab ${dineInTabId} (${tabStatus}→active): +₹${grandTotal}, order added`);
-                } else {
-                    console.warn(`[createOrderV2] ⚠️ Tab ${dineInTabId} not found or status=${tabStatus}, skipping`);
+                    console.log(`[createOrderV2] ✅ Created new tab ${dineInTabId} with order ${orderId}`);
                 }
             } catch (tabErr) {
                 console.error(`[createOrderV2] ❌ Tab update failed:`, tabErr);

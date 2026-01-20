@@ -14,6 +14,7 @@
  */
 
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 
 export class OrderRepository {
     constructor() {
@@ -42,6 +43,7 @@ export class OrderRepository {
 
     /**
      * Create new order
+     * Automatically generates a 10-digit customer-facing order ID
      */
     async create(orderData, customId = null) {
         const firestore = await getFirestore();
@@ -51,13 +53,17 @@ export class OrderRepository {
 
         const timestamp = FieldValue.serverTimestamp();
 
+        // Generate customer-facing order ID (10 digits: YYMMDD + 4 random)
+        const customerOrderId = generateCustomerOrderId();
+
         await docRef.set({
             ...orderData,
+            customerOrderId, // NEW: Customer-facing ID for UI/support
             createdAt: timestamp,
             updatedAt: timestamp
         });
 
-        console.log(`[OrderRepository] Order created: ${docRef.id}`);
+        console.log(`[OrderRepository] Order created: ${docRef.id} (CustomerID: ${customerOrderId})`);
         return docRef.id;
     }
 

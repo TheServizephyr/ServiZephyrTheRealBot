@@ -17,8 +17,18 @@ export const LOG_LEVELS = {
 /**
  * Core logging function
  * Outputs structured JSON logs with optional correlationId for distributed tracing
+ * 
+ * PRODUCTION: Only ERROR logs are shown
+ * DEVELOPMENT: All logs are shown
  */
 export function log(level, message, context = {}) {
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+
+    // In production, only log errors
+    if (!isDevelopment && level !== LOG_LEVELS.ERROR) {
+        return; // Silent in production for non-errors
+    }
+
     const logEntry = {
         level,
         message,

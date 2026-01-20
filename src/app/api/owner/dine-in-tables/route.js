@@ -88,20 +88,28 @@ export async function GET(req) {
         // });
 
         // 4. Fetch all relevant orders that are not finished or rejected
-        // IMPORTANT: Include 'delivered' status - tabs should stay visible for payment/cleaning flow
+        // IMPORTANT: Include 'delivered' status - tabs should stay visible until cleaned
+        // NOTE: Can't use multiple inequality filters in Firestore, so filtering 'cleaned' in code
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', 'not-in', ['picked_up', 'rejected']); // Removed 'delivered' from exclusion
+            .where('status', 'not-in', ['picked_up', 'rejected']);
 
         const ordersSnap = await ordersQuery.get();
 
-        // 5. Group ALL orders by tab_name for same table - this ensures same customer shows as ONE entry
+        // 5. Group active orders by tab_name for same table - this ensures same customer shows as ONE entry
+        // ✅ Filter out cleaned orders in code (can't do in query due to Firestore limitation)
         // Structure: { tableId_tabName: { orders: [...], hasPending: bool, ... } }
         const orderGroups = new Map();
 
         ordersSnap.forEach(orderDoc => {
             const orderData = orderDoc.data();
+
+            // ✅ Skip cleaned orders (filter in code since can't use 2 inequalities in Firestore)
+            if (orderData.cleaned === true) {
+                return; // Skip this order
+            }
+
             const tableId = orderData.tableId;
             const tabId = orderData.dineInTabId;
             const status = orderData.status;
@@ -120,8 +128,8 @@ export async function GET(req) {
             }
 
             if (!table) {
-                // Order has invalid tableId - skip this orphaned order
-                console.log(`[Dine-In API] Skipping orphaned order ${orderDoc.id} - table ${tableId} not found`);
+                // Order has invalid tableId - skip this orphaned order silently
+                // console.log(`[Dine-In API] Skipping orphaned order ${orderDoc.id} - table ${tableId} not found`);
                 return; // Skip this order
             }
 
@@ -180,8 +188,40 @@ export async function GET(req) {
             }
         });
 
+        // ✅ Filter out completed tabs from dashboard
+        // Check tab status in Firestore and exclude completed tabs
+        const tabIds = Array.from(new Set(
+            Array.from(orderGroups.values())
+                .map(g => g.dineInTabId)
+                .filter(Boolean)
+        ));
+
+        const completedTabIds = new Set();
+
+        if (tabIds.length > 0) {
+            // Batch fetch tab statuses
+            const tabPromises = tabIds.map(async (tabId) => {
+                try {
+                    // Try restaurant subcollection (V2)
+                    const tabRef = businessRef.collection('dineInTabs').doc(tabId);
+                    const tabSnap = await tabRef.get();
+
+                    // ✅ ONLY exclude if tab EXISTS and status='completed'
+                    // Non-existent tabs are valid (backwards compatibility with old orders)
+                    if (tabSnap.exists && tabSnap.data().status === 'completed') {
+                        completedTabIds.add(tabId);
+                        console.log(`[Dine-In API] ✅ Hiding completed tab from dashboard: ${tabId}`);
+                    }
+                } catch (err) {
+                    console.warn(`[Dine-In API] Error checking tab ${tabId}:`, err.message);
+                }
+            });
+
+            await Promise.all(tabPromises);
+        }
+
         // Now add grouped orders to tables
-        // Determine if group has pending items or not
+        // ✅ Cleaned orders already excluded by query
         orderGroups.forEach((group, groupKey) => {
             const table = tableMap.get(group.tableId);
             if (!table) return;

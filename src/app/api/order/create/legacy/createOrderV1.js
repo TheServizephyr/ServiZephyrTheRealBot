@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { recalculateTabTotals, validateTabToken } from '@/lib/dinein-utils';
+import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
@@ -561,6 +562,9 @@ export async function createOrderV1(req) {
 
             const batch = firestore.batch();
 
+            // Generate 10-digit customer-facing order ID
+            const customerOrderId = generateCustomerOrderId();
+
             batch.set(newOrderRef, {
                 restaurantId, businessType, tableId,
                 items: processedItems, notes: notes || null,
@@ -577,11 +581,12 @@ export async function createOrderV1(req) {
                 ordered_by: ordered_by || 'customer',
                 ordered_by_name: ordered_by_name || null,
                 dineInToken: dineInToken,
+                customerOrderId: customerOrderId, // 10-digit customer-facing ID
                 orderDate: FieldValue.serverTimestamp(),
                 trackingToken: trackingToken,
             });
 
-            console.log(`[API /order/create] 💾 Saving order with dineInToken: '${dineInToken}'`);
+            console.log(`[API /order/create] 💾 Saving post-paid dine-in order with dineInToken: '${dineInToken}', customerOrderId: ${customerOrderId}`);
 
             // Update last token counter
             batch.update(businessRef, { lastOrderToken: newTokenNumber });
@@ -667,6 +672,10 @@ export async function createOrderV1(req) {
                 console.log("[API /order/create] Dine-in payment method is 'Pay at Counter'.");
                 const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
                 const trackingToken = await generateSecureToken(firestore, `dine-in-${firestoreOrderId}`);
+
+                // Generate 10-digit customer-facing order ID
+                const customerOrderId = generateCustomerOrderId();
+
                 const batch = firestore.batch();
 
                 batch.set(newOrderRef, {
@@ -675,11 +684,12 @@ export async function createOrderV1(req) {
                     subtotal, coupon, loyaltyDiscount, discount: coupon?.discount || 0, cgst, sgst,
                     totalAmount: grandTotal, status: 'pending', orderDate: FieldValue.serverTimestamp(),
                     notes: notes || null, paymentDetails: { method: paymentMethod },
+                    customerOrderId: customerOrderId, // 10-digit customer-facing ID
                     trackingToken: trackingToken
                 });
 
                 await batch.commit();
-                console.log(`[API /order/create] Dine-in 'Pay at Counter' order created: ${newOrderRef.id}`);
+                console.log(`[API /order/create] Pre-paid dine-in 'Pay at Counter' order created: ${newOrderRef.id}, customerOrderId: ${customerOrderId}`);
 
                 return NextResponse.json({
                     message: 'Order added to tab successfully.',

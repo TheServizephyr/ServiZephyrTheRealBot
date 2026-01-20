@@ -281,6 +281,7 @@ export async function GET(request, { params }) {
         const responsePayload = {
             order: {
                 id: orderSnap.id, // Primary ID
+                customerOrderId: orderData.customerOrderId, // 10-digit customer-facing ID
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
                 restaurantLocation: restaurantLocationForMap,

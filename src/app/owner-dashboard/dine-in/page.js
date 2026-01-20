@@ -11,6 +11,7 @@ import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -450,7 +451,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         <div className="flex justify-between items-center mb-2">
                                             <div>
                                                 <h4 className="font-semibold text-foreground">
-                                                    {group.tab_name || 'New Order'}
+                                                    {group.tab_name || group.customerName || 'Guest'}
                                                     <span className="text-xs text-muted-foreground"> ({group.pax_count || 1} guests)</span>
                                                 </h4>
                                                 {/* ORDER TIME - Show how long ago order was placed */}
@@ -557,16 +558,38 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 </span>
                                                             </div>
 
-                                                            {/* Items in this order batch */}
+                                                            {/* Items in this order batch with ADDONS */}
                                                             <div className={cn("space-y-0.5 text-xs", (orderBatch.status === 'cancelled' || orderBatch.status === 'rejected') && "line-through text-muted-foreground")}>
-                                                                {orderBatch.items && orderBatch.items.map((item, itemIdx) => (
-                                                                    <div key={itemIdx} className="flex justify-between items-center text-muted-foreground">
-                                                                        <span>{item.quantity || item.qty} × {item.name}</span>
-                                                                        <span>{formatCurrency(item.totalPrice || item.price)}</span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
+                                                                {orderBatch.items && orderBatch.items.map((item, itemIdx) => {
+                                                                    // Calculate addon total
+                                                                    const addonTotal = item.selectedAddOns?.reduce((sum, addon) =>
+                                                                        sum + (addon.price * (addon.quantity || 1)), 0) || 0;
 
+                                                                    // Base price = totalPrice - addons (since totalPrice includes addons)
+                                                                    const itemTotalPrice = item.totalPrice || item.price || 0;
+                                                                    const basePrice = itemTotalPrice - addonTotal;
+
+                                                                    return (
+                                                                        <div key={itemIdx}>
+                                                                            <div className="flex justify-between items-center text-muted-foreground">
+                                                                                <span>{item.quantity || item.qty} × {item.name}</span>
+                                                                                <span>{formatCurrency(itemTotalPrice)}</span>
+                                                                            </div>
+                                                                            {/* ✅ Show Addons */}
+                                                                            {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                                                                <div className="ml-3 mt-0.5 space-y-0.5">
+                                                                                    {item.selectedAddOns.map((addon, addonIdx) => (
+                                                                                        <div key={addonIdx} className="flex justify-between text-[10px] text-muted-foreground/70">
+                                                                                            <span>+ {addon.name} {addon.quantity > 1 ? `(x${addon.quantity})` : ''}</span>
+                                                                                            <span>₹{addon.price * (addon.quantity || 1)}</span>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                             {/* Order Total */}
                                                             <div className="flex justify-between items-center text-xs font-semibold mt-1.5 pt-1.5 border-t border-border/30">
                                                                 <span className="text-muted-foreground">Order Total:</span>
@@ -1576,7 +1599,10 @@ const DineInPageContent = () => {
         try {
             // ✅ Using new dine-in cleanup endpoint
             const cleanupEndpoint = '/api/dine-in/clean-table';
-            const payload = { tabId };
+            const payload = {
+                tabId,
+                restaurantId: restaurantDetails?.id // ✅ Add restaurantId for tab lookup
+            };
 
             console.log(`[Owner Dashboard] Cleaning tab with endpoint: ${cleanupEndpoint}`);
 
@@ -1792,9 +1818,11 @@ const DineInPageContent = () => {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <History size={20} /> Dine-In History
-                </Button>
+                <Link href={`/owner-dashboard/dine-in-history${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}>
+                    <Button variant="outline" className="h-20 flex-col gap-1 w-full" disabled={loading}>
+                        <History size={20} /> Dine-In History
+                    </Button>
+                </Link>
                 <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
                     <Salad size={20} /> Dine-In Menu
                 </Button>

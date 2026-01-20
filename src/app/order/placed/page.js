@@ -64,19 +64,31 @@ const OrderPlacedContent = () => {
                     }));
                     console.log(`[Order Placed] Saved new live order to localStorage with key: ${liveOrderKey}`);
 
-                    // ✅ FIXED: Get actual deliveryType from API response
-                    let trackingPath;
-
                     // Fetch order details to determine correct tracking page
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
                         const deliveryType = data.order?.deliveryType;
+                        const businessType = data.order?.businessType;
 
-                        console.log(`[Order Placed] Detected deliveryType: ${deliveryType}`);
+                        console.log(`[Order Placed] Detected deliveryType: ${deliveryType}, businessType: ${businessType}`);
 
-                        // Route based on actual delivery type
-                        if (deliveryType === 'dine-in') {
+                        // ✅ STREET VENDOR: Save to multi-order localStorage
+                        if (businessType === 'street-vendor') {
+                            const { addVendorOrder } = await import('@/lib/vendorOrdersStorage');
+                            addVendorOrder(restaurantId, {
+                                orderId,
+                                token: finalToken,
+                                totalAmount: data.order?.totalAmount || 0,
+                                itemCount: data.order?.items?.length || 0
+                            });
+                            console.log(`[Order Placed] Added street vendor order to multi-order storage`);
+                        }
+
+                        // Route based on BUSINESS TYPE first (street vendors have special tracking)
+                        if (businessType === 'street-vendor') {
+                            trackingPath = `/track/pre-order/${orderId}`;
+                        } else if (deliveryType === 'dine-in') {
                             trackingPath = `/track/dine-in/${orderId}`;
                         } else if (deliveryType === 'delivery' || deliveryType === 'pickup') {
                             trackingPath = `/track/delivery/${orderId}`;
