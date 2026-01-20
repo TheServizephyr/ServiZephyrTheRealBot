@@ -1,16 +1,15 @@
-
 'use client'
 
 import { motion } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
-import AuthModal from './AuthModal'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
+import AuthModal from './AuthModal'
 
 const Header = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -27,7 +26,7 @@ const Header = () => {
 
   return (
     <>
-      <motion.header 
+      <motion.header
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ duration: 0.5 }}
@@ -62,15 +61,27 @@ const Header = () => {
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
           </nav>
-          <button 
-            onClick={() => setIsModalOpen(true)}
+          <button
+            onClick={() => {
+              // Production: Redirect to /login page
+              // Localhost: Open AuthModal popup
+              const isLocalhost = typeof window !== 'undefined' &&
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+              if (isLocalhost) {
+                setIsAuthModalOpen(true);
+              } else {
+                window.location.href = '/login';
+              }
+            }}
             className="btn-shine inline-flex h-10 items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             Get Started
           </button>
         </div>
       </motion.header>
-      <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </>
   )
 }

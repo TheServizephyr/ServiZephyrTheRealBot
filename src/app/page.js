@@ -33,7 +33,6 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import placeholderData from '@/app/lib/placeholder-images.json'
-import AuthModal from '@/components/AuthModal'
 import { cn } from '@/lib/utils'
 
 
@@ -267,7 +266,6 @@ const UniqueFeatureCard = ({ icon, title, description, custom }) => (
 
 
 export default function Home() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [animationFinished, setAnimationFinished] = useState(true);
 
   return (
@@ -802,7 +800,6 @@ export default function Home() {
         </motion.section>
 
       </main>
-      <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </>
   )
 }

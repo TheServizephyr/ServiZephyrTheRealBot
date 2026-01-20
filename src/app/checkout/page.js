@@ -1,10 +1,9 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -15,7 +14,18 @@ import { Input } from '@/components/ui/input';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { v4 as uuidv4 } from 'uuid';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
+
+const ORDER_STATE = {
+    IDLE: 'idle',
+    CREATING_ORDER: 'creating_order',
+    PAYMENT_PROCESSING: 'payment_processing',
+    PAYMENT_PENDING: 'payment_pending',
+    SUCCESS: 'success',
+    ERROR: 'error'
+};
 
 const TokenVerificationLock = ({ message }) => (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
@@ -138,6 +148,40 @@ const CheckoutPageInternal = () => {
     const [loading, setLoading] = useState(true);
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
     const [error, setError] = useState('');
+
+    const [orderState, setOrderState] = useState(ORDER_STATE.IDLE);
+    const [retryCount, setRetryCount] = useState(0);
+    const [orderError, setOrderError] = useState('');
+
+    // Idempotency key for order creation
+    const [idempotencyKey, setIdempotencyKey] = useState(() => {
+        // Only access localStorage on client side (not during SSR)
+        if (typeof window === 'undefined') return null;
+
+        // Try to reuse existing key from localStorage (for retries)
+        const existing = localStorage.getItem('current_order_key');
+        if (existing) {
+            console.log('[Idempotency] Reusing existing key:', existing);
+            return existing;
+        }
+
+        // Generate new key for this checkout session
+        const newKey = `order_${uuidv4()}`;
+        localStorage.setItem('current_order_key', newKey);
+        console.log('[Idempotency] Generated new key:', newKey);
+        return newKey;
+    });
+
+    // Ensure idempotency key is generated on client mount
+    useEffect(() => {
+        if (!idempotencyKey && typeof window !== 'undefined') {
+            const newKey = `order_${uuidv4()}`;
+            localStorage.setItem('current_order_key', newKey);
+            setIdempotencyKey(newKey);
+            console.log('[Idempotency] Generated key on mount:', newKey);
+        }
+    }, [idempotencyKey]);
+
     useEffect(() => {
         if (isPaymentConfirmed) {
             setInfoDialog({ isOpen: true, title: 'Payment Confirmed', message: 'Your payment was successful. Thank you for dining with us!' });
@@ -145,6 +189,36 @@ const CheckoutPageInternal = () => {
             router.replace(cleanUrl);
         }
     }, [isPaymentConfirmed, restaurantId, tableId, tabId, router]);
+
+    // CHECK FOR PENDING PAYMENT (if user refreshes during payment)
+    useEffect(() => {
+        const pendingOrder = localStorage.getItem('payment_pending_order');
+        if (pendingOrder) {
+            const pendingToken = localStorage.getItem('payment_pending_token');
+            if (pendingToken) {
+                console.log('[Recovery] Resuming pending payment:', pendingOrder);
+                router.replace(`/track/pending/${pendingOrder}?token=${pendingToken}`);
+            }
+        }
+    }, [router]);
+
+    // PREVENT USER FROM LEAVING DURING ORDER PROCESSING
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (
+                orderState === ORDER_STATE.CREATING_ORDER ||
+                orderState === ORDER_STATE.PAYMENT_PROCESSING ||
+                orderState === ORDER_STATE.PAYMENT_PENDING
+            ) {
+                e.preventDefault();
+                e.returnValue = 'Your order is being processed. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [orderState]);
 
 
     useEffect(() => {
@@ -158,15 +232,13 @@ const CheckoutPageInternal = () => {
 
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
 
-            // Fix: If adding to an existing order (activeOrderId), default to 'dine-in' if not specified
-            // This ensures we use Dine-In payment settings (where online might be disabled) instead of Delivery settings
+            // Fix: If adding to an existing order (activeOrderId), use cart's delivery type
+            // Don't assume dine-in for add-ons - respect the original order type
             let derivedDeliveryType = 'delivery';
             if (tableId) {
                 derivedDeliveryType = 'dine-in';
-            } else if (activeOrderId) {
-                // For add-ons, prefer dine-in unless cart explicitly says otherwise
-                derivedDeliveryType = savedCart.deliveryType || 'dine-in';
             } else {
+                // FIXED: Always use cart's deliveryType, don't default to dine-in for activeOrderId
                 derivedDeliveryType = savedCart.deliveryType || 'delivery';
             }
 
@@ -194,14 +266,19 @@ const CheckoutPageInternal = () => {
             }
 
             // --- FIX: Logic to determine if details form is needed ---
+            // FIXED: Properly check delivery type to show correct form flow
             if (activeOrderId) {
                 setDetailsConfirmed(true); // Don't ask for name on add-on orders
             } else if (deliveryType === 'street-vendor-pre-order') {
                 setDetailsConfirmed(true); // Skip old form, use new inline UI for name/phone
             } else if (deliveryType === 'delivery' && !isLoggedInUser) {
-                setDetailsConfirmed(false); // Ask for details for guest delivery
+                // CRITICAL FIX: Show address/details form for guest delivery orders
+                setDetailsConfirmed(false);
+            } else if (deliveryType === 'delivery' && isLoggedInUser) {
+                // FIXED: Even logged-in users need to confirm address for delivery
+                setDetailsConfirmed(false);
             } else {
-                setDetailsConfirmed(true); // Otherwise, assume details are known (dine-in, logged-in user)
+                setDetailsConfirmed(true); // Otherwise, assume details are known (dine-in, pickup)
             }
 
 
@@ -302,6 +379,13 @@ const CheckoutPageInternal = () => {
                         gstEnabled: paymentData.gstEnabled,
                         gstRate: paymentData.gstRate,
                     });
+                }
+
+                // CRITICAL FIX: Force delivery orders to show address selection form
+                // Delivery orders MUST collect customer address before proceeding to payment
+                if (deliveryType === 'delivery' && !activeOrderId) {
+                    console.log('[Checkout] Delivery order detected - forcing address form display');
+                    setDetailsConfirmed(false);
                 }
             } catch (err) {
                 setError('Failed to load checkout details. Please try again.');
@@ -411,7 +495,12 @@ const CheckoutPageInternal = () => {
         console.log(`[Checkout Page] placeOrder called with paymentMethod: ${paymentMethod}, effective: ${effectivePaymentMethod}`);
         if (!validateOrderDetails()) return;
 
+        console.log('[DEBUG] idempotencyKey state:', idempotencyKey);
+        console.log('[DEBUG] tabId:', tabId);
+        console.log('[DEBUG] deliveryType:', deliveryType);
+
         const orderData = {
+            idempotencyKey,  // ← Idempotency key for duplicate prevention
             name: orderName, phone: orderPhone, restaurantId, items: cart, notes: cartData.notes, coupon: appliedCoupons.find(c => !c.customerId) || null,
             loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: effectivePaymentMethod,
             deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
@@ -423,21 +512,30 @@ const CheckoutPageInternal = () => {
             packagingCharge: packagingCharge,
         };
 
+        setOrderState(ORDER_STATE.CREATING_ORDER); // New state machine
         setIsProcessingPayment(true);
         setError('');
+        setOrderError(''); // Clear previous errors
 
         try {
             // DINE-IN POST-PAID SETTLEMENT: Use settlement API for existing orders
             if (tabId && deliveryType === 'dine-in') {
                 console.log(`[Checkout Page] POST-PAID SETTLEMENT for tabId: ${tabId}`);
+
+                // ✅ Using new dine-in settlement endpoint
+                const settlementEndpoint = '/api/dine-in/initiate-payment';
+
                 const settlementData = {
+                    idempotencyKey,
                     tabId,
                     restaurantId,
                     paymentMethod: effectivePaymentMethod,
                     grandTotal
                 };
 
-                const res = await fetch('/api/order/settle-payment', {
+                console.log(`[Checkout] Settlement endpoint: ${settlementEndpoint}`);
+
+                const res = await fetch(settlementEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(settlementData)
@@ -463,27 +561,34 @@ const CheckoutPageInternal = () => {
                 // Handle Razorpay for online payment
                 if (data.razorpay_order_id) {
                     console.log("[Checkout] Opening Razorpay for settlement");
+
+                    // Save for recovery if page refreshes
+                    setOrderState(ORDER_STATE.PAYMENT_PROCESSING);
+                    localStorage.setItem('payment_pending_order', tabId);
+                    localStorage.setItem('payment_pending_token', token || '');
+
                     const options = {
                         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_m9PZ4ZL5ItHp9j',
                         amount: grandTotal * 100,
                         currency: "INR",
                         name: cartData.restaurantName || 'Restaurant',
-                        description: `Bill Settlement - Table ${tableId}`,
+                        description: `Bill Settlement - Table ${tableId} `,
                         order_id: data.razorpay_order_id,
                         handler: async function (response) {
                             console.log("[Checkout Page] Razorpay payment successful:", response);
-                            // Mark orders as paid
-                            await fetch('/api/order/mark-paid', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    tabId,
-                                    restaurantId,
-                                    paymentDetails: response
-                                })
-                            });
-                            // Redirect to track page
-                            router.push(`/track/dine-in/${tabId}?token=${token || ''}`);
+
+                            setOrderState(ORDER_STATE.PAYMENT_PENDING);
+
+                            // Redirect to pending screen for webhook confirmation
+                            const pendingOrder = localStorage.getItem('payment_pending_order');
+                            const pendingToken = localStorage.getItem('payment_pending_token');
+
+                            if (pendingOrder && pendingToken) {
+                                router.push(`/track/pending/${pendingOrder}?token=${pendingToken}`);
+                            } else {
+                                // Fallback to direct tracking
+                                router.push(`/track/dine-in/${tabId}?token=${token || ''}`);
+                            }
                         },
                         prefill: { name: orderName, phone: orderPhone },
                         modal: {
@@ -559,6 +664,8 @@ const CheckoutPageInternal = () => {
                                         // Payment completed, redirect to order placed page (same as Razorpay)
                                         console.log("[Checkout Page] PhonePe payment concluded, redirecting to order placed page");
                                         localStorage.removeItem(`cart_${restaurantId}`);
+                                        localStorage.removeItem('current_order_key'); // ← Clear idempotency key
+                                        console.log('[Idempotency] Key cleared after PhonePe payment success');
                                         // Use same redirect as Razorpay success - include restaurantId for proper routing
                                         router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
                                     }
@@ -587,14 +694,14 @@ const CheckoutPageInternal = () => {
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
-                    handler: function (response) {
-                        console.log("[Checkout Page] Razorpay payment successful:", response);
+                    handler: async (response) => {
+                        console.log(`[Checkout Page] Razorpay payment successful:`, response);
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        const isPreOrder = deliveryType === 'street-vendor-pre-order';
+                        // FIXED: Use central router for all flows
                         const phoneParam = phoneFromUrl ? `&phone=${phoneFromUrl}` : '';
-                        const trackingUrl = isPreOrder
-                            ? `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}${phoneParam}`
-                            : `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}${phoneParam}`;
+                        const trackingUrl = (orderData.deliveryType === 'dine-in' && !!tableId)
+                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${phoneParam}`
+                            : `/track/${data.firestore_order_id}?token=${data.token}${phoneParam}`;
                         router.push(trackingUrl);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
@@ -618,14 +725,27 @@ const CheckoutPageInternal = () => {
                 console.warn(`[Checkout Page] NO Razorpay ID found in response!`);
                 console.log("[Checkout Page] No Razorpay ID. Clearing cart and handling redirection.");
 
-                if (activeOrderId) {
-                    localStorage.removeItem(`cart_${restaurantId}`); // Clear cart after adding items
-                    const redirectUrl = `/track/pre-order/${activeOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                // ✅ CRITICAL: Use NEW order ID from response (not activeOrderId!)
+                // For street vendors, even if activeOrderId exists, NEW order was created
+                const finalOrderId = data.order_id || data.firestore_order_id;
+
+                if (finalOrderId) {
+                    localStorage.removeItem(`cart_${restaurantId}`);
+                    localStorage.removeItem('current_order_key');
+                    console.log(`[Idempotency] Key cleared after successful order creation`);
+
+                    // ✅ Route to NEW order (not old activeOrderId!)
+                    const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
+                    const redirectUrl = `/track/${trackingPath}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                    console.log(`[Checkout] Redirecting to NEW order: ${finalOrderId}`);
                     router.push(redirectUrl);
                     return;
                 }
 
                 localStorage.removeItem(`cart_${restaurantId}`);
+                localStorage.removeItem('current_order_key'); // ← Clear idempotency key
+                console.log('[Idempotency] Key cleared after successful order creation');
+
                 if (orderData.deliveryType === 'dine-in') {
                     setInfoDialog({ isOpen: true, title: 'Success', message: 'Tab settled at counter. Thank you!' });
                     setTimeout(() => {
@@ -633,13 +753,37 @@ const CheckoutPageInternal = () => {
                         router.replace(newUrl);
                     }, 2000);
                 } else {
-                    router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}`);
+                    // Direct routing based on business type
+                    const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
+                    router.push(`/track/${trackingPath}/${data.firestore_order_id}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
                 }
             }
         } catch (err) {
             console.error("[Checkout Page] placeOrder function error:", err);
-            setError(err.message);
+
+            // Set ORDER_STATE.ERROR for proper UI handling
+            setOrderState(ORDER_STATE.ERROR);
             setIsProcessingPayment(false);
+
+            // Human-friendly error messages (no technical jargon)
+            let friendlyError = 'Something went wrong. Please try again.';
+
+            if (err.message.includes('network') || err.message.includes('fetch')) {
+                friendlyError = 'Connection issue. Please check your internet and try again.';
+            } else if (err.message.includes('429') || err.message.toLowerCase().includes('too many requests')) {
+                friendlyError = 'Restaurant is busy right now. Please wait a minute and try again.';
+            } else if (err.message.includes('400') || err.message.includes('invalid')) {
+                friendlyError = 'Invalid order details. Please check and try again.';
+            } else if (err.message.includes('timeout')) {
+                friendlyError = 'Request timed out. Please try again.';
+            } else if (err.message) {
+                // Use backend error if it's user-friendly
+                const isUserFriendly = !err.message.match(/[A-Z_]{3,}/) && err.message.length < 100;
+                friendlyError = isUserFriendly ? err.message : friendlyError;
+            }
+
+            setError(friendlyError);
+            setOrderError(friendlyError);
         }
     };
 
@@ -686,12 +830,37 @@ const CheckoutPageInternal = () => {
             <div className="space-y-4">
                 {isOnlinePaymentFlow && <Button onClick={() => setIsOnlinePaymentFlow(false)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>}
 
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => placeOrder('online')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
-                    {isProcessingPayment && <Loader2 className="animate-spin h-5 w-5" />}
-                    {!isProcessingPayment && <CreditCard size={40} className="text-primary flex-shrink-0" />}
+                <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => placeOrder('online')}
+                    disabled={
+                        orderState === ORDER_STATE.CREATING_ORDER ||
+                        orderState === ORDER_STATE.PAYMENT_PROCESSING ||
+                        orderState === ORDER_STATE.PAYMENT_PENDING ||
+                        isProcessingPayment
+                    }
+                    className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {(isProcessingPayment || orderState !== ORDER_STATE.IDLE) && <Loader2 className="animate-spin h-5 w-5" />}
+                    {(!isProcessingPayment && orderState === ORDER_STATE.IDLE) && <CreditCard size={40} className="text-primary flex-shrink-0" />}
                     <div>
-                        <h3 className="text-xl font-bold">Pay Full Bill</h3>
-                        <p className="text-muted-foreground">Use UPI, Card, or Netbanking</p>
+                        <h3 className="text-xl font-bold">
+                            {orderState === ORDER_STATE.CREATING_ORDER
+                                ? 'Processing Order...'
+                                : orderState === ORDER_STATE.PAYMENT_PROCESSING
+                                    ? 'Opening Payment...'
+                                    : orderState === ORDER_STATE.PAYMENT_PENDING
+                                        ? 'Confirming Payment...'
+                                        : 'Pay Full Bill'
+                            }
+                        </h3>
+                        <p className="text-muted-foreground">
+                            {orderState === ORDER_STATE.IDLE
+                                ? 'Use UPI, Card, or Netbanking'
+                                : 'Please wait...'
+                            }
+                        </p>
                     </div>
                 </motion.button>
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
@@ -701,6 +870,32 @@ const CheckoutPageInternal = () => {
                         <p className="text-muted-foreground">Split equally with your friends.</p>
                     </div>
                 </motion.button>
+
+                {/* ERROR STATE WITH RETRY BUTTON */}
+                {orderState === ORDER_STATE.ERROR && orderError && (
+                    <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-lg">
+                        <div className="flex items-start gap-3 mb-3">
+                            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <p className="text-sm font-semibold text-red-600 dark:text-red-400">Payment Failed</p>
+                                <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1">{orderError}</p>
+                            </div>
+                        </div>
+                        <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => {
+                                setOrderState(ORDER_STATE.IDLE);
+                                setOrderError('');
+                                placeOrder('online'); // Retry with same idempotency key
+                            }}
+                            className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 px-4 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                            <RefreshCw size={16} />
+                            Try Again ({retryCount}/3)
+                        </motion.button>
+                    </div>
+                )}
 
                 {/* Refund & Cancellation Policy */}
                 <div className="mt-6 p-4 border border-yellow-500/30 rounded-lg bg-yellow-500/5">
@@ -1078,40 +1273,42 @@ const CheckoutPageInternal = () => {
                                     </ul>
                                 </div>
 
-                                {/* CUSTOMER DETAILS (Conditional based on payment method) - Hidden for Add-on Orders */}
-                                {selectedPaymentMethod && !activeOrderId && (
-                                    <div className="bg-card p-4 rounded-lg border border-border mb-6">
-                                        <h3 className="font-bold text-lg mb-3">📝 Your Details</h3>
-                                        <div className="space-y-3">
-                                            <div>
-                                                <Label htmlFor="customer-name" className="flex items-center gap-2">
-                                                    <User size={16} /> Name *
-                                                </Label>
-                                                <Input
-                                                    id="customer-name"
-                                                    value={orderName}
-                                                    onChange={(e) => setOrderName(e.target.value)}
-                                                    placeholder="Enter your name"
-                                                    disabled={loading}
-                                                    required
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="customer-phone" className="flex items-center gap-2">
-                                                    <Phone size={16} /> Phone Number {selectedPaymentMethod === 'counter' ? '*' : '(Optional)'}
-                                                </Label>
-                                                <Input
-                                                    id="customer-phone"
-                                                    value={orderPhone}
-                                                    onChange={(e) => setOrderPhone(e.target.value)}
-                                                    placeholder="10-digit mobile number"
-                                                    disabled={loading || !!phoneFromUrl}
-                                                    required={selectedPaymentMethod === 'counter'}
-                                                />
+                                {/* CUSTOMER DETAILS - Show ONLY for dine-in and pre-order flows */}
+                                {/* Delivery flow collects details in address form, so we skip this */}
+                                {selectedPaymentMethod && !activeOrderId &&
+                                    (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') && (
+                                        <div className="bg-card p-4 rounded-lg border border-border mb-6">
+                                            <h3 className="font-bold text-lg mb-3">📝 Your Details</h3>
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <Label htmlFor="customer-name" className="flex items-center gap-2">
+                                                        <User size={16} /> Name *
+                                                    </Label>
+                                                    <Input
+                                                        id="customer-name"
+                                                        value={orderName}
+                                                        onChange={(e) => setOrderName(e.target.value)}
+                                                        placeholder="Enter your name"
+                                                        disabled={loading}
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="customer-phone" className="flex items-center gap-2">
+                                                        <Phone size={16} /> Phone Number {selectedPaymentMethod === 'counter' ? '*' : '(Optional)'}
+                                                    </Label>
+                                                    <Input
+                                                        id="customer-phone"
+                                                        value={orderPhone}
+                                                        onChange={(e) => setOrderPhone(e.target.value)}
+                                                        placeholder="10-digit mobile number"
+                                                        disabled={loading || !!phoneFromUrl}
+                                                        required={selectedPaymentMethod === 'counter'}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
 
                                 {/* PLACE ORDER BUTTON */}
                                 {selectedPaymentMethod && (

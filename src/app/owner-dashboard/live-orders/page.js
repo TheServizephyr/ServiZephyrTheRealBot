@@ -5,9 +5,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { collection, query, where, orderBy, onSnapshot, getDocs, limit } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
+import { formatSafeDate, formatSafeTime, formatSafeRelativeTime, formatSafeDateShort, safeToDate } from '@/lib/safeDateFormat';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -520,11 +522,22 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
                                 <div key={index} className="flex justify-between items-center border-b border-border/50 pb-1">
                                     <div className="flex items-center gap-2">
                                         <span>{item.quantity} x {item.name}</span>
-                                        {item.addedAt && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
-                                                🆕 Added {format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a')}
-                                            </span>
-                                        )}
+                                        {item.addedAt && (() => {
+                                            try {
+                                                const date = item.addedAt?.seconds
+                                                    ? new Date(item.addedAt.seconds * 1000)
+                                                    : new Date(item.addedAt);
+                                                // Only render if valid date
+                                                if (isNaN(date.getTime())) return null;
+                                                return (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
+                                                        🆕 Added {format(date, 'hh:mm a')}
+                                                    </span>
+                                                );
+                                            } catch (e) {
+                                                return null; // Fail silently
+                                            }
+                                        })()}
                                     </div>
                                     <span>₹{item.price * item.quantity}</span>
                                 </div>
@@ -630,24 +643,134 @@ export default function LiveOrdersPage() {
         }
     };
 
+
+    // Real-time listener for orders (replaces 30-second polling)
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) {
-                fetchInitialData();
+        const user = auth.currentUser;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        // For impersonation or employee access, use API polling (can't use Firestore directly)
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+            console.log('[LiveOrders] Using API polling for impersonation/employee access');
+            fetchInitialData();
+            const interval = setInterval(() => fetchInitialData(true), 30000);
+            return () => clearInterval(interval);
+        }
+
+        // ✅ For owner's own dashboard - use REAL-TIME Firestore listener
+        setLoading(true);
+
+        // Fetch restaurant ID from user's document
+        const ownerId = user.uid;
+
+        // Fetch static data (riders & settings) via API once
+        const fetchStaticData = async () => {
+            try {
+                const idToken = await user.getIdToken();
+                const [ridersRes, settingsRes] = await Promise.all([
+                    fetch('/api/owner/delivery', { headers: { 'Authorization': `Bearer ${idToken}` } }),
+                    fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } })
+                ]);
+
+                if (ridersRes.ok) {
+                    const ridersData = await ridersRes.json();
+                    setRiders(ridersData.boys || []);
+                }
+
+                if (settingsRes.ok) {
+                    const settingsData = await settingsRes.json();
+                    setRestaurantData({
+                        name: settingsData.restaurantName,
+                        address: settingsData.address,
+                        gstin: settingsData.gstin,
+                    });
+                }
+            } catch (error) {
+                console.error('[LiveOrders] Error fetching static data:', error);
             }
-            else {
+        };
+
+        fetchStaticData();
+
+        // ✅ CRITICAL FIX: Get restaurantId first (orders use restaurantId, not ownerId!)
+        const setupListener = async () => {
+            try {
+                // Fetch owner's restaurant document to get restaurantId
+                const restaurantsQuery = query(
+                    collection(db, 'restaurants'),
+                    where('ownerId', '==', ownerId),
+                    limit(1)
+                );
+
+                const restaurantSnapshot = await getDocs(restaurantsQuery);
+
+                if (restaurantSnapshot.empty) {
+                    console.error('[LiveOrders] No restaurant found for owner:', ownerId);
+                    setLoading(false);
+                    return;
+                }
+
+                const restaurantId = restaurantSnapshot.docs[0].id;
+                console.log('[LiveOrders] Found restaurantId:', restaurantId);
+
+                // Real-time listener for ACTIVE orders only (performance optimization)
+                console.log('[LiveOrders] Setting up query with restaurantId:', restaurantId);
+                const ordersQuery = query(
+                    collection(db, 'orders'),
+                    where('restaurantId', '==', restaurantId),
+                    where('status', 'in', ['pending', 'confirmed', 'preparing', 'dispatched', 'ready_for_pickup']), // ✅ Active orders only
+                    orderBy('orderDate', 'desc')
+                );
+
+                const unsubscribe = onSnapshot(
+                    ordersQuery,
+                    (querySnapshot) => {
+                        const fetchedOrders = [];
+                        querySnapshot.forEach((doc) => {
+                            const orderData = doc.data();
+                            console.log('[LiveOrders] Order found:', { id: doc.id, restaurantId: orderData.restaurantId, status: orderData.status });
+                            fetchedOrders.push({ id: doc.id, ...orderData });
+                        });
+
+                        console.log(`[LiveOrders] Real-time update: ${fetchedOrders.length} active orders`);
+                        setOrders(fetchedOrders);
+                        setLoading(false);
+                    },
+                    (error) => {
+                        console.error('[LiveOrders] Firestore listener error:', error);
+                        setInfoDialog({
+                            isOpen: true,
+                            title: 'Connection Error',
+                            message: 'Could not connect to live orders. Please refresh the page.'
+                        });
+                        setLoading(false);
+                    }
+                );
+
+                // Return cleanup function
+                return unsubscribe;
+            } catch (error) {
+                console.error('[LiveOrders] Error setting up listener:', error);
                 setLoading(false);
+                return () => { }; // No-op cleanup
             }
+        };
+
+        // Call setup function and store cleanup
+        let cleanupFn = () => { };
+        setupListener().then(unsubscribe => {
+            if (unsubscribe) cleanupFn = unsubscribe;
         });
 
-        const interval = setInterval(() => {
-            fetchInitialData(true);
-        }, 30000);
+        // Cleanup function when component unmounts
         return () => {
-            unsubscribe();
-            clearInterval(interval);
+            console.log('[LiveOrders] Cleaning up real-time listener');
+            cleanupFn();
         };
-    }, [impersonatedOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
         const user = auth.currentUser;
@@ -678,10 +801,27 @@ export default function LiveOrdersPage() {
 
     const handleUpdateStatus = async (orderId, newStatus) => {
         setUpdatingOrderId(orderId);
+
+        // OPTIMISTIC UPDATE - Update UI instantly for better UX!
+        const previousOrders = orders;
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                order.id === orderId
+                    ? { ...order, status: newStatus }
+                    : order
+            )
+        );
+
         try {
             await handleAPICall('PATCH', { orderId, newStatus });
-            await fetchInitialData(true);
+            // No need to refresh - Firestore listener will update automatically!
+            // Or if not using listener (impersonation), manual refresh happens
+            if (impersonatedOwnerId || employeeOfOwnerId) {
+                await fetchInitialData(true);
+            }
         } catch (error) {
+            // REVERT optimistic update on error
+            setOrders(previousOrders);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Error updating status: ${error.message}` });
         } finally {
             setUpdatingOrderId(null);
@@ -690,15 +830,31 @@ export default function LiveOrdersPage() {
 
     const handleAssignRider = async (orderIds, riderId, activateRider) => {
         setUpdatingOrderId(orderIds[0]);
+
+        // OPTIMISTIC UPDATE - Update UI instantly
+        const previousOrders = orders;
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                orderIds.includes(order.id)
+                    ? { ...order, status: 'dispatched', deliveryBoyId: riderId }
+                    : order
+            )
+        );
+
         try {
             if (activateRider) {
                 await handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
             }
 
             await handleAPICall('PATCH', { orderIds, newStatus: 'dispatched', deliveryBoyId: riderId });
-            await fetchInitialData(true);
+            // Firestore listener will confirm the update
+            if (impersonatedOwnerId || employeeOfOwnerId) {
+                await fetchInitialData(true);
+            }
             setAssignModalData({ isOpen: false, orders: [] });
         } catch (error) {
+            // REVERT on error
+            setOrders(previousOrders);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Error assigning rider: ${error.message}` });
             setAssignModalData({ isOpen: false, orders: [] });
             throw error;
@@ -711,16 +867,32 @@ export default function LiveOrdersPage() {
 
     const handleRejectOrder = async (orderId, reason) => {
         setUpdatingOrderId(orderId);
+
+        // OPTIMISTIC UPDATE - Update UI instantly
+        const previousOrders = orders;
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                order.id === orderId
+                    ? { ...order, status: 'rejected', rejectionReason: reason }
+                    : order
+            )
+        );
+
         try {
             await handleAPICall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: reason });
-            await fetchInitialData(true);
+            // Firestore listener will confirm
+            if (impersonatedOwnerId || employeeOfOwnerId) {
+                await fetchInitialData(true);
+            }
         } catch (error) {
+            // REVERT on error
+            setOrders(previousOrders);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Error rejecting order: ${error.message}` });
             throw error;
         } finally {
             setUpdatingOrderId(null);
         }
-    }
+    };
 
     const handlePrintClick = (order) => {
         setPrintData(order);
@@ -865,6 +1037,12 @@ export default function LiveOrdersPage() {
                             <span className="ml-2 hidden sm:inline">Custom Bill</span>
                         </Button>
                     </Link>
+                    <Link href="/owner-dashboard/order-history" passHref>
+                        <Button variant="outline" className="flex-shrink-0">
+                            <History size={16} />
+                            <span className="ml-2 hidden sm:inline">History</span>
+                        </Button>
+                    </Link>
                     <Button onClick={() => fetchInitialData(true)} variant="outline" className="flex-shrink-0">
                         <RefreshCw size={16} className={cn(loading && "animate-spin")} />
                         <span className="ml-2 hidden sm:inline">{loading ? 'Loading...' : 'Refresh'}</span>
@@ -873,14 +1051,12 @@ export default function LiveOrdersPage() {
             </div>
 
             <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
-                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 md:grid-cols-7 h-auto p-1 bg-muted">
+                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 md:grid-cols-5 h-auto p-1 bg-muted">
                     <TabsTrigger value="All">All</TabsTrigger>
                     <TabsTrigger value="New">New</TabsTrigger>
                     <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
                     <TabsTrigger value="Preparing">Preparing</TabsTrigger>
                     <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>
-                    <TabsTrigger value="Delivered">Delivered</TabsTrigger>
-                    <TabsTrigger value="Rejected">Rejected</TabsTrigger>
                 </TabsList>
             </Tabs>
 
@@ -971,17 +1147,20 @@ export default function LiveOrdersPage() {
                                             {(order.items || []).slice(0, 2).map((item, index) => (
                                                 <div key={index} className="text-xs text-muted-foreground flex items-center gap-2">
                                                     <span>{item.quantity}x {item.name}</span>
-                                                    {item.addedAt && (
-                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] font-semibold">
-                                                            🆕 Added {format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a')}
-                                                        </span>
-                                                    )}
+                                                    {item.addedAt && (() => {
+                                                        const addedDate = safeToDate(item.addedAt?.seconds ? new Date(item.addedAt.seconds * 1000) : item.addedAt);
+                                                        return addedDate ? (
+                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] font-semibold">
+                                                                🆕 Added {format(addedDate, 'hh:mm a')}
+                                                            </span>
+                                                        ) : null;
+                                                    })()}
                                                 </div>
                                             ))}
                                             {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and {(order.items || []).length - 2} more</div>}
                                         </td>
                                         <td className="p-4 text-sm text-muted-foreground align-top">
-                                            {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'dd/MM/yyyy, hh:mm a')}
+                                            {formatSafeDate(order.orderDate?.seconds ? new Date(order.orderDate.seconds * 1000) : order.orderDate, 'Invalid Date')}
                                         </td>
                                         <td className="p-4 align-top">
                                             <Popover>

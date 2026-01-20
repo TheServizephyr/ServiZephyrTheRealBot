@@ -68,7 +68,7 @@ function OwnerDashboardContent({ children }) {
     restrictedFeatures: [],
     suspensionRemark: ''
   });
-  const [restaurantName, setRestaurantName] = useState('');
+  const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const [userRole, setUserRole] = useState(null); // For RBAC
   const router = useRouter();
@@ -159,7 +159,7 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     if (isUserLoading) return;
 
-    // Give auth time to settle (race condition fix)
+    // Simple check - no redirect, just mark as ready
     const timer = setTimeout(() => {
       setAuthChecked(true);
     }, 500);
@@ -170,11 +170,8 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     if (!authChecked) return;
 
-    if (!user) {
-      console.log('[Street Vendor Layout] No user after auth check, redirecting');
-      router.push('/');
-      return;
-    }
+    // REMOVED AUTH REDIRECT - Let RedirectHandler handle all auth
+    // Dashboard should always load if user reaches it
 
     // Log impersonation when detected
     if (user && impersonatedOwnerId) {
@@ -215,10 +212,17 @@ function OwnerDashboardContent({ children }) {
           fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
         ]);
 
+        console.log('[Layout] About to fetch settings...');
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
-          setRestaurantName(settingsData.restaurantName || '');
+          console.log('[Layout] Settings API response:', settingsData);
+          console.log('[Layout] Restaurant name from API:', settingsData.restaurantName);
+          const nameToSet = settingsData.restaurantName || 'My Dashboard';
+          console.log('[Layout] Setting restaurant name to:', nameToSet);
+          setRestaurantName(nameToSet);
           setRestaurantLogo(settingsData.logoUrl || null);
+        } else {
+          console.log('[Layout] Settings API failed with status:', settingsRes.status);
         }
 
         if (statusRes.ok) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { recalculateTabTotals, verifyTabIntegrity } from '@/lib/dinein-utils';
 
 import Razorpay from 'razorpay';
 import axios from 'axios';
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 // POST: Settle payment for existing dine-in orders
 export async function POST(req) {
     try {
-        const { tabId, restaurantId, paymentMethod, grandTotal } = await req.json();
+        let { tabId, restaurantId, paymentMethod, grandTotal } = await req.json();
 
         if (!tabId || !restaurantId) {
             return NextResponse.json({ message: 'TabId and RestaurantId required' }, { status: 400 });
@@ -42,6 +43,27 @@ export async function POST(req) {
         const businessData = businessDoc.data();
         console.log(`[Settle Payment] Business: ${businessData.name}`);
 
+        // ✅ PHASE 1 INTEGRATION: Verify integrity before payment
+        try {
+            const { isValid, mismatch } = await verifyTabIntegrity(tabId);
+            if (!isValid) {
+                console.warn(`[Settle Payment] Tab ${tabId} had mismatch of ₹${mismatch}, auto-corrected`);
+            }
+
+            // Recalculate to get accurate amount
+            const { totalAmount, pendingAmount } = await recalculateTabTotals(tabId);
+            console.log(`[Settle Payment] ✅ Verified amounts - Total: ₹${totalAmount}, Pending: ₹${pendingAmount}`);
+
+            // Update grandTotal if different (use verified amount)
+            if (Math.abs(pendingAmount - grandTotal) > 0.01) {
+                console.warn(`[Settle Payment] Amount mismatch: requested ₹${grandTotal}, actual ₹${pendingAmount}`);
+                // Use verified amount for safety
+                grandTotal = pendingAmount;
+            }
+        } catch (verifyErr) {
+            console.warn('[Settle Payment] Verification failed:', verifyErr.message);
+            // Continue with requested amount if verification fails
+        }
 
         // For online payment, create Razorpay order
         if (paymentMethod === 'razorpay' || paymentMethod === 'online') {

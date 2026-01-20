@@ -393,6 +393,24 @@ export async function PATCH(req) {
         await batch.commit();
         console.log(`[API][PATCH /orders] Batch update completed successfully for ${idsToUpdate.length} orders.`);
 
+        // ✅ CRITICAL FIX: Invalidate cache for all updated orders
+        // Without this, customers see stale 'pending' status for 60s after restaurant changes to 'rejected'
+        try {
+            const { kv } = await import('@vercel/kv');
+            const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+
+            if (isKvAvailable) {
+                for (const id of idsToUpdate) {
+                    const cacheKey = `order_status:${id}`;
+                    await kv.del(cacheKey);
+                    console.log(`[API][PATCH /orders] ✅ Cache invalidated for ${cacheKey}`);
+                }
+            }
+        } catch (cacheError) {
+            console.warn('[API][PATCH /orders] Cache invalidation failed (non-fatal):', cacheError);
+            // Non-fatal - status update already succeeded
+        }
+
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 
     } catch (error) {

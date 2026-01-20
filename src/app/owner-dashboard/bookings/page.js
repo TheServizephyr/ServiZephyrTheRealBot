@@ -9,7 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
@@ -181,13 +182,60 @@ function BookingsPageContent() {
         }
     };
 
+    // Real-time listener for bookings
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) fetchBookings();
-            else setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+        const user = auth.currentUser;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        // For impersonation or employee access, use API
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+            console.log('[Bookings] Using API for impersonation/employee access');
+            fetchBookings();
+            return;
+        }
+
+        // For owner's own dashboard - use REAL-TIME listener
+        setLoading(true);
+        const ownerId = user.uid;
+
+        const bookingsQuery = query(
+            collection(db, 'bookings'),
+            where('ownerId', '==', ownerId),
+            orderBy('bookingDateTime', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(
+            bookingsQuery,
+            (querySnapshot) => {
+                const fetchedBookings = [];
+                querySnapshot.forEach((doc) => {
+                    fetchedBookings.push({ id: doc.id, ...doc.data() });
+                });
+
+                console.log(`[Bookings] Real-time update: ${fetchedBookings.length} bookings`);
+                setBookings(fetchedBookings);
+                setLoading(false);
+            },
+            (error) => {
+                console.error('[Bookings] Firestore listener error:', error);
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Connection Error',
+                    message: 'Could not connect to bookings. Please refresh the page.'
+                });
+                setLoading(false);
+            }
+        );
+
+        // Cleanup - CRITICAL
+        return () => {
+            console.log('[Bookings] Cleaning up real-time listener');
+            unsubscribe();
+        };
+    }, [impersonatedOwnerId, employeeOfOwnerId, fetchBookings]);
 
 
     const handleUpdateStatus = async (bookingId, status) => {

@@ -259,28 +259,50 @@ export async function POST(req) {
                 console.log(`[Webhook RZP] handleSplitPayment returned false for order ${razorpayOrderId}. Proceeding to normal flow.`);
             }
 
-            // Handle Add-on Payment
+            // Handle Add-on Payment with Idempotency
             const notes = paymentEntity.notes;
             if (notes && notes.type === 'addon') {
                 console.log(`[Webhook RZP] Add-on payment detected for order ${notes.orderId}`);
                 const orderId = notes.orderId;
+                const paymentId = paymentEntity.id;
 
                 let itemsToAdd = [];
                 try {
                     itemsToAdd = JSON.parse(notes.items);
                 } catch (e) {
                     console.error("[Webhook RZP] Failed to parse items from notes:", e);
+                    return NextResponse.json({ status: 'ok', message: 'Invalid items data' });
                 }
 
                 const addOnAmount = paymentEntity.amount / 100; // Amount in rupees
-
                 const orderRef = firestore.collection('orders').doc(orderId);
+                const paymentRef = firestore.collection('processed_payments').doc(paymentId);
 
+                // ATOMIC TRANSACTION: Check + Process + Mark
                 await firestore.runTransaction(async (transaction) => {
+                    // Check if payment already processed (IDEMPOTENCY)
+                    const paymentSnap = await transaction.get(paymentRef);
+                    if (paymentSnap.exists) {
+                        console.log(`[Webhook RZP] Payment ${paymentId} already processed. Skipping duplicate.`);
+                        return; // Exit - already processed
+                    }
+
+                    // Get order data
                     const orderDoc = await transaction.get(orderRef);
-                    if (!orderDoc.exists) throw new Error("Order not found for add-on.");
+                    if (!orderDoc.exists) {
+                        throw new Error("Order not found for add-on.");
+                    }
 
                     const orderData = orderDoc.data();
+
+                    // SECURITY: Only merge into pending/awaiting_payment orders
+                    const allowedStatuses = ['pending', 'awaiting_payment'];
+                    if (!allowedStatuses.includes(orderData.status)) {
+                        console.log(`[Webhook RZP] Cannot add items. Order status: ${orderData.status}`);
+                        return; // Exit - order not in valid state
+                    }
+
+                    // MERGE ITEMS
                     const newItems = [...(orderData.items || []), ...itemsToAdd];
 
                     // Update totals
@@ -292,13 +314,14 @@ export async function POST(req) {
                     const paymentDetail = {
                         method: 'razorpay',
                         amount: addOnAmount,
-                        razorpay_payment_id: paymentEntity.id,
+                        razorpay_payment_id: paymentId,
                         razorpay_order_id: razorpayOrderId,
                         timestamp: new Date(),
                         status: 'paid',
                         notes: 'Add-on payment'
                     };
 
+                    // UPDATE ORDER
                     transaction.update(orderRef, {
                         items: newItems,
                         subtotal: newSubtotal,
@@ -311,6 +334,15 @@ export async function POST(req) {
                             timestamp: new Date(),
                             notes: `Added ${itemsToAdd.length} item(s) via online add-on`
                         })
+                    });
+
+                    // MARK PAYMENT AS PROCESSED (prevent duplicates)
+                    transaction.set(paymentRef, {
+                        processedAt: FieldValue.serverTimestamp(),
+                        orderId: orderId,
+                        type: 'addon',
+                        amount: addOnAmount,
+                        razorpayOrderId: razorpayOrderId
                     });
                 });
 
@@ -537,6 +569,74 @@ export async function POST(req) {
 
     } catch (error) {
         console.error('[Webhook RZP] CRITICAL Error processing webhook:', error);
-        return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
+
+        // STEP 3: SAVE FAILED WEBHOOK FOR MANUAL RETRY
+        try {
+            // Extract event data if available
+            let eventData, paymentEntity, paymentId, orderId, restaurantId;
+
+            try {
+                const body = await req.text();
+                eventData = JSON.parse(body);
+
+                if (eventData.event === 'payment.captured') {
+                    paymentEntity = eventData.payload?.payment?.entity;
+                    paymentId = paymentEntity?.id;
+
+                    // Try to extract order details from notes
+                    const notes = paymentEntity?.notes;
+                    orderId = notes?.orderId || notes?.order_id || 'unknown';
+                    restaurantId = notes?.restaurantId || 'unknown';
+                }
+            } catch (parseError) {
+                console.error('[Webhook RZP] Could not parse event data for failed webhook:', parseError);
+            }
+
+            // If we have paymentId, save to failed_webhooks
+            if (paymentId) {
+                const firestore = await getFirestore();
+                console.log(`[Webhook RZP] Saving failed webhook to queue: wh_${paymentId}`);
+
+                // Extract customer info from notes for admin visibility
+                const notes = paymentEntity?.notes || {};
+                const customerInfo = {
+                    customerName: notes.customer_name || notes.customerName || 'Unknown Customer',
+                    customerPhone: notes.customer_phone || notes.customerPhone || 'N/A',
+                    customerEmail: notes.customer_email || notes.customerEmail || 'N/A'
+                };
+
+                await firestore.collection('failed_webhooks').doc(`wh_${paymentId}`).set({
+                    provider: 'razorpay',
+                    event: eventData?.event || 'unknown',
+                    paymentId: paymentId,
+                    orderId: orderId,
+                    restaurantId: restaurantId,
+                    // Customer info for admin transparency
+                    customerName: customerInfo.customerName,
+                    customerPhone: customerInfo.customerPhone,
+                    customerEmail: customerInfo.customerEmail,
+                    payload: eventData || null,
+                    error: error.message,
+                    errorStack: error.stack,
+                    errorType: error.name || 'UnknownError',
+                    status: 'pending',
+                    retryCount: 0,
+                    // Normalized fields for dashboard
+                    amount: paymentEntity?.amount ? paymentEntity.amount / 100 : 0,
+                    paymentMethod: paymentEntity?.method || 'unknown',
+                    razorpayOrderId: paymentEntity?.order_id || 'N/A',
+                    createdAt: FieldValue.serverTimestamp(),
+                    lastTriedAt: FieldValue.serverTimestamp()
+                }, { merge: true }); // Use merge to prevent overwriting if webhook fails multiple times
+
+                console.log(`[Webhook RZP] Failed webhook queued successfully for manual retry`);
+            }
+        } catch (saveError) {
+            console.error('[Webhook RZP] Failed to save failed webhook:', saveError);
+            // Don't throw - we still want to return 200
+        }
+
+        // ALWAYS return 200 OK to prevent Razorpay retry chaos
+        return NextResponse.json({ status: 'received', queued: true }, { status: 200 });
     }
 }

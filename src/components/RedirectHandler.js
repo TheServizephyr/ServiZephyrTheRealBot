@@ -13,6 +13,22 @@ export default function RedirectHandler() {
     const router = useRouter();
 
     useEffect(() => {
+        // Skip if we're on /login page or any dashboard page - let them handle their own auth
+        if (typeof window !== 'undefined') {
+            const pathname = window.location.pathname;
+            const isDashboard = pathname.startsWith('/owner-dashboard') ||
+                pathname.startsWith('/admin-dashboard') ||
+                pathname.startsWith('/rider-dashboard') ||
+                pathname.startsWith('/street-vendor-dashboard') ||
+                pathname.startsWith('/customer-dashboard') ||
+                pathname.startsWith('/employee-dashboard');
+
+            if (pathname === '/login' || isDashboard) {
+                console.log("[RedirectHandler] On", pathname, "- skipping global handler");
+                return;
+            }
+        }
+
         let unsubscribe = () => { };
 
         const handleRedirectResult = async () => {
@@ -61,8 +77,9 @@ export default function RedirectHandler() {
                             const { timestamp } = JSON.parse(loginFlagData);
                             flagAge = (Date.now() - timestamp) / 1000;
 
-                            // If flag is older than 30 seconds, it's stale
-                            if (flagAge > 30) {
+                            // If flag is older than 3 minutes, it's stale
+                            // Increased from 30s to 180s to account for slow Google redirects
+                            if (flagAge > 180) {
                                 console.log(`[RedirectHandler] Stale login flag (${flagAge.toFixed(0)}s old). Clearing.`);
                                 sessionStorage.removeItem('isLoggingIn');
                                 setLoading(false);
@@ -160,7 +177,7 @@ export default function RedirectHandler() {
                     setMsg("New user detected! Redirecting...");
                     console.log("[RedirectHandler] 404 - New User. Redirecting to /complete-profile");
                     localStorage.setItem("role", "none");
-                    router.push("/complete-profile");
+                    window.location.href = "/complete-profile";
                     return;
                 }
                 throw new Error(data.message || 'Failed to verify user role.');
@@ -169,7 +186,7 @@ export default function RedirectHandler() {
             if (data.hasMultipleRoles) {
                 setMsg("Multiple accounts found. Redirecting...");
                 console.log("[RedirectHandler] Multiple roles. Redirecting to /select-role");
-                router.push("/select-role");
+                window.location.href = "/select-role";
                 return;
             }
 
@@ -177,7 +194,7 @@ export default function RedirectHandler() {
                 setMsg(`Welcome back! Redirecting to ${data.outletName || 'dashboard'}...`);
                 console.log(`[RedirectHandler] specific redirectTo found: ${data.redirectTo}`);
                 localStorage.setItem("role", data.role || 'employee');
-                router.push(data.redirectTo);
+                window.location.href = data.redirectTo;
                 return;
             }
 
@@ -189,15 +206,15 @@ export default function RedirectHandler() {
             if (businessType) localStorage.setItem("businessType", businessType);
 
             if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
-                router.push("/owner-dashboard");
+                window.location.href = "/owner-dashboard";
             } else if (role === "admin") {
-                router.push("/admin-dashboard");
+                window.location.href = "/admin-dashboard";
             } else if (role === "rider") {
-                router.push("/rider-dashboard");
+                window.location.href = "/rider-dashboard";
             } else if (role === "street-vendor") {
-                router.push("/street-vendor-dashboard");
+                window.location.href = "/street-vendor-dashboard";
             } else {
-                router.push("/customer-dashboard");
+                window.location.href = "/customer-dashboard";
             }
 
         } catch (err) {

@@ -84,14 +84,89 @@ function PreOrderTrackingContent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // ✅ MULTI-ORDER STATE
+    const [allOrders, setAllOrders] = useState([]);
+    const [selectedOrderIndex, setSelectedOrderIndex] = useState(0);
+    const [currentOrderId, setCurrentOrderId] = useState(orderId);
+    const [currentToken, setCurrentToken] = useState(tokenFromUrl);
+
     // Animation states
     const [showRipple, setShowRipple] = useState(false);
     const [animationState, setAnimationState] = useState('drop');
     const [isFlipped, setIsFlipped] = useState(false);
     const tiltWrapperRef = useRef(null);
 
-    const isOrderComplete = order?.status === 'delivered';
-    const isOrderRejected = order?.status === 'rejected' || order?.status === 'cancelled';
+    // ✅ SMART CELEBRATION & CANCELLATION LOGIC
+    const currentOrderComplete = order?.status === 'delivered';
+    const currentOrderCancelled = order?.status === 'rejected' || order?.status === 'cancelled';
+
+    // Check if ALL orders are delivered (for pure delivery celebration)
+    const allOrdersComplete = allOrders.length > 0 &&
+        allOrders.every(o => o.status === 'delivered');
+
+    // Check if ALL orders are cancelled/rejected (for full-screen cancellation)
+    const allOrdersCancelled = allOrders.length > 0 &&
+        allOrders.every(o => o.status === 'cancelled' || o.status === 'rejected');
+
+    // ✅ NEW: Check if ALL orders are FINALIZED (delivered OR cancelled)
+    // This handles mixed scenarios: 2 delivered + 1 cancelled = all done!
+    const allOrdersFinalized = allOrders.length > 0 &&
+        allOrders.every(o => o.status === 'delivered' || o.status === 'cancelled' || o.status === 'rejected');
+
+    // Check if ANY order is delivered (priority for celebration)
+    const anyOrderDelivered = allOrders.some(o => o.status === 'delivered');
+
+    // Show full-screen celebration ONLY if:
+    // 1. Current order delivered AND
+    // 2. (Single order OR all finalized) AND
+    // 3. At least one order delivered (celebration wins over cancellation)
+    const showFullScreenCelebration = currentOrderComplete &&
+        (allOrders.length === 1 || allOrdersFinalized) &&
+        anyOrderDelivered;
+
+    // Show full-screen cancellation ONLY if:
+    // 1. Current order cancelled AND
+    // 2. (Single order OR all cancelled) AND
+    // 3. NO delivered orders (celebration takes priority!)
+    const showFullScreenCancellation = currentOrderCancelled &&
+        (allOrders.length === 1 || allOrdersCancelled) &&
+        !anyOrderDelivered;
+
+    // ✅ LOAD ALL VENDOR ORDERS FROM LOCALSTORAGE
+    useEffect(() => {
+        const loadAllOrders = async () => {
+            if (!order || !order.restaurantId) return;
+
+            const { getVendorOrders } = await import('@/lib/vendorOrdersStorage');
+            const orders = getVendorOrders(order.restaurantId);
+
+            if (orders.length > 0) {
+                // Sort orders chronologically: oldest first (Order 1, Order 2, Order 3...)
+                const sortedOrders = orders.sort((a, b) => a.timestamp - b.timestamp);
+
+                setAllOrders(sortedOrders);
+                // Find index of current order
+                const currentIndex = sortedOrders.findIndex(o => o.orderId === currentOrderId);
+                if (currentIndex !== -1) {
+                    setSelectedOrderIndex(currentIndex);
+                }
+                console.log(`[Track Page] Loaded ${sortedOrders.length} orders from localStorage (sorted chronologically)`);
+            }
+        };
+
+        loadAllOrders();
+    }, [order, currentOrderId]);
+
+    // ✅ AUTO-CLEAN STORAGE: When ALL orders complete, clear localStorage
+    useEffect(() => {
+        if (showFullScreenCelebration && order?.restaurantId && order?.businessType === 'street-vendor') {
+            // Only clean when full-screen celebration shows (ALL orders delivered)
+            import('@/lib/vendorOrdersStorage').then(({ clearVendorOrders }) => {
+                clearVendorOrders(order.restaurantId);
+                console.log(`[Track Page] All orders complete - localStorage cleared for vendor ${order.restaurantId}`);
+            });
+        }
+    }, [showFullScreenCelebration, order?.restaurantId, order?.businessType]);
 
     useEffect(() => {
         let unsubscribe = () => { };
@@ -109,18 +184,55 @@ function PreOrderTrackingContent() {
                     await signInAnonymously(auth);
                 }
 
-                const docRef = doc(db, 'orders', orderId);
+                const docRef = doc(db, 'orders', currentOrderId);
+
+                // ✅ Use ref to track if we should stop processing updates
+                const shouldStopRef = { current: false };
+
                 unsubscribe = onSnapshot(docRef, (docSnap) => {
+                    // Skip processing if we already stopped
+                    if (shouldStopRef.current) return;
+
                     if (docSnap.exists()) {
                         const data = { id: docSnap.id, ...docSnap.data() };
                         // Robust token check with trim()
-                        if (!data.trackingToken || data.trackingToken.trim() !== (tokenFromUrl || '').trim()) {
+                        if (!data.trackingToken || data.trackingToken.trim() !== (currentToken || '').trim()) {
                             console.log(`[Track Page] Token Mismatch! Expected: ${data.trackingToken}, Got: ${tokenFromUrl}`);
                             setError("Invalid token. You do not have permission to view this order.");
                             setOrder(null);
                         } else {
                             setOrder(data);
                             setError(null);
+
+                            // ✅ CRITICAL: Stop processing if order reached final state
+                            const finalStates = ['delivered', 'cancelled', 'rejected'];
+                            if (finalStates.includes(data.status)) {
+                                console.log(`[Track Page] Order ${currentOrderId} reached final state: ${data.status} - Stopping listener processing`);
+                                // Set flag to stop processing future updates
+                                shouldStopRef.current = true;
+                                // Unsubscribe will happen automatically on cleanup
+                            }
+
+                            // ✅ AUTO-SAVE: If order not in localStorage, add it now
+                            // (Fixes issue where /order/placed page is skipped)
+                            if (data.restaurantId && data.businessType === 'street-vendor') {
+                                import('@/lib/vendorOrdersStorage').then(({ hasVendorOrder, addVendorOrder, updateVendorOrderStatus }) => {
+                                    if (!hasVendorOrder(data.restaurantId, currentOrderId)) {
+                                        addVendorOrder(data.restaurantId, {
+                                            orderId: currentOrderId,
+                                            token: currentToken,
+                                            customerOrderId: data.customerOrderId, // NEW: Pass customer-facing ID
+                                            totalAmount: data.totalAmount || 0,
+                                            itemCount: data.items?.length || 0,
+                                            status: data.status // NEW: Track initial status
+                                        });
+                                        console.log(`[Track Page] Auto-saved order ${currentOrderId} (CustomerID: ${data.customerOrderId}) to multi-order storage`);
+                                    } else {
+                                        // Update status in localStorage if it changed
+                                        updateVendorOrderStatus(data.restaurantId, currentOrderId, data.status);
+                                    }
+                                });
+                            }
                         }
                     } else {
                         setError("This order could not be found.");
@@ -147,7 +259,7 @@ function PreOrderTrackingContent() {
         setupListener();
 
         return () => unsubscribe();
-    }, [orderId, tokenFromUrl]);
+    }, [currentOrderId, currentToken]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -215,14 +327,28 @@ function PreOrderTrackingContent() {
             const phone = searchParams.get('phone') || order.customerPhone;
             const params = new URLSearchParams();
             params.set('restaurantId', order.restaurantId);
-            if (tokenFromUrl) params.set('token', tokenFromUrl);
+            if (currentToken) params.set('token', currentToken);
             if (phone) params.set('phone', phone);
-            if (order.id) params.set('activeOrderId', order.id);
+            if (order.id) params.set('activeOrderId', order.id); // ✅ RESTORED for Track button
 
             router.push(`/order/${order.restaurantId}?${params.toString()}`);
         } else {
             router.push('/');
         }
+    };
+
+    // ✅ HANDLE TAB SWITCH
+    const handleOrderSwitch = (index) => {
+        if (index === selectedOrderIndex) return;
+
+        setSelectedOrderIndex(index);
+        const selectedOrder = allOrders[index];
+        setCurrentOrderId(selectedOrder.orderId);
+        setCurrentToken(selectedOrder.token);
+        setLoading(true);
+        setOrder(null);
+
+        console.log(`[Track Page] Switched to order ${selectedOrder.orderId}`);
     };
 
     const coinTheme = useMemo(() => {
@@ -265,210 +391,408 @@ function PreOrderTrackingContent() {
     const formattedDate = format(orderDate, 'dd MMM, p');
 
     return (
-        <div className={cn("fixed inset-0 bg-background text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
-            <AnimatePresence>
-                {isOrderComplete && (
-                    <div className="confetti-container">
-                        {[...Array(100)].map((_, i) => {
-                            const style = {
-                                left: `${Math.random() * 100}%`,
-                                animationDelay: `${Math.random() * 4}s`,
-                                animationDuration: `${Math.random() * 3 + 3}s`,
-                                backgroundColor: `hsl(${Math.random() * 360}, 70%, 60%)`
-                            };
-                            return <div key={i} className="confetti" style={style}></div>
-                        })}
-                    </div>
-                )}
-            </AnimatePresence>
-            {/* Back to Menu button - visible for active orders */}
-            <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-                {(() => {
-                    console.log('[BackButton] Order status:', order?.status, 'Should show:', order?.status === 'pending' || order?.status === 'confirmed' || order?.status === 'Ready');
-                    return (order?.status === 'pending' || order?.status === 'confirmed' || order?.status === 'Ready') && (
-                        <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
-                            <ArrowLeft className="mr-2" /> Back to Menu
-                        </Button>
-                    );
-                })()}
+        <div className={cn("min-h-screen bg-background text-foreground font-sans", coinTheme)}>
+            {/* 📌 Sticky Header Section - Always visible at top */}
+            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
+                <div className="max-w-2xl mx-auto px-4 py-3">
+                    {/* Multi-Order Banner */}
+                    {allOrders.length > 1 && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex justify-center mb-2"
+                        >
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-900 px-5 py-2 rounded-full shadow-sm font-semibold text-xs">
+                                🎉 You have {allOrders.length} active orders
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {/* Back to Menu Button */}
+                    {(order?.status === 'pending' || order?.status === 'confirmed' || order?.status === 'Ready') && (
+                        <div className="flex items-center">
+                            <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted" size="sm">
+                                <ArrowLeft className="mr-2" size={16} /> Back to Menu
+                            </Button>
+                        </div>
+                    )}
+                </div>
             </header>
 
-            <AnimatePresence>
-                {isOrderComplete ? (
-                    <motion.div
-                        key="completion-screen"
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="flex-grow flex flex-col items-center justify-center text-center"
-                    >
-                        <CheckCircle size={80} className="text-green-500 mb-6" />
-                        <h2 className="text-4xl font-bold text-foreground">Order Collected!</h2>
-                        <p className="mt-2 text-muted-foreground">Thank you for your order. Enjoy your meal!</p>
-                        <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
-                            Order Again
-                        </Button>
-                    </motion.div>
-                ) : isOrderRejected ? (
-                    <motion.div
-                        key="rejection-screen"
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="flex-grow flex flex-col items-center justify-center text-center"
-                    >
-                        <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.2 }}>
-                            <XCircle size={80} className="text-destructive mb-6" />
+            {/* 📄 Main Scrollable Content */}
+            <main className="max-w-2xl mx-auto px-4 pb-8 space-y-6">
+                <AnimatePresence>
+                    {showFullScreenCelebration ? (
+                        <section className="min-h-[60vh] flex items-center justify-center py-12 relative overflow-hidden">
+                            {/* 🎈🎊 Celebration Rain */}
+                            <div className="absolute inset-0 pointer-events-none">
+                                {[...Array(50)].map((_, i) => {
+                                    const isBalloon = i % 3 === 0;
+                                    const colors = ['#FF6B6B', '#4ECDC4', '#FFD93D', '#95E1D3', '#F8B500', '#C7CEEA'];
+                                    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                                    const randomLeft = Math.random() * 100;
+                                    const randomDelay = Math.random() * 2;
+
+                                    return (
+                                        <div
+                                            key={i}
+                                            className={isBalloon ? 'balloon' : 'confetti-celebration'}
+                                            style={{
+                                                background: randomColor,
+                                                left: `${randomLeft}%`,
+                                                animationDelay: `${randomDelay}s`
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </div>
+
+                            <motion.div
+                                key="completion-screen"
+                                initial={{ scale: 0.8, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="text-center relative z-10"
+                            >
+                                <CheckCircle size={80} className="text-green-500 mb-6 mx-auto" />
+                                <h2 className="text-4xl font-bold text-foreground">
+                                    {allOrders.length > 1 ? 'All Orders Collected!' : 'Order Collected!'}
+                                </h2>
+                                <p className="mt-2 text-muted-foreground">
+                                    {allOrders.length > 1
+                                        ? `All ${allOrders.length} orders have been collected. Thank you!`
+                                        : 'Thank you for your order. Enjoy your meal!'
+                                    }
+                                </p>
+                                <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
+                                    Order Again
+                                </Button>
+                            </motion.div>
+                        </section>
+                    ) : showFullScreenCancellation ? (
+                        <motion.div
+                            key="rejection-screen"
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="flex-grow flex flex-col items-center justify-center text-center"
+                        >
+                            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.2 }}>
+                                <XCircle size={80} className="text-destructive mb-6" />
+                            </motion.div>
+                            <h2 className="text-4xl font-bold text-foreground">
+                                {allOrders.length > 1 ? 'All Orders Cancelled' : 'Order Cancelled'}
+                            </h2>
+                            <p className="mt-2 text-muted-foreground">
+                                {allOrders.length > 1
+                                    ? `All ${allOrders.length} orders have been cancelled.`
+                                    : "We're sorry, your order could not be processed."
+                                }
+                            </p>
+                            <p className="mt-4 text-sm font-semibold bg-destructive/10 text-destructive p-2 rounded-md">Reason: {order.rejectionReason || 'Not specified'}</p>
+                            <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
+                                Try Again
+                            </Button>
                         </motion.div>
-                        <h2 className="text-4xl font-bold text-foreground">Order Cancelled</h2>
-                        <p className="mt-2 text-muted-foreground">We're sorry, your order could not be processed.</p>
-                        <p className="mt-4 text-sm font-semibold bg-destructive/10 text-destructive p-2 rounded-md">Reason: {order.rejectionReason || 'Not specified'}</p>
-                        <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
-                            Try Again
-                        </Button>
-                    </motion.div>
-                ) : (
-                    <motion.div
-                        key="coin-view"
-                        initial={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.8, opacity: 0 }}
-                        className="flex-grow flex flex-col items-center justify-center"
-                    >
-                        <AnimatePresence>
-                            {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
-                        </AnimatePresence>
+                    ) : (
+                        <motion.div
+                            key="coin-view"
+                            initial={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.8, opacity: 0 }}
+                            className="flex-grow flex flex-col items-center justify-center"
+                        >
+                            <AnimatePresence>
+                                {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
+                            </AnimatePresence>
 
-                        <div className="scene">
-                            <div className="tilt-wrapper" ref={tiltWrapperRef}>
-                                <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
-                                    <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
+                            <div className="scene">
+                                <div className="tilt-wrapper" ref={tiltWrapperRef}>
+                                    <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
+                                        <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
 
-                                        <div className="coin-face coin-front">
-                                            <div className="texture-overlay"></div>
-                                            <div className="sheen"></div>
-                                            <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                                <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
-                                                <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ {formattedDate} ★</textPath></text>
-                                            </svg>
-                                            <div className="token-label">TOKEN</div>
-                                            <div className="token-number">
-                                                <span className="token-number-main">{tokenPart1}-</span>
-                                                <span className="token-number-sub">{tokenPart2}</span>
+                                            <div className="coin-face coin-front">
+                                                <div className="texture-overlay"></div>
+                                                <div className="sheen"></div>
+                                                <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                                    <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
+                                                    <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ {formattedDate} ★</textPath></text>
+                                                </svg>
+                                                <div className="token-label">TOKEN</div>
+                                                <div className="token-number">
+                                                    <span className="token-number-main">{tokenPart1}-</span>
+                                                    <span className="token-number-sub">{tokenPart2}</span>
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        <div className="coin-face coin-back">
-                                            <div className="texture-overlay"></div>
-                                            <div className="sheen"></div>
-                                            <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                                <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
-                                                <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY ServiZephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
-                                            </svg>
-                                            <div className="qr-box">
-                                                <QRCode
-                                                    value={qrValue}
-                                                    size={140}
-                                                    level={"H"}
-                                                    bgColor="transparent"
-                                                    fgColor={qrColor}
-                                                />
+                                            <div className="coin-face coin-back">
+                                                <div className="texture-overlay"></div>
+                                                <div className="sheen"></div>
+                                                <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                                    <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
+                                                    <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY ServiZephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
+                                                </svg>
+                                                <div className="qr-box">
+                                                    <QRCode
+                                                        value={qrValue}
+                                                        size={120}
+                                                        level={"H"}
+                                                        bgColor="transparent"
+                                                        fgColor={qrColor}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
-            {!(isOrderComplete || isOrderRejected) && (
-                <footer className="w-full flex flex-col items-center gap-6 z-20 pb-8">
+                {/* 📋 Single Order ID Display - ONLY for single order pages */}
+                {allOrders.length === 1 && !(showFullScreenCelebration || showFullScreenCancellation) && order?.customerOrderId && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className={cn(
-                            "border p-4 rounded-xl shadow-lg w-full max-w-sm transition-colors duration-500",
-                            (order.status === 'pending' || order.status === 'confirmed') && "bg-yellow-100 border-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-700",
-                            order.status === 'Ready' && "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700",
-                            !['pending', 'confirmed', 'Ready'].includes(order.status) && "bg-card border-border"
-                        )}
+                        className="w-full flex justify-center px-4 pb-4"
                     >
-                        <div className="space-y-2">
-                            <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
-                            {order.diningPreference && (
-                                <p className="text-sm">
-                                    <strong>Dining Preference: </strong>
-                                    <span className={cn(
-                                        "font-semibold px-2 py-0.5 rounded-full text-xs",
-                                        order.diningPreference === 'takeaway' ? "bg-orange-100 text-orange-700 border border-orange-200" :
-                                            order.diningPreference === 'dine-in' ? "bg-cyan-100 text-cyan-700 border border-cyan-200" :
-                                                "bg-gray-100 text-gray-700 border border-gray-200"
-                                    )}>
-                                        {order.diningPreference === 'takeaway' ? 'Takeaway' : order.diningPreference === 'dine-in' ? 'Dine-In' : order.diningPreference}
-                                    </span>
-                                </p>
-                            )}
-                            {order.items.map((item, index) => (
-                                <div key={index} className="flex justify-between text-muted-foreground text-sm">
-                                    <span>{item.quantity} x {item.name}</span>
-                                    <span>{formatCurrency(item.totalPrice)}</span>
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl px-6 py-3 shadow-sm">
+                            <div className="text-center">
+                                <div className="text-[10px] text-blue-600 font-semibold uppercase tracking-wider mb-0.5">
+                                    Your Order ID
                                 </div>
-                            ))}
-
-                            <div className="border-t border-dashed my-2"></div>
-
-                            <div className="space-y-1 text-sm">
-                                {(order.packagingCharge > 0) && (
-                                    <div className="flex justify-between text-muted-foreground">
-                                        <span>Packaging Charge</span>
-                                        <span>{formatCurrency(order.packagingCharge)}</span>
-                                    </div>
-                                )}
-
-                                {(order.deliveryCharge > 0) && (
-                                    <div className="flex justify-between text-muted-foreground">
-                                        <span>Delivery Charge</span>
-                                        <span>{formatCurrency(order.deliveryCharge)}</span>
-                                    </div>
-                                )}
-
-                                {((order.cgst > 0) || (order.sgst > 0)) && (
-                                    <div className="flex justify-between text-muted-foreground">
-                                        <span>Taxes (GST)</span>
-                                        <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
-                                    </div>
-                                )}
-
-                                {(order.convenienceFee > 0) && (
-                                    <div className="flex justify-between text-muted-foreground">
-                                        <span>Platform Fee</span>
-                                        <span>{formatCurrency(order.convenienceFee)}</span>
-                                    </div>
-                                )}
-
-                                {(order.tipAmount > 0) && (
-                                    <div className="flex justify-between text-muted-foreground">
-                                        <span>Tip</span>
-                                        <span>{formatCurrency(order.tipAmount)}</span>
-                                    </div>
-                                )}
-
-                                {(order.discount > 0) && (
-                                    <div className="flex justify-between text-green-600">
-                                        <span>Discount</span>
-                                        <span>- {formatCurrency(order.discount)}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
-                                <span>Grand Total</span>
-                                <span>{formatCurrency(order.grandTotal || order.totalAmount)}</span>
+                                <div className="font-mono text-lg font-black text-blue-900 tracking-wide">
+                                    {order.customerOrderId}
+                                </div>
                             </div>
                         </div>
                     </motion.div>
-                    <StatusTimeline currentStatus={order.status} />
-                </footer>
-            )}
+                )}
+
+                {/* 🎨 Multi-Order Tabs - Calm & Professional */}
+                {allOrders.length > 1 && !(showFullScreenCelebration || showFullScreenCancellation) && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="w-full px-4 pb-3"
+                    >
+                        <div className="flex gap-2.5 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                            {allOrders.map((o, index) => {
+                                const isActive = index === selectedOrderIndex;
+
+                                // Get customer-facing order ID (10 digits)
+                                const customerOrderId = allOrders[index]?.customerOrderId || null;
+
+                                // Get order status for theming
+                                const orderStatus = isActive ? (order?.status || 'pending') : (allOrders[index]?.status || 'pending');
+
+                                // Status-based colors (soft & calm)
+                                let statusBg = 'bg-gray-50';
+                                let statusBorder = 'border-gray-200';
+                                let statusText = 'text-gray-700';
+
+                                if (isActive) {
+                                    if (orderStatus === 'confirmed' || orderStatus === 'Ready') {
+                                        statusBg = 'bg-green-50';
+                                        statusBorder = 'border-green-200';
+                                        statusText = 'text-green-900';
+                                    } else if (orderStatus === 'pending') {
+                                        statusBg = 'bg-yellow-50';
+                                        statusBorder = 'border-yellow-200';
+                                        statusText = 'text-yellow-900';
+                                    }
+                                }
+
+                                return (
+                                    <motion.button
+                                        key={o.orderId}
+                                        onClick={() => handleOrderSwitch(index)}
+                                        className={cn(
+                                            "flex-1 min-w-[130px] h-20 rounded-2xl border-2 transition-all duration-300",
+                                            "shadow-sm hover:shadow-md",
+                                            isActive
+                                                ? cn(statusBg, statusBorder, "scale-100")
+                                                : "bg-white border-gray-200 opacity-70 hover:opacity-100"
+                                        )}
+                                        whileHover={{ y: -2 }}
+                                        whileTap={{ scale: 0.98 }}
+                                    >
+                                        <div className={cn(
+                                            "h-full flex flex-col items-center justify-center gap-1.5 px-3",
+                                            isActive ? statusText : "text-gray-600"
+                                        )}>
+                                            {/* Icon + Label */}
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-lg">🍽️</span>
+                                                <span className="font-bold text-sm">
+                                                    Order {index + 1}
+                                                </span>
+                                            </div>
+
+                                            {/* Customer Order ID - Bold & Prominent */}
+                                            {customerOrderId ? (
+                                                <div className={cn(
+                                                    "font-mono text-[10px] font-bold tracking-wide",
+                                                    isActive ? "opacity-90" : "opacity-70"
+                                                )}>
+                                                    <span className="font-extrabold">OrderID:</span> {customerOrderId}
+                                                </div>
+                                            ) : (
+                                                <div className="text-[9px] opacity-40 italic">
+                                                    Legacy order
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.button>
+                                );
+                            })}
+                        </div>
+                    </motion.div>
+                )}
+
+                {!(showFullScreenCelebration || showFullScreenCancellation) && (
+                    <footer className="w-full flex flex-col items-center gap-6 z-20 pb-8">
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={cn(
+                                "relative border p-4 rounded-2xl shadow-md w-full max-w-sm transition-colors duration-500 overflow-hidden",
+                                // Pending/Confirmed - Yellow
+                                (order.status === 'pending' || order.status === 'confirmed') && "bg-yellow-50 border-yellow-200",
+                                // Ready - Green
+                                order.status === 'Ready' && "bg-green-50 border-green-200",
+                                // Delivered - Beautiful gradient with confetti
+                                order.status === 'delivered' && "bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-300 border-2",
+                                // Canceled/Rejected - Red
+                                (order.status === 'cancelled' || order.status === 'rejected') && "bg-red-50 border-red-300 border-2",
+                                // Other statuses
+                                !['pending', 'confirmed', 'Ready', 'delivered', 'cancelled', 'rejected'].includes(order.status) && "bg-card border-border"
+                            )}
+                        >
+                            {/* 🎉 Localized Celebration - Only when order is delivered */}
+                            {order.status === 'delivered' && (
+                                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                                    {[...Array(30)].map((_, i) => {
+                                        const style = {
+                                            left: `${Math.random() * 100}%`,
+                                            top: `-5%`,
+                                            animationDelay: `${Math.random() * 2}s`,
+                                            animationDuration: `${Math.random() * 2 + 2}s`,
+                                            backgroundColor: `hsl(${Math.random() * 360}, 70%, 60%)`
+                                        };
+                                        return <div key={i} className="confetti-local" style={style}></div>
+                                    })}
+                                </div>
+                            )}
+
+                            {/* ✅ Order Complete Message */}
+                            {order.status === 'delivered' && (
+                                <div className="bg-emerald-100 border-2 border-emerald-400 rounded-xl p-3 mb-3 relative z-10">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle size={24} className="text-emerald-600" />
+                                        <div>
+                                            <h3 className="font-bold text-emerald-900 text-sm">Order Complete! 🎉</h3>
+                                            <p className="text-emerald-700 text-xs">Your order has been delivered</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ❌ Order Canceled Message */}
+                            {(order.status === 'cancelled' || order.status === 'rejected') && (
+                                <div className="bg-red-100 border-2 border-red-400 rounded-xl p-3 mb-3 relative z-10">
+                                    <div className="flex items-center gap-2">
+                                        <XCircle size={24} className="text-red-600" />
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-red-900 text-sm">Order Canceled</h3>
+                                            {order.rejectionReason || order.cancellationReason ? (
+                                                <p className="text-red-700 text-xs mt-1">
+                                                    <strong>Reason:</strong> {order.rejectionReason || order.cancellationReason}
+                                                </p>
+                                            ) : (
+                                                <p className="text-red-700 text-xs">This order was canceled</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-2">
+                                <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
+                                {order.diningPreference && (
+                                    <p className="text-sm">
+                                        <strong>Dining Preference: </strong>
+                                        <span className={cn(
+                                            "font-semibold px-2 py-0.5 rounded-full text-xs",
+                                            order.diningPreference === 'takeaway' ? "bg-orange-100 text-orange-700 border border-orange-200" :
+                                                order.diningPreference === 'dine-in' ? "bg-cyan-100 text-cyan-700 border border-cyan-200" :
+                                                    "bg-gray-100 text-gray-700 border border-gray-200"
+                                        )}>
+                                            {order.diningPreference === 'takeaway' ? 'Takeaway' : order.diningPreference === 'dine-in' ? 'Dine-In' : order.diningPreference}
+                                        </span>
+                                    </p>
+                                )}
+                                {order.items.map((item, index) => (
+                                    <div key={index} className="flex justify-between text-muted-foreground text-sm">
+                                        <span>{item.quantity} x {item.name}</span>
+                                        <span>{formatCurrency(item.totalPrice)}</span>
+                                    </div>
+                                ))}
+
+                                <div className="border-t border-dashed my-2"></div>
+
+                                <div className="space-y-1 text-sm">
+                                    {(order.packagingCharge > 0) && (
+                                        <div className="flex justify-between text-muted-foreground">
+                                            <span>Packaging Charge</span>
+                                            <span>{formatCurrency(order.packagingCharge)}</span>
+                                        </div>
+                                    )}
+
+                                    {(order.deliveryCharge > 0) && (
+                                        <div className="flex justify-between text-muted-foreground">
+                                            <span>Delivery Charge</span>
+                                            <span>{formatCurrency(order.deliveryCharge)}</span>
+                                        </div>
+                                    )}
+
+                                    {((order.cgst > 0) || (order.sgst > 0)) && (
+                                        <div className="flex justify-between text-muted-foreground">
+                                            <span>Taxes (GST)</span>
+                                            <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
+                                        </div>
+                                    )}
+
+                                    {(order.convenienceFee > 0) && (
+                                        <div className="flex justify-between text-muted-foreground">
+                                            <span>Platform Fee</span>
+                                            <span>{formatCurrency(order.convenienceFee)}</span>
+                                        </div>
+                                    )}
+
+                                    {(order.tipAmount > 0) && (
+                                        <div className="flex justify-between text-muted-foreground">
+                                            <span>Tip</span>
+                                            <span>{formatCurrency(order.tipAmount)}</span>
+                                        </div>
+                                    )}
+
+                                    {(order.discount > 0) && (
+                                        <div className="flex justify-between text-green-600">
+                                            <span>Discount</span>
+                                            <span>- {formatCurrency(order.discount)}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
+                                    <span>Grand Total</span>
+                                    <span>{formatCurrency(order.grandTotal || order.totalAmount)}</span>
+                                </div>
+                            </div>
+                        </motion.div>
+                        <StatusTimeline currentStatus={order.status} />
+                    </footer>
+                )}
+            </main>
         </div>
     );
 }

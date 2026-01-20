@@ -3,11 +3,13 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock } from 'lucide-react';
+import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock, UtensilsCrossed, Info, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTimer, POLLING_MAX_TIME } from '@/lib/trackingConstants';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { getDineInDetails } from '@/lib/dineInStorage';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -84,9 +86,32 @@ function DineInTrackingContent() {
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [isVisible, setIsVisible] = useState(true); // RULE 1
     const [isPayModalOpen, setIsPayModalOpen] = useState(false);
     const [isMarkingDone, setIsMarkingDone] = useState(false);
     const [cancellingId, setCancellingId] = useState(null);
+
+    // Check if ALL orders are cancelled
+    const allOrdersCancelled = useMemo(() => {
+        if (!orderData?.order?.batches || orderData.order.batches.length === 0) {
+            // Single order case - check if current order is cancelled/rejected
+            return ['cancelled', 'rejected'].includes(orderData?.order?.status);
+        }
+        // Multi-order case - ALL batches must be cancelled/rejected
+        return orderData.order.batches.every(batch =>
+            ['cancelled', 'rejected'].includes(batch.status)
+        );
+    }, [orderData]);
+
+    // ✅ Check if ALL orders are PAID (celebration condition!)
+    const allOrdersPaid = useMemo(() => {
+        if (!orderData?.order) return false;
+
+        const paymentStatus = orderData.order.paymentStatus;
+
+        // Check if payment is marked as 'paid'
+        return paymentStatus === 'paid';
+    }, [orderData]);
 
     const fetchData = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
@@ -97,12 +122,18 @@ function DineInTrackingContent() {
         }
 
         try {
-            const res = await fetch(`/api/order/status/${orderId}`);
+            // Cache-busting: Add timestamp to prevent stale data
+            const cacheBuster = `?t=${Date.now()}`;
+            const res = await fetch(`/api/order/status/${orderId}${cacheBuster}`, {
+                cache: 'no-store' // Disable Next.js caching
+            });
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to fetch order status.');
             }
             const data = await res.json();
+            console.log('[DineIn Track] Order data received:', data);
+            console.log('[DineIn Track] Status:', data.order?.status);
             setOrderData(data);
         } catch (err) {
             setError(err.message);
@@ -111,11 +142,97 @@ function DineInTrackingContent() {
         }
     }, [orderId]);
 
+    // RULE 1: Visibility API
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            const visible = !document.hidden;
+            setIsVisible(visible);
+            if (visible) {
+                console.log('[DineInTrack] Visible - resuming');
+                fetchData(true);
+            } else {
+                console.log('[DineInTrack] Hidden - pausing');
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchData]);
+
+    // ✅ BROWSER BACK BUTTON INTERCEPTION
+    // Intercept hardware/browser back to go to order page (not cart/checkout)
+    useEffect(() => {
+        const handlePopState = (event) => {
+            event.preventDefault();
+            const restaurantId = orderData?.restaurant?.id;
+            const tableId = orderData?.order?.tableId || orderData?.order?.table;
+            const tabId = orderData?.order?.dineInTabId;
+
+            if (restaurantId) {
+                const params = new URLSearchParams();
+                if (tableId) params.set('table', tableId);
+                if (tabId) params.set('tabId', tabId);
+
+                const url = `/order/${restaurantId}${params.toString() ? '?' + params.toString() : ''}`;
+                console.log('[DineInTrack] Browser back intercepted → redirecting to:', url);
+                router.replace(url);
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [orderData, router]);
+
+    // Initial fetch
     useEffect(() => {
         fetchData();
-        const interval = setInterval(() => fetchData(true), 20000);
-        return () => clearInterval(interval);
     }, [fetchData]);
+
+    // RULE 2, 3, 4: Adaptive polling with final state and timeout
+    useEffect(() => {
+        const currentStatus = orderData?.order?.status;
+
+        // EARLY EXIT: Stop polling if final state
+        if (currentStatus && isFinalState(currentStatus)) {
+            console.log(`[DineInTrack] Final state (${currentStatus}) - stopping all polling`);
+            clearPollingTimer(orderId);
+            return;
+        }
+
+        // Don't poll if page not visible
+        if (!isVisible) {
+            console.log('[DineInTrack] Page hidden - pausing polling');
+            return;
+        }
+
+        const pollingStartTime = getPollingStartTime(orderId);
+        const pollingInterval = currentStatus
+            ? getPollingInterval(currentStatus)
+            : 30000;
+
+        if (!pollingInterval) {
+            console.log('[DineInTrack] No interval for status - stopping');
+            clearPollingTimer(orderId);
+            return;
+        }
+
+        console.log(`[DineInTrack] Status: ${currentStatus}, Polling every ${pollingInterval / 1000}s`);
+
+        const interval = setInterval(() => {
+            if (document.hidden) return;
+            if (Date.now() - pollingStartTime > POLLING_MAX_TIME) {
+                console.warn('[DineInTrack] 60min exceeded');
+                clearInterval(interval);
+                clearPollingTimer(orderId);
+                return;
+            }
+            fetchData(true);
+        }, pollingInterval);
+
+        return () => {
+            console.log('[DineInTrack] Cleaning up interval');
+            clearInterval(interval);
+        };
+    }, [orderData?.order?.status, orderId, fetchData, isVisible]); // Fixed dependency
 
     // Calculate bill details - AGGREGATE ALL ORDERS IN SAME TAB
     const billDetails = useMemo(() => {
@@ -137,10 +254,17 @@ function DineInTrackingContent() {
     }, [orderData]);
 
     const handleAddMoreItems = () => {
+        console.log('[DineIn Track] Add More Items - orderData:', orderData);
+        console.log('[DineIn Track] tableId:', orderData.order?.tableId);
+        console.log('[DineIn Track] dineInTabId:', orderData.order?.dineInTabId);
+
         const params = new URLSearchParams();
         if (orderData.restaurant?.id) params.set('table', orderData.order.tableId);
         if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
-        router.push(`/order/${orderData.restaurant?.id}?${params.toString()}`);
+
+        const url = `/order/${orderData.restaurant?.id}?${params.toString()}`;
+        console.log('[DineIn Track] Navigating to:', url);
+        router.push(url);
     };
 
     const handlePayAtCounter = async () => {
@@ -282,11 +406,142 @@ function DineInTrackingContent() {
         )
     }
 
+    // ✅ FULL-SCREEN CANCELLATION VIEW - When ALL orders cancelled
+    if (allOrdersCancelled) {
+        const cancellationReason = orderData.order?.rejectionReason ||
+            orderData.order?.batches?.find(b => b.rejectionReason)?.rejectionReason ||
+            'This order was cancelled by the restaurant.';
+
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
+                <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5 }}
+                    className="w-full max-w-md"
+                >
+                    <div className="bg-destructive/10 border-2 border-destructive rounded-full w-24 h-24 mx-auto flex items-center justify-center mb-6">
+                        <XCircle className="w-16 h-16 text-destructive" />
+                    </div>
+                    <h1 className="text-3xl font-bold text-foreground mb-2">
+                        {orderData.order?.batches?.length > 1 ? 'All Orders Cancelled' : 'Order Cancelled'}
+                    </h1>
+                    <p className="text-muted-foreground text-lg mb-6">
+                        {cancellationReason}
+                    </p>
+                    <Button
+                        onClick={() => {
+                            // \u2705 CRITICAL: Clear localStorage FIRST!
+                            const restaurantId = orderData.restaurant?.id;
+                            const tableId = orderData.order?.tableId;
+
+                            if (restaurantId) {
+                                // Remove cancelled order from localStorage
+                                const liveOrderKey = `liveOrder_${restaurantId}`;
+                                localStorage.removeItem(liveOrderKey);
+                                console.log('[DineIn Track] Cleared cancelled order from localStorage:', liveOrderKey);
+
+                                const params = new URLSearchParams();
+                                if (tableId) params.set('table', tableId);
+                                router.replace(`/order/${restaurantId}?${params.toString()}`);
+                            } else {
+                                router.replace('/');
+                            }
+                        }}
+                        className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                    >
+                        <Home className="mr-2 h-5 w-5" />
+                        Back to Menu
+                    </Button>
+                </motion.div>
+            </div>
+        );
+    }
+
+    // ✅ FULL-SCREEN CELEBRATION VIEW - When ALL orders PAID!
+    if (allOrdersPaid) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center relative overflow-hidden">
+                {/* Balloons */}
+                {Array.from({ length: 12 }).map((_, i) => (
+                    <div
+                        key={`balloon-${i}`}
+                        className="balloon"
+                        style={{
+                            left: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 2}s`,
+                            animationDuration: `${4 + Math.random() * 3}s`,
+                            background: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F'][Math.floor(Math.random() * 6)]
+                        }}
+                    />
+                ))}
+
+                {/* Confetti */}
+                {Array.from({ length: 25 }).map((_, i) => (
+                    <div
+                        key={`confetti-${i}`}
+                        className="confetti-celebration"
+                        style={{
+                            left: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 3}s`,
+                            animationDuration: `${3 + Math.random() * 2}s`,
+                            background: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#FFD700'][Math.floor(Math.random() * 7)]
+                        }}
+                    />
+                ))}
+
+                <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.6 }}
+                    className="w-full max-w-md relative z-10"
+                >
+                    <div className="bg-green-500/10 border-2 border-green-500 rounded-full w-24 h-24 mx-auto flex items-center justify-center mb-6">
+                        <CheckCircle className="w-16 h-16 text-green-500" />
+                    </div>
+                    <h1 className="text-4xl font-bold text-foreground mb-2">
+                        Payment Successful! 🎉
+                    </h1>
+                    <p className="text-muted-foreground text-lg mb-4">
+                        Your bill has been paid successfully
+                    </p>
+                    <p className="text-2xl font-bold text-primary mb-6">
+                        Thank you for dining with us!
+                    </p>
+                    <Button
+                        onClick={() => {
+                            // ✅ CRITICAL: Clear localStorage FIRST!
+                            const restaurantId = orderData.restaurant?.id;
+                            const tableId = orderData.order?.tableId;
+
+                            if (restaurantId) {
+                                // Remove paid order from localStorage
+                                const liveOrderKey = `liveOrder_${restaurantId}`;
+                                localStorage.removeItem(liveOrderKey);
+                                console.log('[DineIn Track] Cleared paid order from localStorage:', liveOrderKey);
+
+                                const params = new URLSearchParams();
+                                if (tableId) params.set('table', tableId);
+                                router.replace(`/order/${restaurantId}?${params.toString()}`);
+                            } else {
+                                router.replace('/');
+                            }
+                        }}
+                        className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                    >
+                        <Home className="mr-2 h-5 w-5" />
+                        Back to Menu
+                    </Button>
+                </motion.div>
+            </div>
+        );
+    }
+
     const currentStatusInfo = statusConfig[orderData.order.status] || statusConfig.pending;
     const isServed = orderData.order.status === 'delivered';
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
+        <div className="h-screen bg-background text-foreground flex flex-col green-theme overflow-hidden">
             {/* Pay Modal */}
             <Dialog open={isPayModalOpen} onOpenChange={setIsPayModalOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-sm">
@@ -324,11 +579,22 @@ function DineInTrackingContent() {
                 <div className="flex items-center gap-3">
                     <Button
                         onClick={() => {
-                            // Navigate back to order page with table and tab params
-                            const params = new URLSearchParams();
-                            if (orderData.order?.tableId) params.set('table', orderData.order.tableId);
-                            if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
-                            router.push(`/order/${orderData.restaurant?.id}?${params.toString()}`);
+                            // ✅ Preserve table & tab context for dine-in session
+                            const restaurantId = orderData.restaurant?.id;
+                            const tableId = orderData.order?.tableId || orderData.order?.table;
+                            const tabId = orderData.order?.dineInTabId;
+
+                            if (restaurantId) {
+                                const params = new URLSearchParams();
+                                if (tableId) params.set('table', tableId);
+                                if (tabId) params.set('tabId', tabId);
+
+                                const url = `/order/${restaurantId}${params.toString() ? '?' + params.toString() : ''}`;
+                                console.log('[DineInTrack] Back navigation to:', url);
+                                router.replace(url);
+                            } else {
+                                router.back(); // Fallback
+                            }
                         }}
                         variant="ghost"
                         size="icon"
@@ -338,6 +604,11 @@ function DineInTrackingContent() {
                     <div>
                         <p className="text-xs text-muted-foreground">Tracking Dine-In Order</p>
                         <h1 className="font-bold text-lg">{orderData.restaurant?.name}</h1>
+                        {orderData.order?.customerOrderId && (
+                            <p className="text-xs text-primary font-mono font-semibold mt-0.5">
+                                Order ID: {orderData.order.customerOrderId}
+                            </p>
+                        )}
                     </div>
                 </div>
                 <Button onClick={() => fetchData(true)} variant="outline" size="icon" disabled={loading}>
@@ -347,14 +618,78 @@ function DineInTrackingContent() {
 
             <main className="flex-grow flex flex-col p-4 md:p-8 overflow-y-auto pb-32">
                 <div className="w-full max-w-2xl mx-auto">
-                    {/* Token Display */}
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                        <div className="p-4 bg-card rounded-t-lg border border-border text-center">
-                            <h2 className="text-sm font-semibold text-muted-foreground">Your Token</h2>
-                            <p className="text-4xl font-bold text-primary tracking-widest">{orderData.order.dineInToken || "N/A"}</p>
+                    {/* NEW: Welcome Message for Returning Users */}
+                    {(() => {
+                        const restaurantId = orderData.restaurant?.id;
+                        const tableId = orderData.order?.tableId;
+                        if (restaurantId && tableId) {
+                            const savedDetails = getDineInDetails(restaurantId, tableId);
+                            if (savedDetails) {
+                                return (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="mb-4 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-lg p-4 flex items-center gap-3"
+                                    >
+                                        <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                        <div>
+                                            <h3 className="font-semibold text-foreground">
+                                                Welcome back, {savedDetails.tab_name}!
+                                            </h3>
+                                            <p className="text-sm text-muted-foreground">
+                                                Party of {savedDetails.pax_count}
+                                            </p>
+                                        </div>
+                                    </motion.div>
+                                );
+                            }
+                        }
+                        return null;
+                    })()}
+
+                    {/* Premium Info Card - Token + Summary */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-primary/80 p-6 shadow-2xl"
+                    >
+                        {/* Decorative Background Pattern */}
+                        <div className="absolute inset-0 opacity-10">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -mr-32 -mt-32" />
+                            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full -ml-24 -mb-24" />
                         </div>
-                        <div className="p-4 bg-card rounded-b-lg border-x border-b border-border">
-                            <StatusTimeline currentStatus={orderData.order.status} />
+
+                        {/* Content */}
+                        <div className="relative z-10">
+                            {/* Top Row - Table & Orders Info */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2.5">
+                                        <UtensilsCrossed className="h-6 w-6 text-white" />
+                                    </div>
+                                    <div>
+                                        <p className="text-white/80 text-sm font-medium">Table {orderData.order?.tableId || 'N/A'}</p>
+                                        <p className="text-white text-lg font-bold">{orderData.order?.batches?.length || 0} Active Orders</p>
+                                    </div>
+                                </div>
+                                <div className="text-right bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
+                                    <p className="text-white/80 text-xs font-medium">Pending Amount</p>
+                                    <p className="text-white text-2xl font-bold">{formatCurrency(orderData.order?.batches?.reduce((sum, b) => sum + (b.totalAmount || 0), 0) || 0)}</p>
+                                </div>
+                            </div>
+
+                            {/* Token Display - Centered & Prominent */}
+                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center border border-white/20">
+                                <p className="text-white/90 text-sm font-semibold mb-2 tracking-wider">YOUR TOKEN</p>
+                                <motion.p
+                                    initial={{ scale: 0.9 }}
+                                    animate={{ scale: 1 }}
+                                    className="text-white text-5xl md:text-6xl font-black tracking-wider drop-shadow-2xl"
+                                    style={{ textShadow: '0 4px 20px rgba(0,0,0,0.3)' }}
+                                >
+                                    {orderData.order.dineInToken || "N/A"}
+                                </motion.p>
+                            </div>
                         </div>
                     </motion.div>
 
@@ -376,7 +711,7 @@ function DineInTrackingContent() {
                             <h3 className="font-bold flex items-center gap-2 text-lg">
                                 <History className="w-5 h-5 text-primary" /> Order History
                             </h3>
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {orderData.order.batches.map((batch, index) => {
                                     const batchStatus = statusConfig[batch.status] || statusConfig.pending;
                                     const isPending = batch.status === 'pending';
@@ -384,50 +719,130 @@ function DineInTrackingContent() {
                                     const batchTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
                                     return (
-                                        <div key={batch.id} className="bg-card border border-border rounded-lg p-4 shadow-sm relative overflow-hidden">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                        Order #{index + 1}
-                                                    </p>
-                                                    <div className="flex items-center gap-1 mt-1">
-                                                        {batchStatus.icon && React.cloneElement(batchStatus.icon, { size: 14, className: batchStatus.isError ? "text-destructive" : "text-primary" })}
-                                                        <span className={`text-sm font-semibold ${batchStatus.isError ? "text-destructive" : "text-foreground"}`}>
-                                                            {batchStatus.title}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="font-bold">{formatCurrency(batch.totalAmount || batchTotal)}</p>
-                                                    <p className="text-xs text-muted-foreground flex items-center justify-end gap-1">
-                                                        <Clock size={10} />
-                                                        {new Date(batch.createdAt?._seconds * 1000 || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </p>
+                                        <div key={batch.id} className="bg-card border-2 border-border rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+                                            {/* Timeline Header - Inside Card */}
+                                            <div className="bg-gradient-to-r from-primary/5 to-primary/10 px-4 py-3 border-b border-border/50">
+                                                <div className="scale-90 origin-center">
+                                                    <StatusTimeline currentStatus={batch.status} />
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-1 mt-2 pl-2 border-l-2 border-border/50">
-                                                {items.map((item, i) => (
-                                                    <div key={i} className="flex justify-between text-sm">
-                                                        <span>{item.quantity}x {item.name}</span>
+                                            {/* Order Details */}
+                                            <div className="p-4">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                                                            Order #{index + 1}
+                                                        </p>
+                                                        <div className="flex items-center gap-2">
+                                                            {batchStatus.icon && React.cloneElement(batchStatus.icon, { size: 16, className: batchStatus.isError ? "text-destructive" : "text-primary" })}
+                                                            <span className={`text-base font-bold ${batchStatus.isError ? "text-destructive" : "text-foreground"}`}>
+                                                                {batchStatus.title}
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                ))}
-                                            </div>
-
-                                            {(isPending || batch.status === 'confirmed') && (
-                                                <div className="mt-3 pt-2 border-t border-border flex justify-end">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => initiateCancel(batch.id)}
-                                                        disabled={cancellingId === batch.id}
-                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 px-2"
-                                                    >
-                                                        {cancellingId === batch.id ? <RefreshCw className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
-                                                        Cancel Order
-                                                    </Button>
+                                                    <div className="text-right">
+                                                        <p className="text-xl font-bold text-primary">{formatCurrency(batch.totalAmount || batchTotal)}</p>
+                                                        <p className="text-xs text-muted-foreground flex items-center justify-end gap-1 mt-1">
+                                                            <Clock size={12} />
+                                                            {new Date(batch.createdAt?._seconds * 1000 || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            )}
+
+                                                <div className="space-y-2 pt-3 border-t border-border/30">
+                                                    {items.map((item, i) => {
+                                                        // Calculate price - check Firestore fields (camelCase!)
+                                                        const unitPrice = item.serverVerifiedTotal || item.totalPrice || item.portion?.price || item.price || 0;
+                                                        const itemTotal = unitPrice;  // Already total for this item
+
+                                                        return (
+                                                            <div key={i} className="bg-muted/30 rounded-md px-3 py-2">
+                                                                <div className="flex justify-between text-sm">
+                                                                    <span className="font-medium">{item.quantity}x {item.name}</span>
+                                                                    <span className="text-muted-foreground font-semibold">{formatCurrency(itemTotal)}</span>
+                                                                </div>
+                                                                {/* ✅ Show Addons */}
+                                                                {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                                                    <div className="ml-4 mt-1 space-y-0.5">
+                                                                        {item.selectedAddOns.map((addon, addonIdx) => (
+                                                                            <div key={addonIdx} className="flex justify-between text-xs text-muted-foreground">
+                                                                                <span>+ {addon.name} {addon.quantity > 1 ? `(x${addon.quantity})` : ''}</span>
+                                                                                <span>₹{addon.price * (addon.quantity || 1)}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Cancel Button - Always visible but disabled during preparing */}
+                                                <div className="mt-4 pt-3 border-t border-border/50 space-y-2">
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                if (['pending', 'confirmed'].includes(batch.status)) {
+                                                                    initiateCancel(batch.id);
+                                                                } else {
+                                                                    // Show info when disabled button is clicked
+                                                                    const infoBox = document.getElementById(`cancel-info-${batch.id}`);
+                                                                    if (infoBox) {
+                                                                        infoBox.classList.remove('hidden');
+                                                                        setTimeout(() => infoBox.classList.add('hidden'), 5000);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            disabled={cancellingId === batch.id}
+                                                            className={`flex-1 ${['pending', 'confirmed'].includes(batch.status)
+                                                                ? 'text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30'
+                                                                : 'text-muted-foreground border-muted opacity-60'
+                                                                }`}
+                                                        >
+                                                            {cancellingId === batch.id ? (
+                                                                <><RefreshCw className="h-4 w-4 animate-spin mr-2" /> Cancelling...</>
+                                                            ) : (
+                                                                <><XCircle className="h-4 w-4 mr-2" /> Cancel Order</>
+                                                            )}
+                                                        </Button>
+
+                                                        {/* Info Icon - Shows on tap when cancel not available */}
+                                                        {!['pending', 'confirmed'].includes(batch.status) && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    const infoBox = document.getElementById(`cancel-info-${batch.id}`);
+                                                                    if (infoBox) {
+                                                                        infoBox.classList.toggle('hidden');
+                                                                    }
+                                                                }}
+                                                                className="px-3 border-muted-foreground/30 text-muted-foreground hover:bg-muted"
+                                                            >
+                                                                <Info className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Info message - Hidden by default, shows on tap */}
+                                                    {!['pending', 'confirmed'].includes(batch.status) && (
+                                                        <div
+                                                            id={`cancel-info-${batch.id}`}
+                                                            className="hidden flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-3 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in slide-in-from-top-2 duration-300"
+                                                        >
+                                                            <Info className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                                                            <p>
+                                                                <strong className="font-semibold block mb-1">This order is currently being prepared 🍳</strong>
+                                                                To avoid food wastage, cancellation is no longer available at this stage.
+                                                                <span className="block mt-1.5">If you need any assistance, please reach out to the restaurant—they can help you directly.</span>
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -506,17 +921,6 @@ function DineInTrackingContent() {
                         </motion.div>
                     )}
 
-                    {/* Add More Items Button */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="mt-6"
-                    >
-                        <Button onClick={handleAddMoreItems} variant="outline" className="w-full h-12">
-                            <PlusCircle className="mr-2 h-5 w-5" /> Add More Items
-                        </Button>
-                    </motion.div>
 
                     {/* I'm Done Button - Only show when served */}
                     {isServed && (

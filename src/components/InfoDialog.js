@@ -10,7 +10,15 @@ import { useUser } from '@/firebase/provider';
 const InfoDialog = ({ isOpen, onClose, title, message }) => {
   const [isSending, setIsSending] = useState(false);
   const [reportSent, setReportSent] = useState(false);
-  const isError = (title || '').toLowerCase().includes('error') || (title || '').toLowerCase().includes('failed') || (title || '').toLowerCase().includes('invalid');
+  const isError = (title || '').toLowerCase().includes('error')
+    || (title || '').toLowerCase().includes('failed')
+    || (title || '').toLowerCase().includes('invalid')
+    || (title || '').toLowerCase().includes('exceeded')
+    || (title || '').toLowerCase().includes('capacity');
+  const isLoading = (title || '').toLowerCase().includes('processing')
+    || (title || '').toLowerCase().includes('loading')
+    || (title || '').toLowerCase().includes('wait')
+    || (title || '').toLowerCase().includes('please wait');
   const pathname = usePathname();
   const { user } = useUser();
 
@@ -129,6 +137,8 @@ const InfoDialog = ({ isOpen, onClose, title, message }) => {
           <DialogHeader className="flex flex-col items-center text-center">
             {isError ? (
               <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+            ) : isLoading ? (
+              <Loader2 className="h-12 w-12 text-primary mb-4 animate-spin" />
             ) : (
               <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
             )}

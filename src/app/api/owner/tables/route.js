@@ -58,46 +58,45 @@ export async function GET(req) {
 
         const tableData = matchedTable;
 
-        // Fetch active tabs for this table (use actual table ID from database)
+        // Fetch active tabs for this table
         const tabsSnap = await businessInfo.collection('dineInTabs')
             .where('tableId', '==', actualTableId)
             .where('status', '==', 'active')
             .get();
 
-        // CRITICAL: Validate tabs actually have active orders (prevent ghost tabs)
-        const validActiveTabs = [];
-        for (const tabDoc of tabsSnap.docs) {
-            const tabData = tabDoc.data();
+        const validActiveTabs = tabsSnap.docs.map(doc => doc.data());
 
-            // Check if this tab has any active orders
-            const activeOrdersQuery = await firestore.collection('orders')
-                .where('restaurantId', '==', businessInfo.id)
-                .where('deliveryType', '==', 'dine-in')
-                .where('dineInTabId', '==', tabDoc.id)
-                .where('status', 'not-in', ['picked_up', 'rejected'])
-                .limit(1)
-                .get();
-
-            if (!activeOrdersQuery.empty) {
-                // Tab has active orders - keep it
-                validActiveTabs.push(tabData);
-            } else {
-                // Ghost tab - close it silently
-                try {
-                    await tabDoc.ref.update({
-                        status: 'closed',
-                        closedAt: FieldValue.serverTimestamp(),
-                        autoClosedReason: 'No active orders found'
-                    });
-                    console.log(`[API tables] Auto-closed ghost tab ${tabDoc.id} for table ${tableId}`);
-                } catch (e) {
-                    console.warn(`[API tables] Failed to close ghost tab:`, e.message);
-                }
-            }
-        }
-
-        // Calculate current pax from VALID active tabs only
+        // Calculate current pax from active tabs
         const current_pax = validActiveTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
+
+        // NEW: Check for uncleaned orders (delivered but not cleaned)
+        const uncleanedOrdersQuery = await firestore.collection('orders')
+            .where('restaurantId', '==', businessInfo.id)
+            .where('deliveryType', '==', 'dine-in')
+            .where('tableId', '==', actualTableId)
+            .where('status', '==', 'delivered')
+            .get();
+
+        // Filter for orders that are NOT cleaned (cleaned field is missing or false)
+        const uncleanedOrders = uncleanedOrdersQuery.docs.filter(doc => {
+            const orderData = doc.data();
+            return orderData.cleaned !== true;
+        });
+
+        const uncleanedOrdersCount = uncleanedOrders.length;
+        const hasUncleanedOrders = uncleanedOrdersCount > 0;
+
+        // NEW: Calculate total pax from uncleaned orders (their seats are dirty!)
+        // DEFAULT to 1 pax per order if pax_count is missing (for old orders)
+        const uncleanedPax = uncleanedOrders.reduce((sum, doc) => {
+            const orderData = doc.data();
+            return sum + (orderData.pax_count || 1);  // Fallback to 1 if missing
+        }, 0);
+
+        // FIXED: Subtract both current_pax AND uncleaned_pax from capacity
+        const availableSeats = tableData.max_capacity - current_pax - uncleanedPax;
+
+        console.log(`[API tables] Table ${actualTableId}: ${uncleanedOrdersCount} uncleaned orders (${uncleanedPax} pax), current: ${current_pax}, available: ${availableSeats}/${tableData.max_capacity}`);
 
         return NextResponse.json({
             tableId: actualTableId, // Return actual table ID from database
@@ -105,7 +104,11 @@ export async function GET(req) {
             current_pax,
             activeTabs: validActiveTabs,
             // Determine state based on the calculated pax count.
-            state: current_pax >= tableData.max_capacity ? 'full' : (current_pax > 0 ? 'occupied' : 'available')
+            state: current_pax >= tableData.max_capacity ? 'full' : (current_pax > 0 ? 'occupied' : 'available'),
+            // NEW: Cleaning status for customer-facing blocking
+            hasUncleanedOrders,
+            uncleanedOrdersCount,
+            availableSeats
         }, { status: 200 });
 
     } catch (error) {

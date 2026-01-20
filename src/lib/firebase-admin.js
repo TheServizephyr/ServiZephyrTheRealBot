@@ -29,7 +29,7 @@ function getServiceAccount() {
       return null;
     }
   }
-  
+
   console.error("[firebase-admin] FATAL: No Firebase service account credentials found.");
   return null;
 }
@@ -47,7 +47,7 @@ function initializeAdmin() {
     console.log("[firebase-admin] Firebase Admin SDK initialized successfully.");
     return admin;
   }
-  
+
   // This will only be reached if no credentials are found at all.
   console.error("[firebase-admin] CRITICAL: Firebase Admin SDK initialization failed because no credentials were found.");
   // We don't throw an error here to prevent server crashes on build,
@@ -56,30 +56,31 @@ function initializeAdmin() {
 }
 
 const getAdminInstance = () => {
-    if (!adminInstance) {
-        adminInstance = initializeAdmin();
-    }
-    if (!adminInstance) {
-        // This is the safety net. If initialization failed, every call will throw a clear error.
-        throw new Error("Firebase Admin SDK is not initialized. Check server logs for credential errors.");
-    }
-    return adminInstance;
+  if (!adminInstance) {
+    adminInstance = initializeAdmin();
+  }
+  if (!adminInstance) {
+    // This is the safety net. If initialization failed, every call will throw a clear error.
+    throw new Error("Firebase Admin SDK is not initialized. Check server logs for credential errors.");
+  }
+  return adminInstance;
 };
 // --- END: SINGLETON PATTERN ---
 
 
 const getAuth = async () => {
-    const adminSdk = getAdminInstance();
-    return adminSdk.auth();
+  const adminSdk = getAdminInstance();
+  return adminSdk.auth();
 };
 
 const getFirestore = async () => {
-    const adminSdk = getAdminInstance();
-    return adminSdk.firestore();
+  const adminSdk = getAdminInstance();
+  return adminSdk.firestore();
 };
 
 const FieldValue = admin.firestore.FieldValue;
 const GeoPoint = admin.firestore.GeoPoint;
+const Timestamp = admin.firestore.Timestamp;
 
 
 /**
@@ -97,15 +98,16 @@ const verifyAndGetUid = async (req) => {
     throw { message: 'Authorization token is missing or malformed.', status: 401 };
   }
   const token = authHeader.split('Bearer ')[1];
-  
+
   try {
-      const decodedToken = await auth.verifyIdToken(token);
-      return decodedToken.uid;
+    const decodedToken = await auth.verifyIdToken(token);
+    return decodedToken.uid;
   } catch (error) {
-      console.error("[verifyAndGetUid] Error verifying token:", error.message);
-      throw { message: `Token verification failed: ${error.message}`, status: 403 };
+    console.error("[verifyAndGetUid] Error verifying token:", error.message);
+    throw { message: `Token verification failed: ${error.message}`, status: 403 };
   }
 }
 
 
-export { getAuth, getFirestore, FieldValue, GeoPoint, verifyAndGetUid };
+export { getAuth, getFirestore, FieldValue, GeoPoint, Timestamp, verifyAndGetUid };
+

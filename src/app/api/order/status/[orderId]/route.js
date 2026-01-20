@@ -1,17 +1,48 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+import { kv } from '@vercel/kv';
+import { createRequestCache } from '@/lib/requestCache';
+
+// Final states that should NOT be cached (polling already stopped on track page)
+const FINAL_STATES = ['delivered', 'cancelled', 'rejected'];
 
 export async function GET(request, { params }) {
     console.log("[API][Order Status] GET request received.");
     try {
         const { orderId } = params;
-        const firestore = await getFirestore();
 
         if (!orderId) {
             console.log("[API][Order Status] Error: Order ID is missing from params.");
             return NextResponse.json({ message: 'Order ID is missing.' }, { status: 400 });
         }
 
+        // STEP 1: Check cache FIRST (server-side Redis)
+        const cacheKey = `order_status:${orderId}`;
+        const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+
+        if (isKvAvailable) {
+            try {
+                const cachedData = await kv.get(cacheKey);
+                if (cachedData) {
+                    console.log(`[Order Status API] ✅ Cache HIT for ${cacheKey}`);
+                    return NextResponse.json(cachedData, {
+                        status: 200,
+                        headers: {
+                            'X-Cache': 'HIT',
+                            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                        }
+                    });
+                }
+                console.log(`[Order Status API] ❌ Cache MISS for ${cacheKey} - Fetching from Firestore`);
+            } catch (cacheError) {
+                console.warn('[Order Status API] Cache check failed:', cacheError);
+                // Continue to Firestore fetch
+            }
+        }
+
+        // STEP 2: Cache MISS - Fetch from Firestore with request-scoped deduplication
+        const requestCache = createRequestCache();
+        const firestore = await getFirestore();
         console.log(`[API][Order Status] Fetching order document: ${orderId}`);
 
         let orderSnap;
@@ -58,7 +89,10 @@ export async function GET(request, { params }) {
             console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from drivers collection.`);
 
             const driverDocRef = firestore.collection('drivers').doc(orderData.deliveryBoyId);
-            const driverDoc = await driverDocRef.get();
+            const driverDoc = await requestCache.get(
+                `driver:${orderData.deliveryBoyId}`,
+                () => driverDocRef.get()
+            );
 
             if (driverDoc.exists) {
                 deliveryBoyData = { id: driverDoc.id, ...driverDoc.data() };
@@ -70,7 +104,10 @@ export async function GET(request, { params }) {
 
         const businessType = orderData.businessType || 'restaurant';
         const collectionName = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
-        const businessDoc = await firestore.collection(collectionName).doc(orderData.restaurantId).get();
+        const businessDoc = await requestCache.get(
+            `business:${collectionName}:${orderData.restaurantId}`,
+            () => firestore.collection(collectionName).doc(orderData.restaurantId).get()
+        );
 
         if (!businessDoc || !businessDoc.exists) {
             console.log(`[API][Order Status] Error: Business ${orderData.restaurantId} not found in collection ${collectionName}.`);
@@ -162,6 +199,7 @@ export async function GET(request, { params }) {
 
                     const batchesList = [];
                     const processedIds = new Set();
+                    const seenCartItems = new Set(); // DEDUPLICATION: Track unique items
 
                     // Using simple loop instead of .forEach to handle both Snapshot and Array
                     for (const doc of docsToProcess) {
@@ -187,7 +225,14 @@ export async function GET(request, { params }) {
                         // AGGREGATE BILL (Exclude cancelled/rejected for strict billing, but keep in list)
                         if (!['rejected', 'cancelled'].includes(tabOrder.status)) {
                             if (tabOrder.items) {
-                                aggregatedItems = aggregatedItems.concat(tabOrder.items);
+                                // DEDUPLICATION: Only add unique items
+                                for (const item of tabOrder.items) {
+                                    const itemKey = `${doc.id}-${item.cartItemId || item.id}`;
+                                    if (!seenCartItems.has(itemKey)) {
+                                        seenCartItems.add(itemKey);
+                                        aggregatedItems.push(item);
+                                    }
+                                }
                             }
                             aggregatedSubtotal += tabOrder.subtotal || 0;
                             aggregatedCgst += tabOrder.cgst || 0;
@@ -236,6 +281,7 @@ export async function GET(request, { params }) {
         const responsePayload = {
             order: {
                 id: orderSnap.id, // Primary ID
+                customerOrderId: orderData.customerOrderId, // 10-digit customer-facing ID
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
                 restaurantLocation: restaurantLocationForMap,
@@ -260,7 +306,8 @@ export async function GET(request, { params }) {
             restaurant: {
                 id: businessDoc.id,
                 name: businessData.name,
-                address: businessData.address
+                address: businessData.address,
+                businessType: businessData.businessType || 'restaurant' // CRITICAL: Router needs this!
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
@@ -273,8 +320,41 @@ export async function GET(request, { params }) {
             } : null
         };
 
+        // STEP 3: Cache Decision - Final state check
+        const isFinalState = FINAL_STATES.includes(orderData.status);
+
+        if (isFinalState) {
+            // DON'T CACHE final states (polling already stopped via Phase 2 rules)
+            console.log(`[Order Status API] Order ${orderId} in FINAL state (${orderData.status}) - NOT caching`);
+            return NextResponse.json(responsePayload, {
+                status: 200,
+                headers: {
+                    'X-Cache': 'SKIP',
+                    'X-Final-State': 'true'
+                }
+            });
+        }
+
+        // STEP 4: ACTIVE ORDER - Cache for 60 seconds
+        if (isKvAvailable) {
+            try {
+                await kv.set(cacheKey, responsePayload, { ex: 60 }); // 60 seconds TTL
+                console.log(`[Order Status API] ✅ Cached ${cacheKey} for 60 seconds (status: ${orderData.status})`);
+            } catch (cacheError) {
+                console.error('[Order Status API] Cache SET failed:', cacheError);
+                // Non-fatal - response will still be sent
+            }
+        }
+
         console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
-        return NextResponse.json(responsePayload, { status: 200 });
+        console.log(`[RequestCache] Deduplicated reads - Cache entries used: ${requestCache.size()}`);
+        return NextResponse.json(responsePayload, {
+            status: 200,
+            headers: {
+                'X-Cache': 'MISS',
+                'X-Request-Cache-Size': requestCache.size().toString()
+            }
+        });
 
     } catch (error) {
         console.error("[API][Order Status] CRITICAL ERROR:", error);

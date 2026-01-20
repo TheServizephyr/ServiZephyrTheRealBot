@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { isAfter, subDays } from 'date-fns';
+import { recalculateTabTotals, verifyTabIntegrity, areAllOrdersPaid } from '@/lib/dinein-utils';
 
 async function getBusinessRef(req) {
     const firestore = await getFirestore();
@@ -87,29 +88,48 @@ export async function GET(req) {
         // });
 
         // 4. Fetch all relevant orders that are not finished or rejected
-        // IMPORTANT: Include 'delivered' status - tabs should stay visible for payment/cleaning flow
+        // IMPORTANT: Include 'delivered' status - tabs should stay visible until cleaned
+        // NOTE: Can't use multiple inequality filters in Firestore, so filtering 'cleaned' in code
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', 'not-in', ['picked_up', 'rejected']); // Removed 'delivered' from exclusion
+            .where('status', 'not-in', ['picked_up', 'rejected']);
 
         const ordersSnap = await ordersQuery.get();
 
-        // 5. Group ALL orders by tab_name for same table - this ensures same customer shows as ONE entry
+        // 5. Group active orders by tab_name for same table - this ensures same customer shows as ONE entry
+        // ✅ Filter out cleaned orders in code (can't do in query due to Firestore limitation)
         // Structure: { tableId_tabName: { orders: [...], hasPending: bool, ... } }
         const orderGroups = new Map();
 
         ordersSnap.forEach(orderDoc => {
             const orderData = orderDoc.data();
+
+            // ✅ Skip cleaned orders (filter in code since can't use 2 inequalities in Firestore)
+            if (orderData.cleaned === true) {
+                return; // Skip this order
+            }
+
             const tableId = orderData.tableId;
             const tabId = orderData.dineInTabId;
             const status = orderData.status;
 
-            // Get table - SKIP if table config doesn't exist (no virtual tables)
+            // Get table - Try exact match first, then case-insensitive
             let table = tableMap.get(tableId);
+
+            if (!table && tableId) {
+                // Try case-insensitive lookup for backward compatibility
+                const upperTableId = tableId.toUpperCase();
+                table = tableMap.get(upperTableId);
+
+                if (table) {
+                    console.log(`[Dine-In API] Case-insensitive match: "${tableId}" → "${upperTableId}"`);
+                }
+            }
+
             if (!table) {
-                // Order has invalid tableId - skip this orphaned order
-                console.log(`[Dine-In API] Skipping orphaned order ${orderDoc.id} - table ${tableId} not found`);
+                // Order has invalid tableId - skip this orphaned order silently
+                // console.log(`[Dine-In API] Skipping orphaned order ${orderDoc.id} - table ${tableId} not found`);
                 return; // Skip this order
             }
 
@@ -168,8 +188,40 @@ export async function GET(req) {
             }
         });
 
+        // ✅ Filter out completed tabs from dashboard
+        // Check tab status in Firestore and exclude completed tabs
+        const tabIds = Array.from(new Set(
+            Array.from(orderGroups.values())
+                .map(g => g.dineInTabId)
+                .filter(Boolean)
+        ));
+
+        const completedTabIds = new Set();
+
+        if (tabIds.length > 0) {
+            // Batch fetch tab statuses
+            const tabPromises = tabIds.map(async (tabId) => {
+                try {
+                    // Try restaurant subcollection (V2)
+                    const tabRef = businessRef.collection('dineInTabs').doc(tabId);
+                    const tabSnap = await tabRef.get();
+
+                    // ✅ ONLY exclude if tab EXISTS and status='completed'
+                    // Non-existent tabs are valid (backwards compatibility with old orders)
+                    if (tabSnap.exists && tabSnap.data().status === 'completed') {
+                        completedTabIds.add(tabId);
+                        console.log(`[Dine-In API] ✅ Hiding completed tab from dashboard: ${tabId}`);
+                    }
+                } catch (err) {
+                    console.warn(`[Dine-In API] Error checking tab ${tabId}:`, err.message);
+                }
+            });
+
+            await Promise.all(tabPromises);
+        }
+
         // Now add grouped orders to tables
-        // Determine if group has pending items or not
+        // ✅ Cleaned orders already excluded by query
         orderGroups.forEach((group, groupKey) => {
             const table = tableMap.get(group.tableId);
             if (!table) return;
@@ -457,6 +509,31 @@ export async function PATCH(req) {
         if (action === 'clear_tab') {
             if (!tabId) {
                 return NextResponse.json({ message: 'Tab ID is required for clear_tab action.' }, { status: 400 });
+            }
+
+            // ✅ PHASE 1 INTEGRATION: Verify integrity before clearing
+            try {
+                const { isValid, mismatch } = await verifyTabIntegrity(tabId);
+                if (!isValid) {
+                    console.warn(`[Clear Tab] Tab ${tabId} had mismatch of ₹${mismatch}, auto-corrected`);
+                }
+            } catch (integrityErr) {
+                console.warn('[Clear Tab] Integrity check failed:', integrityErr.message);
+                // Continue with clearing even if check fails
+            }
+
+            // ✅ PHASE 1 INTEGRATION: Check all orders paid
+            try {
+                const allPaid = await areAllOrdersPaid(tabId);
+                if (!allPaid) {
+                    return NextResponse.json(
+                        { error: 'Cannot clear tab: Some orders are not paid yet' },
+                        { status: 400 }
+                    );
+                }
+            } catch (paidCheckErr) {
+                console.warn('[Clear Tab] Payment check failed:', paidCheckErr.message);
+                // Continue cautiously
             }
 
             // Find all orders with this dineInTabId and mark them as 'picked_up' to exclude from active tabs

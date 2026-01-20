@@ -1,5 +1,6 @@
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
+import { kv } from '@vercel/kv'; // ✅ For cache invalidation
 
 export const dynamic = 'force-dynamic';
 
@@ -111,6 +112,20 @@ export async function POST(req) {
 
         // Commit batch
         await batch.commit();
+
+        // ✅ CACHE INVALIDATION: Clear cached order status
+        const cacheKey = `order_status:${orderId}`;
+        const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+
+        if (isKvAvailable) {
+            try {
+                await kv.del(cacheKey);
+                console.log(`[API /order/cancel] 🗑️ Cleared cache: ${cacheKey}`);
+            } catch (cacheError) {
+                console.warn('[API /order/cancel] Failed to clear cache:', cacheError);
+                // Don't fail the cancel operation if cache clear fails
+            }
+        }
 
         console.log(`[API /order/cancel] Order ${orderId} cancelled successfully by ${cancelledBy}`);
 

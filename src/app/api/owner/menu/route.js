@@ -244,18 +244,17 @@ export async function POST(req) {
         await batch.commit();
         console.log("[API LOG] POST /api/owner/menu: Batch commit successful!");
 
-        // Invalidate cache for this restaurant
-        console.log(`[Menu API] 🔍 Attempting cache invalidation for businessId: ${businessId}`);
+        // Increment menuVersion for automatic cache invalidation
+        console.log(`[Menu API] 🔄 Incrementing menuVersion for businessId: ${businessId}`);
         try {
-            const cacheKey = `menu:${businessId}`;
-            console.log(`[Menu API] 🔑 Cache key to delete: ${cacheKey}`);
-
-            const deleteResult = await kv.del(cacheKey);
-            console.log(`[Menu API] ✅ Cache deleted! Result:`, deleteResult);
-            console.log(`[Menu API] ✅ Cache invalidated for ${businessId}`);
-        } catch (cacheError) {
-            console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
-            console.error('[Menu API] ❌ Error details:', cacheError.message, cacheError.stack);
+            const businessRef = firestore.collection(collectionName).doc(businessId);
+            await businessRef.update({
+                menuVersion: FieldValue.increment(1)
+            });
+            console.log(`[Menu API] ✅ menuVersion incremented for ${businessId}`);
+        } catch (versionError) {
+            console.error('[Menu API] ❌ menuVersion increment failed:', versionError);
+            // Non-fatal - menu save succeeded, just cache won't auto-invalidate
         }
 
         // Audit log for impersonation
@@ -301,12 +300,15 @@ export async function DELETE(req) {
         await itemRef.delete();
         console.log(`[API LOG] DELETE /api/owner/menu: Item deleted successfully.`);
 
-        // Invalidate cache for this restaurant
+        // Increment menuVersion for automatic cache invalidation
         try {
-            await kv.del(`menu:${businessId}`);
-            console.log(`[Menu API] ✅ Cache invalidated for ${businessId}`);
-        } catch (cacheError) {
-            console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
+            const businessRef = firestore.collection(collectionName).doc(businessId);
+            await businessRef.update({
+                menuVersion: FieldValue.increment(1)
+            });
+            console.log(`[Menu API] ✅ menuVersion incremented for ${businessId}`);
+        } catch (versionError) {
+            console.error('[Menu API] ❌ menuVersion increment failed:', versionError);
         }
 
         // Audit log for impersonation
@@ -368,12 +370,15 @@ export async function PATCH(req) {
         await batch.commit();
         console.log(`[API LOG] PATCH /api/owner/menu: Bulk action completed.`);
 
-        // Invalidate cache for this restaurant
+        // Increment menuVersion for automatic cache invalidation
         try {
-            await kv.del(`menu:${businessId}`);
-            console.log(`[Menu API] ✅ Cache invalidated for ${businessId}`);
-        } catch (cacheError) {
-            console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
+            const businessRef = firestore.collection(collectionName).doc(businessId);
+            await businessRef.update({
+                menuVersion: FieldValue.increment(1)
+            });
+            console.log(`[Menu API] ✅ menuVersion incremented for ${businessId}`);
+        } catch (versionError) {
+            console.error('[Menu API] ❌ menuVersion increment failed:', versionError);
         }
 
         return NextResponse.json({ message: `Bulk action '${action}' completed successfully on ${itemIds.length} items.` }, { status: 200 });
