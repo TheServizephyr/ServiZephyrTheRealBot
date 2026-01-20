@@ -141,66 +141,37 @@ export default function AuthModal({ isOpen, onClose }) {
     setMsgType("info");
     console.log("[DEBUG] AuthModal: handleGoogleLogin started.");
 
-    // TASK 3: Detect mobile browsers that lose window.opener (Vivo/Oppo/Realme)
-    const isMobileZonal = /Vivo|Oppo|Realme/i.test(navigator.userAgent);
+    try {
+      // Use popup for localhost (redirect doesn't work well on localhost)
+      // Use redirect for production (better for mobile)
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-    if (isMobileZonal) {
-      console.log("[DEBUG] Mobile zonal browser detected. Skipping popup, using redirect.");
-      setMsg("Redirecting to Google sign-in...");
+      if (isLocalhost) {
+        console.log("[AuthModal] Localhost detected - using popup...");
+        const result = await signInWithPopup(auth, googleProvider);
+        const user = result.user;
+        console.log("[AuthModal] Popup successful, processing...");
+        sessionStorage.removeItem('isLoggingIn');
+        await handleAuthSuccess(user);
+      } else {
+        console.log("[AuthModal] Production - using redirect...");
+        setMsg("Redirecting to Google sign-in...");
 
-      try {
         // Set persistence BEFORE redirect
         const { setPersistence, browserLocalPersistence } = await import('firebase/auth');
         await setPersistence(auth, browserLocalPersistence);
-        console.log("[AuthModal] ✓ Persistence set before redirect (Mobile)");
+        console.log("[AuthModal] ✓ Persistence set before redirect");
 
         sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
         await signInWithRedirect(auth, googleProvider);
         // Page will redirect away
-      } catch (redirectErr) {
-        console.error("Mobile redirect login failed:", redirectErr);
-        setMsg(`Login Failed: ${redirectErr.message}`);
-        setMsgType("error");
-        setLoading(false);
       }
-      return;
-    }
-
-    try {
-      // Try Popup first (Preferred for Desktop & modern browsers)
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      console.log("[DEBUG] AuthModal: Google sign-in successful via Popup.");
-      sessionStorage.removeItem('isLoggingIn'); // Ensure no stale flags trigger RedirectHandler
-      await handleAuthSuccess(user);
-
     } catch (err) {
-      console.error("[DEBUG] AuthModal: Popup failed.", err);
-
-      // If Popup fails (likely on mobile/webview), Fallback to Redirect
-      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/internal-error' || err.message.includes('popup')) {
-        console.log("[DEBUG] Switching to signInWithRedirect...");
-        setMsg("Popup blocked. Switching to standard login...");
-        try {
-          // CRITICAL: Ensure persistence is set BEFORE redirect
-          const { setPersistence, browserLocalPersistence } = await import('firebase/auth');
-          await setPersistence(auth, browserLocalPersistence);
-          console.log("[AuthModal] ✓ Persistence set before redirect");
-
-          sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
-          await signInWithRedirect(auth, googleProvider);
-          // The page will redirect, so no further code here will run until return
-        } catch (redirectErr) {
-          console.error("Redirect login failed:", redirectErr);
-          setMsg(`Login Failed: ${redirectErr.message}`);
-          setMsgType("error");
-          setLoading(false);
-        }
-      } else {
-        setMsg(`Login Error: ${err.message}`);
-        setMsgType("error");
-        setLoading(false);
-      }
+      console.error("[AuthModal] Login error:", err);
+      setMsg(`Login Failed: ${err.message}`);
+      setMsgType("error");
+      setLoading(false);
+      sessionStorage.removeItem('isLoggingIn');
     }
   };
 
