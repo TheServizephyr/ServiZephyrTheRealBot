@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
-import { auth } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, getAuth } from '@/lib/firebase-admin';
 
 export async function POST(req) {
     console.log('[Admin Retry] Webhook retry request received');
@@ -16,7 +15,8 @@ export async function POST(req) {
         let decodedToken;
 
         try {
-            decodedToken = await auth().verifyIdToken(idToken);
+            const auth = await getAuth();
+            decodedToken = await auth.verifyIdToken(idToken);
         } catch (authError) {
             console.error('[Admin Retry] Auth error:', authError);
             return NextResponse.json({ error: 'Unauthorized - Invalid token' }, { status: 401 });
