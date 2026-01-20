@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 // POST: Settle payment for existing dine-in orders
 export async function POST(req) {
     try {
-        const { tabId, restaurantId, paymentMethod, grandTotal } = await req.json();
+        let { tabId, restaurantId, paymentMethod, grandTotal } = await req.json();
 
         if (!tabId || !restaurantId) {
             return NextResponse.json({ message: 'TabId and RestaurantId required' }, { status: 400 });
