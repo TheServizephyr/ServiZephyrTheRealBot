@@ -62,7 +62,18 @@ const Header = () => {
             </Link>
           </nav>
           <button
-            onClick={() => setIsAuthModalOpen(true)}
+            onClick={() => {
+              // Production: Redirect to /login page
+              // Localhost: Open AuthModal popup
+              const isLocalhost = typeof window !== 'undefined' &&
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+              if (isLocalhost) {
+                setIsAuthModalOpen(true);
+              } else {
+                window.location.href = '/login';
+              }
+            }}
             className="btn-shine inline-flex h-10 items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             Get Started
