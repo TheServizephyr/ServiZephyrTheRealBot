@@ -103,6 +103,19 @@ export default function RootLayout({ children }) {
         />
         <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
+        {/* Production: Silence Console Logs */}
+        <Script id="console-silencer" strategy="beforeInteractive">
+          {`
+            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+              console.log = function() {};
+              console.warn = function() {};
+              console.info = function() {};
+              console.debug = function() {};
+              // Keep console.error for debugging critical issues
+            }
+          `}
+        </Script>
+
         {/* PWA Service Worker Registration */}
         <Script id="sw-register" strategy="afterInteractive">
           {`
