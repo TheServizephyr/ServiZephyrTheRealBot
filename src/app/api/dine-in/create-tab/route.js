@@ -40,28 +40,62 @@ export async function POST(req) {
 
         // Transaction for atomicity
         const result = await firestore.runTransaction(async (transaction) => {
-            // Check for existing active tabs on this table
+            // Check for EXISTING active tabs to potentially join
             const tabsRef = firestore.collection('dine_in_tabs');
-            const existingQuery = tabsRef
+
+            // Query ALL tabs for this table to check capacity
+            // We need to count seats from all tabs that are NOT 'clean' or 'closed'
+            const allTableTabsQuery = tabsRef
                 .where('tableId', '==', tableId)
-                .where('restaurantId', '==', restaurantId)
-                .where('status', '==', 'active')
-                .limit(1);
+                .where('restaurantId', '==', restaurantId);
 
-            const existingSnap = await transaction.get(existingQuery);
+            const allTableTabsSnap = await transaction.get(allTableTabsQuery);
 
-            if (!existingSnap.empty) {
-                const existingTab = existingSnap.docs[0];
-                const existingData = existingTab.data();
+            let currentOccupiedSeats = 0;
+            let existingActiveTab = null;
 
-                // Return existing tab info instead of error
+            allTableTabsSnap.docs.forEach(doc => {
+                const data = doc.data();
+                // User requirement: Ignore 'clean' tabs (and assuming 'closed'/'cancelled' meant finished)
+                // Count any tab that is still holding the table
+                const isOccupied = !['clean', 'closed', 'cancelled'].includes(data.status);
+
+                if (isOccupied) {
+                    currentOccupiedSeats += (data.occupiedSeats || 0);
+                }
+
+                // Identify if there's a joinable 'active' tab (exact match for rejoin logic)
+                if (data.status === 'active') {
+                    existingActiveTab = { id: doc.id, ...data };
+                }
+            });
+
+            // 1. CAPACITY CHECK FIRST (for both new and existing tabs)
+            if (currentOccupiedSeats + groupSize > capacity) {
+                throw new Error(`Table capacity exceeded. Occupied: ${currentOccupiedSeats}/${capacity}, Requested: ${groupSize}`);
+            }
+
+            // 2. REJOIN LOGIC: If active tab exists, update its occupiedSeats atomically
+            if (existingActiveTab) {
+                const newOccupiedSeats = existingActiveTab.occupiedSeats + groupSize;
+                const newAvailableSeats = capacity - newOccupiedSeats;
+
+                // Update the tab atomically in transaction
+                const tabDocRef = tabsRef.doc(existingActiveTab.id);
+                transaction.update(tabDocRef, {
+                    occupiedSeats: newOccupiedSeats,
+                    availableSeats: newAvailableSeats,
+                    lastModifiedAt: FieldValue.serverTimestamp()
+                });
+
                 return {
                     exists: true,
-                    tabId: existingTab.id,
-                    token: existingData.token,
-                    occupiedSeats: existingData.occupiedSeats,
-                    availableSeats: existingData.availableSeats,
-                    capacity: existingData.capacity
+                    joined: true,
+                    tabId: existingActiveTab.id,
+                    token: existingActiveTab.token,
+                    occupiedSeats: newOccupiedSeats,
+                    availableSeats: newAvailableSeats,
+                    capacity: capacity
                 };
             }
 

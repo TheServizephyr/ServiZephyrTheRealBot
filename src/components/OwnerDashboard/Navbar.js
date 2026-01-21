@@ -59,9 +59,16 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
+      // 🔒 CRITICAL: Clear ALL storage to prevent cross-account leakage
       localStorage.clear();
-      router.push('/');
+      sessionStorage.clear();
+
+      // Sign out from Firebase
+      await auth.signOut();
+
+      // 🔥 CRITICAL: Redirect to clean URL (no query params)
+      // This prevents old ?employee_of=X params from persisting
+      window.location.href = '/';
     } catch (error) {
       console.error("Logout failed:", error);
       setInfoDialog({ isOpen: true, title: "Error", message: "Could not log out. Please try again." });

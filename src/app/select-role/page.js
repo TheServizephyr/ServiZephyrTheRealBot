@@ -124,6 +124,8 @@ export default function SelectRolePage() {
             // This allows APIs to fetch owner's data instead of employee's
             if (outlet.collectionName === 'street_vendors') {
                 router.push(`/street-vendor-dashboard?employee_of=${outlet.ownerId}`);
+            } else if (outlet.employeeRole === 'manager') {
+                router.push(`/owner-dashboard?employee_of=${outlet.ownerId}`);
             } else {
                 router.push(`/owner-dashboard/live-orders?employee_of=${outlet.ownerId}`);
             }
