@@ -5,6 +5,9 @@ import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/fireba
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 import { kv } from '@vercel/kv';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
+import { logAuditEvent, AUDIT_ACTIONS, createPriceChangeMetadata } from '@/lib/security/audit-log';
+import { menuPriceLimiter, menuDeleteLimiter } from '@/lib/security/rate-limiter';
+import { validatePriceChange, extractPortions } from '@/lib/security/validation-helpers';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -219,7 +222,84 @@ export async function POST(req) {
                 console.error("[API ERROR] POST /api/owner/menu: Edit failed: No item ID provided.");
                 return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
             }
+
+            // Fetch old item to detect price changes
             const itemRef = menuRef.doc(item.id);
+            const oldItemSnap = await itemRef.get();
+
+            if (oldItemSnap.exists) {
+                const oldItem = oldItemSnap.data();
+
+                // Check if price changed (compare portions)
+                const oldPrices = (oldItem.portions || []).map(p => ({ name: p.name, price: p.price }));
+                const newPrices = (finalItem.portions || []).map(p => ({ name: p.name, price: p.price }));
+
+                // Simple price change detection (if any portion price differs)
+                const priceChanged = JSON.stringify(oldPrices) !== JSON.stringify(newPrices);
+
+                if (priceChanged) {
+                    // 🔒 Rate limit check (20 price updates per minute)
+                    const rateLimitCheck = menuPriceLimiter.check(uid, businessId);
+                    if (!rateLimitCheck.allowed) {
+                        logAuditEvent({
+                            actorUid: uid,
+                            actorRole: userRole,
+                            action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                            targetUid: null,
+                            outletId: businessId,
+                            metadata: {
+                                endpoint: 'menu_price_update',
+                                limit: '20/min',
+                                retryAfter: rateLimitCheck.retryAfter
+                            },
+                            source: 'rate_limiter',
+                            req
+                        }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+                        return NextResponse.json({
+                            message: `Too many price updates. Please wait ${rateLimitCheck.retryAfter} seconds.`
+                        }, { status: 429 });
+                    }
+
+                    // 🛡️ Validate price change (prevent extreme increases)
+                    const validation = validatePriceChange(
+                        extractPortions(oldItem),
+                        extractPortions(finalItem),
+                        finalItem.name
+                    );
+
+                    if (!validation.valid) {
+                        return NextResponse.json({
+                            message: validation.error
+                        }, { status: 400 });
+                    }
+
+                    // Log warning if present (large decrease)
+                    if (validation.warning) {
+                        console.warn('[MENU API] Price Change Warning:', validation.warning);
+                    }
+
+                    // 🔍 Audit log: MENU_PRICE_UPDATE (fire-and-forget)
+                    logAuditEvent({
+                        actorUid: uid,
+                        actorRole: userRole,
+                        action: AUDIT_ACTIONS.MENU_PRICE_UPDATE,
+                        targetUid: null,
+                        outletId: businessId,
+                        metadata: {
+                            itemId: item.id,
+                            itemName: finalItem.name || oldItem.name,
+                            categoryId: finalItem.categoryId || oldItem.categoryId,
+                            oldPrices,
+                            newPrices,
+                            changedAt: new Date().toISOString()
+                        },
+                        source: 'menu_api',
+                        req
+                    }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+                }
+            }
+
             const { id, createdAt, ...updateData } = finalItem;
             batch.update(itemRef, updateData);
         } else {
@@ -358,6 +438,49 @@ export async function PATCH(req) {
 
         console.log(`[API LOG] PATCH /api/owner/menu: Performing bulk action '${action}' on ${itemIds.length} items.`);
         const batch = firestore.batch();
+
+        // For delete action, fetch item details first for audit log
+        const itemsToDelete = [];
+        if (action === 'delete') {
+            // 🔒 Rate limit check (10 deletes per minute)
+            const rateLimitCheck = menuDeleteLimiter.check(uid, businessId);
+            if (!rateLimitCheck.allowed) {
+                logAuditEvent({
+                    actorUid: uid,
+                    actorRole: userRole,
+                    action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                    targetUid: null,
+                    outletId: businessId,
+                    metadata: {
+                        endpoint: 'menu_delete',
+                        limit: '10/min',
+                        retryAfter: rateLimitCheck.retryAfter,
+                        itemCount: itemIds.length
+                    },
+                    source: 'rate_limiter',
+                    req
+                }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+                return NextResponse.json({
+                    message: `Too many menu deletions. Please wait ${rateLimitCheck.retryAfter} seconds.`
+                }, { status: 429 });
+            }
+
+            for (const itemId of itemIds) {
+                const itemRef = menuRef.doc(itemId);
+                const itemSnap = await itemRef.get();
+                if (itemSnap.exists()) {
+                    const itemData = itemSnap.data();
+                    itemsToDelete.push({
+                        id: itemId,
+                        name: itemData.name,
+                        categoryId: itemData.categoryId,
+                        portions: itemData.portions || []
+                    });
+                }
+            }
+        }
+
         itemIds.forEach(itemId => {
             const itemRef = menuRef.doc(itemId);
             if (action === 'delete') {
@@ -368,6 +491,29 @@ export async function PATCH(req) {
         });
 
         await batch.commit();
+
+        // 🔍 Audit log: MENU_ITEM_DELETE (only for delete action, fire-and-forget)
+        if (action === 'delete' && itemsToDelete.length > 0) {
+            for (const item of itemsToDelete) {
+                logAuditEvent({
+                    actorUid: uid,
+                    actorRole: userRole,
+                    action: AUDIT_ACTIONS.MENU_ITEM_DELETE,
+                    targetUid: null,
+                    outletId: businessId,
+                    metadata: {
+                        itemId: item.id,
+                        itemName: item.name,
+                        categoryId: item.categoryId,
+                        portions: item.portions,
+                        deletedAt: new Date().toISOString()
+                    },
+                    source: 'menu_api',
+                    req
+                }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+            }
+        }
+
         console.log(`[API LOG] PATCH /api/owner/menu: Bulk action completed.`);
 
         // Increment menuVersion for automatic cache invalidation

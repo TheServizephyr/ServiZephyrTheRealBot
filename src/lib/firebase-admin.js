@@ -100,11 +100,35 @@ const verifyAndGetUid = async (req) => {
   const token = authHeader.split('Bearer ')[1];
 
   try {
-    const decodedToken = await auth.verifyIdToken(token);
+    // ✅ CRITICAL: Second parameter `true` checks if token has been revoked
+    const decodedToken = await auth.verifyIdToken(token, true);
     return decodedToken.uid;
   } catch (error) {
     console.error("[verifyAndGetUid] Error verifying token:", error.message);
-    throw { message: `Token verification failed: ${error.message}`, status: 403 };
+
+    // Map specific Firebase auth errors to appropriate HTTP status codes
+    if (error.code === 'auth/id-token-revoked') {
+      throw {
+        message: 'Session expired. Please login again.',
+        status: 401,
+        code: 'TOKEN_REVOKED'
+      };
+    }
+
+    if (error.code === 'auth/id-token-expired') {
+      throw {
+        message: 'Token expired. Please login again.',
+        status: 401,
+        code: 'TOKEN_EXPIRED'
+      };
+    }
+
+    // Generic auth failure
+    throw {
+      message: `Token verification failed: ${error.message}`,
+      status: 401,  // Changed from 403 to 401 for auth failures
+      code: error.code || 'AUTH_FAILED'
+    };
   }
 }
 

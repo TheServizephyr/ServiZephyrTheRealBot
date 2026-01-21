@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { logAuditEvent, AUDIT_ACTIONS } from '@/lib/security/audit-log';
+import { refundLimiter } from '@/lib/security/rate-limiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,11 +42,38 @@ export async function POST(req) {
         }
 
         // Verify owner and log action
-        const { businessId } = await verifyOwnerWithAudit(
+        const { businessId, uid: actorUid } = await verifyOwnerWithAudit(
             req,
             `${refundType}_refund`,
             { orderId, refundType, itemCount: items.length, reason }
         );
+
+        // 🔒 CRITICAL: Rate limit check (5 refunds per minute - highest risk)
+        const rateLimitCheck = refundLimiter.check(actorUid, businessId);
+        if (!rateLimitCheck.allowed) {
+            // Log rate limit violation
+            logAuditEvent({
+                actorUid,
+                actorRole: 'owner',
+                action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                targetUid: null,
+                outletId: businessId,
+                metadata: {
+                    endpoint: 'refund',
+                    limit: '5/min',
+                    retryAfter: rateLimitCheck.retryAfter
+                },
+                source: 'rate_limiter',
+                req
+            }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+            return NextResponse.json({
+                message: `Rate limit exceeded for refunds. This is a security measure to prevent abuse. Please wait ${rateLimitCheck.retryAfter} seconds before trying again.`
+            }, {
+                status: 429,
+                headers: { 'Retry-After': rateLimitCheck.retryAfter.toString() }
+            });
+        }
 
         // Get order details
         const orderRef = firestore.collection('orders').doc(orderId);
@@ -304,6 +333,29 @@ export async function POST(req) {
         }
 
         console.log(`[API /owner/refund] Refund completed successfully: ${refundResults.length} refund(s) created`);
+
+        // 🔍 Audit log: ORDER_REFUND (fire-and-forget)
+        // Use actorUid from earlier verifyOwnerWithAudit call
+
+        logAuditEvent({
+            actorUid,
+            actorRole: 'owner', // Refunds only allowed by owners
+            action: AUDIT_ACTIONS.ORDER_REFUND,
+            targetUid: orderData.customerId || orderData.userId || null,
+            outletId: businessId,
+            metadata: {
+                orderId,
+                refundType, // 'full' or 'partial'
+                refundAmount: totalRefundedFromRazorpay,
+                reason,
+                refundIds: refundResults.map(r => r.refundId),
+                itemsRefunded: refundType === 'partial' ? items : 'all',
+                customerName: orderData.name || orderData.customerName || 'N/A',
+                processedAt: new Date().toISOString()
+            },
+            source: 'refund_api',
+            req
+        }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
 
         // TODO: Send notification to customer
         // await sendRefundNotification(orderData.customerId, totalRefundedFromRazorpay, refundResults[0].refundId);

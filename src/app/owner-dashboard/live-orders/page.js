@@ -351,9 +351,15 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         const currentIndex = ['pending', 'confirmed', 'preparing', 'ready'].indexOf(status);
         const prevStatus = currentIndex > 0 ? ['pending', 'confirmed', 'preparing', 'ready'][currentIndex - 1] : null;
 
+        const dineInUrl = employeeOfOwnerId
+            ? `/owner-dashboard/dine-in?employee_of=${employeeOfOwnerId}`
+            : impersonatedOwnerId
+                ? `/owner-dashboard/dine-in?impersonate_owner_id=${impersonatedOwnerId}`
+                : '/owner-dashboard/dine-in';
+
         return (
             <div className="flex items-center gap-2">
-                <Link href="/owner-dashboard/dine-in">
+                <Link href={dineInUrl}>
                     <Button size="sm" className="bg-primary hover:bg-primary/90 h-9">
                         <ConciergeBell size={16} className="mr-2" /> View on Dine-In Board
                     </Button>

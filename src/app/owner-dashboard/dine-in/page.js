@@ -288,7 +288,7 @@ const actionConfig = {
 };
 
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading, lastBulkAction, setLastBulkAction, setConfirmationState }) => {
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading, lastBulkAction, setLastBulkAction, setConfirmationState, userRole, canPerformAction }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -598,7 +598,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
                                                             {/* Action Buttons - Compact row layout */}
                                                             <div className="mt-1.5 flex gap-1">
-                                                                {/* Main progression button */}
+                                                                {/* Main progression button - RBAC PROTECTED */}
                                                                 {(() => {
                                                                     const batchActionConfig = {
                                                                         'confirmed': { label: 'Start Preparing', next: 'preparing', className: 'bg-orange-500 hover:bg-orange-600', icon: CookingPot },
@@ -608,7 +608,11 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     const batchAction = batchActionConfig[orderBatch.status];
                                                                     const ActionIcon = batchAction?.icon;
 
+                                                                    // 🔐 RBAC: Check if user has permission to perform this action
                                                                     if (!batchAction) return null;
+                                                                    if (userRole && !canPerformAction(orderBatch.status, batchAction.next, userRole)) {
+                                                                        return null; // User doesn't have permission
+                                                                    }
 
                                                                     return (
                                                                         <Button
@@ -1307,6 +1311,86 @@ const DineInPageContent = () => {
     const [lastBulkAction, setLastBulkAction] = useState(null);
     // Structure: { type: 'confirm_all' | 'reject_all', orderIds: [], prevStatus: 'pending', tableId: 'T1', tabId: 'xxx' }
 
+    // 🔐 RBAC: Role detection for tab and action filtering
+    const [userRole, setUserRole] = useState(null);
+    const [isOwner, setIsOwner] = useState(false);
+
+    // Detect user role (owner vs employee)
+    useEffect(() => {
+        const storedRole = localStorage.getItem('employeeRole');
+
+        // If no employee_of param and no stored role, user is owner
+        if (!employeeOfOwnerId && !impersonatedOwnerId) {
+            setIsOwner(true);
+            setUserRole('owner');
+        } else {
+            // Employee accessing through impersonation
+            setUserRole(storedRole || 'waiter'); // Default to waiter if unknown (most restrictive)
+        }
+    }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+    // Get allowed tabs based on role
+    const getAllowedTabs = (role) => {
+        const tabConfig = {
+            // Chef sees 3 separate tabs for better kitchen workflow
+            // Confirmed: New orders from manager to start cooking
+            // Preparing: Currently cooking orders
+            // Ready: Finished dishes ready for waiter
+            'chef': ['Confirmed', 'Preparing', 'Ready'],
+            'waiter': ['Ready'],                                        // Waiter only sees Ready orders
+            'cashier': ['All', 'Pending', 'Ready', 'Delivered'],       // Cashier sees most tabs
+            'manager': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'], // Manager sees all
+            'owner': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'],   // Owner sees all
+        };
+
+        return tabConfig[role] || ['All']; // Default to 'All' if role unknown
+    };
+
+    // Check if user can perform a status change action
+    const canPerformAction = (currentStatus, nextStatus, role) => {
+        const actionPermissions = {
+            'chef': {
+                'confirmed': ['preparing'],          // Chef can mark confirmed → preparing
+                'preparing': ['ready_for_pickup']    // Chef can mark preparing → ready
+            },
+            'waiter': {
+                'ready_for_pickup': ['delivered']    // Waiter can mark ready → served
+            },
+            'cashier': {
+                'pending': ['confirmed'],
+                'ready_for_pickup': ['delivered']
+            },
+            'manager': {
+                // Manager can do all actions
+                'pending': ['confirmed'],
+                'confirmed': ['preparing'],
+                'preparing': ['ready_for_pickup'],
+                'ready_for_pickup': ['delivered']
+            },
+            'owner': {
+                // Owner can do all actions
+                'pending': ['confirmed'],
+                'confirmed': ['preparing'],
+                'preparing': ['ready_for_pickup'],
+                'ready_for_pickup': ['delivered']
+            }
+        };
+
+        const allowedActions = actionPermissions[role]?.[currentStatus] || [];
+        return allowedActions.includes(nextStatus);
+    };
+
+    // Auto-select first allowed tab if current tab is not accessible by role
+    useEffect(() => {
+        if (!userRole) return;
+
+        const allowedTabs = getAllowedTabs(userRole);
+        // If current filter is not in allowed tabs, switch to first allowed tab
+        if (!allowedTabs.includes(activeStatusFilter)) {
+            setActiveStatusFilter(allowedTabs[0] || 'All');
+        }
+    }, [userRole]);
+
     // Reset selection when filter changes (prevent cross-status batch updates)
     useEffect(() => {
         setSelectedCards(new Set());
@@ -1713,7 +1797,9 @@ const DineInPageContent = () => {
         const statusMapping = {
             'All': null, // Show all
             'Pending': 'pending',
-            'In Progress': ['confirmed', 'preparing'],
+            'Confirmed': 'confirmed',              // Chef's first tab: Orders ready to cook
+            'Preparing': 'preparing',              // Chef's second tab: Currently cooking
+            'In Progress': ['confirmed', 'preparing'], // Manager/Owner combined view
             'Ready': 'ready_for_pickup',
             'Delivered': 'delivered'
         };
@@ -1770,6 +1856,8 @@ const DineInPageContent = () => {
                     lastBulkAction={lastBulkAction}
                     setLastBulkAction={setLastBulkAction}
                     setConfirmationState={setConfirmationState}
+                    userRole={userRole}
+                    canPerformAction={canPerformAction}
                 />
             );
         }).flat();
@@ -1818,6 +1906,15 @@ const DineInPageContent = () => {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                {/* 🔐 RBAC: Create Order button - Only for Owner, Manager, Waiter */}
+                {(userRole === 'owner' || userRole === 'manager' || userRole === 'waiter') && (
+                    <Link href={`/owner-dashboard/dine-in-waiter${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}>
+                        <Button variant="default" className="h-20 flex-col gap-1 w-full bg-primary hover:bg-primary/90">
+                            <Plus size={20} /> Create Order
+                        </Button>
+                    </Link>
+                )}
+
                 <Link href={`/owner-dashboard/dine-in-history${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}>
                     <Button variant="outline" className="h-20 flex-col gap-1 w-full" disabled={loading}>
                         <History size={20} /> Dine-In History
@@ -1840,22 +1937,24 @@ const DineInPageContent = () => {
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4">
                 <h2 className="text-xl font-bold">Live Tables</h2>
 
-                {/* Status Filter Tabs */}
+                {/* Status Filter Tabs - RBAC Filtered */}
                 <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border">
-                    {['All', 'Pending', 'In Progress', 'Ready', 'Delivered'].map(filter => (
-                        <button
-                            key={filter}
-                            onClick={() => setActiveStatusFilter(filter)}
-                            className={cn(
-                                'px-3 py-1.5 text-sm font-semibold rounded-md transition-colors',
-                                activeStatusFilter === filter
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'text-muted-foreground hover:bg-muted'
-                            )}
-                        >
-                            {filter}
-                        </button>
-                    ))}
+                    {['All', 'Pending', 'Confirmed', 'Preparing', 'In Progress', 'Ready', 'Delivered']
+                        .filter(filter => getAllowedTabs(userRole).includes(filter))
+                        .map(filter => (
+                            <button
+                                key={filter}
+                                onClick={() => setActiveStatusFilter(filter)}
+                                className={cn(
+                                    'px-3 py-1.5 text-sm font-semibold rounded-md transition-colors',
+                                    activeStatusFilter === filter
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'text-muted-foreground hover:bg-muted'
+                                )}
+                            >
+                                {filter}
+                            </button>
+                        ))}
                 </div>
             </div>
 

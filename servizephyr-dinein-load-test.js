@@ -24,7 +24,7 @@ export let options = {
 const BASE_URL = 'https://www.servizephyr.com';
 
 // Test restaurant ID (use your actual restaurant ID)
-const RESTAURANT_ID = 'ashwanis-restaurant';
+const RESTAURANT_ID = "ashwani's-restaurant";
 
 // Headers
 const headers = {
@@ -61,21 +61,26 @@ export default function () {
     // Extract a real menu item for order
     let menuItems = [];
     try {
-        const data = JSON.parse(menuRes.body);
-        // Flatten menu object into array of items
-        if (data.menu) {
-            Object.values(data.menu).forEach(categoryItems => {
-                if (Array.isArray(categoryItems)) {
+        const body = JSON.parse(menuRes.body);
+
+        // Handle public API structure: { menu: { category: [...] } }
+        if (body.menu && typeof body.menu === 'object') {
+            Object.values(body.menu).forEach(categoryItems => {
+                if (Array.isArray(categoryItems) && categoryItems.length > 0) {
                     menuItems.push(...categoryItems);
                 }
             });
+        }
+        // Handle potential flat array fallback (defensive)
+        else if (Array.isArray(body)) {
+            menuItems = body;
         }
     } catch (e) {
         console.error('[Menu] Parse error:', e);
     }
 
     if (menuItems.length === 0) {
-        console.error('[Menu] No items found, aborting this iteration');
+        console.error('[Menu] No items found, aborting this iteration. Body sample:', menuRes.body.substring(0, 100));
         sleep(2);
         return;
     }
@@ -95,33 +100,52 @@ export default function () {
         return;
     }
 
+    // Generate random quantities
+    const qty1 = Math.floor(Math.random() * 3) + 1;
+    const qty2 = Math.floor(Math.random() * 2) + 1;
+
+    // Calculate item totals
+    const price1 = item1.price || 100;
+    const price2 = item2.price || 150;
+    const total1 = price1 * qty1;
+    const total2 = price2 * qty2;
+
+    // Calculate Bill
+    const subtotal = total1 + total2;
+    const grandTotal = subtotal; // Assuming no taxes/charges for simplicity in load test match
+
     const orderPayload = {
         restaurantId: RESTAURANT_ID,
+        businessType: 'restaurant', // ✅ Required by V2 API
         deliveryType: 'dine-in',
         tableId: tableId,
-        tabName: tabName,
-        paxCount: Math.floor(Math.random() * 4) + 1,
+        tab_name: tabName,       // ✅ Required snake_case by V2 API
+        pax_count: Math.floor(Math.random() * 4) + 1, // ✅ Required snake_case by V2 API
         items: [
             {
                 id: item1.id,
                 name: item1.name,
-                price: item1.price || 100,
-                quantity: Math.floor(Math.random() * 3) + 1,
+                price: price1,
+                quantity: qty1,
                 category: item1.categoryId || 'general',
             },
             {
                 id: item2.id,
                 name: item2.name,
-                price: item2.price || 150,
-                quantity: Math.floor(Math.random() * 2) + 1,
+                price: price2,
+                quantity: qty2,
                 category: item2.categoryId || 'general',
             },
         ],
-        customerName: `LoadTest User ${__VU}`,
-        customerPhone: `9999${String(__VU).padStart(6, '0')}`,
-        paymentMethod: 'cash', // ⚠️ SAFE: No payment gateway
-        grandTotal: ((item1.price || 100) * 2 + (item2.price || 150) * 1.5).toFixed(2),
+        name: `LoadTest User ${__VU}`,
+        phone: `9999${String(__VU).padStart(6, '0')}`,
+        paymentMethod: 'cash',
+        subtotal: subtotal,        // ✅ Required for server-side validation
+        grandTotal: grandTotal,    // ✅ Required
+        cgst: 0,                   // ✅ Prevent "undefined" Firestore error
+        sgst: 0,                   // ✅ Prevent "undefined" Firestore error
         notes: '🧪 LOAD TEST ORDER - IGNORE',
+        idempotencyKey: `load-test-${Date.now()}-${__VU}-${__ITER}`,
     };
 
     let orderRes = http.post(
@@ -135,7 +159,7 @@ export default function () {
         '[Order Create] Has orderId': (r) => {
             try {
                 const body = JSON.parse(r.body);
-                return body.orderId !== undefined;
+                return (body.order_id || body.orderId) !== undefined;
             } catch (e) {
                 return false;
             }
@@ -145,8 +169,12 @@ export default function () {
     let orderId;
     try {
         const orderData = JSON.parse(orderRes.body);
-        orderId = orderData.orderId;
-        console.log(`[VU ${__VU}] Order created: ${orderId}`);
+        orderId = orderData.order_id || orderData.orderId;
+        if (!orderId) {
+            console.error(`[VU ${__VU}] Order FAILED. Status: ${orderRes.status}. Body: ${orderRes.body}`);
+        } else {
+            console.log(`[VU ${__VU}] Order created: ${orderId}`);
+        }
     } catch (e) {
         console.error('[Order Create] Parse error:', e);
     }

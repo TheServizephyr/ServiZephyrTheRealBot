@@ -1,6 +1,8 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { logAuditEvent, AUDIT_ACTIONS } from '@/lib/security/audit-log';
+import { couponLimiter } from '@/lib/security/rate-limiter';
 
 
 // Helper to verify owner and get their first business ID
@@ -81,8 +83,31 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, uid, userRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
+
+        // 🔒 Rate limit check (15 coupon operations per minute)
+        const rateLimitCheck = couponLimiter.check(uid, businessId);
+        if (!rateLimitCheck.allowed) {
+            logAuditEvent({
+                actorUid: uid,
+                actorRole: userRole,
+                action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                targetUid: null,
+                outletId: businessId,
+                metadata: {
+                    endpoint: 'coupon_create',
+                    limit: '15/min',
+                    retryAfter: rateLimitCheck.retryAfter
+                },
+                source: 'rate_limiter',
+                req
+            }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+            return NextResponse.json({
+                message: `Too many coupon operations. Please wait ${rateLimitCheck.retryAfter} seconds.`
+            }, { status: 429 });
+        }
 
         // Updated Validation
         const isFreeDelivery = coupon.type === 'free_delivery';
@@ -104,6 +129,26 @@ export async function POST(req) {
         };
 
         await newCouponRef.set(newCouponData);
+
+        // 🔍 Audit log: COUPON_CREATE (fire-and-forget)
+        logAuditEvent({
+            actorUid: uid,
+            actorRole: userRole,
+            action: AUDIT_ACTIONS.COUPON_CREATE,
+            targetUid: null,
+            outletId: businessId,
+            metadata: {
+                couponId: newCouponRef.id,
+                couponCode: coupon.code,
+                discountType: coupon.type, // 'percentage', 'fixed', 'free_delivery'
+                discountValue: isFreeDelivery ? 0 : coupon.value,
+                minOrder: coupon.minOrder,
+                expiryDate: coupon.expiryDate,
+                createdAt: new Date().toISOString()
+            },
+            source: 'coupons_api',
+            req
+        }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
 
         return NextResponse.json({ message: 'Coupon created successfully!', id: newCouponRef.id }, { status: 201 });
 
@@ -156,15 +201,65 @@ export async function DELETE(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, uid, userRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { couponId } = await req.json();
 
         if (!couponId) {
             return NextResponse.json({ message: 'Coupon ID is required.' }, { status: 400 });
         }
 
+        // 🔒 Rate limit check (15 coupon operations per minute)
+        const rateLimitCheck = couponLimiter.check(uid, businessId);
+        if (!rateLimitCheck.allowed) {
+            logAuditEvent({
+                actorUid: uid,
+                actorRole: userRole,
+                action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                targetUid: null,
+                outletId: businessId,
+                metadata: {
+                    endpoint: 'coupon_delete',
+                    limit: '15/min',
+                    retryAfter: rateLimitCheck.retryAfter
+                },
+                source: 'rate_limiter',
+                req
+            }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+            return NextResponse.json({
+                message: `Too many coupon operations. Please wait ${rateLimitCheck.retryAfter} seconds.`
+            }, { status: 429 });
+        }
+
+        // Fetch coupon data before deleting for audit log
         const couponRef = firestore.collection(collectionName).doc(businessId).collection('coupons').doc(couponId);
+        const couponSnap = await couponRef.get();
+
+        let couponData = {};
+        if (couponSnap.exists()) {
+            couponData = couponSnap.data();
+        }
+
         await couponRef.delete();
+
+        // 🔍 Audit log: COUPON_DELETE (fire-and-forget)
+        logAuditEvent({
+            actorUid: uid,
+            actorRole: userRole,
+            action: AUDIT_ACTIONS.COUPON_DELETE,
+            targetUid: null,
+            outletId: businessId,
+            metadata: {
+                couponId,
+                couponCode: couponData.code || 'N/A',
+                discountType: couponData.type || 'N/A',
+                discountValue: couponData.value || 0,
+                timesUsed: couponData.timesUsed || 0,
+                deletedAt: new Date().toISOString()
+            },
+            source: 'coupons_api',
+            req
+        }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
 
         return NextResponse.json({ message: 'Coupon deleted successfully.' }, { status: 200 });
     } catch (error) {

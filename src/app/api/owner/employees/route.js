@@ -11,7 +11,18 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { verifyAccessWithRBAC, PERMISSIONS } from '@/lib/verify-access-rbac';
-import { ROLES, ROLE_PERMISSIONS, ROLE_DISPLAY_NAMES, EMPLOYEE_ROLES, canManageRole, getInvitableRoles } from '@/lib/permissions';
+import {
+    ROLES,
+    ROLE_PERMISSIONS,
+    getPermissionsForRole,
+    canManageRole,
+    ROLE_DISPLAY_NAMES,
+    EMPLOYEE_ROLES,
+    getInvitableRoles
+} from '@/lib/permissions';
+import { revokeUserAccess } from '@/lib/security/revoke-user-access';
+import { logAuditEvent, AUDIT_ACTIONS, createRoleChangeMetadata } from '@/lib/security/audit-log';
+import { employeeInviteLimiter, employeeRemoveLimiter, roleChangeLimiter } from '@/lib/security/rate-limiter';
 import crypto from 'crypto';
 
 // ============================================
@@ -87,6 +98,34 @@ export async function POST(req) {
         }
 
         const outletId = accessContext.outletId;
+
+        // 🔒 Rate limit check (10 invites per minute)
+        const rateLimitCheck = employeeInviteLimiter.check(accessContext.uid, outletId);
+        if (!rateLimitCheck.allowed) {
+            // Log violation
+            logAuditEvent({
+                actorUid: accessContext.uid,
+                actorRole: accessContext.role,
+                action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                targetUid: null,
+                outletId,
+                metadata: {
+                    endpoint: 'employee_invite',
+                    limit: '10/min',
+                    retryAfter: rateLimitCheck.retryAfter
+                },
+                source: 'rate_limiter',
+                req
+            }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+            return NextResponse.json({
+                message: `Too many employee invitations. Please wait ${rateLimitCheck.retryAfter} seconds before trying again.`
+            }, {
+                status: 429,
+                headers: { 'Retry-After': rateLimitCheck.retryAfter.toString() }
+            });
+        }
+
         const outletData = accessContext.outletData;
         const collectionName = accessContext.collectionName;
 
@@ -148,6 +187,23 @@ export async function POST(req) {
         };
 
         await firestore.collection('employee_invitations').doc(inviteCode).set(invitationData);
+
+        // 🔍 Audit log: Employee invitation (fire-and-forget)
+        logAuditEvent({
+            actorUid: accessContext.uid,
+            actorRole: accessContext.role,
+            action: AUDIT_ACTIONS.EMPLOYEE_INVITE,
+            targetUid: null, // No UID yet (pending acceptance)
+            outletId,
+            metadata: {
+                employeeEmail: email,
+                employeeRole: role,
+                inviteCode,
+                customRole: role === 'custom' ? { roleName: customRoleName, allowedPages: customAllowedPages } : null
+            },
+            source: 'employees_api',
+            req
+        }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
 
         // Generate invite link
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.servizephyr.com';
@@ -407,6 +463,30 @@ export async function PATCH(req) {
 
             if (employeeUserDoc.exists) {
                 const linkedOutlets = employeeUserDoc.data().linkedOutlets || [];
+                // 🔒 Rate limit check (10 role changes per minute)
+                const rateLimitCheck = roleChangeLimiter.check(accessContext.uid, outletId);
+                if (!rateLimitCheck.allowed) {
+                    logAuditEvent({
+                        actorUid: accessContext.uid,
+                        actorRole: accessContext.role,
+                        action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                        targetUid: employeeId,
+                        outletId,
+                        metadata: {
+                            endpoint: 'role_change',
+                            limit: '10/min',
+                            retryAfter: rateLimitCheck.retryAfter
+                        },
+                        source: 'rate_limiter',
+                        req
+                    }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+                    return NextResponse.json({
+                        message: `Too many role changes. Please wait ${rateLimitCheck.retryAfter} seconds.`
+                    }, { status: 429 });
+                }
+
+                // Update role in Firestore
                 const outletIndex = linkedOutlets.findIndex(o => o.outletId === outletId);
 
                 if (outletIndex !== -1) {
@@ -417,6 +497,36 @@ export async function PATCH(req) {
                         permissions: employees[employeeIndex].permissions,
                     };
                     await employeeUserRef.update({ linkedOutlets });
+
+                    // 🔥 CRITICAL: Revoke tokens to force new permissions (fire-and-forget)
+                    revokeUserAccess(employeeId, 'role_changed', 'employees_api')
+                        .catch(err => {
+                            console.error('[CRITICAL] Token revocation failed for role change:', {
+                                employeeId,
+                                oldRole: linkedOutlets[outletIndex].employeeRole,
+                                newRole: employees[employeeIndex].role,
+                                outletId,
+                                error: err.message
+                            });
+                            // TODO: Alert monitoring system
+                        });
+
+                    // 🔍 Audit log: Role change (fire-and-forget)
+                    logAuditEvent({
+                        actorUid: accessContext.uid,
+                        actorRole: accessContext.role,
+                        action: AUDIT_ACTIONS.ROLE_CHANGE,
+                        targetUid: employeeId,
+                        outletId,
+                        metadata: createRoleChangeMetadata({
+                            employeeId,
+                            employeeName: employees[employeeIndex].name,
+                            oldRole: linkedOutlets[outletIndex].employeeRole, // Before update
+                            newRole: employees[employeeIndex].role // After update
+                        }),
+                        source: 'employees_api',
+                        req
+                    }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
                 }
             }
         }
@@ -511,6 +621,29 @@ export async function DELETE(req) {
         employees.splice(employeeIndex, 1);
         await outletRef.update({ employees });
 
+        // 🔒 Rate limit check (10 removals per minute)
+        const rateLimitCheck = employeeRemoveLimiter.check(accessContext.uid, outletId);
+        if (!rateLimitCheck.allowed) {
+            logAuditEvent({
+                actorUid: accessContext.uid,
+                actorRole: accessContext.role,
+                action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
+                targetUid: employeeId,
+                outletId,
+                metadata: {
+                    endpoint: 'employee_remove',
+                    limit: '10/min',
+                    retryAfter: rateLimitCheck.retryAfter
+                },
+                source: 'rate_limiter',
+                req
+            }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+            return NextResponse.json({
+                message: `Too many employee removals. Please wait ${rateLimitCheck.retryAfter} seconds.`
+            }, { status: 429 });
+        }
+
         // Update employee's user document - remove this outlet from linkedOutlets
         const employeeUserRef = firestore.collection('users').doc(employeeId);
         const employeeUserDoc = await employeeUserRef.get();
@@ -533,6 +666,36 @@ export async function DELETE(req) {
 
             await employeeUserRef.update(updateData);
         }
+
+        // 🔥 CRITICAL: Revoke tokens immediately (fire-and-forget for reliability)
+        revokeUserAccess(employeeId, 'employee_removed', 'employees_api')
+            .catch(err => {
+                // Log but don't block - RBAC correctness comes from DB
+                console.error('[CRITICAL] Token revocation failed for removed employee:', {
+                    employeeId,
+                    outletId,
+                    error: err.message
+                });
+                // TODO: Alert monitoring system for manual review
+            });
+
+        // 🔍 Audit log: Employee removal (fire-and-forget)
+        logAuditEvent({
+            actorUid: accessContext.uid,
+            actorRole: accessContext.role,
+            action: AUDIT_ACTIONS.EMPLOYEE_REMOVE,
+            targetUid: employeeId,
+            outletId,
+            metadata: {
+                employeeName: removedEmployee.name,
+                employeeRole: removedEmployee.role,
+                employeeEmail: removedEmployee.email || 'N/A',
+                removedAt: new Date().toISOString(),
+                wasFullyDeleted: updatedLinkedOutlets.length === 0 // If true, converted back to customer
+            },
+            source: 'employees_api',
+            req
+        }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
 
         console.log(`[EMPLOYEES API] Employee ${employeeId} removed from outlet ${outletId}`);
 
