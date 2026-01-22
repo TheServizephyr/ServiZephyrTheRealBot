@@ -984,22 +984,34 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         )
                                                     )}
 
-                                                    {/* Payment Received -> Clean Table Button */}
+                                                    {/* Payment Received -> Clean Table Button - RBAC PROTECTED */}
                                                     {/* This consolidated button appears when tab is Paid, replacing the 2-step Need Cleaning -> Clear process */}
                                                     {(isPaid || group.needsCleaning) && (
-                                                        <Button
-                                                            variant="default" // Changed to default (primary) for positive action
-                                                            size="sm"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                // Use clear tab directly as "Clean Table" implies finishing the session
-                                                                onClearTab(group.dineInTabId, tableData.id, group.pax_count);
-                                                            }}
-                                                            className="w-full mt-2 bg-blue-600 hover:bg-blue-700"
-                                                        >
-                                                            <Wind className="mr-2 h-4 w-4" />
-                                                            Clean Table
-                                                        </Button>
+                                                        (userRole === 'waiter' || userRole === 'owner' || userRole === 'manager') ? (
+                                                            <Button
+                                                                variant="default" // Changed to default (primary) for positive action
+                                                                size="sm"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Use clear tab directly as "Clean Table" implies finishing the session
+                                                                    onClearTab(group.dineInTabId, tableData.id, group.pax_count);
+                                                                }}
+                                                                className="w-full mt-2 bg-blue-600 hover:bg-blue-700"
+                                                            >
+                                                                <Wind className="mr-2 h-4 w-4" />
+                                                                Clean Table
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                size="sm"
+                                                                disabled={true}
+                                                                className="w-full mt-2 cursor-not-allowed opacity-50"
+                                                                title="Only Waiter can clean tables"
+                                                            >
+                                                                <Wind className="mr-2 h-4 w-4" />
+                                                                Only Waiter Can Clean
+                                                            </Button>
+                                                        )
                                                     )}
 
                                                     <Button
@@ -1352,9 +1364,10 @@ const DineInPageContent = () => {
             // Preparing: Currently cooking orders
             // Ready: Finished dishes ready for waiter
             'chef': ['Confirmed', 'Preparing', 'Ready'],
-            // Waiter sees Ready (orders to serve) and Served (orders already served)
-            'waiter': ['Ready', 'Served'],
-            'cashier': ['All', 'Pending', 'Ready', 'Delivered'],       // Cashier sees most tabs
+            // Waiter sees Ready (orders to serve), Served (served orders), and Needs Cleaning (tables to clean)
+            'waiter': ['Ready', 'Served', 'Needs Cleaning'],
+            // Cashier sees only Delivered to handle payments
+            'cashier': ['Delivered'],
             'manager': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'], // Manager sees all
             'owner': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'],   // Owner sees all
         };
@@ -1818,11 +1831,18 @@ const DineInPageContent = () => {
             'In Progress': ['confirmed', 'preparing'], // Manager/Owner combined view
             'Ready': 'ready_for_pickup',
             'Served': 'delivered',                 // Waiter's view of delivered orders
-            'Delivered': 'delivered'               // Manager/Owner view
+            'Delivered': 'delivered',              // Manager/Owner/Cashier view
+            'Needs Cleaning': 'needs_cleaning'     // Waiter's cleaning queue
         };
 
-        const matchesFilter = (mainStatus) => {
+        const matchesFilter = (mainStatus, table) => {
             if (activeStatusFilter === 'All') return true;
+
+            // Special handling for "Needs Cleaning" tab
+            if (activeStatusFilter === 'Needs Cleaning') {
+                // Show tables that are paid (all orders delivered) but need cleaning
+                return table?.state === 'needs_cleaning';
+            }
 
             const filterValue = statusMapping[activeStatusFilter];
             if (Array.isArray(filterValue)) {
@@ -1833,14 +1853,22 @@ const DineInPageContent = () => {
 
         // Filter tables to only show those with orders matching the filter
         const filteredTables = sortedTables.map(table => {
+            // Special handling for "Needs Cleaning" tab - show tables needing cleaning
+            if (activeStatusFilter === 'Needs Cleaning') {
+                if (table.state === 'needs_cleaning') {
+                    return table;
+                }
+                return null;
+            }
+
             // Filter pending orders and tabs based on status
             const filteredPendingOrders = (table.pendingOrders || []).filter(group =>
-                matchesFilter(group.mainStatus || 'pending')
+                matchesFilter(group.mainStatus || 'pending', table)
             );
 
             const filteredTabs = {};
             Object.entries(table.tabs || {}).forEach(([key, group]) => {
-                if (matchesFilter(group.mainStatus || group.status)) {
+                if (matchesFilter(group.mainStatus || group.status, table)) {
                     filteredTabs[key] = group;
                 }
             });
@@ -1932,11 +1960,15 @@ const DineInPageContent = () => {
                     </Link>
                 )}
 
-                <Link href={`/owner-dashboard/dine-in-history${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}>
-                    <Button variant="outline" className="h-20 flex-col gap-1 w-full" disabled={loading}>
-                        <History size={20} /> Dine-In History
-                    </Button>
-                </Link>
+
+                {/* 🔐 RBAC: Dine-In History - Only for Owner, Manager, Cashier */}
+                {(userRole === 'owner' || userRole === 'manager' || userRole === 'cashier') && (
+                    <Link href={`/owner-dashboard/dine-in-history${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}>
+                        <Button variant="outline" className="h-20 flex-col gap-1 w-full" disabled={loading}>
+                            <History size={20} /> Dine-In History
+                        </Button>
+                    </Link>
+                )}
                 <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
                     <Salad size={20} /> Dine-In Menu
                 </Button>
@@ -1956,7 +1988,7 @@ const DineInPageContent = () => {
 
                 {/* Status Filter Tabs - RBAC Filtered */}
                 <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border">
-                    {['All', 'Pending', 'Confirmed', 'Preparing', 'In Progress', 'Ready', 'Served', 'Delivered']
+                    {['All', 'Pending', 'Confirmed', 'Preparing', 'In Progress', 'Ready', 'Served', 'Delivered', 'Needs Cleaning']
                         .filter(filter => getAllowedTabs(userRole).includes(filter))
                         .map(filter => (
                             <button
