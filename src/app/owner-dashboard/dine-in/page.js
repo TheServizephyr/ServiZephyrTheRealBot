@@ -2015,9 +2015,13 @@ const DineInPageContent = () => {
                 <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
                     <Salad size={20} /> Dine-In Menu
                 </Button>
-                <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading || !restaurantDetails}>
-                    <TableIcon size={20} /> Manage Tables
-                </Button>
+
+                {/* 🔐 RBAC: Manage Tables - Only for Owner, Manager */}
+                {(userRole === 'owner' || userRole === 'manager') && (
+                    <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading || !restaurantDetails}>
+                        <TableIcon size={20} /> Manage Tables
+                    </Button>
+                )}
                 <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
                 </Button>
