@@ -1879,8 +1879,8 @@ const DineInPageContent = () => {
                 return null;
             }
 
-            // For "Delivered" tab - filter out paid orders (they belong in Needs Cleaning)
-            if (activeStatusFilter === 'Delivered') {
+            // For "Delivered" tab (Cashier) OR "Served" tab (Waiter) - filter out paid orders
+            if (activeStatusFilter === 'Delivered' || activeStatusFilter === 'Served') {
                 const deliveredPendingOrders = (table.pendingOrders || []).filter(group =>
                     group.mainStatus === 'delivered' && !group.isPaid && group.paymentStatus !== 'paid'
                 );
