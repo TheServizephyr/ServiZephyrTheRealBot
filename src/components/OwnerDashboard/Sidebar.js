@@ -56,7 +56,6 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
       ? { name: "Items", icon: PackageIcon, href: appendParam("/owner-dashboard/menu"), featureId: "menu" }
       : { name: "Menu", icon: Salad, href: appendParam("/owner-dashboard/menu"), featureId: "menu" },
     { name: "Dine-In", icon: ConciergeBell, href: appendParam("/owner-dashboard/dine-in"), featureId: "dine-in" },
-    { name: "Waiter Order", icon: Salad, href: appendParam("/owner-dashboard/dine-in-waiter"), featureId: "dine-in" },
     { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" },
     { name: "Team", icon: Users, href: appendParam("/owner-dashboard/employees"), featureId: "employees" },
     { name: "Customers", icon: Users, href: appendParam("/owner-dashboard/customers"), featureId: "customers" },

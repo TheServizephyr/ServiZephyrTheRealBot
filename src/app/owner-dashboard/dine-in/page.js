@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home, Loader2, RotateCcw } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home, Loader2, RotateCcw, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -957,19 +957,31 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         </div>
                                                     )}
 
-                                                    {/* Pay at Counter Action or Served & Unpaid */}
+                                                    {/* Pay at Counter Action or Served & Unpaid - RBAC PROTECTED */}
                                                     {(isPayAtCounter || (isServed && !isPaid)) && (
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onMarkAsPaid(tableData.id, group.id);
-                                                            }}
-                                                            className="w-full bg-green-500 hover:bg-green-600 animate-pulse mt-2 shadow-sm"
-                                                        >
-                                                            <Wallet className="mr-2 h-4 w-4" />
-                                                            Mark as Paid
-                                                        </Button>
+                                                        (userRole === 'owner' || userRole === 'manager') ? (
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onMarkAsPaid(tableData.id, group.id);
+                                                                }}
+                                                                className="w-full bg-green-500 hover:bg-green-600 animate-pulse mt-2 shadow-sm"
+                                                            >
+                                                                <Wallet className="mr-2 h-4 w-4" />
+                                                                Mark as Paid
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                size="sm"
+                                                                disabled={true}
+                                                                className="w-full mt-2 cursor-not-allowed opacity-50"
+                                                                title="Only Owner/Manager can mark as paid"
+                                                            >
+                                                                <Wallet className="mr-2 h-4 w-4" />
+                                                                Only Owner Can Mark Paid
+                                                            </Button>
+                                                        )
                                                     )}
 
                                                     {/* Payment Received -> Clean Table Button */}
@@ -1209,7 +1221,7 @@ const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
     );
 };
 
-const LiveServiceRequests = ({ impersonatedOwnerId }) => {
+const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
     const [requests, setRequests] = useState([]);
     const [isExpanded, setIsExpanded] = useState(true);
 
@@ -1220,6 +1232,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
             const idToken = await user.getIdToken();
             let url = '/api/owner/service-requests';
             if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            else if (employeeOfOwnerId) url += `?employee_of=${employeeOfOwnerId}`;
 
             await fetch(url, {
                 method: 'PATCH',
@@ -1240,6 +1253,8 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
             let url = new URL('/api/owner/service-requests', window.location.origin);
             if (impersonatedOwnerId) {
                 url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            } else if (employeeOfOwnerId) {
+                url.searchParams.append('employee_of', employeeOfOwnerId);
             }
             const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
             if (res.ok) {
@@ -1251,7 +1266,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
         fetchRequests();
         const interval = setInterval(fetchRequests, 15000);
         return () => clearInterval(interval);
-    }, [impersonatedOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
 
     if (requests.length === 0 && !isExpanded) return null;
@@ -1337,7 +1352,8 @@ const DineInPageContent = () => {
             // Preparing: Currently cooking orders
             // Ready: Finished dishes ready for waiter
             'chef': ['Confirmed', 'Preparing', 'Ready'],
-            'waiter': ['Ready'],                                        // Waiter only sees Ready orders
+            // Waiter sees Ready (orders to serve) and Served (orders already served)
+            'waiter': ['Ready', 'Served'],
             'cashier': ['All', 'Pending', 'Ready', 'Delivered'],       // Cashier sees most tabs
             'manager': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'], // Manager sees all
             'owner': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'],   // Owner sees all
@@ -1801,7 +1817,8 @@ const DineInPageContent = () => {
             'Preparing': 'preparing',              // Chef's second tab: Currently cooking
             'In Progress': ['confirmed', 'preparing'], // Manager/Owner combined view
             'Ready': 'ready_for_pickup',
-            'Delivered': 'delivered'
+            'Served': 'delivered',                 // Waiter's view of delivered orders
+            'Delivered': 'delivered'               // Manager/Owner view
         };
 
         const matchesFilter = (mainStatus) => {
@@ -1932,14 +1949,14 @@ const DineInPageContent = () => {
             </div>
 
 
-            <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} />
+            <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} employeeOfOwnerId={employeeOfOwnerId} />
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4">
                 <h2 className="text-xl font-bold">Live Tables</h2>
 
                 {/* Status Filter Tabs - RBAC Filtered */}
                 <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border">
-                    {['All', 'Pending', 'Confirmed', 'Preparing', 'In Progress', 'Ready', 'Delivered']
+                    {['All', 'Pending', 'Confirmed', 'Preparing', 'In Progress', 'Ready', 'Served', 'Delivered']
                         .filter(filter => getAllowedTabs(userRole).includes(filter))
                         .map(filter => (
                             <button

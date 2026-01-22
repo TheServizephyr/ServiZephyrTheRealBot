@@ -329,7 +329,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     );
 };
 
-const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick }) => {
+const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, employeeOfOwnerId, impersonatedOwnerId }) => {
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
@@ -1207,6 +1207,8 @@ export default function LiveOrdersPage() {
                                                 onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
                                                 onPrintClick={() => handlePrintClick(order)}
                                                 onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
+                                                employeeOfOwnerId={employeeOfOwnerId}
+                                                impersonatedOwnerId={impersonatedOwnerId}
                                             />
                                         </td>
                                     </motion.tr>
