@@ -1844,6 +1844,12 @@ const DineInPageContent = () => {
                 return table?.state === 'needs_cleaning';
             }
 
+            // Special handling for "Delivered" tab - EXCLUDE paid orders (they're in Needs Cleaning)
+            if (activeStatusFilter === 'Delivered') {
+                // Only show delivered orders that are NOT yet paid (not in needs_cleaning state)
+                return mainStatus === 'delivered' && table?.state !== 'needs_cleaning';
+            }
+
             const filterValue = statusMapping[activeStatusFilter];
             if (Array.isArray(filterValue)) {
                 return filterValue.includes(mainStatus);
