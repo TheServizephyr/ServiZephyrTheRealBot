@@ -1859,15 +1859,52 @@ const DineInPageContent = () => {
 
         // Filter tables to only show those with orders matching the filter
         const filteredTables = sortedTables.map(table => {
-            // Special handling for "Needs Cleaning" tab - show tables needing cleaning
+            // Special handling for "Needs Cleaning" tab - show tables with paid tabs needing cleaning
             if (activeStatusFilter === 'Needs Cleaning') {
-                if (table.state === 'needs_cleaning') {
-                    return table;
+                // Check if table has any paid tabs (isPaid === true for group)
+                const paidTabs = {};
+                Object.entries(table.tabs || {}).forEach(([key, group]) => {
+                    if (group.isPaid === true || group.paymentStatus === 'paid') {
+                        paidTabs[key] = group;
+                    }
+                });
+
+                if (Object.keys(paidTabs).length > 0) {
+                    return {
+                        ...table,
+                        pendingOrders: [],
+                        tabs: paidTabs
+                    };
                 }
                 return null;
             }
 
-            // Filter pending orders and tabs based on status
+            // For "Delivered" tab - filter out paid orders (they belong in Needs Cleaning)
+            if (activeStatusFilter === 'Delivered') {
+                const deliveredPendingOrders = (table.pendingOrders || []).filter(group =>
+                    group.mainStatus === 'delivered' && !group.isPaid && group.paymentStatus !== 'paid'
+                );
+
+                const deliveredTabs = {};
+                Object.entries(table.tabs || {}).forEach(([key, group]) => {
+                    // Only show delivered orders that are NOT paid
+                    if ((group.mainStatus === 'delivered' || group.status === 'delivered') &&
+                        !group.isPaid && group.paymentStatus !== 'paid') {
+                        deliveredTabs[key] = group;
+                    }
+                });
+
+                if (deliveredPendingOrders.length > 0 || Object.keys(deliveredTabs).length > 0) {
+                    return {
+                        ...table,
+                        pendingOrders: deliveredPendingOrders,
+                        tabs: deliveredTabs
+                    };
+                }
+                return null;
+            }
+
+            // Filter pending orders and tabs based on status (for other tabs)
             const filteredPendingOrders = (table.pendingOrders || []).filter(group =>
                 matchesFilter(group.mainStatus || 'pending', table)
             );
