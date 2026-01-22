@@ -78,7 +78,8 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
                 isAdmin: userRole === 'admin',
                 isImpersonating,
                 adminId: isImpersonating ? uid : null,
-                adminEmail: isImpersonating ? userData.email : null
+                adminEmail: isImpersonating ? userData.email : null,
+                callerRole: employeeOfOwnerId ? accessResult.employeeRole : userRole
             };
         }
     }
@@ -172,8 +173,14 @@ export async function POST(req) {
         const firestore = await getFirestore();
         console.log("[API LOG] Firebase Admin SDK initialized for POST.");
 
-        const { businessId, businessSnap, collectionName, isImpersonating, adminId, adminEmail, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
-        console.log(`[API LOG] POST /api/owner/menu: Owner verified for business ID: ${businessId} in collection ${collectionName}.`);
+        const { businessId, businessSnap, collectionName, isImpersonating, adminId, adminEmail, uid, callerRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const userRole = callerRole; // Use the actual role of the caller (owner/manager/etc)
+        console.log(`[API LOG] POST /api/owner/menu: Owner verified for business ID: ${businessId} in collection ${collectionName}. Caller role: ${userRole}`);
+
+        // 🔐 RBAC: Only Owner and Manager can create/edit items
+        if (!['owner', 'manager'].includes(userRole)) {
+            return NextResponse.json({ message: 'Access Denied: Your role does not have permission to manage menu items.' }, { status: 403 });
+        }
 
         const { item, categoryId, newCategory, isEditing } = await req.json();
         console.log("[API LOG] POST /api/owner/menu: Request body parsed:", { isEditing, categoryId, newCategory: !!newCategory });
@@ -274,6 +281,22 @@ export async function POST(req) {
                         }, { status: 400 });
                     }
 
+                    // 🔐 Manager Specific: Block >50% increase (1.5x)
+                    if (userRole === 'manager') {
+                        for (let i = 0; i < finalItem.portions.length; i++) {
+                            const newP = finalItem.portions[i];
+                            const oldP = (oldItem.portions || []).find(p => p.name === newP.name);
+                            if (oldP && oldP.price > 0) {
+                                const ratio = newP.price / oldP.price;
+                                if (ratio > 1.5) {
+                                    return NextResponse.json({
+                                        message: `Price increase too large for manager (${Math.round((ratio - 1) * 100)}%). Increases over 50% require owner approval.`
+                                    }, { status: 403 });
+                                }
+                            }
+                        }
+                    }
+
                     // Log warning if present (large decrease)
                     if (validation.warning) {
                         console.warn('[MENU API] Price Change Warning:', validation.warning);
@@ -367,7 +390,13 @@ export async function DELETE(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName, isImpersonating, adminId, adminEmail, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, isImpersonating, adminId, adminEmail, uid, callerRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const userRole = callerRole;
+
+        // 🔐 RBAC: Only Owner can delete menu items
+        if (userRole !== 'owner') {
+            return NextResponse.json({ message: 'Access Denied: Only owners can delete menu items.' }, { status: 403 });
+        }
         const { itemId } = await req.json();
 
         if (!itemId) {
@@ -417,13 +446,20 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, callerRole, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const userRole = callerRole;
         const { itemIds, action, updates } = await req.json();
-        console.log("[API LOG] PATCH /api/owner/menu: Body:", { itemIds, action, updates });
+        console.log("[API LOG] PATCH /api/owner/menu: Body:", { itemIds, action, updates, userRole });
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
 
+        // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
         if (updates && updates.id) {
+            // 🔐 RBAC: Owner, Manager, Chef can toggle availability
+            if (!['owner', 'manager', 'chef'].includes(userRole)) {
+                return NextResponse.json({ message: 'Access Denied: Your role cannot update item availability.' }, { status: 403 });
+            }
+
             console.log(`[API LOG] PATCH /api/owner/menu: Single item availability update for ${updates.id}.`);
             const itemRef = menuRef.doc(updates.id);
             await itemRef.update({ isAvailable: updates.isAvailable });
@@ -431,9 +467,20 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Item availability updated.' }, { status: 200 });
         }
 
+        // --- 2. BULK ACTIONS ---
         if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0 || !action) {
             console.error("[API ERROR] PATCH /api/owner/menu: Item IDs array and action are required for bulk updates.");
             return NextResponse.json({ message: 'Item IDs array and action are required for bulk updates.' }, { status: 400 });
+        }
+
+        // 🔐 RBAC: Only Owner can bulk delete
+        if (action === 'delete' && userRole !== 'owner') {
+            return NextResponse.json({ message: 'Access Denied: Only owners can delete menu items.' }, { status: 403 });
+        }
+
+        // 🔐 RBAC: Owner, Manager, Chef can mark items as out of stock
+        if (action === 'outOfStock' && !['owner', 'manager', 'chef'].includes(userRole)) {
+            return NextResponse.json({ message: 'Access Denied: Your role cannot update item availability.' }, { status: 403 });
         }
 
         console.log(`[API LOG] PATCH /api/owner/menu: Performing bulk action '${action}' on ${itemIds.length} items.`);

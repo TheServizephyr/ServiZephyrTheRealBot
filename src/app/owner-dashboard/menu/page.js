@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -53,7 +54,7 @@ const shopCategoryConfig = {
 
 // --- COMPONENTS (Single File) ---
 
-const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelectItem, isSelected }) => {
+const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelectItem, isSelected, canEdit = true, canDelete = true }) => {
     // Determine the price to display. Find the 'Full' price, or the first price if 'Full' doesn't exist.
     const displayPortion = (item.portions && item.portions.length > 0)
         ? item.portions.find(p => p.name.toLowerCase() === 'full') || item.portions[0]
@@ -108,12 +109,19 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
                         </div>
                     </div>
                     <div className="md:col-span-2 flex justify-center gap-2 pt-2 border-t border-border md:border-t-0 md:pt-0">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => onEdit(item)}>
-                            <Edit size={16} />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="text-destructive h-8 w-8 hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(item.id)}>
-                            <Trash2 size={16} />
-                        </Button>
+                        {canEdit && (
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => onEdit(item)}>
+                                <Edit size={16} />
+                            </Button>
+                        )}
+                        {canDelete && (
+                            <Button variant="ghost" size="icon" className="text-destructive h-8 w-8 hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(item.id)}>
+                                <Trash2 size={16} />
+                            </Button>
+                        )}
+                        {!canEdit && !canDelete && (
+                            <span className="text-xs text-muted-foreground italic">View Only</span>
+                        )}
                     </div>
                 </motion.div>
             )}
@@ -123,7 +131,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
 
 
 
-const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen, selectedItems, setSelectedItems }) => {
+const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen, selectedItems, setSelectedItems, canEdit = true, canDelete = true }) => {
     const Icon = icon;
     const isExpanded = open === categoryId;
 
@@ -217,6 +225,8 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                                                 onToggleAvailability={onToggleAvailability}
                                                 onSelectItem={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id])}
                                                 isSelected={selectedItems.includes(item.id)}
+                                                canEdit={canEdit}
+                                                canDelete={canDelete}
                                             />
                                         ))}
                                         {provided.placeholder}
@@ -770,6 +780,26 @@ export default function MenuPage() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [priceChangeDialog, setPriceChangeDialog] = useState({
+        isOpen: false,
+        oldPrice: 0,
+        newPrice: 0,
+        itemName: '',
+        severity: 'warning',
+        onConfirm: null
+    });
+
+    // 🔐 RBAC: Get user role for access control
+    const { user: authUser, isLoading: isUserLoading } = useUser();
+    const userRole = authUser?.role || 'owner'; // Default to owner if not set
+
+    // 🔐 RBAC: Menu access permissions
+    const canEdit = userRole === 'owner' || userRole === 'manager';
+    const canDelete = userRole === 'owner';
+    const canAdd = userRole === 'owner' || userRole === 'manager';
+    const canBulkEdit = userRole === 'owner';
+    const canToggleAvailability = userRole === 'owner' || userRole === 'manager' || userRole === 'chef';
+    const isReadOnly = userRole === 'chef' || userRole === 'waiter';
 
     const handleApiCall = async (endpoint, method, body) => {
         const user = auth.currentUser;
@@ -833,15 +863,53 @@ export default function MenuPage() {
 
 
     const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
-        try {
-            const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
-            setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
-            await fetchMenu();
-        } catch (error) {
-            console.error("Error saving item:", error);
-            setInfoDialog({ isOpen: true, title: "Error", message: "Could not save item. " + error.message });
-            throw error; // Re-throw to keep modal open
+        // Internal function to perform the actual API call
+        const performSave = async () => {
+            try {
+                const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
+                setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
+                await fetchMenu();
+                return true;
+            } catch (error) {
+                console.error("Error saving item:", error);
+                setInfoDialog({ isOpen: true, title: "Error", message: "Could not save item. " + error.message });
+                throw error;
+            }
+        };
+
+        // 🔐 RBAC: Price change validation for Managers
+        if (isEditing && editingItem && userRole === 'manager') {
+            const oldPrice = parseFloat(editingItem.portions?.[0]?.price || 0);
+            const newPrice = parseFloat(itemData.portions?.[0]?.price || 0);
+
+            if (oldPrice > 0 && oldPrice !== newPrice) {
+                const validation = validatePriceChange(oldPrice, newPrice, userRole);
+
+                if (!validation.allowed) {
+                    if (validation.requiresConfirmation) {
+                        setPriceChangeDialog({
+                            isOpen: true,
+                            oldPrice,
+                            newPrice,
+                            itemName: itemData.name,
+                            severity: 'warning',
+                            onConfirm: performSave
+                        });
+                        return; // Stop here, wait for modal
+                    } else {
+                        setInfoDialog({
+                            isOpen: true,
+                            title: 'Price Change Blocked',
+                            message: validation.message
+                        });
+                        return; // Hard block
+                    }
+                }
+            }
         }
+
+        // Default: Proceed with save (for owners or if validation passed/wasn't needed)
+        await performSave();
     };
 
     const handleBulkSave = async (items) => {
@@ -976,26 +1044,54 @@ export default function MenuPage() {
                     <p className="text-muted-foreground mt-1">{pageDescription}</p>
                 </div>
                 <div className="flex gap-2">
-                    <MotionButton
-                        onClick={() => setIsBulkModalOpen(true)}
-                        variant="outline"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                    >
-                        <FileJson size={20} className="mr-2" />
-                        Bulk Add via JSON
-                    </MotionButton>
-                    <MotionButton
-                        onClick={handleAddNewItem}
-                        className="bg-primary text-primary-foreground hover:bg-primary/90"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                    >
-                        <PlusCircle size={20} className="mr-2" />
-                        {addNewText}
-                    </MotionButton>
+                    {/* 🔐 RBAC: Only owner can bulk add via JSON */}
+                    {canBulkEdit && (
+                        <MotionButton
+                            onClick={() => setIsBulkModalOpen(true)}
+                            variant="outline"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <FileJson size={20} className="mr-2" />
+                            Bulk Add via JSON
+                        </MotionButton>
+                    )}
+
+                    {/* 🔐 RBAC: Owner and Manager can add new items */}
+                    {canAdd && (
+                        <MotionButton
+                            onClick={handleAddNewItem}
+                            className="bg-primary text-primary-foreground hover:bg-primary/90"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <PlusCircle size={20} className="mr-2" />
+                            {addNewText}
+                        </MotionButton>
+                    )}
+
+                    {/* 🔐 RBAC: Show 'View Only' for Chef/Waiter */}
+                    {isReadOnly && (
+                        <div className="px-4 py-2 bg-muted/30 border border-muted rounded-md text-sm text-muted-foreground flex items-center italic">
+                            View Only Mode
+                        </div>
+                    )}
                 </div>
             </div>
+
+            {/* 🔐 RBAC: Price Change Confirmation Modal */}
+            <PriceChangeConfirmationDialog
+                isOpen={priceChangeDialog.isOpen}
+                onClose={() => setPriceChangeDialog({ ...priceChangeDialog, isOpen: false })}
+                onConfirm={() => {
+                    setPriceChangeDialog({ ...priceChangeDialog, isOpen: false });
+                    priceChangeDialog.onConfirm();
+                }}
+                oldPrice={priceChangeDialog.oldPrice}
+                newPrice={priceChangeDialog.newPrice}
+                itemName={priceChangeDialog.itemName}
+                severity={priceChangeDialog.severity}
+            />
 
             {/* Search & Bulk Actions Bar */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-3 bg-card border border-border rounded-xl">
@@ -1033,6 +1129,8 @@ export default function MenuPage() {
                             setOpen={setOpenCategory}
                             selectedItems={selectedItems}
                             setSelectedItems={setSelectedItems}
+                            canEdit={canEdit}
+                            canDelete={canDelete}
                         />
                     );
                 })}
@@ -1047,18 +1145,26 @@ export default function MenuPage() {
                         exit={{ y: 100, opacity: 0 }}
                     >
                         <p className="text-sm font-semibold">{selectedItems.length} item(s) selected</p>
-                        <Button variant="outline" size="sm" onClick={handleBulkOutOfStock}>
-                            <XCircle size={16} className="mr-2" /> Mark Out of Stock
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                            <Trash2 size={16} className="mr-2" /> Delete Selected
-                        </Button>
+
+                        {/* 🔐 RBAC: Owner, Manager, Chef can bulk mark out of stock */}
+                        {canToggleAvailability && (
+                            <Button variant="outline" size="sm" onClick={handleBulkOutOfStock}>
+                                <XCircle size={16} className="mr-2" /> Mark Out of Stock
+                            </Button>
+                        )}
+
+                        {/* 🔐 RBAC: Only Owner can bulk delete */}
+                        {canBulkEdit && (
+                            <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+                                <Trash2 size={16} className="mr-2" /> Delete Selected
+                            </Button>
+                        )}
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedItems([])}>
                             <X size={16} />
                         </Button>
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </div >
     );
 }
