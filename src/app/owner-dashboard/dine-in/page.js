@@ -959,7 +959,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
                                                     {/* Pay at Counter Action or Served & Unpaid - RBAC PROTECTED */}
                                                     {(isPayAtCounter || (isServed && !isPaid)) && (
-                                                        (userRole === 'owner' || userRole === 'manager') ? (
+                                                        (userRole === 'owner' || userRole === 'manager' || userRole === 'cashier') ? (
                                                             <Button
                                                                 size="sm"
                                                                 onClick={(e) => {
@@ -976,10 +976,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 size="sm"
                                                                 disabled={true}
                                                                 className="w-full mt-2 cursor-not-allowed opacity-50"
-                                                                title="Only Owner/Manager can mark as paid"
+                                                                title="Only Owner/Manager/Cashier can mark as paid"
                                                             >
                                                                 <Wallet className="mr-2 h-4 w-4" />
-                                                                Only Owner Can Mark Paid
+                                                                Only Cashier Can Mark Paid
                                                             </Button>
                                                         )
                                                     )}
@@ -1366,8 +1366,8 @@ const DineInPageContent = () => {
             'chef': ['Confirmed', 'Preparing', 'Ready'],
             // Waiter sees Ready (orders to serve), Served (served orders), and Needs Cleaning (tables to clean)
             'waiter': ['Ready', 'Served', 'Needs Cleaning'],
-            // Cashier sees only Delivered to handle payments
-            'cashier': ['Delivered'],
+            // Cashier sees Delivered (to mark paid) and Needs Cleaning (to track paid orders)
+            'cashier': ['Delivered', 'Needs Cleaning'],
             'manager': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'], // Manager sees all
             'owner': ['All', 'Pending', 'In Progress', 'Ready', 'Delivered'],   // Owner sees all
         };
