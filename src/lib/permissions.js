@@ -411,12 +411,14 @@ export const ROLE_ALLOWED_PAGES = {
     // Chef - only live orders (to see and mark orders ready)
     [ROLES.CHEF]: [
         'live-orders',  // Main dashboard shows live orders for street-vendor
+        'menu',
         'my-profile',
     ],
 
     // Waiter - live orders and dine-in
     [ROLES.WAITER]: [
         'live-orders',
+        'menu',
         'dine-in',
         'bookings',
         'my-profile',
@@ -425,6 +427,7 @@ export const ROLE_ALLOWED_PAGES = {
     // Cashier - live orders and billing
     [ROLES.CASHIER]: [
         'live-orders',
+        'menu',
         'dine-in',
         'my-profile',
     ],

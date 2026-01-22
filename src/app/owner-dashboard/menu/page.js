@@ -797,9 +797,9 @@ export default function MenuPage() {
     const canEdit = userRole === 'owner' || userRole === 'manager';
     const canDelete = userRole === 'owner';
     const canAdd = userRole === 'owner' || userRole === 'manager';
-    const canBulkEdit = userRole === 'owner';
+    const canBulkEdit = userRole === 'owner' || userRole === 'manager';
     const canToggleAvailability = userRole === 'owner' || userRole === 'manager' || userRole === 'chef';
-    const isReadOnly = userRole === 'chef' || userRole === 'waiter';
+    const isReadOnly = !canEdit && !canDelete;
 
     const handleApiCall = async (endpoint, method, body) => {
         const user = auth.currentUser;
