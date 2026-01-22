@@ -16,6 +16,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from "@/components/InfoDialog";
 import imageCompression from 'browser-image-compression';
+import { useUser } from '@/hooks/useUser';
+import { validatePriceChange } from '@/lib/priceValidation';
+import PriceChangeConfirmationDialog from '@/components/PriceChangeConfirmationDialog';
 
 export const dynamic = 'force-dynamic';
 
