@@ -54,7 +54,7 @@ const shopCategoryConfig = {
 
 // --- COMPONENTS (Single File) ---
 
-const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelectItem, isSelected, canEdit = true, canDelete = true }) => {
+const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelectItem, isSelected, canEdit = true, canDelete = true, canToggleAvailability = true }) => {
     // Determine the price to display. Find the 'Full' price, or the first price if 'Full' doesn't exist.
     const displayPortion = (item.portions && item.portions.length > 0)
         ? item.portions.find(p => p.name.toLowerCase() === 'full') || item.portions[0]
@@ -105,7 +105,13 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
                     <div className="md:col-span-2 flex justify-center items-center">
                         <div className="flex items-center justify-between w-full md:w-auto md:justify-center py-2 md:py-0">
                             <span className="text-xs text-muted-foreground md:hidden mr-2">Available</span>
-                            <Switch checked={item.isAvailable} onCheckedChange={() => onToggleAvailability(item.id, !item.isAvailable)} aria-label="Toggle Availability" />
+                            <Switch
+                                checked={item.isAvailable}
+                                onCheckedChange={canToggleAvailability ? () => onToggleAvailability(item.id, !item.isAvailable) : undefined}
+                                disabled={!canToggleAvailability}
+                                aria-label="Toggle Availability"
+                                className={!canToggleAvailability ? 'opacity-50 cursor-not-allowed' : ''}
+                            />
                         </div>
                     </div>
                     <div className="md:col-span-2 flex justify-center gap-2 pt-2 border-t border-border md:border-t-0 md:pt-0">
@@ -131,7 +137,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
 
 
 
-const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen, selectedItems, setSelectedItems, canEdit = true, canDelete = true }) => {
+const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen, selectedItems, setSelectedItems, canEdit = true, canDelete = true, canToggleAvailability = true }) => {
     const Icon = icon;
     const isExpanded = open === categoryId;
 
@@ -227,6 +233,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                                                 isSelected={selectedItems.includes(item.id)}
                                                 canEdit={canEdit}
                                                 canDelete={canDelete}
+                                                canToggleAvailability={canToggleAvailability}
                                             />
                                         ))}
                                         {provided.placeholder}
@@ -1131,6 +1138,7 @@ export default function MenuPage() {
                             setSelectedItems={setSelectedItems}
                             canEdit={canEdit}
                             canDelete={canDelete}
+                            canToggleAvailability={canToggleAvailability}
                         />
                     );
                 })}
