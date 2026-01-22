@@ -976,10 +976,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 size="sm"
                                                                 disabled={true}
                                                                 className="w-full mt-2 cursor-not-allowed opacity-50"
-                                                                title="Only Owner/Manager/Cashier can mark as paid"
+                                                                title="Ask owner, manager, or cashier to mark this payment"
                                                             >
                                                                 <Wallet className="mr-2 h-4 w-4" />
-                                                                Only Cashier Can Mark Paid
+                                                                Ask Cashier to Mark Paid
                                                             </Button>
                                                         )
                                                     )}
@@ -1006,10 +1006,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 size="sm"
                                                                 disabled={true}
                                                                 className="w-full mt-2 cursor-not-allowed opacity-50"
-                                                                title="Only Waiter can clean tables"
+                                                                title="Call waiter to clean this table"
                                                             >
                                                                 <Wind className="mr-2 h-4 w-4" />
-                                                                Only Waiter Can Clean
+                                                                Ask Waiter to Clean
                                                             </Button>
                                                         )
                                                     )}
