@@ -778,6 +778,24 @@ export default function LiveOrdersPage() {
         };
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
+    // 🔧 FIX: Page Visibility API - Auto-refresh when tab becomes active again
+    // Prevents "Failed to fetch" errors when user returns after leaving tab inactive
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('[LiveOrders] Tab became visible, refreshing data...');
+                // Refresh data immediately when user returns to tab
+                fetchInitialData(true);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []); // Empty deps - listener stays throughout component lifecycle
+
     const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");

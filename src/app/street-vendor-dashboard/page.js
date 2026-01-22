@@ -835,6 +835,26 @@ const StreetVendorDashboardContent = () => {
         return () => unsubscribe();
     }, [vendorId, effectiveOwnerId, fetchOrdersViaApi]);
 
+    // 🔧 FIX: Page Visibility API - Auto-refresh when tab becomes active again
+    // Prevents "Failed to fetch" errors when user returns after leaving tab inactive
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('[StreetVendor] Tab became visible, refreshing data...');
+                // Refresh data immediately when user returns to tab
+                if (impersonatedOwnerId) {
+                    fetchOrdersViaApi();
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [impersonatedOwnerId, fetchOrdersViaApi]); // Deps needed for the refresh function
+
     const handleUpdateStatus = async (orderId, newStatus, reason = null, shouldRefund = undefined) => {
         try {
             await handleApiCall('/api/owner/orders', 'PATCH', {

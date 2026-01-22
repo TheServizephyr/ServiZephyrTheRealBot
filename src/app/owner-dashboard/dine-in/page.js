@@ -1619,6 +1619,24 @@ const DineInPageContent = () => {
         };
     }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id]);
 
+    // 🔧 FIX: Page Visibility API - Auto-refresh when tab becomes active again
+    // Prevents "Failed to fetch" errors when user returns after leaving tab inactive
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('[Dine-In] Tab became visible, refreshing data...');
+                // Refresh data immediately when user returns to tab
+                fetchData(true);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []); // Empty deps - listener stays throughout component lifecycle
+
     const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({
             isOpen: true,
