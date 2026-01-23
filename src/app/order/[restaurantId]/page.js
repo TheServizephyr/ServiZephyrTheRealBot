@@ -852,8 +852,7 @@ const OrderPageInternal = () => {
     // NEW: Persistent user details management
     const [userDetails, setUserDetails] = useState(null);
     const [detailsProvided, setDetailsProvided] = useState(false);
-    const [userDetails, setUserDetails] = useState(null);
-    const [detailsProvided, setDetailsProvided] = useState(false);
+
     const [showWelcome, setShowWelcome] = useState(false);
 
     // FIX: Lifted state to parent to allow Edit functionality
