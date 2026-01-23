@@ -21,18 +21,46 @@ export async function POST(req) {
 
         console.log('[CLEANUP] Starting LoadTest order cleanup...');
 
-        // Step 1: Find ashwani's-restaurant
+        // Step 1: Find ashwani's-restaurant (flexible search)
         const collections = ['restaurants', 'shops', 'street_vendors'];
         let restaurantId = null;
+        let collectionUsed = null;
 
         for (const col of collections) {
-            const snapshot = await firestore.collection(col)
+            console.log(`[CLEANUP] Searching in ${col}...`);
+
+            // Try exact match first
+            let snapshot = await firestore.collection(col)
                 .where('restaurantName', '==', "ashwani's-restaurant")
                 .limit(1)
                 .get();
 
-            if (!snapshot.empty) {
+            // If not found, try with 'name' field
+            if (snapshot.empty) {
+                snapshot = await firestore.collection(col)
+                    .where('name', '==', "ashwani's-restaurant")
+                    .limit(1)
+                    .get();
+            }
+
+            // If still not found, get all and search manually (case-insensitive)
+            if (snapshot.empty) {
+                const allDocs = await firestore.collection(col).get();
+                const found = allDocs.docs.find(doc => {
+                    const data = doc.data();
+                    const name = (data.restaurantName || data.name || '').toLowerCase();
+                    return name.includes('ashwani') || name.includes('ashwani');
+                });
+
+                if (found) {
+                    restaurantId = found.id;
+                    collectionUsed = col;
+                    console.log(`[CLEANUP] Found restaurant via manual search: ${restaurantId} (${found.data().restaurantName || found.data().name})`);
+                    break;
+                }
+            } else {
                 restaurantId = snapshot.docs[0].id;
+                collectionUsed = col;
                 console.log(`[CLEANUP] Found restaurant: ${restaurantId} in ${col}`);
                 break;
             }
