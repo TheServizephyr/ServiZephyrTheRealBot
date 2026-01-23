@@ -66,9 +66,12 @@ export async function GET(req) {
         const tableMap = new Map();
 
         tablesSnap.forEach(doc => {
+            const data = doc.data();
             tableMap.set(doc.id, {
                 id: doc.id,
-                ...doc.data(),
+                ...data,
+                _db_pax: data.current_pax || 0, // Capture DB state for sync check
+                _db_state: data.state || 'available',
                 tabs: {}, // Initialize as empty object
                 pendingOrders: [] // Initialize as empty array
             });
@@ -93,7 +96,7 @@ export async function GET(req) {
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', 'not-in', ['picked_up', 'rejected']);
+            .where('status', 'not-in', ['picked_up', 'rejected', 'cancelled']);
 
         const ordersSnap = await ordersQuery.get();
 
@@ -370,6 +373,41 @@ export async function GET(req) {
                 table.state = 'available';
             }
         });
+
+        // 6.5. Self-Healing: Update DB if calculated state/pax differs from DB
+        // This fixes "Occupied" ghost state when orders are cancelled externally
+        const tablesToUpdate = [];
+        tableMap.forEach(table => {
+            const stateChanged = table.state !== table._db_state;
+            // Only update pax if state also changed or pax diff is significant, 
+            // OR if strictly occupied/available mismatch (occupied but pax 0, or available but pax > 0)
+            const paxChanged = table.current_pax !== table._db_pax;
+
+            if (stateChanged || (paxChanged && table.state === 'occupied')) {
+                tablesToUpdate.push({
+                    ref: businessRef.collection('tables').doc(table.id),
+                    data: {
+                        current_pax: table.current_pax,
+                        state: table.state,
+                        lastSyncedAt: FieldValue.serverTimestamp() // Audit trail
+                    }
+                });
+            }
+        });
+
+        if (tablesToUpdate.length > 0) {
+            console.log(`[Dine-In API] Self-healing ${tablesToUpdate.length} tables (State/Pax mismatch)`);
+            const batch = firestore.batch();
+            tablesToUpdate.forEach(t => batch.update(t.ref, t.data));
+
+            try {
+                // Await to ensure DB consistency for subsequent operations (like creating new tabs)
+                await batch.commit();
+                console.log("[Dine-In API] Self-heal completed");
+            } catch (e) {
+                console.error("[Dine-In API] Self-heal failed:", e);
+            }
+        }
 
         const finalTablesData = Array.from(tableMap.values());
 
