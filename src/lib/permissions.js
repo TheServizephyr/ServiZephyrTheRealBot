@@ -31,7 +31,9 @@ export const PERMISSIONS = {
     MARK_ORDER_READY: 'mark_order_ready',
     MARK_ORDER_PREPARING: 'mark_order_preparing',
     CANCEL_ORDER: 'cancel_order',
+    CANCEL_ORDER: 'cancel_order',
     REFUND_ORDER: 'refund_order',
+    MARK_ORDER_SERVED: 'mark_order_served',
 
     // Dine-in Management
     MANAGE_DINE_IN: 'manage_dine_in',
@@ -190,6 +192,7 @@ export const ROLE_PERMISSIONS = {
         P.MARK_ORDER_READY,
         P.MARK_ORDER_PREPARING,
         P.CANCEL_ORDER,
+        P.MARK_ORDER_SERVED,
         // P.REFUND_ORDER, // Only owner can refund
         P.MANAGE_DINE_IN,
         P.VIEW_TABLES,
@@ -238,6 +241,7 @@ export const ROLE_PERMISSIONS = {
         P.VIEW_ORDERS,
         P.VIEW_DINE_IN_ORDERS,
         P.CREATE_ORDER,
+        P.MARK_ORDER_SERVED,
         P.MANAGE_DINE_IN,
         P.VIEW_TABLES,
         P.ASSIGN_TABLE,

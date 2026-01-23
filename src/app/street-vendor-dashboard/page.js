@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth, storage } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc, limit, orderBy } from 'firebase/firestore';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import { startOfDay, endOfDay, format } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -264,7 +265,7 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
     )
 }
 
-const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRevertToPending, onMarkCashRefunded }) => {
+const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRevertToPending, onMarkCashRefunded, userRole }) => {
     const token = order.dineInToken;
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
@@ -403,22 +404,30 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
             <div className="mt-4">
                 {isPending && (
                     <div className="grid grid-cols-2 gap-2">
-                        <Button onClick={() => onCancelClick(order)} variant="destructive" className="h-12 text-base">
-                            <X className="mr-2" /> Cancel
-                        </Button>
-                        <Button onClick={() => onMarkReady(order.id)} className="bg-green-600 hover:bg-green-700 h-12 text-base">
-                            <CookingPot className="mr-2" /> Mark Ready
-                        </Button>
+                        {hasPermission(userRole, PERMISSIONS.CANCEL_ORDER) && (
+                            <Button onClick={() => onCancelClick(order)} variant="destructive" className="h-12 text-base">
+                                <X className="mr-2" /> Cancel
+                            </Button>
+                        )}
+                        {hasPermission(userRole, PERMISSIONS.MARK_ORDER_READY) && (
+                            <Button onClick={() => onMarkReady(order.id)} className="bg-green-600 hover:bg-green-700 h-12 text-base">
+                                <CookingPot className="mr-2" /> Mark Ready
+                            </Button>
+                        )}
                     </div>
                 )}
                 {isReady && (
                     <div className="grid grid-cols-2 gap-2">
-                        <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="h-12 text-base font-semibold">
-                            <Undo2 size={18} className="mr-2" /> Undo
-                        </Button>
-                        <Button onClick={() => onMarkCollected(order.id)} className="bg-green-600 hover:bg-green-700 text-white font-bold text-base h-12">
-                            <PackageCheck size={18} className="mr-2" /> Collected
-                        </Button>
+                        {hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS) && (
+                            <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="h-12 text-base font-semibold">
+                                <Undo2 size={18} className="mr-2" /> Undo
+                            </Button>
+                        )}
+                        {hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS) && (
+                            <Button onClick={() => onMarkCollected(order.id)} className="bg-green-600 hover:bg-green-700 text-white font-bold text-base h-12">
+                                <PackageCheck size={18} className="mr-2" /> Collected
+                            </Button>
+                        )}
                     </div>
                 )}
                 {order.status === 'rejected' && (
@@ -465,7 +474,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                             <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="h-12 text-base font-semibold">
                                 <Undo2 size={18} className="mr-2" /> Undo
                             </Button>
-                            {amountDueAtCounter > 0 && !order.cashRefunded && (
+                            {amountDueAtCounter > 0 && !order.cashRefunded && hasPermission(userRole, PERMISSIONS.REFUND_ORDER) && (
                                 <Button
                                     onClick={() => onMarkCashRefunded && onMarkCashRefunded(order.id)}
                                     className="bg-green-600 hover:bg-green-700 h-12 text-base font-semibold"
@@ -561,6 +570,23 @@ const StreetVendorDashboardContent = () => {
     const employeeOfOwnerId = searchParams.get('employee_of');
     const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
     const queryParam = impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '';
+    const [userRole, setUserRole] = useState(null);
+
+    // Fetch User Role
+    useEffect(() => {
+        const fetchRole = async () => {
+            if (!user) return;
+            try {
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                if (userDoc.exists()) {
+                    setUserRole(userDoc.data().role || 'owner');
+                }
+            } catch (err) {
+                console.error("Error fetching user role:", err);
+            }
+        };
+        fetchRole();
+    }, [user]);
     const [date, setDate] = useState(null);
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -1051,7 +1077,7 @@ const StreetVendorDashboardContent = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 <AnimatePresence>
                                     {pendingOrders.map(order => (
-                                        <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancelClick={handleOpenRejectModal} onMarkCashRefunded={handleMarkCashRefunded} />
+                                        <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancelClick={handleOpenRejectModal} onMarkCashRefunded={handleMarkCashRefunded} userRole={userRole} />
                                     ))}
                                 </AnimatePresence>
                                 {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No new orders for the selected date.</p>}
@@ -1061,7 +1087,7 @@ const StreetVendorDashboardContent = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 <AnimatePresence>
                                     {readyOrders.map(order => (
-                                        <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} onRevertToPending={handleRevertToPending} onMarkCashRefunded={handleMarkCashRefunded} />
+                                        <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} onRevertToPending={handleRevertToPending} onMarkCashRefunded={handleMarkCashRefunded} userRole={userRole} />
                                     ))}
                                 </AnimatePresence>
                                 {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders are ready for pickup.</p>}

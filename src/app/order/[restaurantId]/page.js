@@ -302,7 +302,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
     );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen, setInfoDialog }) => {
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen, setInfoDialog, newTabPax, setNewTabPax, newTabName, setNewTabName, isEditing, onUpdateTab }) => {
     const [activeModal, setActiveModal] = useState('main');
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
@@ -339,24 +339,22 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             setTimeout(() => {
                 setActiveModal('main');
                 setIsSaving(false);
-                setNewTabPax(1);
-                setNewTabName('');
+                // Reset is handled by parent if needed, or we keep values for edit
             }, 300);
         } else {
-            if (tableStatus?.state === 'available') {
+            if (isEditing) {
+                setActiveModal('new_tab');
+            } else if (tableStatus?.state === 'available') {
                 setActiveModal('new_tab');
             } else if (tableStatus?.state === 'occupied') {
                 setActiveModal('join_or_new');
             } else if (tableStatus?.state === 'full') {
                 setActiveModal('full');
             } else {
-                // ✅ FIX: Default to 'new_tab' form instead of 'main' 
-                // This ensures users MUST create a tab even if tableStatus is still loading
-                // Prevents orders from being placed as "Guest" without dineInTabId
                 setActiveModal('new_tab');
             }
         }
-    }, [isOpen, tableStatus]);
+    }, [isOpen, tableStatus, isEditing]);
 
     const handleBookingChange = (field, value) => {
         setBookingDetails(prev => ({ ...prev, [field]: value }));
@@ -387,8 +385,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     const maxDate = new Date();
     maxDate.setDate(today.getDate() + 30);
 
-    const [newTabPax, setNewTabPax] = useState(1);
-    const [newTabName, setNewTabName] = useState('');
+    // Removed internal newTabPax/newTabName state - now using props
 
     const handleStartTab = () => {
         const pax = Number(newTabPax);
@@ -405,12 +402,18 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         const availableCapacity = tableStatus.availableSeats !== undefined
             ? tableStatus.availableSeats
             : tableStatus.max_capacity - (tableStatus.current_pax || 0);
-        if (pax > availableCapacity) {
+
+        // Skip capacity check if editing (since they are already seated)
+        if (!isEditing && pax > availableCapacity) {
             setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s). ${tableStatus.hasUncleanedOrders ? 'Some seats are being cleaned.' : ''}` });
             return;
         }
 
-        onStartNewTab(pax, name);
+        if (isEditing) {
+            onUpdateTab(pax, name);
+        } else {
+            onStartNewTab(pax, name);
+        }
     };
 
 
@@ -529,7 +532,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                         {activeModal === 'new_tab' && (
                             <motion.div key="new_tab">
                                 <DialogHeader className="p-6 pb-4">
-                                    <DialogTitle>Start a New Tab</DialogTitle>
+                                    <DialogTitle>{isEditing ? 'Update Details' : 'Start a New Tab'}</DialogTitle>
                                     <DialogDescription asChild>
                                         <div className="space-y-3">
                                             <div className="text-base">
@@ -587,7 +590,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                         <Label>What's a name for your tab?</Label>
                                         <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
                                     </div>
-                                    <Button onClick={handleStartTab} className="w-full">Start Ordering</Button>
+                                    <Button onClick={handleStartTab} className="w-full">{isEditing ? 'Save Changes' : 'Start Ordering'}</Button>
                                 </div>
                             </motion.div>
                         )}
@@ -849,7 +852,14 @@ const OrderPageInternal = () => {
     // NEW: Persistent user details management
     const [userDetails, setUserDetails] = useState(null);
     const [detailsProvided, setDetailsProvided] = useState(false);
+    const [userDetails, setUserDetails] = useState(null);
+    const [detailsProvided, setDetailsProvided] = useState(false);
     const [showWelcome, setShowWelcome] = useState(false);
+
+    // FIX: Lifted state to parent to allow Edit functionality
+    const [newTabPax, setNewTabPax] = useState(1);
+    const [newTabName, setNewTabName] = useState('');
+    const [isEditingModal, setIsEditingModal] = useState(false);
 
 
 
@@ -929,6 +939,27 @@ const OrderPageInternal = () => {
         setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
         setDineInState('ready');
         setIsDineInModalOpen(false);
+    };
+
+    const handleUpdateTab = (pax, name) => {
+        // Update local details
+        const updatedDetails = { ...userDetails, tab_name: name, pax_count: pax };
+        setUserDetails(updatedDetails);
+        setActiveTabInfo(prev => ({ ...prev, name: name, pax_count: pax }));
+
+        // Update persistence
+        if (tableIdFromUrl) {
+            saveDineInDetails(restaurantId, tableIdFromUrl, {
+                tab_name: name,
+                pax_count: pax,
+                tabId: activeTabInfo.id
+            });
+        }
+
+        // Close modal
+        setDineInState('ready');
+        setIsDineInModalOpen(false);
+        setIsEditingModal(false);
     };
 
     useEffect(() => {
@@ -1426,6 +1457,7 @@ const OrderPageInternal = () => {
         }
 
         setIsDineInModalOpen(false);
+        setIsEditingModal(false);
         if (dineInState === 'needs_setup') {
             setDeliveryType('delivery');
             setDineInState('ready');
@@ -1500,8 +1532,15 @@ const OrderPageInternal = () => {
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
                     onBookTable={handleBookTable}
+                    onBookTable={handleBookTable}
                     setIsQrScannerOpen={setIsQrScannerOpen}
                     setInfoDialog={setInfoDialog}
+                    newTabPax={newTabPax}
+                    setNewTabPax={setNewTabPax}
+                    newTabName={newTabName}
+                    setNewTabName={setNewTabName}
+                    isEditing={isEditingModal}
+                    onUpdateTab={handleUpdateTab}
                 />
             </div>
         )
@@ -1544,8 +1583,16 @@ const OrderPageInternal = () => {
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
+                    onJoinTab={handleJoinTab}
                     setIsQrScannerOpen={setIsQrScannerOpen}
-                    setInfoDialog={setInfoDialog} />
+                    setInfoDialog={setInfoDialog}
+                    newTabPax={newTabPax}
+                    setNewTabPax={setNewTabPax}
+                    newTabName={newTabName}
+                    setNewTabName={setNewTabName}
+                    isEditing={isEditingModal}
+                    onUpdateTab={handleUpdateTab}
+                />
                 <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
                 <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
 
@@ -1579,6 +1626,7 @@ const OrderPageInternal = () => {
                                     // Pre-fill modal fields with current details
                                     setNewTabPax(userDetails.pax_count || 1);
                                     setNewTabName(userDetails.tab_name || '');
+                                    setIsEditingModal(true);
                                     setIsDineInModalOpen(true);
                                 }}
                                 className="gap-2"

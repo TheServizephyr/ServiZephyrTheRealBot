@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth, db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDocs, limit, doc, getDoc } from 'firebase/firestore';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
 import { formatSafeDate, formatSafeTime, formatSafeRelativeTime, formatSafeDateShort, safeToDate } from '@/lib/safeDateFormat';
@@ -329,7 +330,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     );
 };
 
-const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, employeeOfOwnerId, impersonatedOwnerId }) => {
+const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, employeeOfOwnerId, impersonatedOwnerId, userRole }) => {
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
@@ -400,13 +401,13 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
 
 
     const actionConfig = {
-        'pending': { text: 'Confirm Order', icon: Check, action: () => onNext(nextStatus) },
-        'confirmed': { text: 'Start Preparing', icon: CookingPot, action: () => onNext(nextStatus) },
+        'pending': { text: 'Confirm Order', icon: Check, action: () => onNext(nextStatus), permission: PERMISSIONS.UPDATE_ORDER_STATUS },
+        'confirmed': { text: 'Start Preparing', icon: CookingPot, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_PREPARING },
         'preparing': isPickup
-            ? { text: 'Ready for Pickup', icon: PackageCheck, action: () => onNext(nextStatus) }
-            : { text: 'Out for Delivery', icon: Bike, action: () => onAssignClick([order]) },
-        'ready_for_pickup': { text: 'Mark as Picked Up', icon: PartyPopper, action: () => onNext(nextStatus) },
-        'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus) },
+            ? { text: 'Ready for Pickup', icon: PackageCheck, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_READY }
+            : { text: 'Out for Delivery', icon: Bike, action: () => onAssignClick([order]), permission: PERMISSIONS.ASSIGN_RIDER },
+        'ready_for_pickup': { text: 'Mark as Picked Up', icon: PartyPopper, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_SERVED },
+        'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_SERVED },
     };
 
     const action = actionConfig[status];
@@ -423,16 +424,18 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
 
     return (
         <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
-            <Button
-                onClick={action.action}
-                size="sm"
-                className="bg-primary hover:bg-primary/90 h-9 flex-grow"
-            >
-                <ActionIcon size={16} className="mr-2" />
-                {action.text}
-            </Button>
+            {hasPermission(userRole, action.permission || PERMISSIONS.UPDATE_ORDER_STATUS) && (
+                <Button
+                    onClick={action.action}
+                    size="sm"
+                    className="bg-primary hover:bg-primary/90 h-9 flex-grow"
+                >
+                    <ActionIcon size={16} className="mr-2" />
+                    {action.text}
+                </Button>
+            )}
             <div className="flex gap-2">
-                {isConfirmable && (
+                {isConfirmable && hasPermission(userRole, PERMISSIONS.CANCEL_ORDER) && (
                     <Button
                         onClick={() => onRejectClick(order)}
                         variant="destructive"
@@ -446,7 +449,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                 <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
                     <Printer size={16} />
                 </Button>
-                {prevStatus && (
+                {prevStatus && hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS) && (
                     <Button
                         onClick={() => onRevert(prevStatus)}
                         variant="ghost"
@@ -579,6 +582,24 @@ export default function LiveOrdersPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    const [userRole, setUserRole] = useState(null);
+
+    // Fetch User Role
+    useEffect(() => {
+        const fetchRole = async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                if (userDoc.exists()) {
+                    setUserRole(userDoc.data().role || 'owner'); // Default to owner if role missing (owner docs sometimes lack role field)
+                }
+            } catch (err) {
+                console.error("Error fetching user role:", err);
+            }
+        };
+        fetchRole();
+    }, []);
     const [printData, setPrintData] = useState(null);
     const [restaurantData, setRestaurantData] = useState(null);
     const billPrintRef = useRef();
@@ -1227,6 +1248,7 @@ export default function LiveOrdersPage() {
                                                 onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
                                                 employeeOfOwnerId={employeeOfOwnerId}
                                                 impersonatedOwnerId={impersonatedOwnerId}
+                                                userRole={userRole}
                                             />
                                         </td>
                                     </motion.tr>
