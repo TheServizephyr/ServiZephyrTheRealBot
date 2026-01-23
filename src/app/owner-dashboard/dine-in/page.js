@@ -1290,11 +1290,11 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    className="relative overflow-hidden backdrop-blur-xl bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-yellow-500/20 border border-amber-400/30 shadow-2xl shadow-amber-500/20 rounded-2xl p-6 mb-6"
+                    className="relative overflow-hidden backdrop-blur-xl bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 dark:from-amber-500/20 dark:via-orange-500/15 dark:to-yellow-500/20 border border-amber-300 dark:border-amber-400/30 shadow-2xl shadow-amber-500/20 rounded-2xl p-6 mb-6"
                 >
                     {/* Animated background gradient orbs */}
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/20 rounded-full blur-3xl"></div>
-                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-400/20 rounded-full blur-3xl"></div>
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-300/30 dark:bg-amber-400/20 rounded-full blur-3xl"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-300/30 dark:bg-orange-400/20 rounded-full blur-3xl"></div>
 
                     {/* Header with animated bell icon */}
                     <div className="relative z-10">
@@ -1314,10 +1314,10 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
                                 <Bell size={20} className="text-white" />
                             </motion.div>
                             <div>
-                                <h3 className="font-bold text-xl bg-gradient-to-r from-amber-200 via-yellow-200 to-orange-200 bg-clip-text text-transparent">
+                                <h3 className="font-bold text-xl bg-gradient-to-r from-amber-700 via-orange-600 to-amber-700 dark:from-amber-200 dark:via-yellow-200 dark:to-orange-200 bg-clip-text text-transparent">
                                     Live Service Requests
                                 </h3>
-                                <p className="text-xs text-amber-200/70">Customer needs assistance</p>
+                                <p className="text-xs text-amber-700 dark:text-amber-200/70">Customer needs assistance</p>
                             </div>
                             {requests.length > 0 && (
                                 <motion.span
@@ -1341,10 +1341,10 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
                                         exit={{ opacity: 0, scale: 0.9, x: 100 }}
                                         transition={{ delay: index * 0.1 }}
                                         whileHover={{ scale: 1.02, y: -2 }}
-                                        className="group relative backdrop-blur-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-xl p-4 shadow-xl hover:shadow-2xl hover:shadow-amber-500/30 transition-all duration-300"
+                                        className="group relative backdrop-blur-lg bg-gradient-to-br from-white/90 to-amber-50/80 dark:from-white/10 dark:to-white/5 border border-amber-300 dark:border-white/20 rounded-xl p-4 shadow-xl hover:shadow-2xl hover:shadow-amber-500/30 transition-all duration-300"
                                     >
                                         {/* Shimmer effect on hover */}
-                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer rounded-xl"></div>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-200/20 dark:via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer rounded-xl"></div>
 
                                         <div className="relative z-10 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
@@ -1352,8 +1352,8 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
                                                     <span className="text-white font-bold text-sm">T{req.tableId}</span>
                                                 </div>
                                                 <div>
-                                                    <p className="font-semibold text-amber-100 text-sm">Table {req.tableId}</p>
-                                                    <p className="text-xs text-amber-200/70">Needs assistance!</p>
+                                                    <p className="font-semibold text-amber-900 dark:text-amber-100 text-sm">Table {req.tableId}</p>
+                                                    <p className="text-xs text-amber-700 dark:text-amber-200/70">Needs assistance!</p>
                                                 </div>
                                             </div>
                                             <motion.button
@@ -1381,11 +1381,11 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
                                 animate={{ opacity: 1 }}
                                 className="text-center py-8"
                             >
-                                <div className="inline-block bg-green-500/20 border border-green-400/30 rounded-full p-4 mb-3">
-                                    <CheckCircle size={32} className="text-green-300" />
+                                <div className="inline-block bg-green-100 dark:bg-green-500/20 border border-green-300 dark:border-green-400/30 rounded-full p-4 mb-3">
+                                    <CheckCircle size={32} className="text-green-600 dark:text-green-300" />
                                 </div>
-                                <p className="text-sm text-amber-200/90 font-medium">All clear! No active service requests.</p>
-                                <p className="text-xs text-amber-200/60 mt-1">Your team is doing great! 🎉</p>
+                                <p className="text-sm text-amber-800 dark:text-amber-200/90 font-medium">All clear! No active service requests.</p>
+                                <p className="text-xs text-amber-600 dark:text-amber-200/60 mt-1">Your team is doing great! 🎉</p>
                             </motion.div>
                         )}
                     </div>
