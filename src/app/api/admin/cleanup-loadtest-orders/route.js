@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
+// CORS headers
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS(req) {
+    return NextResponse.json({}, { headers: corsHeaders });
+}
+
 // Cleanup endpoint - ADMIN ONLY
 // Usage: POST /api/admin/cleanup-loadtest-orders
 export async function POST(req) {
@@ -30,7 +42,7 @@ export async function POST(req) {
             return NextResponse.json({
                 success: false,
                 message: 'Restaurant not found'
-            }, { status: 404 });
+            }, { status: 404, headers: corsHeaders });
         }
 
         // Step 2: Get all orders for this restaurant
@@ -68,7 +80,7 @@ export async function POST(req) {
                 success: true,
                 message: 'No LoadTest orders to cancel',
                 cancelled: 0
-            });
+            }, { headers: corsHeaders });
         }
 
         // Step 4: Batch cancel
@@ -93,13 +105,13 @@ export async function POST(req) {
             message: 'LoadTest orders cancelled successfully',
             cancelled: loadTestOrders.length,
             orders: loadTestOrders.map(o => ({ id: o.id, name: o.customerName }))
-        });
+        }, { headers: corsHeaders });
 
     } catch (error) {
         console.error('[CLEANUP] Error:', error);
         return NextResponse.json({
             success: false,
             message: error.message
-        }, { status: 500 });
+        }, { status: 500, headers: corsHeaders });
     }
 }
