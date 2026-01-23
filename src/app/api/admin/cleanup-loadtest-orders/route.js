@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 // CORS headers
 const corsHeaders = {
@@ -118,7 +118,7 @@ export async function POST(req) {
             const orderRef = firestore.collection('orders').doc(order.id);
             batch.update(orderRef, {
                 status: 'cancelled',
-                cancelledAt: firestore.FieldValue.serverTimestamp(),
+                cancelledAt: FieldValue.serverTimestamp(),
                 cancelledBy: 'admin_cleanup',
                 cancellationReason: 'LoadTest cleanup'
             });
