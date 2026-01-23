@@ -34,6 +34,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
 
     let targetOwnerId = uid;
     let isImpersonating = false;
+    let accessResult = null; // Declare at parent scope for employee access
 
     // --- ADMIN IMPERSONATION ---
     if (userRole === 'admin' && impersonatedOwnerId) {
@@ -49,7 +50,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     }
     // --- EMPLOYEE ACCESS (SECURE) ---
     else if (employeeOfOwnerId) {
-        const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
+        accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
         if (!accessResult.authorized) {
             console.warn(`[SECURITY] Blocked unauthorized employee_of access: ${uid} -> ${employeeOfOwnerId}`);
             throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
@@ -61,6 +62,12 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         console.error(`[API ERROR] verifyOwnerAndGetBusiness: User ${uid} with role '${userRole}' does not have sufficient privileges.`);
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    }
+
+    // Calculate effective caller role
+    let effectiveCallerRole = userRole; // Default to owner role
+    if (accessResult && accessResult.employeeRole) {
+        effectiveCallerRole = accessResult.employeeRole; // Use employee role if employee access
     }
 
     const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
@@ -79,7 +86,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
                 isImpersonating,
                 adminId: isImpersonating ? uid : null,
                 adminEmail: isImpersonating ? userData.email : null,
-                callerRole: employeeOfOwnerId ? accessResult.employeeRole : userRole
+                callerRole: effectiveCallerRole
             };
         }
     }
