@@ -383,6 +383,13 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
                                 // ✅ FIX: Filter out cancelled/rejected orders from active display
                                 const activeOrders = allOrders.filter(o => o.status !== 'cancelled' && o.status !== 'rejected');
+
+                                // 🚨 CRITICAL FIX: If ALL orders are cancelled/rejected, skip this tab entirely
+                                // Don't show it in active view - it should only appear in history
+                                if (activeOrders.length === 0) {
+                                    return null; // Skip rendering this tab
+                                }
+
                                 const firstOrder = activeOrders[0] || group;
 
                                 // Use mainStatus for determining which action button to show - ONLY from active orders
