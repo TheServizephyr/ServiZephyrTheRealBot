@@ -7,6 +7,7 @@ import { Calendar as CalendarIcon, ArrowLeft, RefreshCw, Loader2, RotateCcw, Use
 import { Button } from '@/components/ui/button';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -16,6 +17,7 @@ export default function DineInHistoryPage() {
     const [date, setDate] = useState({ from: new Date(), to: new Date() });
     const [historyData, setHistoryData] = useState({ completedOrders: [], cancelledOrders: [] });
     const [loading, setLoading] = useState(true);
+    const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', description: '', onConfirm: null, isLoading: false });
 
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -84,9 +86,18 @@ export default function DineInHistoryPage() {
         return Array.from(groups.values());
     }, [historyData, activeTab]);
 
-    const handleUndo = async (order) => {
-        if (!confirm('Undo this action? Order will return to dashboard.')) return;
+    const handleUndo = (order) => {
+        setConfirmDialog({
+            isOpen: true,
+            title: activeTab === 'completed' ? 'Undo Cleaning' : 'Undo Cancellation',
+            description: `Are you sure you want to verify this action? The order will be returned to the live dashboard.`,
+            onConfirm: () => executeUndo(order),
+            isLoading: false
+        });
+    };
 
+    const executeUndo = async (order) => {
+        setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
             const user = auth.currentUser;
             if (!user) return;
@@ -113,10 +124,15 @@ export default function DineInHistoryPage() {
             });
 
             if (res.ok) {
+                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                 fetchHistory(); // Refresh
+            } else {
+                console.error('Undo failed status:', res.status);
             }
         } catch (error) {
             console.error('[Undo] Error:', error);
+        } finally {
+            setConfirmDialog(prev => ({ ...prev, isLoading: false }));
         }
     };
 
@@ -230,6 +246,26 @@ export default function DineInHistoryPage() {
                     </p>
                 </div>
             )}
+            )}
+
+            <Dialog open={confirmDialog.isOpen} onOpenChange={(open) => !open && setConfirmDialog(prev => ({ ...prev, isOpen: false }))}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{confirmDialog.title}</DialogTitle>
+                        <DialogDescription>{confirmDialog.description}</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}>Cancel</Button>
+                        <Button
+                            onClick={confirmDialog.onConfirm}
+                            disabled={confirmDialog.isLoading}
+                        >
+                            {confirmDialog.isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Confirm
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

@@ -4,7 +4,7 @@ import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 async function getBusinessRef(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req);
-    const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
+    const searchParams = req.nextUrl.searchParams;
 
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
