@@ -935,7 +935,29 @@ const OrderPageInternal = () => {
 
     const handleJoinTab = (tabId) => {
         const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
-        setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
+        const tabName = joinedTab?.tab_name || 'Existing Tab';
+        const tabPax = joinedTab?.pax_count || 1;
+
+        // Create local session details matching the joined tab
+        const details = {
+            tab_name: tabName,
+            pax_count: tabPax,
+            tabId: tabId
+        };
+
+        // Update state
+        setActiveTabInfo({ id: tabId, name: tabName, pax_count: tabPax });
+        setUserDetails(details);
+        setDetailsProvided(true);
+        setShowWelcome(true); // Show the welcome banner
+
+        // Persist session
+        if (tableIdFromUrl && restaurantId) {
+            saveDineInDetails(restaurantId, tableIdFromUrl, details);
+            const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
+            localStorage.setItem(dineInTabKey, JSON.stringify({ id: tabId, name: tabName, pax_count: tabPax }));
+        }
+
         setDineInState('ready');
         setIsDineInModalOpen(false);
     };
