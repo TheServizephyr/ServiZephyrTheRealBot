@@ -380,23 +380,26 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
                                 // Get ALL orders in this group
                                 const allOrders = Object.values(group.orders || {});
-                                const firstOrder = allOrders[0] || group;
 
-                                // Use mainStatus for determining which action button to show
+                                // ✅ FIX: Filter out cancelled/rejected orders from active display
+                                const activeOrders = allOrders.filter(o => o.status !== 'cancelled' && o.status !== 'rejected');
+                                const firstOrder = activeOrders[0] || group;
+
+                                // Use mainStatus for determining which action button to show - ONLY from active orders
                                 const mainStatus = group.mainStatus || firstOrder?.status || 'pending';
 
-                                // Calculate totals from API or compute
-                                const totalBill = group.totalAmount || allOrders.reduce((sum, o) => sum + (o.totalAmount || o.grandTotal || 0), 0);
-                                const allItems = group.items || allOrders.flatMap(o => o.items || []);
+                                // Calculate totals from API or compute - ONLY from active orders
+                                const totalBill = group.totalAmount || activeOrders.reduce((sum, o) => sum + (o.totalAmount || o.grandTotal || 0), 0);
+                                const allItems = group.items || activeOrders.flatMap(o => o.items || []);
 
                                 // Payment status - dine-in is POSTPAID by default
                                 // isPaid = true ONLY if: (1) paid online via razorpay, OR (2) paymentStatus explicitly set to 'paid'
                                 const isOnlinePayment = group.paymentDetails?.method === 'razorpay' || firstOrder?.paymentDetails?.method === 'razorpay';
-                                const isPaidStatus = group.paymentStatus === 'paid' || allOrders.some(o => o.paymentStatus === 'paid');
+                                const isPaidStatus = group.paymentStatus === 'paid' || activeOrders.some(o => o.paymentStatus === 'paid');
                                 const isPaid = isOnlinePayment || isPaidStatus;
 
                                 // Check if customer chose "Pay at Counter"
-                                const isPayAtCounter = group.paymentStatus === 'pay_at_counter' || allOrders.some(o => o.paymentStatus === 'pay_at_counter');
+                                const isPayAtCounter = group.paymentStatus === 'pay_at_counter' || activeOrders.some(o => o.paymentStatus === 'pay_at_counter');
 
                                 // Status checks
                                 const isServed = mainStatus === 'delivered';
@@ -405,12 +408,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const actionDetails = actionConfig[mainStatus];
                                 const ActionIcon = actionDetails ? actionDetails.icon : null;
 
-                                // For pending orders, find the pending order IDs to confirm
-                                const pendingOrderIds = allOrders.filter(o => o.status === 'pending').map(o => o.id);
+                                // For pending orders, find the pending order IDs to confirm - ONLY from active orders
+                                const pendingOrderIds = activeOrders.filter(o => o.status === 'pending').map(o => o.id);
                                 const firstPendingOrderId = pendingOrderIds[0];
 
-                                // For active orders, find the first non-delivered order to update
-                                const activeOrderToUpdate = allOrders.find(o => o.status !== 'delivered' && o.status !== 'pending');
+                                // For active orders, find the first non-delivered order to update - ONLY from active orders
+                                const activeOrderToUpdate = activeOrders.find(o => o.status !== 'delivered' && o.status !== 'pending');
                                 const orderIdToUpdate = activeOrderToUpdate?.id;
 
                                 // Color coding for multi-tab tables - apply to ALL tabs (pending or active)
