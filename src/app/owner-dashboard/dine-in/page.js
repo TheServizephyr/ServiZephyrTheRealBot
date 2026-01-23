@@ -1290,23 +1290,105 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    className="border border-yellow-500/30 bg-yellow-500/10 p-4 rounded-lg mb-6"
+                    className="relative overflow-hidden backdrop-blur-xl bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-yellow-500/20 border border-amber-400/30 shadow-2xl shadow-amber-500/20 rounded-2xl p-6 mb-6"
                 >
-                    <h3 className="font-bold text-yellow-300 flex items-center gap-2"><Bell size={16} /> Live Service Requests</h3>
-                    {requests.length > 0 ? (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                            {requests.map(req => (
-                                <div key={req.id} className="bg-yellow-500/20 text-yellow-200 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
-                                    Table {req.tableId} needs assistance!
-                                    <Button size="icon" variant="ghost" className="h-5 w-5 text-yellow-300 hover:bg-yellow-400/20" onClick={() => handleAcknowledge(req.id)}>
-                                        <CheckCircle size={14} />
-                                    </Button>
-                                </div>
-                            ))}
+                    {/* Animated background gradient orbs */}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/20 rounded-full blur-3xl"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-400/20 rounded-full blur-3xl"></div>
+
+                    {/* Header with animated bell icon */}
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-4">
+                            <motion.div
+                                animate={{
+                                    rotate: [0, -15, 15, -15, 15, 0],
+                                    scale: [1, 1.1, 1.1, 1.1, 1.1, 1]
+                                }}
+                                transition={{
+                                    duration: 0.6,
+                                    repeat: Infinity,
+                                    repeatDelay: 3
+                                }}
+                                className="bg-gradient-to-br from-amber-400 to-orange-500 p-3 rounded-xl shadow-lg"
+                            >
+                                <Bell size={20} className="text-white" />
+                            </motion.div>
+                            <div>
+                                <h3 className="font-bold text-xl bg-gradient-to-r from-amber-200 via-yellow-200 to-orange-200 bg-clip-text text-transparent">
+                                    Live Service Requests
+                                </h3>
+                                <p className="text-xs text-amber-200/70">Customer needs assistance</p>
+                            </div>
+                            {requests.length > 0 && (
+                                <motion.span
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="ml-auto bg-gradient-to-r from-red-500 to-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg"
+                                >
+                                    {requests.length} Active
+                                </motion.span>
+                            )}
                         </div>
-                    ) : (
-                        <p className="text-sm text-yellow-300/80 mt-1">No active service requests.</p>
-                    )}
+
+                        {/* Request cards */}
+                        {requests.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {requests.map((req, index) => (
+                                    <motion.div
+                                        key={req.id}
+                                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.9, x: 100 }}
+                                        transition={{ delay: index * 0.1 }}
+                                        whileHover={{ scale: 1.02, y: -2 }}
+                                        className="group relative backdrop-blur-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-xl p-4 shadow-xl hover:shadow-2xl hover:shadow-amber-500/30 transition-all duration-300"
+                                    >
+                                        {/* Shimmer effect on hover */}
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer rounded-xl"></div>
+
+                                        <div className="relative z-10 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-2 rounded-lg">
+                                                    <span className="text-white font-bold text-sm">T{req.tableId}</span>
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-amber-100 text-sm">Table {req.tableId}</p>
+                                                    <p className="text-xs text-amber-200/70">Needs assistance!</p>
+                                                </div>
+                                            </div>
+                                            <motion.button
+                                                whileHover={{ scale: 1.1, rotate: 15 }}
+                                                whileTap={{ scale: 0.95 }}
+                                                onClick={() => handleAcknowledge(req.id)}
+                                                className="bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 p-2 rounded-lg shadow-lg hover:shadow-green-500/50 transition-all"
+                                            >
+                                                <CheckCircle size={18} className="text-white" />
+                                            </motion.button>
+                                        </div>
+
+                                        {/* Pulse ring animation */}
+                                        <motion.div
+                                            animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                                            transition={{ duration: 2, repeat: Infinity }}
+                                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full"
+                                        ></motion.div>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        ) : (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="text-center py-8"
+                            >
+                                <div className="inline-block bg-green-500/20 border border-green-400/30 rounded-full p-4 mb-3">
+                                    <CheckCircle size={32} className="text-green-300" />
+                                </div>
+                                <p className="text-sm text-amber-200/90 font-medium">All clear! No active service requests.</p>
+                                <p className="text-xs text-amber-200/60 mt-1">Your team is doing great! 🎉</p>
+                            </motion.div>
+                        )}
+                    </div>
                 </motion.div>
             )}
         </AnimatePresence>
