@@ -345,8 +345,16 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
         { border: 'border-l-4 border-l-pink-500', bg: 'bg-pink-500/5', badge: 'bg-pink-500/20 text-pink-400 border-pink-500/30' },
     ];
 
-    // Count tabs for same table to enable multi-tab features
-    const tabCount = allGroups.length; // Count ALL tabs (pending + active)
+    // 🚨 CRITICAL FIX: Pre-filter groups to remove tabs where ALL orders are cancelled/rejected
+    // This prevents empty table cards from showing as "Occupied" with ghost "Active Tabs"
+    const activeGroups = allGroups.filter(group => {
+        const allOrders = Object.values(group.orders || {});
+        const activeOrders = allOrders.filter(o => o.status !== 'cancelled' && o.status !== 'rejected');
+        return activeOrders.length > 0; // Only keep groups with at least 1 active order
+    });
+
+    // Count tabs for same table to enable multi-tab features - ONLY active groups
+    const tabCount = activeGroups.length; // Count ONLY groups with active orders
     const hasMultipleTabs = tabCount > 1;
 
     return (
@@ -358,7 +366,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                 </CardHeader>
 
                 <CardContent className="flex-grow p-2 sm:p-3">
-                    {allGroups.length > 0 ? (
+                    {activeGroups.length > 0 ? (
                         <div className="space-y-2">
                             {/* Multi-tab header - show when multiple active tabs exist */}
                             {hasMultipleTabs && (
@@ -370,7 +378,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 </div>
                             )}
 
-                            {allGroups.map((group, groupIndex) => {
+                            {activeGroups.map((group, groupIndex) => {
                                 // Robust Tab ID extraction to persist across status changes
                                 const effectiveTabId = group.dineInTabId || group.tabId || (group.orders && Object.values(group.orders)[0]?.tabId) || group.id;
 
