@@ -246,7 +246,7 @@ export default function DineInHistoryPage() {
                     </p>
                 </div>
             )}
-            )}
+
 
             <Dialog open={confirmDialog.isOpen} onOpenChange={(open) => !open && setConfirmDialog(prev => ({ ...prev, isOpen: false }))}>
                 <DialogContent>
