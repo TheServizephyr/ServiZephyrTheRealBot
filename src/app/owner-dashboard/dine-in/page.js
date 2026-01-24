@@ -502,7 +502,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         {/* Order Batches - Display individual orders with timestamps */}
                                         {group.orderBatches && group.orderBatches.length > 0 ? (
                                             <div className="space-y-3 my-2">
-                                                {group.orderBatches.map((orderBatch, batchIndex) => {
+                                                {group.orderBatches.map((b, i) => ({ ...b, _originalIndex: i + 1 })).sort((a, b) => {
+                                                    const getT = (v) => v?._seconds ? v._seconds * 1000 : new Date(v || 0).getTime();
+                                                    return getT(b.orderDate) - getT(a.orderDate);
+                                                }).map((orderBatch) => {
                                                     // Calculate time ago for this order
                                                     const orderTime = orderBatch.orderDate?._seconds
                                                         ? new Date(orderBatch.orderDate._seconds * 1000)
@@ -549,7 +552,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             <div className="flex justify-between items-center mb-1.5">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-xs font-semibold text-muted-foreground">
-                                                                        📦 Order #{batchIndex + 1}
+                                                                        📦 Order #{orderBatch._originalIndex}
                                                                     </span>
                                                                     {minutesAgo !== null && (
                                                                         <span className="text-xs text-muted-foreground flex items-center">
@@ -591,7 +594,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                         <div key={itemIdx}>
                                                                             <div className="flex justify-between items-center text-muted-foreground">
                                                                                 <span>{item.quantity || item.qty} × {item.name}</span>
-                                                                                <span>{formatCurrency(itemTotalPrice)}</span>
+                                                                                <span>{formatCurrency(basePrice)}</span>
                                                                             </div>
                                                                             {/* ✅ Show Addons */}
                                                                             {item.selectedAddOns && item.selectedAddOns.length > 0 && (
@@ -696,7 +699,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                             setConfirmationState({
                                                                                 isOpen: true,
                                                                                 title: "Cancel Order",
-                                                                                description: `Cancel Order #${batchIndex + 1}?`,
+                                                                                description: `Cancel Order #${orderBatch._originalIndex}?`,
                                                                                 confirmText: "Cancel",
                                                                                 isDestructive: true,
                                                                                 paymentMethod: null,
@@ -2152,7 +2155,7 @@ const DineInPageContent = () => {
                 <h2 className="text-xl font-bold">Live Tables</h2>
 
                 {/* Status Filter Tabs - RBAC Filtered */}
-                <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border">
+                <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border overflow-x-auto max-w-full whitespace-nowrap no-scrollbar">
                     {['All', 'Pending', 'Confirmed', 'Preparing', 'In Progress', 'Ready', 'Served', 'Delivered', 'Needs Cleaning']
                         .filter(filter => getAllowedTabs(userRole).includes(filter))
                         .map(filter => (
@@ -2160,7 +2163,7 @@ const DineInPageContent = () => {
                                 key={filter}
                                 onClick={() => setActiveStatusFilter(filter)}
                                 className={cn(
-                                    'px-3 py-1.5 text-sm font-semibold rounded-md transition-colors',
+                                    'px-3 py-1.5 text-sm font-semibold rounded-md transition-colors flex-shrink-0',
                                     activeStatusFilter === filter
                                         ? 'bg-primary text-primary-foreground'
                                         : 'text-muted-foreground hover:bg-muted'

@@ -7,10 +7,11 @@ import { CheckCircle, AlertTriangle, Send, Loader2 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@/firebase/provider';
 
-const InfoDialog = ({ isOpen, onClose, title, message }) => {
+const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
   const [isSending, setIsSending] = useState(false);
   const [reportSent, setReportSent] = useState(false);
-  const isError = (title || '').toLowerCase().includes('error')
+  const isError = type === 'error'
+    || (title || '').toLowerCase().includes('error')
     || (title || '').toLowerCase().includes('failed')
     || (title || '').toLowerCase().includes('invalid')
     || (title || '').toLowerCase().includes('exceeded')

@@ -1172,8 +1172,18 @@ const OrderPageInternal = () => {
                         if (state === 'full') {
                             setDineInState('full');
                         } else {
-                            setDineInState('ready_to_select'); // Allow starting new tab or joining
-                            setIsDineInModalOpen(true);
+                            // NEW: Check if we already have persistent details (e.g. from previous visit)
+                            // If yes, we skip the modal so the user lands directly on the menu with the Welcome banner
+                            const persistentDetails = getDineInDetails(restaurantId, tableIdFromUrl);
+
+                            if (persistentDetails) {
+                                console.log('[Dine-In] Persistent details found in handleDineInSetup - skipping modal');
+                                setDineInState('ready');
+                                setIsDineInModalOpen(false);
+                            } else {
+                                setDineInState('ready_to_select'); // Allow starting new tab or joining
+                                setIsDineInModalOpen(true);
+                            }
                         }
                     } catch (error) {
                         console.error('[Dine-In] Error fetching table:', error);

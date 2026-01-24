@@ -325,6 +325,8 @@ const CartPageInternal = () => {
                                 convenienceFeeLabel: freshSettings.convenienceFeeLabel,
                                 packagingChargeEnabled: freshSettings.packagingChargeEnabled,
                                 packagingChargeAmount: freshSettings.packagingChargeAmount,
+                                // NEW: Update coupons from fresh settings
+                                coupons: freshSettings.coupons || [],
                             };
 
                             setPackagingConfig({
@@ -340,6 +342,10 @@ const CartPageInternal = () => {
                             setPickupTime(parsedData.pickupTime || '');
 
                             setPickupTime(parsedData.pickupTime || '');
+
+                            // FIXED: Persist fresh data (including coupons) to localStorage
+                            // This ensures updateCartInStorage doesn't overwrite it with stale data
+                            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
                         })
                         .catch(err => {
                             console.error("[Cart Page] Failed to fetch fresh settings:", err);
@@ -705,7 +711,7 @@ const CartPageInternal = () => {
             newAppliedCoupons = appliedCoupons.filter(c => c.id !== couponToToggle.id);
         } else {
             if (subtotal < couponToToggle.minOrder) {
-                setInfoDialog({ isOpen: true, title: "Minimum Order Not Met", message: `You need to spend at least ₹${couponToToggle.minOrder} to use this coupon.` });
+                setInfoDialog({ isOpen: true, title: "Minimum Order Not Met", message: `You need to spend at least ₹${couponToToggle.minOrder} to use this coupon.`, type: 'error' });
                 return;
             }
             const isSpecial = !!couponToToggle.customerId;
@@ -793,6 +799,7 @@ const CartPageInternal = () => {
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
                 message={infoDialog.message}
+                type={infoDialog.type}
             />
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <ClearCartDialog

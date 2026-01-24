@@ -754,13 +754,18 @@ function DineInTrackingContent() {
                                                     {items.map((item, i) => {
                                                         // Calculate price - check Firestore fields (camelCase!)
                                                         const unitPrice = item.serverVerifiedTotal || item.totalPrice || item.portion?.price || item.price || 0;
-                                                        const itemTotal = unitPrice;  // Already total for this item
+
+                                                        // NEW: Calculate addon total to subtract from unit price for display
+                                                        const addonTotal = item.selectedAddOns?.reduce((sum, addon) =>
+                                                            sum + (addon.price * (addon.quantity || 1)), 0) || 0;
+
+                                                        const basePrice = unitPrice - addonTotal;
 
                                                         return (
                                                             <div key={i} className="bg-muted/30 rounded-md px-3 py-2">
                                                                 <div className="flex justify-between text-sm">
                                                                     <span className="font-medium">{item.quantity}x {item.name}</span>
-                                                                    <span className="text-muted-foreground font-semibold">{formatCurrency(itemTotal)}</span>
+                                                                    <span className="text-muted-foreground font-semibold">{formatCurrency(basePrice)}</span>
                                                                 </div>
                                                                 {/* ✅ Show Addons */}
                                                                 {item.selectedAddOns && item.selectedAddOns.length > 0 && (

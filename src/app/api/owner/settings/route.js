@@ -112,7 +112,7 @@ export async function GET(req) {
             }
             const businessData = businessDoc.data();
             // This is the public response, only contains necessary info.
-            return NextResponse.json({
+            const responsePayload = {
                 deliveryCodEnabled: businessData.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
                 deliveryOnlinePaymentEnabled: businessData.deliveryOnlinePaymentEnabled === undefined ? true : businessData.deliveryOnlinePaymentEnabled,
                 pickupPodEnabled: businessData.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
@@ -131,7 +131,35 @@ export async function GET(req) {
                 convenienceFeeLabel: businessData.convenienceFeeLabel || 'Payment Processing Fee',
                 packagingChargeEnabled: businessData.packagingChargeEnabled || false,
                 packagingChargeAmount: businessData.packagingChargeAmount || 0,
-            }, { status: 200 });
+            };
+
+            // Fetch active coupons from subcollection
+            try {
+                const couponsSnap = await businessDoc.ref.collection('coupons')
+                    .where('status', '==', 'active') // Only fetch active coupons
+                    .get();
+
+                const now = new Date();
+                const coupons = couponsSnap.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            // Ensure dates are serialized strings for JSON response
+                            startDate: data.startDate?.toDate ? data.startDate.toDate().toISOString() : data.startDate,
+                            expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
+                        };
+                    })
+                    .filter(c => new Date(c.expiryDate) > now); // double check expiry
+
+                responsePayload.coupons = coupons;
+            } catch (err) {
+                console.error("Error fetching coupons for public settings:", err);
+                responsePayload.coupons = [];
+            }
+
+            return NextResponse.json(responsePayload, { status: 200 });
         }
 
         // This block is for authenticated owner dashboard queries.
