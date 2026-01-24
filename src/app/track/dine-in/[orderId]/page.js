@@ -541,7 +541,7 @@ function DineInTrackingContent() {
     const isServed = orderData.order.status === 'delivered';
 
     return (
-        <div className="h-screen bg-background text-foreground flex flex-col green-theme overflow-hidden">
+        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
             {/* Pay Modal */}
             <Dialog open={isPayModalOpen} onOpenChange={setIsPayModalOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-sm">
@@ -575,7 +575,7 @@ function DineInTrackingContent() {
                 </DialogContent>
             </Dialog>
 
-            <header className="p-4 border-b border-border flex justify-between items-center">
+            <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm p-4 border-b border-border flex justify-between items-center">
                 <div className="flex items-center gap-3">
                     <Button
                         onClick={() => {
@@ -616,7 +616,7 @@ function DineInTrackingContent() {
                 </Button>
             </header>
 
-            <main className="flex-grow flex flex-col p-4 md:p-8 overflow-y-auto pb-32">
+            <main className="flex-grow flex flex-col p-4 md:p-8 pb-40">
                 <div className="w-full max-w-2xl mx-auto">
                     {/* NEW: Welcome Message for Returning Users */}
                     {(() => {
