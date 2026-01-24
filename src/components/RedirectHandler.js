@@ -55,6 +55,23 @@ export default function RedirectHandler() {
                 } else {
                     console.log("[RedirectHandler] No redirect result found. Checking fallback...");
 
+                    // PWA/Session Restoration Logic
+                    // If user is already authenticated (e.g. valid specific indexedDB token)
+                    // and is on the landing page ('/'), redirect them to their dashboard
+                    // This fixes the issue where PWA restart lands on Home instead of Dashboard
+                    if (window.location.pathname === '/') {
+                        const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+                            if (user) {
+                                console.log("[RedirectHandler] User session restored on Landing Page. Auto-redirecting...");
+                                setLoading(true);
+                                setMsg("Restoring session...");
+                                await processLogin(user);
+                            }
+                        });
+                        // We don't unsubscribe immediately here as we need to wait for the initial auth check
+                        // It will be cleaned up when the component unmounts via the parent unsubscribe
+                    }
+
                     // Fallback: Check if we are in a 'logging in' state but redirect result was lost
                     // Use timestamp-based validation to avoid stale flags
                     const loginFlagData = sessionStorage.getItem('isLoggingIn');
