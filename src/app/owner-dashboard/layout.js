@@ -392,6 +392,7 @@ function OwnerDashboardContent({ children }) {
       <ImpersonationBanner vendorName={restaurantName} />
       <div className="flex h-screen bg-background text-foreground">
         <motion.aside
+          key={isMobile ? "mobile" : "desktop"}
           className="fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col"
           animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}

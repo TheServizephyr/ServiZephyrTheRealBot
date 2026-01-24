@@ -505,7 +505,8 @@ const CartPageInternal = () => {
             const liveOrderData = {
                 orderId: data.order_id,
                 trackingToken: data.token,
-                restaurantId: restaurantId
+                restaurantId: restaurantId,
+                deliveryType: deliveryType
             };
             localStorage.setItem(`liveOrder_${restaurantId}`, JSON.stringify(liveOrderData));
             console.log("[Cart Page] Saved liveOrder for dine-in:", liveOrderData);
@@ -746,8 +747,20 @@ const CartPageInternal = () => {
     const getTrackingUrl = () => {
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
 
-        // FIXED: Use central router for all flows
-        // Router will automatically determine correct tracking page
+        // FIXED: Check delivery type to generate correct tracking URL
+        const orderDeliveryType = liveOrder.deliveryType || (liveOrder.orderId === activeOrderId ? deliveryType : null);
+
+        // Check if it's a dine-in order
+        const isDineIn = orderDeliveryType === 'dine-in' || (tableId && !orderDeliveryType);
+
+        if (isDineIn) {
+            return `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`;
+        }
+
+        if (orderDeliveryType === 'street-vendor-pre-order') {
+            return `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`;
+        }
+
         const path = `/track/${liveOrder.orderId}`;
         return `${path}?token=${liveOrder.trackingToken}`;
     };

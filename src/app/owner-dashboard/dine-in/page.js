@@ -486,11 +486,11 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 )}
                                             </div>
                                             <div className="text-right">
-                                                {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
+                                                {group.dineInToken && <p className="text-xs font-bold text-yellow-600 dark:text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                                 {(group.ordered_by || firstOrder?.ordered_by) && (
                                                     <p className={cn("text-xs font-medium",
                                                         (group.ordered_by || firstOrder?.ordered_by)?.startsWith('waiter')
-                                                            ? "text-blue-400" : "text-green-400"
+                                                            ? "text-blue-500 dark:text-blue-400" : "text-green-600 dark:text-green-400"
                                                     )}>
                                                         {(group.ordered_by || firstOrder?.ordered_by)?.startsWith('waiter')
                                                             ? `📱 ${group.ordered_by_name || 'Waiter'}` : '📲 Via QR'}
@@ -624,7 +624,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     const batchActionConfig = {
                                                                         'confirmed': { label: 'Start Preparing', next: 'preparing', className: 'bg-orange-500 hover:bg-orange-600', icon: CookingPot },
                                                                         'preparing': { label: 'Mark Ready', next: 'ready_for_pickup', className: 'bg-green-500 hover:bg-green-600', icon: ShoppingBag },
-                                                                        'ready_for_pickup': { label: 'Mark Served', next: 'delivered', className: 'bg-emerald-600 hover:bg-emerald-700', icon: Home }
+                                                                        'delivered': { label: 'Mark Served', next: 'delivered', className: 'bg-emerald-600 hover:bg-emerald-700', icon: Home }
                                                                     };
                                                                     const batchAction = batchActionConfig[orderBatch.status];
                                                                     const ActionIcon = batchAction?.icon;
@@ -739,7 +739,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             <div className="mt-3 pt-3 border-t border-dashed border-border/50">
                                                 <div className="flex justify-between items-center font-bold">
                                                     <span>Total Bill:</span>
-                                                    <span className="text-lg text-primary">{formatCurrency(totalBill)}</span>
+                                                    <span className="text-lg text-emerald-700 dark:text-yellow-400">{formatCurrency(totalBill)}</span>
                                                 </div>
                                                 <div className="flex justify-between items-center text-xs mt-1">
                                                     <span>Payment Status:</span>

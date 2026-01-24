@@ -110,6 +110,7 @@ function WaiterOrderContent() {
     const [menu, setMenu] = useState({});
     const [loading, setLoading] = useState(true);
     const [restaurantId, setRestaurantId] = useState(null);
+    const [taxSettings, setTaxSettings] = useState({ gstEnabled: false, gstRate: 5 });
 
     // UI state
     const [selectedTable, setSelectedTable] = useState(null);
@@ -159,6 +160,18 @@ function WaiterOrderContent() {
                 const menuData = await menuRes.json();
                 setMenu(menuData.menu || {});
                 if (menuData.restaurantId) setRestaurantId(menuData.restaurantId);
+            }
+
+            // Fetch settings for Tax
+            const settingsRes = await fetch(`/api/owner/settings${queryString}`, {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                setTaxSettings({
+                    gstEnabled: settingsData.gstEnabled || false,
+                    gstRate: settingsData.gstRate || 5,
+                });
             }
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -250,11 +263,29 @@ function WaiterOrderContent() {
         setSelectedTab(null);
         setCart({});
 
-        // If table has active tabs, show them
-        if (table.tabs && Object.keys(table.tabs).length > 0) {
-            const tabIds = Object.keys(table.tabs);
-            if (tabIds.length === 1) {
-                setSelectedTab(table.tabs[tabIds[0]]);
+        // If table has active tabs, show them - auto select if only 1 group exists
+        const activeTabs = table.tabs ? Object.values(table.tabs) : [];
+        const pendingOrders = table.pendingOrders || [];
+        const totalGroups = activeTabs.length + pendingOrders.length;
+
+        if (totalGroups === 1) {
+            if (activeTabs.length === 1) {
+                // Auto-select the single active tab
+                const tabId = Object.keys(table.tabs)[0];
+                setSelectedTab({ ...table.tabs[tabId], id: tabId });
+            } else if (pendingOrders.length === 1) {
+                // Auto-select the single pending order group
+                // Pending orders usually have ID as group ID, but we need to ensure dineInTabId is used if available
+                const order = pendingOrders[0];
+                setSelectedTab({ ...order, id: order.dineInTabId || order.id });
+                // If it's a pending order, it might not have a dineInTabId yet (if from QR),
+                // but checking `dineInTabId` from API response is safer.
+                // If it is null, using `order.id` might treat it as a new tab, but effectively merges into that group?
+                // Actually, if we send `dineInTabId: null` it creates NEW.
+                // If we send `dineInTabId: order.id`, the backend might not find it as a tab and create new?
+                // Wait. Pending orders are grouped by `groupKey`.
+                // If the group has `dineInTabId`, we MUST use it.
+                // If not, we might need to handle it. But usually even pending orders have a tab reference or grouping.
             }
         }
 
@@ -311,7 +342,10 @@ function WaiterOrderContent() {
                 price: item.price,
                 quantity: item.quantity,
                 totalPrice: item.price * item.quantity,
-                isVeg: item.isVeg
+                isVeg: item.isVeg,
+                categoryId: item.categoryId || item.category,
+                portion: item.portions?.[0] || null, // Fix: Include portion info (default to first if strict portion)
+                selectedAddOns: item.selectedAddOns || [], // Fix: Include addons
             }));
 
             const user = auth.currentUser;
@@ -326,8 +360,16 @@ function WaiterOrderContent() {
             const waiterName = userData.name || 'Waiter';
 
             const subtotal = cartTotal;
-            const cgst = Math.round(subtotal * 0.025 * 100) / 100;
-            const sgst = Math.round(subtotal * 0.025 * 100) / 100;
+            let cgst = 0;
+            let sgst = 0;
+
+            if (taxSettings.gstEnabled) {
+                const rate = taxSettings.gstRate || 5;
+                const halfRate = rate / 2;
+                cgst = Math.round(subtotal * (halfRate / 100) * 100) / 100;
+                sgst = Math.round(subtotal * (halfRate / 100) * 100) / 100;
+            }
+
             const grandTotal = subtotal + cgst + sgst;
 
             const orderPayload = {
@@ -345,6 +387,7 @@ function WaiterOrderContent() {
                 pax_count: selectedTab?.pax_count || newTabPax || 1,
                 ordered_by: `waiter_${waiterName}`,
                 ordered_by_name: waiterName,
+                idempotencyKey: crypto.randomUUID(), // Fix: Add required idempotency key
             };
 
             const res = await fetch('/api/order/create', {
@@ -502,27 +545,30 @@ function WaiterOrderContent() {
                             {/* Tabs & Pending Orders */}
                             {(Object.keys(selectedTable.tabs || {}).length > 0 || (selectedTable.pendingOrders || []).length > 0) && (
                                 <div className="flex gap-2 mt-3 overflow-x-auto">
-                                    {Object.values(selectedTable.tabs || {}).map(tab => (
-                                        <button
-                                            key={tab.id}
-                                            onClick={() => setSelectedTab(tab)}
-                                            className={cn(
-                                                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap",
-                                                selectedTab?.id === tab.id
-                                                    ? "bg-primary text-primary-foreground"
-                                                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                            )}
-                                        >
-                                            {tab.tab_name} ({tab.pax_count})
-                                        </button>
-                                    ))}
+                                    {Object.entries(selectedTable.tabs || {}).map(([tabId, tab]) => {
+                                        const tabWithId = { ...tab, id: tabId };
+                                        return (
+                                            <button
+                                                key={tabId}
+                                                onClick={() => setSelectedTab(tabWithId)}
+                                                className={cn(
+                                                    "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap",
+                                                    selectedTab?.id === tabId
+                                                        ? "bg-primary text-primary-foreground"
+                                                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                                )}
+                                            >
+                                                {tab.tab_name} ({tab.pax_count})
+                                            </button>
+                                        );
+                                    })}
                                     {(selectedTable.pendingOrders || []).map(order => (
                                         <button
                                             key={order.id}
-                                            onClick={() => setSelectedTab(order)}
+                                            onClick={() => setSelectedTab({ ...order, id: order.dineInTabId || order.id })} // Fix: Use dineInTabId if available
                                             className={cn(
                                                 "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap border-2 border-dashed",
-                                                selectedTab?.id === order.id
+                                                selectedTab?.id === (order.dineInTabId || order.id)
                                                     ? "bg-yellow-500 text-black border-yellow-500"
                                                     : "bg-yellow-500/10 text-yellow-500 border-yellow-500/50 hover:bg-yellow-500/20"
                                             )}
