@@ -624,7 +624,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     const batchActionConfig = {
                                                                         'confirmed': { label: 'Start Preparing', next: 'preparing', className: 'bg-orange-500 hover:bg-orange-600', icon: CookingPot },
                                                                         'preparing': { label: 'Mark Ready', next: 'ready_for_pickup', className: 'bg-green-500 hover:bg-green-600', icon: ShoppingBag },
-                                                                        'delivered': { label: 'Mark Served', next: 'delivered', className: 'bg-emerald-600 hover:bg-emerald-700', icon: Home }
+                                                                        'ready_for_pickup': { label: 'Mark Served', next: 'delivered', className: 'bg-emerald-600 hover:bg-emerald-700', icon: Home }
                                                                     };
                                                                     const batchAction = batchActionConfig[orderBatch.status];
                                                                     const ActionIcon = batchAction?.icon;
@@ -1007,7 +1007,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
                                                     {/* Payment Received -> Clean Table Button - RBAC PROTECTED */}
                                                     {/* This consolidated button appears when tab is Paid, replacing the 2-step Need Cleaning -> Clear process */}
-                                                    {(isPaid || group.needsCleaning) && (
+                                                    {(isPaid || isServed || group.needsCleaning) && (
                                                         (userRole === 'waiter' || userRole === 'owner' || userRole === 'manager') ? (
                                                             <Button
                                                                 variant="default" // Changed to default (primary) for positive action
