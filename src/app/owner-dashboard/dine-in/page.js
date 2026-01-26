@@ -1007,7 +1007,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
                                                     {/* Payment Received -> Clean Table Button - RBAC PROTECTED */}
                                                     {/* This consolidated button appears when tab is Paid, replacing the 2-step Need Cleaning -> Clear process */}
-                                                    {(isPaid || isServed || group.needsCleaning) && (
+                                                    {(isPaid || group.needsCleaning) && (
                                                         (userRole === 'waiter' || userRole === 'owner' || userRole === 'manager') ? (
                                                             <Button
                                                                 variant="default" // Changed to default (primary) for positive action
@@ -1773,10 +1773,23 @@ const DineInPageContent = () => {
                 paymentMethod
             }, '/api/owner/orders'); // Fixed: use /orders not /orders/payment-status
 
+            // 🔧 Optimistically update table state to 'needs_cleaning'
+            // This ensures the header turns Red and provides visual feedback
+            setAllData(prev => {
+                if (!prev?.tables) return prev;
+                const updatedTables = prev.tables.map(table => {
+                    if (table.id === tableId) {
+                        return { ...table, state: 'needs_cleaning' };
+                    }
+                    return table;
+                });
+                return { ...prev, tables: updatedTables };
+            });
+
             // Refetch to get updated data
             await fetchData(true);
             setButtonLoading(null);
-            setInfoDialog({ isOpen: true, title: "Success", message: "Payment marked as received." });
+            setInfoDialog({ isOpen: true, title: "Success", message: "Payment marked as received. Table marked for cleaning." });
         } catch (error) {
             setButtonLoading(null);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark as paid: ${error.message}` });
@@ -1965,10 +1978,10 @@ const DineInPageContent = () => {
                 return table?.state === 'needs_cleaning';
             }
 
-            // Special handling for "Delivered" tab - EXCLUDE paid orders (they're in Needs Cleaning)
+            // Special handling for "Delivered" tab - SHOW all delivered/served orders, even if paid
+            // This prevents them from disappearing immediately
             if (activeStatusFilter === 'Delivered') {
-                // Only show delivered orders that are NOT yet paid (not in needs_cleaning state)
-                return mainStatus === 'delivered' && table?.state !== 'needs_cleaning';
+                return mainStatus === 'delivered';
             }
 
             const filterValue = statusMapping[activeStatusFilter];
@@ -2000,17 +2013,15 @@ const DineInPageContent = () => {
                 return null;
             }
 
-            // For "Delivered" tab (Cashier) OR "Served" tab (Waiter) - filter out paid orders
+            // For "Delivered" tab (Cashier) OR "Served" tab (Waiter)
             if (activeStatusFilter === 'Delivered' || activeStatusFilter === 'Served') {
                 const deliveredPendingOrders = (table.pendingOrders || []).filter(group =>
-                    group.mainStatus === 'delivered' && !group.isPaid && group.paymentStatus !== 'paid'
+                    group.mainStatus === 'delivered'
                 );
 
                 const deliveredTabs = {};
                 Object.entries(table.tabs || {}).forEach(([key, group]) => {
-                    // Only show delivered orders that are NOT paid
-                    if ((group.mainStatus === 'delivered' || group.status === 'delivered') &&
-                        !group.isPaid && group.paymentStatus !== 'paid') {
+                    if (group.mainStatus === 'delivered' || group.status === 'delivered') {
                         deliveredTabs[key] = group;
                     }
                 });
