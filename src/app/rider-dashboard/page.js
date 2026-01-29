@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle } from 'lucide-react';
+import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle, Navigation, TrendingDown, Fuel } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, onSnapshot, collection, query, where, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { useUser } from '@/firebase';
@@ -236,6 +236,8 @@ export default function RiderDashboardPage() {
     const [actionLoading, setActionLoading] = useState(null); // 🔥 POLISH 1: Button locking
     const [gpsPermission, setGpsPermission] = useState('granted'); // 🔥 POLISH 2: GPS warning
     const [batteryLevel, setBatteryLevel] = useState(100); // 🔥 POLISH 3: Battery warning
+    const [isOptimizingRoute, setIsOptimizingRoute] = useState(false); // 🚀 TSP Route optimization
+    const [routeOptimizationResult, setRouteOptimizationResult] = useState(null); // 🚀 Optimization results
 
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
@@ -611,6 +613,164 @@ export default function RiderDashboardPage() {
         }
     }
 
+    // 🚀 NAVIGATE ALL DELIVERIES - TSP Route Optimization
+    const handleNavigateAll = async () => {
+        if (!activeOrders || activeOrders.length === 0) {
+            setInfoDialog({ isOpen: true, title: 'No Orders', message: 'No deliveries to navigate to.' });
+            return;
+        }
+
+        if (!driverData?.currentRestaurantId) {
+            setInfoDialog({ isOpen: true, title: 'No Restaurant', message: 'Not connected to any restaurant.' });
+            return;
+        }
+
+        try {
+            setIsOptimizingRoute(true);
+
+            // ✅ OPTIMIZATION: Single order = Direct navigation (no API call needed!)
+            if (activeOrders.length === 1) {
+                const order = activeOrders[0];
+
+                // Debug: Check what location data exists
+                console.log('[Navigate] Order location data:', {
+                    customerLocation: order.customerLocation,
+                    deliveryLocation: order.deliveryLocation,
+                    address: order.address
+                });
+
+                // Try multiple possible location fields
+                let lat, lng;
+
+                // Option 1: customerLocation (most common)
+                if (order.customerLocation) {
+                    lat = order.customerLocation._latitude || order.customerLocation.latitude;
+                    lng = order.customerLocation._longitude || order.customerLocation.longitude;
+                }
+
+                // Option 2: deliveryLocation
+                if (!lat && order.deliveryLocation) {
+                    lat = order.deliveryLocation._latitude || order.deliveryLocation.latitude;
+                    lng = order.deliveryLocation._longitude || order.deliveryLocation.longitude;
+                }
+
+                // Option 3: address.coordinates
+                if (!lat && order.address?.coordinates) {
+                    lat = order.address.coordinates._latitude || order.address.coordinates.latitude;
+                    lng = order.address.coordinates._longitude || order.address.coordinates.longitude;
+                }
+
+                console.log('[Navigate] Extracted coordinates:', { lat, lng });
+
+                if (!lat || !lng) {
+                    setInfoDialog({
+                        isOpen: true,
+                        title: 'Location Missing',
+                        message: `Customer location not available.\n\nPlease check order details in owner dashboard.`
+                    });
+                    setIsOptimizingRoute(false);
+                    return;
+                }
+
+                // Direct navigation for single order
+                const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+                window.open(mapsUrl, '_blank');
+
+                setInfoDialog({
+                    isOpen: true,
+                    title: '🗺️ Navigation Started!',
+                    message: `Navigate to ${order.customerName}\n💰 Cash to collect: ₹${order.totalAmount}`
+                });
+
+                setIsOptimizingRoute(false);
+                return;
+            }
+
+            // Multiple orders: Use TSP optimization API
+            const result = await handleApiCall('/api/rider/optimize-route', 'POST', {
+                orderIds: activeOrders.map(o => o.id),
+                restaurantId: driverData.currentRestaurantId
+            });
+
+            if (result.success) {
+                setRouteOptimizationResult(result);
+
+                // Open Google Maps with optimized route
+                window.open(result.googleMapsUrl, '_blank');
+
+                // Show success message with fuel savings
+                const savings = result.metrics?.fuelSavings;
+                const savingsMsg = savings && savings.moneyRupees > 0
+                    ? `\n💰 Fuel saved: ₹${savings.moneyRupees.toFixed(2)} (${savings.distanceKm.toFixed(2)} km less)`
+                    : '';
+
+                setInfoDialog({
+                    isOpen: true,
+                    title: '🗺️ Navigation Started!',
+                    message: `Optimized route for ${result.metrics.deliveryCount} deliveries${savingsMsg}\n\nFollow Google Maps for turn-by-turn directions.`
+                });
+
+                console.log('[Route Optimizer] Success:', result);
+            }
+
+        } catch (err) {
+            console.error('[Route Optimizer] Error:', err);
+
+            // ✅ FIX: Use coordinates in fallback, NOT address string!
+            if (activeOrders.length > 0) {
+                const firstOrder = activeOrders[0];
+                const lat = firstOrder.customerLocation?._latitude || firstOrder.customerLocation?.lat;
+                const lng = firstOrder.customerLocation?._longitude || firstOrder.customerLocation?.lng;
+
+                if (lat && lng) {
+                    // Build fallback URL with COORDINATES for all orders
+                    let fallbackUrl = `https://www.google.com/maps/dir/?api=1&travelmode=driving`;
+
+                    // Add all customer coordinates as waypoints
+                    const coordinates = activeOrders
+                        .map(order => {
+                            const lat = order.customerLocation?._latitude || order.customerLocation?.lat;
+                            const lng = order.customerLocation?._longitude || order.customerLocation?.lng;
+                            return lat && lng ? `${lat},${lng}` : null;
+                        })
+                        .filter(coord => coord !== null);
+
+                    if (coordinates.length > 0) {
+                        // First coordinate is destination, rest are waypoints
+                        fallbackUrl += `&destination=${coordinates[0]}`;
+
+                        if (coordinates.length > 1) {
+                            const waypoints = coordinates.slice(1).join('|');
+                            fallbackUrl += `&waypoints=${waypoints}`;
+                        }
+
+                        window.open(fallbackUrl, '_blank');
+
+                        // ✅ FIX: Don't show error if fallback succeeded!
+                        setInfoDialog({
+                            isOpen: true,
+                            title: '🗺️ Navigation Started',
+                            message: `Opening navigation for ${coordinates.length} stop(s).\n\n⚠️ Route not optimized (using original order).`
+                        });
+
+                        setIsOptimizingRoute(false);
+                        return; // Exit without showing error!
+                    }
+                }
+            }
+
+            // Only show error if fallback also failed
+            setInfoDialog({
+                isOpen: true,
+                title: 'Navigation Failed',
+                message: err.message || 'Could not start navigation. Please check order details.'
+            });
+
+        } finally {
+            setIsOptimizingRoute(false);
+        }
+    }
+
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-background"><GoldenCoinSpinner /></div>
     }
@@ -712,6 +872,77 @@ export default function RiderDashboardPage() {
                             🏪 Connected Restaurant
                         </h3>
                         <RestaurantConnectionCard restaurantId={driverData.currentRestaurantId} />
+                    </motion.div>
+                )}
+
+                {/* 🚀 NAVIGATE ALL DELIVERIES - TSP OPTIMIZED ROUTE */}
+                {activeOrders.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border border-blue-500/30 rounded-xl p-5 shadow-lg"
+                    >
+                        <div className="flex items-start justify-between mb-3">
+                            <div>
+                                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                    <Navigation className="text-blue-500" size={20} />
+                                    Navigate All Deliveries
+                                </h3>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {activeOrders.length > 1 ? 'AI-optimized route to save fuel & time' : 'Start navigation'}
+                                </p>
+                            </div>
+                            {activeOrders.length > 1 && (
+                                <div className="bg-green-500/20 px-2 py-1 rounded-full">
+                                    <Fuel className="text-green-500" size={16} />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Optimization Results (if available) */}
+                        {routeOptimizationResult && routeOptimizationResult.metrics?.fuelSavings?.moneyRupees > 0 && (
+                            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 mb-3">
+                                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                                    <TrendingDown size={16} />
+                                    <span className="font-semibold">
+                                        ₹{routeOptimizationResult.metrics.fuelSavings.moneyRupees.toFixed(2)} saved
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        ({routeOptimizationResult.metrics.fuelSavings.distanceKm.toFixed(1)} km less)
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={handleNavigateAll}
+                            disabled={isOptimizingRoute}
+                            className={cn(
+                                "w-full py-3 px-4 rounded-lg font-bold text-white transition-all",
+                                "bg-gradient-to-r from-blue-500 to-cyan-500",
+                                "hover:from-blue-600 hover:to-cyan-600",
+                                "active:scale-95",
+                                isOptimizingRoute && "opacity-50 cursor-not-allowed"
+                            )}
+                        >
+                            {isOptimizingRoute ? (
+                                <>
+                                    <Loader2 className="inline-block animate-spin mr-2" size={20} />
+                                    Optimizing Route...
+                                </>
+                            ) : (
+                                <>
+                                    <Navigation className="inline-block mr-2" size={20} />
+                                    {activeOrders.length > 1 ? `Navigate ${activeOrders.length} Stops (Optimized)` : 'Navigate to Customer'}
+                                </>
+                            )}
+                        </button>
+
+                        {activeOrders.length > 1 && (
+                            <p className="text-xs text-center text-muted-foreground mt-2">
+                                🧠 Using AI to find shortest route & save petrol
+                            </p>
+                        )}
                     </motion.div>
                 )}
 
