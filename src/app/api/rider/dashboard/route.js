@@ -20,18 +20,21 @@ export async function GET(req) {
         }
 
         const driverData = driverDoc.data();
-        
-        // --- START THE FIX: Fetch 'dispatched' AND 'on_the_way' orders ---
+
+        // ✅ STEP 4 & 5: Fetch orders in ALL delivery stages (including failures)
         const ordersQuery = firestore.collection('orders')
             .where('deliveryBoyId', '==', uid)
-            .where('status', 'in', ['dispatched', 'on_the_way']);
-        // --- END THE FIX ---
-            
+            .where('status', 'in', [
+                'dispatched', 'reached_restaurant', 'picked_up', 'on_the_way', // Normal flow
+                'delivery_attempted', 'failed_delivery' // Failure flow (exclude 'returned_to_restaurant' - order is done)
+            ]);
+        // Note: Firestore 'in' operator supports max 10 values
+
         const ordersSnapshot = await ordersQuery.get();
         const activeOrders = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
+
         console.log(`[DEBUG] /api/rider/dashboard: Successfully fetched driver data and ${activeOrders.length} active orders for UID: ${uid}`);
-        
+
         return NextResponse.json({ driver: driverData, activeOrders }, { status: 200 });
 
     } catch (error) {
@@ -48,7 +51,7 @@ export async function PATCH(req) {
         const firestore = await getFirestore();
 
         const { status, location } = await req.json();
-        
+
         if (!status && !location) {
             return NextResponse.json({ message: 'Either status or location is required.' }, { status: 400 });
         }
@@ -63,8 +66,11 @@ export async function PATCH(req) {
         if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
             console.log(`[DEBUG] /api/rider/dashboard: Updating location for UID: ${uid}`);
             updateData.currentLocation = new admin.firestore.GeoPoint(location.latitude, location.longitude);
+
+            // ✅ STEP 3A: Heartbeat timestamp for offline detection
+            updateData.lastLocationUpdate = admin.firestore.FieldValue.serverTimestamp();
         }
-        
+
         if (Object.keys(updateData).length === 0) {
             return NextResponse.json({ message: 'No valid data provided for update.' }, { status: 400 });
         }

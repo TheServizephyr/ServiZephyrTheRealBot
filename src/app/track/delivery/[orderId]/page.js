@@ -326,16 +326,41 @@ function OrderTrackingContent() {
                 {/* Scrollable Content */}
                 <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
 
+                    {/* ✅ STEP 3C: Rider Offline Warning */}
+                    {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
+                        <div className="bg-red-100 border border-red-300 text-red-700 p-4 rounded-lg mb-4 flex items-start gap-3">
+                            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                            <div>
+                                <p className="font-semibold text-sm">⚠️ Rider Network Issue</p>
+                                <p className="text-xs mt-1">Delivery partner's location hasn't updated recently. Delivery may be delayed.</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Rider Card (Only if assigned) */}
                     {orderData.deliveryBoy && (
                         <RiderCard rider={orderData.deliveryBoy} />
                     )}
 
+                    {/* ✅ STEP 7C: Distance & ETA Display */}
+                    {orderData.deliveryBoy && orderData.deliveryBoy.distanceKm !== null && orderData.deliveryBoy.eta && (
+                        <div className="bg-blue-50 border border-blue-200 text-blue-700 p-4 rounded-lg mb-4 flex items-start gap-3">
+                            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                            </svg>
+                            <div className="flex-1">
+                                <p className="font-semibold text-sm">🚴 Rider is {orderData.deliveryBoy.distanceKm} km away</p>
+                                <p className="text-xs mt-1">⏱ Estimated arrival: {orderData.deliveryBoy.eta}</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Order Status */}
                     <div className="mb-8">
                         <div className="flex justify-between items-end mb-4">
-                            <h2 className="text-lg font-bold text-gray-800">Estimated Arrival</h2>
-                            <span className="text-2xl font-black text-gray-900">25-30 <span className="text-sm font-medium text-gray-400">min</span></span>
+                            <h2 className="text-lg font-bold text-gray-800">Delivery Status</h2>
                         </div>
 
                         {/* Custom Timeline */}

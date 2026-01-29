@@ -95,8 +95,73 @@ export async function GET(request, { params }) {
             );
 
             if (driverDoc.exists) {
-                deliveryBoyData = { id: driverDoc.id, ...driverDoc.data() };
-                console.log("[API][Order Status] Delivery boy found in 'drivers' collection.");
+                const driverData = driverDoc.data();
+
+                // ✅ STEP 3B: Detect stale rider (offline detection)
+                let riderOnline = true;
+
+                if (driverData.lastLocationUpdate) {
+                    const lastUpdate = driverData.lastLocationUpdate.toDate().getTime();
+                    const now = Date.now();
+                    const diffMinutes = (now - lastUpdate) / (1000 * 60);
+
+                    if (diffMinutes > 2) { // ⚠️ 2 minutes no update = offline
+                        riderOnline = false;
+                        console.log(`[API][Order Status] Rider ${orderData.deliveryBoyId} appears offline. Last update: ${diffMinutes.toFixed(1)} min ago.`);
+                    }
+                }
+
+                // ✅ STEP 7A: Calculate distance and ETA
+                let distanceKm = null;
+                let eta = null;
+
+                if (driverData.currentLocation && orderData.customerLocation) {
+                    // Haversine formula for distance calculation
+                    const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+                        const R = 6371; // Earth radius in km
+                        const dLat = (lat2 - lat1) * Math.PI / 180;
+                        const dLon = (lon2 - lon1) * Math.PI / 180;
+
+                        const a =
+                            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                            Math.cos(lat1 * Math.PI / 180) *
+                            Math.cos(lat2 * Math.PI / 180) *
+                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                        return R * c;
+                    };
+
+                    // Extract coordinates (handle both GeoPoint and plain objects)
+                    const riderLat = driverData.currentLocation._latitude || driverData.currentLocation.latitude;
+                    const riderLng = driverData.currentLocation._longitude || driverData.currentLocation.longitude;
+                    const customerLat = orderData.customerLocation._latitude || orderData.customerLocation.latitude;
+                    const customerLng = orderData.customerLocation._longitude || orderData.customerLocation.longitude;
+
+                    if (riderLat && riderLng && customerLat && customerLng) {
+                        distanceKm = getDistanceKm(riderLat, riderLng, customerLat, customerLng);
+
+                        // ✅ STEP 7B: Smart ETA estimation
+                        const estimateETA = (dist) => {
+                            if (dist < 1) return "5–8 min";
+                            if (dist < 3) return "8–15 min";
+                            if (dist < 6) return "15–25 min";
+                            return "25+ min";
+                        };
+
+                        eta = estimateETA(distanceKm);
+                        console.log(`[API][Order Status] Distance: ${distanceKm.toFixed(2)} km, ETA: ${eta}`);
+                    }
+                }
+
+                deliveryBoyData = {
+                    id: driverDoc.id,
+                    ...driverData,
+                    isOnline: riderOnline,
+                    distanceKm: distanceKm ? parseFloat(distanceKm.toFixed(2)) : null, // ✅ STEP 7A
+                    eta: eta // ✅ STEP 7B
+                };
+                console.log(`[API][Order Status] Delivery boy found. Online: ${riderOnline}, Distance: ${distanceKm?.toFixed(2) || 'N/A'} km`);
             } else {
                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in the main 'drivers' collection.`);
             }

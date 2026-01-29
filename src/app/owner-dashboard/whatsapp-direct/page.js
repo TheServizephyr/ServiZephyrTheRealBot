@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut } from 'lucide-react';
 import Image from 'next/image';
@@ -139,7 +139,7 @@ function WhatsAppDirectPageContent() {
 
     useEffect(scrollToBottom, [messages, uploadingFile]);
 
-    const handleApiCall = async (endpoint, method = 'GET', body = null) => {
+    const handleApiCall = useCallback(async (endpoint, method = 'GET', body = null) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
@@ -166,9 +166,9 @@ function WhatsAppDirectPageContent() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'API call failed');
         return data;
-    }
+    }, [impersonatedOwnerId, employeeOfOwnerId]); // Stable reference
 
-    const fetchConversations = async (isBackgroundRefresh = false) => {
+    const fetchConversations = useCallback(async (isBackgroundRefresh = false) => {
         if (!isBackgroundRefresh) {
             setLoadingConversations(true);
         }
@@ -180,9 +180,9 @@ function WhatsAppDirectPageContent() {
         } finally {
             if (!isBackgroundRefresh) setLoadingConversations(false);
         }
-    };
+    }, [handleApiCall]); // Stable reference with handleApiCall dependency
 
-    const fetchMessages = async (conversationId) => {
+    const fetchMessages = useCallback(async (conversationId) => {
         try {
             const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId });
             setMessages(data.messages || []);
@@ -191,7 +191,7 @@ function WhatsAppDirectPageContent() {
         } finally {
             setLoadingMessages(false);
         }
-    };
+    }, [handleApiCall]); // Stable reference with handleApiCall dependency
 
     // Real-time listener for conversations
     useEffect(() => {
@@ -201,53 +201,16 @@ function WhatsAppDirectPageContent() {
             return;
         }
 
-        // For impersonation or employee access, use API
-        if (impersonatedOwnerId || employeeOfOwnerId) {
-            console.log('[WhatsApp] Using API for impersonation/employee access');
-            fetchConversations();
-            const interval = setInterval(() => fetchConversations(true), 30000);
-            return () => clearInterval(interval);
-        }
-
-        // For owner's own dashboard - use REAL-TIME listener
-        setLoadingConversations(true);
-        const ownerId = user.uid;
-
-        const conversationsQuery = query(
-            collection(db, 'whatsapp_conversations'),
-            where('restaurantId', '==', ownerId),
-            orderBy('lastMessageTimestamp', 'desc')
-        );
-
-        const unsubscribe = onSnapshot(
-            conversationsQuery,
-            (querySnapshot) => {
-                const fetchedConversations = [];
-                querySnapshot.forEach((doc) => {
-                    fetchedConversations.push({ id: doc.id, ...doc.data() });
-                });
-
-                console.log(`[WhatsApp] Real-time update: ${fetchedConversations.length} conversations`);
-                setConversations(fetchedConversations);
-                setLoadingConversations(false);
-            },
-            (error) => {
-                console.error('[WhatsApp] Firestore listener error:', error);
-                setInfoDialog({
-                    isOpen: true,
-                    title: 'Connection Error',
-                    message: 'Could not connect to WhatsApp conversations. Please refresh.'
-                });
-                setLoadingConversations(false);
-            }
-        );
-
-        // Cleanup - CRITICAL
+        // ALWAYS USE API - Cost optimization (no direct Firestore reads)
+        // Real-time listeners consume massive quota, API polling is cheaper
+        console.log('[WhatsApp] Using API polling for all users (cost optimization)');
+        fetchConversations();
+        const interval = setInterval(() => fetchConversations(true), 30000); // Poll every 30s
         return () => {
-            console.log('[WhatsApp] Cleaning up conversations listener');
-            unsubscribe();
+            console.log('[WhatsApp] Cleaning up polling interval');
+            clearInterval(interval);
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId, fetchConversations]);
+    }, [fetchConversations]);
 
     // Real-time listener for messages in active conversation
     useEffect(() => {
@@ -256,47 +219,15 @@ function WhatsAppDirectPageContent() {
             return;
         }
 
-        // For impersonation or employee access, use API polling
-        if (impersonatedOwnerId || employeeOfOwnerId) {
-            console.log('[WhatsApp] Using API polling for messages (impersonation/employee)');
-            fetchMessages(activeConversation.id);
-            const interval = setInterval(() => fetchMessages(activeConversation.id), 30000);
-            return () => clearInterval(interval);
-        }
-
-        // For owner's own dashboard - use REAL-TIME listener for messages
-        setLoadingMessages(true);
-
-        const messagesQuery = query(
-            collection(db, 'whatsapp_conversations', activeConversation.id, 'messages'),
-            orderBy('timestamp', 'asc'),
-            limit(100) // Last 100 messages
-        );
-
-        const unsubscribe = onSnapshot(
-            messagesQuery,
-            (querySnapshot) => {
-                const fetchedMessages = [];
-                querySnapshot.forEach((doc) => {
-                    fetchedMessages.push({ id: doc.id, ...doc.data() });
-                });
-
-                console.log(`[WhatsApp] Real-time messages update: ${fetchedMessages.length} messages`);
-                setMessages(fetchedMessages);
-                setLoadingMessages(false);
-            },
-            (error) => {
-                console.error('[WhatsApp] Messages listener error:', error);
-                setLoadingMessages(false);
-            }
-        );
-
-        // Cleanup - CRITICAL
+        // ALWAYS USE API - Cost optimization (no direct Firestore reads)
+        console.log('[WhatsApp] Using API polling for messages (cost optimization)');
+        fetchMessages(activeConversation.id);
+        const interval = setInterval(() => fetchMessages(activeConversation.id), 30000); // Poll every 30s
         return () => {
-            console.log('[WhatsApp] Cleaning up messages listener');
-            unsubscribe();
+            console.log('[WhatsApp] Cleaning up messages polling interval');
+            clearInterval(interval);
         };
-    }, [activeConversation, impersonatedOwnerId, employeeOfOwnerId, fetchMessages]);
+    }, [activeConversation, fetchMessages]);
 
     const handleConversationClick = async (conversation) => {
         setActiveConversation(conversation);

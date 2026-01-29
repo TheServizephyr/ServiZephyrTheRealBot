@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LayoutDashboard, Wallet, LogOut, User, Loader2 } from 'lucide-react';
@@ -42,22 +42,20 @@ function RiderLayoutContent({ children }) {
             return;
         }
 
-        const fetchRiderInfo = async () => {
-            if (user) {
-                const docRef = doc(db, 'drivers', user.uid);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    setRiderName(docSnap.data().name || user.displayName || 'Rider');
-                    setRiderImage(docSnap.data().profilePictureUrl || user.photoURL || '');
-                }
+        // ✅ FIX 1 & 2: Real-time rider info listener (auto-updates on profile changes)
+        const driverDocRef = doc(db, 'drivers', user.uid);
+
+        const unsubscribe = onSnapshot(driverDocRef, async (driverSnap) => {
+            if (driverSnap.exists()) {
+                const data = driverSnap.data();
+                setRiderName(data.name || user.displayName || 'Rider');
+                setRiderImage(data.profilePictureUrl || user.photoURL || '');
             }
-        };
+        });
 
-        if (user) {
-            fetchRiderInfo();
-        }
+        return () => unsubscribe();
 
-    }, [user, isUserLoading, router]);
+    }, [user, authChecked, router]);
 
     // Log impersonation when detected
     useEffect(() => {
@@ -84,7 +82,7 @@ function RiderLayoutContent({ children }) {
     const handleLogout = async () => {
         const { auth } = await import('@/lib/firebase');
         await auth.signOut();
-        router.push('/rider-dashboard/login');
+        router.push('/'); // Redirect to home page after logout
     };
 
     if (isUserLoading || !authChecked) {

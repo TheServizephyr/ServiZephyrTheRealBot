@@ -11,10 +11,10 @@ export async function PATCH(req) {
         if (!orderId || !newStatus) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
         }
-        
+
         const validStatuses = ['delivered', 'delivery_failed'];
         if (!validStatuses.includes(newStatus)) {
-            return NextResponse.json({ message: 'Invalid status provided for rider update.'}, { status: 400 });
+            return NextResponse.json({ message: 'Invalid status provided for rider update.' }, { status: 400 });
         }
 
         console.log(`[API update-order-status] Rider ${uid} is updating order ${orderId} to ${newStatus}`);
@@ -40,14 +40,14 @@ export async function PATCH(req) {
         const batch = firestore.batch();
 
         // 1. Update the order status
-        batch.update(orderRef, { 
+        batch.update(orderRef, {
             status: newStatus,
             statusHistory: FieldValue.arrayUnion({
                 status: newStatus,
                 timestamp: new Date()
             })
         });
-        
+
         const driverRef = firestore.collection('drivers').doc(uid);
         const businessRiderRef = firestore.collection(collectionName).doc(restaurantId).collection('deliveryBoys').doc(uid);
 
@@ -76,26 +76,24 @@ export async function PATCH(req) {
         const otherOrdersQuery = firestore.collection('orders')
             .where('deliveryBoyId', '==', uid)
             .where('status', 'in', ['on_the_way', 'dispatched']);
-            
+
         const otherOrdersSnapshot = await otherOrdersQuery.get();
 
         // Filter out the current order being updated from the snapshot
         const otherActiveOrders = otherOrdersSnapshot.docs.filter(doc => doc.id !== orderId);
 
-        // 3. If this was the last active order, set rider's status to 'online' in BOTH places
+        // 3. If this was the last active order, set rider's status back to 'online'
         if (otherActiveOrders.length === 0) {
             console.log(`[API update-order-status] This was the last delivery for rider ${uid}. Updating status to 'online'.`);
-            
-            // Update in the main 'drivers' collection
+
+            // ✅ Update ONLY in the main 'drivers' collection (Single Source of Truth)
             batch.update(driverRef, { status: 'online' });
 
-            // Update in the restaurant's 'deliveryBoys' subcollection
-            if (restaurantId) {
-                batch.update(businessRiderRef, { status: 'Available' });
-                 console.log(`[API update-order-status] Updated status in ${collectionName}/${restaurantId}/deliveryBoys`);
-            }
+            // ✅ REMOVED: Subcollection status update
+            // Rider status is now exclusively managed in drivers/{uid}.status
+            console.log(`[API update-order-status] Rider ${uid} is now available for new orders.`);
         } else {
-             console.log(`[API update-order-status] Rider ${uid} still has ${otherActiveOrders.length} active deliveries.`);
+            console.log(`[API update-order-status] Rider ${uid} still has ${otherActiveOrders.length} active deliveries.`);
         }
 
         await batch.commit();

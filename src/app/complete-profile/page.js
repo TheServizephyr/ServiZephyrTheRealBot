@@ -40,7 +40,7 @@ export default function CompleteProfile() {
     { id: 'customer', label: 'Customer', icon: User, enabled: false },
     { id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store, enabled: true },
     { id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart, enabled: false },
-    { id: 'rider', label: 'Rider', icon: Bike, enabled: false },
+    { id: 'rider', label: 'Rider', icon: Bike, enabled: true },
     { id: 'admin', label: 'Admin', icon: Shield, enabled: false }
   ];
 

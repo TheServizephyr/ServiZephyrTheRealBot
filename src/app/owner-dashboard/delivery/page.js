@@ -23,6 +23,7 @@ const StatusBadge = ({ status }) => {
         'Available': 'bg-green-500/10 text-green-400 border-green-500/20',
         'On Delivery': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
         'Inactive': 'bg-muted text-muted-foreground border-border',
+        'No Signal': 'bg-red-500/10 text-red-400 border-red-500/20', // ✅ STEP 3D: Offline detection
     };
     return (
         <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border', statusConfig[status] || statusConfig['Inactive'])}>
@@ -343,6 +344,16 @@ export default function DeliveryPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    // ✅ FIX 3: Auto-refresh delivery data every 10 seconds for real-time updates
+    useEffect(() => {
+        const interval = setInterval(() => {
+            // Silent refresh (don't show loading spinner)
+            fetchData(true);
+        }, 10000); // 10 seconds
+
+        return () => clearInterval(interval);
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleInviteRider = async (riderEmail) => {

@@ -234,7 +234,12 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Order ID(s) and new status are required.' }, { status: 400 });
         }
 
-        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up", "Ready"];
+        const validStatuses = [
+            "pending", "confirmed", "preparing", "dispatched",
+            "reached_restaurant", "picked_up", "on_the_way", // ✅ STEP 4: New pickup flow statuses
+            "delivery_attempted", "failed_delivery", "returned_to_restaurant", // ✅ STEP 5: Failure flow
+            "delivered", "rejected", "ready_for_pickup", "Ready"
+        ];
         if (!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
@@ -243,14 +248,40 @@ export async function PATCH(req) {
         let deliveryBoyData = null;
 
         if (newStatus === 'dispatched' && deliveryBoyId) {
-            console.log(`[API][PATCH /orders] Dispatch logic started for riders ${deliveryBoyId}.`);
+            console.log(`[API][PATCH /orders] Dispatch logic started for rider ${deliveryBoyId}.`);
             const businessCollectionName = businessSnap.data().businessType === 'shop' ? 'shops' : (businessSnap.data().businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
             const deliveryBoyRef = firestore.collection(businessCollectionName).doc(businessId).collection('deliveryBoys').doc(deliveryBoyId);
 
             const deliveryBoySnap = await deliveryBoyRef.get();
             if (deliveryBoySnap.exists) {
                 deliveryBoyData = deliveryBoySnap.data();
-                batch.update(deliveryBoyRef, { status: 'On Delivery' });
+
+                // ✅ STEP 6B: Check rider capacity before assignment
+                const activeOrdersQuery = firestore.collection('orders')
+                    .where('deliveryBoyId', '==', deliveryBoyId)
+                    .where('status', 'in', [
+                        'dispatched', 'reached_restaurant', 'picked_up', 'on_the_way', 'delivery_attempted'
+                    ]);
+
+                const activeOrdersSnap = await activeOrdersQuery.get();
+                const activeCount = activeOrdersSnap.size;
+
+                const MAX_ACTIVE_ORDERS = 5; // Hard safety limit
+
+                if (activeCount >= MAX_ACTIVE_ORDERS) {
+                    console.warn(`[API][PATCH /orders] Rider ${deliveryBoyId} already has ${activeCount} active orders (max: ${MAX_ACTIVE_ORDERS}).`);
+                    return NextResponse.json({
+                        message: `Rider already has ${activeCount} active deliveries (maximum: ${MAX_ACTIVE_ORDERS})`,
+                        suggestion: 'Please assign another rider or wait for current deliveries to complete',
+                        riderActiveOrders: activeCount
+                    }, { status: 400 });
+                }
+
+                console.log(`[API][PATCH /orders] Rider ${deliveryBoyId} capacity check passed (${activeCount}/${MAX_ACTIVE_ORDERS} orders).`);
+
+                // ✅ REMOVED: Status update in subcollection
+                // Rider status is now ONLY managed in drivers/{uid}.status
+                // This prevents dual-storage sync bugs
             }
         }
 

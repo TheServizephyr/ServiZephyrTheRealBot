@@ -84,24 +84,140 @@ export async function GET(req) {
                 // Merge main data, but prioritize subcollection data if it exists (e.g., historical stats)
                 finalBoyData = { ...mainDriverData, ...subCollectionData };
 
+                // ✅ STEP 6A + 9B PRO: Calculate weighted active load (status-aware)
+                const activeOrdersQuery = firestore.collection('orders')
+                    .where('deliveryBoyId', '==', subCollectionData.id)
+                    .where('status', 'in', [
+                        'dispatched', 'reached_restaurant', 'picked_up', 'on_the_way', 'delivery_attempted'
+                    ]);
+
+                const activeOrdersSnap = await activeOrdersQuery.get();
+
+                // Simple count for display
+                finalBoyData.activeOrders = activeOrdersSnap.size;
+
+                // 🔥 Weighted load for intelligent scoring
+                const calculateOrderWeight = (status) => {
+                    switch (status) {
+                        case 'dispatched': return 1;          // Just assigned
+                        case 'reached_restaurant': return 1.5; // Waiting at restaurant
+                        case 'picked_up': return 2;            // Food in bag
+                        case 'on_the_way': return 2.5;         // Actively delivering
+                        case 'delivery_attempted': return 3;   // Stuck situation
+                        default: return 1;
+                    }
+                };
+
+                // Calculate weighted load
+                let weightedLoad = 0;
+                let hasHeavyStageOrder = false;
+                const HEAVY_STATUSES = ['on_the_way', 'delivery_attempted'];
+
+                activeOrdersSnap.docs.forEach(doc => {
+                    const orderStatus = doc.data().status;
+                    weightedLoad += calculateOrderWeight(orderStatus);
+
+                    // Check if rider has orders in heavy delivery stages
+                    if (HEAVY_STATUSES.includes(orderStatus)) {
+                        hasHeavyStageOrder = true;
+                    }
+                });
+
+                finalBoyData.weightedLoad = weightedLoad;
+
+                // 🚫 HARD BLOCK: Rider out on delivery with existing load = no new assignments
+                finalBoyData.isHardBlocked = hasHeavyStageOrder && activeOrdersSnap.size >= 2;
+
+                // ✅ STEP 3D: Check for stale location (offline detection)
+                let isStale = false;
+                if (mainDriverData.lastLocationUpdate) {
+                    const lastUpdate = mainDriverData.lastLocationUpdate.toDate().getTime();
+                    const now = Date.now();
+                    const diffMinutes = (now - lastUpdate) / (1000 * 60);
+
+                    if (diffMinutes > 2) {
+                        isStale = true;
+                    }
+                }
+
                 // Map Firestore statuses ('online', 'offline', 'on-delivery') to UI statuses ('Available', 'Inactive', 'On Delivery')
-                switch (mainDriverData.status) {
-                    case 'online':
-                        finalBoyData.status = 'Available';
-                        break;
-                    case 'on-delivery':
-                        finalBoyData.status = 'On Delivery';
-                        break;
-                    case 'offline':
-                    default:
-                        finalBoyData.status = 'Inactive';
-                        break;
+                if (isStale) {
+                    // ⚠️ Override status if rider hasn't updated location in 2+ minutes
+                    finalBoyData.status = 'No Signal';
+                } else {
+                    switch (mainDriverData.status) {
+                        case 'online':
+                            finalBoyData.status = 'Available';
+                            break;
+                        case 'on-delivery':
+                            finalBoyData.status = 'On Delivery';
+                            break;
+                        case 'offline':
+                        default:
+                            finalBoyData.status = 'Inactive';
+                            break;
+                    }
                 }
             }
             return finalBoyData;
         });
 
         boys = await Promise.all(riderPromises);
+
+        // ✅ STEP 9A: Get restaurant location for distance calculation
+        const businessDoc = await firestore.collection(collectionName).doc(businessId).get();
+        const businessData = businessDoc.data();
+        const restaurantLat = businessData?.address?.latitude || businessData?.restaurantLocation?.lat || businessData?.restaurantLocation?._latitude;
+        const restaurantLng = businessData?.address?.longitude || businessData?.restaurantLocation?.lng || businessData?.restaurantLocation?._longitude;
+
+        // ✅ STEP 9A: Calculate distance to restaurant for each rider
+        const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+            const R = 6371; // Earth radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) *
+                Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+        };
+
+        // Add distance to restaurant for each rider
+        if (restaurantLat && restaurantLng) {
+            boys = boys.map(boy => {
+                if (boy.currentLocation) {
+                    const riderLat = boy.currentLocation._latitude || boy.currentLocation.latitude;
+                    const riderLng = boy.currentLocation._longitude || boy.currentLocation.longitude;
+
+                    if (riderLat && riderLng) {
+                        boy.distanceToRestaurant = getDistanceKm(restaurantLat, restaurantLng, riderLat, riderLng);
+                    }
+                }
+                return boy;
+            });
+        }
+
+        // ✅ STEP 9B: Rider scoring and smart sorting (CORRECTED for in-house riders)
+        const calculateRiderScore = (rider) => {
+            // Primary factor: WEIGHTED LOAD (considers order status progression)
+            const loadScore = (rider.weightedLoad || 0) * 3; // Main factor with weighted intelligence
+
+            // Minor factor: Distance (future-proof, but low impact for permanent riders)
+            const distanceScore = (rider.distanceToRestaurant || 0) * 0.5; // Minimal weight
+
+            // Major penalties
+            const availabilityPenalty = rider.status !== 'Available' ? 100 : 0; // Block if not available
+            const stalePenalty = rider.status === 'No Signal' ? 50 : 0; // Offline detection penalty
+
+            // 🚫 HARD BLOCK: Absolute safety - rider out on delivery with load
+            const hardBlockPenalty = rider.isHardBlocked ? 1000 : 0; // Massive penalty = effective block
+
+            return loadScore + distanceScore + availabilityPenalty + stalePenalty + hardBlockPenalty;
+        };
+
+        // Sort riders by best match (lowest score = best)
+        boys.sort((a, b) => calculateRiderScore(a) - calculateRiderScore(b));
 
         const readyOrders = readyOrdersSnap.docs.map(doc => ({
             id: doc.id,
