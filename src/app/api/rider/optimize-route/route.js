@@ -39,16 +39,44 @@ export async function POST(request) {
         }
 
         const restaurantData = restaurantDoc.data();
-        const restaurantLocation = {
-            lat: restaurantData.location?._latitude || restaurantData.location?.latitude,
-            lng: restaurantData.location?._longitude || restaurantData.location?.longitude
-        };
+        console.log('[Route Optimizer] Restaurant data keys:', Object.keys(restaurantData));
+        console.log('[Route Optimizer] Restaurant location field:', restaurantData.location);
+        console.log('[Route Optimizer] Restaurant address field:', restaurantData.address);
+        console.log('[Route Optimizer] Restaurant restaurantLocation field:', restaurantData.restaurantLocation);
 
-        console.log('[Route Optimizer] Restaurant location:', restaurantLocation);
+        // Try multiple possible location fields
+        let restaurantLocation = { lat: null, lng: null };
+
+        // Option 1: location field (GeoPoint)
+        if (restaurantData.location) {
+            restaurantLocation.lat = restaurantData.location._latitude || restaurantData.location.latitude || restaurantData.location.lat;
+            restaurantLocation.lng = restaurantData.location._longitude || restaurantData.location.longitude || restaurantData.location.lng;
+        }
+
+        // Option 2: address.latitude/longitude
+        if (!restaurantLocation.lat && restaurantData.address) {
+            restaurantLocation.lat = restaurantData.address.latitude || restaurantData.address.lat || restaurantData.address._latitude;
+            restaurantLocation.lng = restaurantData.address.longitude || restaurantData.address.lng || restaurantData.address._longitude;
+        }
+
+        // Option 3: restaurantLocation field
+        if (!restaurantLocation.lat && restaurantData.restaurantLocation) {
+            restaurantLocation.lat = restaurantData.restaurantLocation._latitude || restaurantData.restaurantLocation.latitude || restaurantData.restaurantLocation.lat;
+            restaurantLocation.lng = restaurantData.restaurantLocation._longitude || restaurantData.restaurantLocation.longitude || restaurantData.restaurantLocation.lng;
+        }
+
+        // Option 4: coordinates field
+        if (!restaurantLocation.lat && restaurantData.coordinates) {
+            restaurantLocation.lat = restaurantData.coordinates._latitude || restaurantData.coordinates.latitude || restaurantData.coordinates.lat;
+            restaurantLocation.lng = restaurantData.coordinates._longitude || restaurantData.coordinates.longitude || restaurantData.coordinates.lng;
+        }
+
+        console.log('[Route Optimizer] Extracted restaurant location:', restaurantLocation);
 
         if (!restaurantLocation.lat || !restaurantLocation.lng) {
-            console.error('[Route Optimizer] Invalid restaurant location:', restaurantData.location);
-            return Response.json({ error: 'Invalid restaurant location' }, { status: 400 });
+            console.error('[Route Optimizer] Could not extract restaurant coordinates from any field!');
+            console.error('[Route Optimizer] Available data:', JSON.stringify(restaurantData, null, 2));
+            return Response.json({ error: 'Invalid restaurant location - please update restaurant address in settings' }, { status: 400 });
         }
 
         // Fetch all orders
@@ -59,12 +87,42 @@ export async function POST(request) {
 
         const orders = orderDocs
             .filter(doc => doc.exists)
-            .map(doc => ({
-                orderId: doc.id,
-                ...doc.data()
-            }));
+            .map(doc => {
+                const data = doc.data();
+
+                // Extract coordinates from various possible fields
+                let lat, lng;
+
+                // Try customerLocation first
+                if (data.customerLocation) {
+                    lat = data.customerLocation._latitude || data.customerLocation.latitude || data.customerLocation.lat;
+                    lng = data.customerLocation._longitude || data.customerLocation.longitude || data.customerLocation.lng;
+                }
+
+                // Fallback to deliveryLocation
+                if (!lat && data.deliveryLocation) {
+                    lat = data.deliveryLocation._latitude || data.deliveryLocation.latitude;
+                    lng = data.deliveryLocation._longitude || data.deliveryLocation.longitude;
+                }
+
+                // Fallback to address.coordinates
+                if (!lat && data.address?.coordinates) {
+                    lat = data.address.coordinates._latitude || data.address.coordinates.latitude;
+                    lng = data.address.coordinates._longitude || data.address.coordinates.longitude;
+                }
+
+                return {
+                    orderId: doc.id,
+                    ...data,
+                    // Add flat lat/lng for optimizer
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lng)
+                };
+            })
+            .filter(order => !isNaN(order.lat) && !isNaN(order.lng)); // Filter out orders with invalid coordinates
 
         console.log('[Route Optimizer] Orders fetched:', orders.length);
+        console.log('[Route Optimizer] Sample order coords:', orders[0] ? { lat: orders[0].lat, lng: orders[0].lng } : 'none');
 
         if (orders.length === 0) {
             console.error('[Route Optimizer] No valid orders found for IDs:', orderIds);

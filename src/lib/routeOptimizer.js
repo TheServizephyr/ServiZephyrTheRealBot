@@ -199,8 +199,8 @@ function greedyRouteOptimization(restaurant, customers) {
                 const dist = haversineDistance(
                     currentLocation.lat,
                     currentLocation.lng,
-                    customer.customerLocation._latitude || customer.customerLocation.lat,
-                    customer.customerLocation._longitude || customer.customerLocation.lng
+                    customer.lat,
+                    customer.lng
                 );
 
                 if (dist < nearestDistance) {
@@ -216,8 +216,8 @@ function greedyRouteOptimization(restaurant, customers) {
             visitedSet.add(nearestIndex);
             totalDistance += nearestDistance;
             currentLocation = {
-                lat: nearestCustomer.customerLocation._latitude || nearestCustomer.customerLocation.lat,
-                lng: nearestCustomer.customerLocation._longitude || nearestCustomer.customerLocation.lng
+                lat: nearestCustomer.lat,
+                lng: nearestCustomer.lng
             };
         }
     }
@@ -256,17 +256,15 @@ export function formatRouteForGoogleMaps(optimizedRoute) {
     const destination = optimizedRoute[0];
     const waypoints = optimizedRoute.slice(1);
 
-    const destLat = destination.customerLocation._latitude || destination.customerLocation.lat;
-    const destLng = destination.customerLocation._longitude || destination.customerLocation.lng;
+    const destLat = destination.lat;
+    const destLng = destination.lng;
 
     let url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
 
     if (waypoints.length > 0) {
         const waypointStr = waypoints
             .map(order => {
-                const lat = order.customerLocation._latitude || order.customerLocation.lat;
-                const lng = order.customerLocation._longitude || order.customerLocation.lng;
-                return `${lat},${lng}`;
+                return `${order.lat},${order.lng}`;
             })
             .join('|');
 

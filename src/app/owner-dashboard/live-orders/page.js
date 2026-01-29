@@ -215,6 +215,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
 
     const selectedRider = useMemo(() => riders.find(r => r.id === selectedRiderId), [selectedRiderId, riders]);
     const isSelectedRiderInactive = selectedRider?.status === 'Inactive';
+    const isSelectedRiderBusy = selectedRider?.status === 'On Delivery' || selectedRider?.status === 'on-delivery';
 
     useEffect(() => {
         if (isOpen) {
@@ -318,9 +319,36 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
                         />
                     </motion.div>
                 )}
+
+                {isSelectedRiderBusy && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-lg"
+                    >
+                        <div className="flex items-start gap-3">
+                            <div className="bg-yellow-500/20 p-2 rounded-full">
+                                <svg className="w-5 h-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <div className="flex-1">
+                                <Label className="font-semibold text-yellow-700">⚠️ Rider Currently Busy</Label>
+                                <p className="text-sm text-yellow-600/90 mt-1">
+                                    This rider is already on delivery and cannot be assigned new orders.
+                                    Please wait for them to complete their current delivery or choose another rider.
+                                </p>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                    <Button onClick={handleAssign} disabled={!selectedRiderId || selectedOrderIds.length === 0 || (isSelectedRiderInactive && !markAsActive) || isSubmitting} className="bg-primary hover:bg-primary/90">
+                    <Button
+                        onClick={handleAssign}
+                        disabled={!selectedRiderId || selectedOrderIds.length === 0 || (isSelectedRiderInactive && !markAsActive) || isSelectedRiderBusy || isSubmitting}
+                        className="bg-primary hover:bg-primary/90"
+                    >
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bike size={16} className="mr-2" />}
                         {isSubmitting ? 'Assigning...' : 'Assign & Dispatch'}
                     </Button>
