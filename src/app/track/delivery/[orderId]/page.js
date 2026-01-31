@@ -312,13 +312,13 @@ function OrderTrackingContent() {
     };
 
     return (
-        <div className="h-screen w-full flex flex-col bg-gradient-to-br from-indigo-50 via-white to-purple-50 overflow-hidden font-sans">
+        <div className="h-[100dvh] w-full flex flex-col bg-gradient-to-br from-indigo-50 via-white to-purple-50 overflow-hidden font-sans">
             {/* MAIN SCROLLABLE AREA */}
-            <div className={`flex-1 overflow-y-auto ${isMapExpanded ? 'overflow-hidden' : ''}`}> {/* Allow page scroll */}
+            <div className={`flex-1 overflow-y-auto overflow-x-hidden w-full ${isMapExpanded ? 'overflow-hidden' : ''}`}> {/* Allow page scroll */}
                 
                 {/* HEADER INFO */}
                 {!isMapExpanded && (
-                    <div className="px-5 pt-6 pb-2 flex justify-between items-start bg-transparent z-20">
+                    <div className="w-full px-5 pt-6 pb-2 flex justify-between items-start bg-transparent z-20">
                         <div>
                             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderId.slice(0, 8)}</p>
                             <h1 className="text-2xl font-black text-gray-900 leading-tight">{orderData.restaurant.name}</h1>
@@ -330,9 +330,8 @@ function OrderTrackingContent() {
                 )}
 
                 {/* MAP SECTION */}
-                <motion.div 
-                    layout
-                    className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-screen z-50' : 'h-[40vh] px-4 py-2'}`}
+                <div 
+                    className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-[100dvh] z-50' : 'h-[40vh] px-4 py-2'}`}
                 >
                     <div className={`relative w-full h-full overflow-hidden shadow-2xl border-4 border-white ring-1 ring-gray-200 ${isMapExpanded ? '' : 'rounded-3xl'}`}>
                         <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2">
@@ -365,11 +364,11 @@ function OrderTrackingContent() {
                             </div>
                         )}
                     </div>
-                </motion.div>
+                </div>
 
                 {/* DETAILS SECTION - Scrolls with the page */}
                 {!isMapExpanded && (
-                    <div className="px-4 pb-32 pt-2">
+                    <div className="w-full px-4 pb-32 pt-2">
                         
                         {/* RIDER OFFLINE WARNING */}
                         {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
