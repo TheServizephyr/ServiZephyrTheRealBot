@@ -1,13 +1,14 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle, Navigation, TrendingDown, Fuel } from 'lucide-react';
-import { auth, db } from '@/lib/firebase';
+import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle, Navigation, TrendingDown, Fuel, DollarSign, CreditCard } from 'lucide-react';
+import { auth, db, rtdb } from '@/lib/firebase';
 import { doc, onSnapshot, collection, query, where, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { ref, set, serverTimestamp, remove } from 'firebase/database'; // ✅ RTDB for location tracking
 import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { optimizeDeliveryRoute, formatRouteForGoogleMaps } from '@/lib/routeOptimizer';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
@@ -39,102 +41,74 @@ const InvitationCard = ({ invite, onAccept, onDecline }) => {
     )
 }
 
-// 🏪 Restaurant Connection Card Component
-const RestaurantConnectionCard = ({ restaurantId }) => {
-    const [restaurant, setRestaurant] = useState(null);
-    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchRestaurant = async () => {
-            try {
-                // Try restaurants collection first
-                let docRef = doc(db, 'restaurants', restaurantId);
-                let docSnap = await getDoc(docRef);
 
-                if (!docSnap.exists()) {
-                    // Try shops collection
-                    docRef = doc(db, 'shops', restaurantId);
-                    docSnap = await getDoc(docRef);
-                }
+// 🎨 PREMIUM DELIVERY CARD - Modern Gradients, 3D Effects, Sequence Badges
+const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading, sequenceNumber, paymentQRCode, onShowQR, onShowInfo }) => {
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-                if (docSnap.exists()) {
-                    setRestaurant({ id: docSnap.id, ...docSnap.data() });
-                }
-            } catch (err) {
-                console.error('[Restaurant Card] Fetch error:', err);
-            } finally {
-                setLoading(false);
-            }
-        };
+    const handleMarkPaid = async (method) => {
+        try {
+            // Specific API call for payment status with method
+            const response = await fetch('/api/rider/update-payment-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${auth.currentUser?.accessToken || await auth.currentUser?.getIdToken()}` },
+                body: JSON.stringify({ orderId: order.id, paymentStatus: 'paid', paymentMethod: method })
+            });
+            if (!response.ok) throw new Error("Update failed");
 
-        if (restaurantId) {
-            fetchRestaurant();
+            // Close modal
+            setShowPaymentModal(false);
+
+            // Show success dialog
+            onShowInfo && onShowInfo({
+                isOpen: true,
+                title: 'Success',
+                message: `Marked as Paid via ${method === 'cash' ? 'Cash' : 'Online'}!`,
+                type: 'success'
+            });
+
+        } catch (e) {
+            onShowInfo && onShowInfo({
+                isOpen: true,
+                title: 'Error',
+                message: "Failed to mark paid: " + e.message,
+                type: 'error'
+            });
         }
-    }, [restaurantId]);
+    };
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-4">
-                <Loader2 className="animate-spin text-primary" size={24} />
-            </div>
-        );
-    }
-
-    if (!restaurant) {
-        return <p className="text-sm text-muted-foreground text-center">Restaurant not found</p>;
-    }
-
-    return (
-        <div className="space-y-3">
-            <div className="flex items-start gap-3">
-                <div className="bg-primary/20 p-3 rounded-full">
-                    <ShoppingBag className="text-primary" size={20} />
-                </div>
-                <div className="flex-1">
-                    <h4 className="text-lg font-bold text-foreground">{restaurant.name}</h4>
-                    {restaurant.address && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                            📍 {restaurant.address.street}, {restaurant.address.city}
-                        </p>
-                    )}
-                    {restaurant.ownerPhone && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                            📞 {restaurant.ownerPhone}
-                        </p>
-                    )}
-                </div>
-                <div className="bg-green-500/20 px-3 py-1 rounded-full">
-                    <span className="text-xs font-bold text-green-400">✓ Active</span>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// 🔥 PHASE 2 & 3: Action-First Delivery Card with Status Flow Buttons
-const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading }) => {
     const getStatusConfig = (status) => {
         switch (status) {
+            case 'ready_for_pickup': // ✅ NEW FLOW START
+                return { button: 'MARK OUT FOR DELIVERY', gradient: 'from-blue-600 to-indigo-600', icon: '🚀' };
             case 'dispatched':
-                return { button: 'REACHED RESTAURANT', color: 'bg-orange-500', icon: '🏪' };
+                return { button: 'REACHED RESTAURANT', gradient: 'from-orange-500 to-orange-600', icon: '🏪' };
             case 'reached_restaurant':
-                return { button: 'FOOD COLLECTED', color: 'bg-yellow-500', icon: '📦' };
-            case 'picked_up':
-                return { button: 'START DELIVERY', color: 'bg-blue-500', icon: '🚀' };
+                return { button: 'FOOD COLLECTED', gradient: 'from-amber-500 to-amber-600', icon: '📦' };
+            case 'picked_up': // Legacy/Alternative flow
+                return { button: 'START DELIVERY', gradient: 'from-blue-500 to-indigo-600', icon: '🚀' };
             case 'on_the_way':
-                return { button: 'MARK DELIVERED', color: 'bg-green-500', icon: '✅' };
+                return { button: '📍 REACHED LOCATION', gradient: 'from-purple-500 to-purple-600', icon: '📍' };
+            case 'rider_arrived':
+                return { button: '✅ MARK DELIVERED', gradient: 'from-green-500 to-emerald-600', icon: '✅' };
             case 'delivery_attempted':
-                return { button: 'MARK FAILED', color: 'bg-red-500', icon: '❌' };
+                return { button: 'MARK FAILED', gradient: 'from-red-500 to-red-600', icon: '❌' };
             case 'failed_delivery':
-                return { button: 'RETURNED TO RESTAURANT', color: 'bg-gray-500', icon: '🔄' };
+                return { button: 'RETURNED TO RESTAURANT', gradient: 'from-gray-500 to-gray-600', icon: '🔄' };
             default:
-                return { button: 'UPDATE STATUS', color: 'bg-primary', icon: '📋' };
+                return { button: 'UPDATE STATUS', gradient: 'from-purple-500 to-purple-600', icon: '📋' };
         }
     };
 
     const config = getStatusConfig(order.status);
     const lat = order.customerLocation?._latitude || order.customerLocation?.latitude;
     const lng = order.customerLocation?._longitude || order.customerLocation?.longitude;
+
+    // Generate Google Maps URL for this individual order
+    const mapsUrl = lat && lng
+        ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`
+        : null;
 
     return (
         <motion.div
@@ -143,79 +117,228 @@ const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading }) => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8 }}
             className={cn(
-                "rounded-xl p-4 sm:p-5 border-2 shadow-lg w-full break-words",
-                isPrimary ? "bg-gradient-to-br from-blue-500/20 to-purple-500/20 border-blue-500" : "bg-card border-border"
+                "relative rounded-2xl p-5 sm:p-6 w-full break-words transition-all duration-300",
+                "shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)]",
+                "hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.2),0_10px_15px_-8px_rgba(0,0,0,0.15)]",
+                "hover:-translate-y-1",
+                isPrimary
+                    ? "bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border-2 border-blue-400"
+                    : "bg-card border-2 border-border"
             )}
         >
-            {/* PHASE 7: Priority Badge */}
-            {isPrimary && (
-                <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl">⭐</span>
-                    <span className="text-lg font-black text-yellow-400">DELIVER FIRST</span>
+            {/* 🔢 DELIVERY SEQUENCE BADGE */}
+            {sequenceNumber && (
+                <div className="absolute -top-3 -right-3 z-10">
+                    <div className={cn(
+                        "w-14 h-14 rounded-full flex items-center justify-center text-white font-black text-lg",
+                        "shadow-lg transform transition-transform hover:scale-110",
+                        sequenceNumber === 1
+                            ? "bg-gradient-to-br from-yellow-400 to-amber-500"
+                            : sequenceNumber === 2
+                                ? "bg-gradient-to-br from-gray-300 to-gray-400"
+                                : "bg-gradient-to-br from-orange-400 to-orange-500"
+                    )}>
+                        {sequenceNumber === 1 ? '1st' : sequenceNumber === 2 ? '2nd' : sequenceNumber === 3 ? '3rd' : `${sequenceNumber}th`}
+                    </div>
                 </div>
             )}
 
-            {/* Customer Info */}
+            {/* ⭐ PRIORITY BADGE */}
+            {isPrimary && (
+                <div className="flex items-center gap-2 mb-4 bg-gradient-to-r from-yellow-400/20 to-amber-400/20 rounded-lg p-3 border border-yellow-400/50">
+                    <span className="text-2xl">⭐</span>
+                    <span className="text-lg font-black bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">DELIVER FIRST</span>
+                </div>
+            )}
+
+            {/* 👤 CUSTOMER INFO */}
             <div className="mb-4 min-w-0">
-                <p className="text-sm text-muted-foreground mb-1">👤 Customer</p>
-                <h3 className="text-xl sm:text-2xl font-bold text-foreground break-words">{order.customerName || 'Unknown'}</h3>
-                <p className="text-xs sm:text-sm text-muted-foreground mt-2 break-words whitespace-normal">📍 {order.customerAddress || 'Address not available'}</p>
+                <p className="text-sm text-muted-foreground mb-1 font-medium">👤 Customer</p>
+                <h3 className="text-2xl sm:text-3xl font-bold text-foreground break-words">{order.customerName || 'Unknown'}</h3>
+                <p className="text-sm text-muted-foreground mt-2 break-words whitespace-normal flex items-start gap-1">
+                    <span>📍</span>
+                    <span>{order.customerAddress || 'Address not available'}</span>
+                </p>
             </div>
 
-            {/* PHASE 4: COD Visibility */}
-            <div className={cn(
-                "p-4 rounded-lg mb-4 text-center",
-                order.paymentMethod === 'cod' ? "bg-green-100 border-2 border-green-500" : "bg-blue-100 border-2 border-blue-500"
-            )}>
-                {order.paymentMethod === 'cod' ? (
-                    <>
-                        <p className="text-3xl font-black text-green-700">💵 COLLECT CASH</p>
-                        <p className="text-4xl font-black text-green-800 mt-1">₹{order.totalAmount?.toFixed(2) || '0'}</p>
-                    </>
-                ) : (
-                    <p className="text-2xl font-bold text-blue-700">✅ PAID ONLINE</p>
-                )}
-            </div>
+            {/* 💰 PAYMENT ACTIONS - Visible ONLY after 'Reached Location' (rider_arrived) */}
+            {order.status === 'rider_arrived' && (
+                <div className={cn(
+                    "p-4 rounded-xl mb-4 text-center transition-all duration-300",
+                    "shadow-inner bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 border-2 border-blue-400"
+                )}>
+                    {order.paymentMethod === 'cod' ? (
+                        <>
+                            <p className="text-2xl font-black bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">💵 COLLECT CASH</p>
+                            <p className="text-4xl font-black bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent mt-1">
+                                ₹{order.totalAmount?.toFixed(2) || '0'}
+                            </p>
+                        </>
+                    ) : (
+                        <p className="text-sm font-bold text-muted-foreground mb-2">PAYMENT PENDING</p>
+                    )}
 
-            {/* PHASE 5: Call Button */}
+                    {/* QR Code & Mark Paid Actions (For BOTH COD and Online) */}
+                    <div className="flex gap-2 justify-center mt-3">
+                        {paymentQRCode && (
+                            <button
+                                onClick={() => onShowQR(paymentQRCode)}
+                                className="flex-1 bg-white hover:bg-gray-100 text-foreground border border-border font-bold py-2 px-3 rounded-lg shadow-sm transition-all"
+                            >
+                                📲 Show QR
+                            </button>
+                        )}
+
+                        {/* MARK PAID BUTTON - Only visible if NOT paid yet */}
+                        {order.paymentStatus !== 'paid' ? (
+                            <>
+                                <button
+                                    onClick={() => setShowPaymentModal(true)}
+                                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-2 px-3 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:scale-95"
+                                >
+                                    ✅ Mark Paid
+                                </button>
+
+                                {/* PAYMENT SELECTION MODAL */}
+                                <AnimatePresence>
+                                    {showPaymentModal && (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowPaymentModal(false)}>
+                                            <motion.div
+                                                initial={{ scale: 0.9, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                exit={{ scale: 0.9, opacity: 0 }}
+                                                className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+                                                onClick={e => e.stopPropagation()}
+                                            >
+                                                <h3 className="text-xl font-black text-gray-800 mb-4 text-center">Select Payment Method</h3>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <button
+                                                        onClick={() => handleMarkPaid('online')}
+                                                        className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition-all active:scale-95"
+                                                    >
+                                                        <CreditCard size={32} />
+                                                        <span className="font-bold">Online Pay</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleMarkPaid('cash')}
+                                                        className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 border-green-100 bg-green-50 text-green-700 hover:bg-green-100 hover:border-green-300 transition-all active:scale-95"
+                                                    >
+                                                        <DollarSign size={32} />
+                                                        <span className="font-bold">Cash</span>
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    onClick={() => setShowPaymentModal(false)}
+                                                    className="mt-6 w-full py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </motion.div>
+                                        </div>
+                                    )}
+                                </AnimatePresence>
+                            </>
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center bg-green-100 text-green-800 font-bold py-2 px-3 rounded-lg border border-green-200">
+                                <CheckCircle size={16} className="mr-2" />
+                                {order.paymentMethod === 'cash' ? 'Paid (Cash)' : 'Paid (Online)'}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* 📞 CALL BUTTON - Gradient Style */}
             {order.customerPhone && (
                 <a
                     href={`tel:${order.customerPhone}`}
-                    className="block w-full h-14 bg-green-600 hover:bg-green-700 text-white rounded-xl mb-3 flex items-center justify-center text-lg font-bold"
+                    className={cn(
+                        "block w-full h-14 rounded-xl mb-3 flex items-center justify-center text-lg font-bold",
+                        "bg-gradient-to-r from-green-500 to-emerald-600 text-white",
+                        "shadow-md hover:shadow-lg",
+                        "transform transition-all duration-200 hover:-translate-y-0.5 active:scale-95"
+                    )}
                 >
-                    📞 Call Customer: {order.customerPhone}
+                    📞 Call: {order.customerPhone}
                 </a>
             )}
 
-            {/* PHASE 6: Track Delivery Page (Rider's Internal Map View) */}
-            <Link
-                href="/rider-dashboard/track"
-                className="block w-full h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-xl mb-3 flex items-center justify-center text-lg font-bold"
-            >
-                🗺️ View Map & Navigate
-            </Link>
+            {/* 🗺️ GOOGLE MAPS NAVIGATION - Individual Order */}
+            {mapsUrl && (
+                <button
+                    onClick={() => window.open(mapsUrl, '_blank')}
+                    className={cn(
+                        "block w-full h-14 rounded-xl mb-3 flex items-center justify-center text-lg font-bold",
+                        "bg-gradient-to-r from-blue-500 to-indigo-600 text-white",
+                        "shadow-md hover:shadow-lg",
+                        "transform transition-all duration-200 hover:-translate-y-0.5 active:scale-95"
+                    )}
+                >
+                    🗺️ Navigate to Customer
+                </button>
+            )}
 
-            {/* PHASE 3 & 9: Status Action Button (Large, One-Hand Friendly) + POLISH 1: Loading State */}
-            <button
-                onClick={() => onStatusAction(order.id, order.status)}
-                disabled={isLoading}
-                className={cn(
-                    "w-full h-16 rounded-xl text-white text-xl font-black transition-all",
-                    config.color,
-                    isLoading ? "opacity-50 cursor-not-allowed" : "hover:opacity-90 active:scale-95"
+            {/* ⚡ STATUS ACTION BUTTON - Premium Gradient */}
+            <div className="relative">
+                {/* DISABLED OVERLAY for Delivered Action if Pending Payment */}
+                {config.button === '✅ MARK DELIVERED' && order.paymentStatus !== 'paid' && (
+                    <div
+                        className="absolute inset-0 z-10 cursor-not-allowed flex items-center justify-center"
+                        onClick={() => onShowInfo && onShowInfo({
+                            isOpen: true,
+                            title: 'Action Restricted',
+                            message: 'Please MARK PAID first before completing the delivery!',
+                            type: 'warning' // Using warning type for yellow/orange feel or default
+                        })}
+                    >
+                    </div>
                 )}
-            >
-                {isLoading ? (
-                    <>
-                        <Loader2 className="inline-block animate-spin mr-2" size={24} />
-                        Loading...
-                    </>
-                ) : (
-                    <>{config.icon} {config.button}</>
-                )}
-            </button>
 
-            <p className="text-xs text-center text-muted-foreground mt-2">Order #{order.id?.substring(0, 8)}</p>
+                <button
+                    onClick={() => onStatusAction(order.id, order.status)}
+                    disabled={isLoading || (config.button === '✅ MARK DELIVERED' && order.paymentStatus !== 'paid')}
+                    className={cn(
+                        "w-full h-16 rounded-xl text-white text-xl font-black",
+                        "bg-gradient-to-r", config.gradient,
+                        "shadow-lg hover:shadow-xl",
+                        "transform transition-all duration-200",
+                        isLoading || (config.button === '✅ MARK DELIVERED' && order.paymentStatus !== 'paid')
+                            ? "opacity-50 grayscale cursor-not-allowed"
+                            : "hover:-translate-y-0.5 active:scale-95"
+                    )}
+                >
+                    {isLoading ? (
+                        <>
+                            <Loader2 className="inline-block animate-spin mr-2" size={24} />
+                            Loading...
+                        </>
+                    ) : (
+                        <>{config.icon} {config.button}</>
+                    )}
+                </button>
+            </div>
+
+            {/* ↩️ UNDO BUTTONS for Simplified Flow */}
+            {order.status === 'on_the_way' && (
+                <button
+                    onClick={() => onStatusAction(order.id, 'undo_on_the_way')}
+                    disabled={isLoading}
+                    className="w-full mt-3 h-12 rounded-xl text-muted-foreground text-sm font-bold border-2 border-dashed border-muted hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                    ↩️ UNDO (Back to Pickup)
+                </button>
+            )}
+            {order.status === 'rider_arrived' && (
+                <button
+                    onClick={() => onStatusAction(order.id, 'undo_rider_arrived')}
+                    disabled={isLoading || order.paymentStatus === 'paid'} // Disable undo if already paid/delivered logic engaged? No, allow undo to fix mistake.
+                    className="w-full mt-3 h-12 rounded-xl text-muted-foreground text-sm font-bold border-2 border-dashed border-muted hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                    ↩️ UNDO (Back to On Way)
+                </button>
+            )}
+
+            <p className="text-xs text-center text-muted-foreground mt-3 font-medium">Order #{order.id?.substring(0, 8)}</p>
         </motion.div>
     );
 };
@@ -231,13 +354,16 @@ export default function RiderDashboardPage() {
     const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [restaurantData, setRestaurantData] = useState(null); // ✅ Store full restaurant data
     const [isRestaurantActive, setIsRestaurantActive] = useState(false);
+    const [qrModalOpen, setQrModalOpen] = useState(false); // ✅ QR Modal State
     const [isOnline, setIsOnline] = useState(true); // ✅ STEP 8C: Network status
     const [actionLoading, setActionLoading] = useState(null); // 🔥 POLISH 1: Button locking
     const [gpsPermission, setGpsPermission] = useState('granted'); // 🔥 POLISH 2: GPS warning
     const [batteryLevel, setBatteryLevel] = useState(100); // 🔥 POLISH 3: Battery warning
     const [isOptimizingRoute, setIsOptimizingRoute] = useState(false); // 🚀 TSP Route optimization
     const [routeOptimizationResult, setRouteOptimizationResult] = useState(null); // 🚀 Optimization results
+    const [optimizedRouteData, setOptimizedRouteData] = useState(null); // 🎯 API-optimized route for dashboard
 
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
@@ -273,11 +399,25 @@ export default function RiderDashboardPage() {
                     });
                 });
 
-                const { latitude, longitude } = position.coords;
-                await handleApiCall('/api/rider/dashboard', 'PATCH', {
-                    location: { latitude, longitude }
+                const { latitude, longitude, speed, heading, accuracy } = position.coords;
+
+                // ✅ Get current active order (first in queue or currently delivering)
+                const currentOrderId = activeOrders.length > 0 ? activeOrders[0].id : null;
+
+                // ✅ WRITE TO RTDB (Cheap, fast, real-time!)
+                const locationRef = ref(rtdb, `rider_locations/${user.uid}`);
+                await set(locationRef, {
+                    latitude,
+                    longitude,
+                    speed: speed || 0,
+                    bearing: heading || 0,
+                    accuracy: accuracy || 10,
+                    timestamp: Date.now(),
+                    orderId: currentOrderId, // ✅ Multi-order support
+                    isOnline: true
                 });
-                console.log('[GPS] Location sent successfully');
+
+                console.log('[RTDB] Location updated', currentOrderId ? `(Order: ${currentOrderId.substring(0, 8)})` : '(No active order)');
 
             } catch (err) {
                 console.warn('[GPS] Failed, retrying in 5s:', err.message);
@@ -288,14 +428,26 @@ export default function RiderDashboardPage() {
 
         if (driverData?.status === 'online' || driverData?.status === 'on-delivery') {
             sendLocation(); // Send immediately on mount
-            locationInterval = setInterval(sendLocation, 20000);
+            locationInterval = setInterval(sendLocation, 10000); // ✅ 10s with RTDB is cheap!
         }
 
         return () => {
             if (locationInterval) clearInterval(locationInterval);
             if (retryTimeout) clearTimeout(retryTimeout);
         };
-    }, [driverData?.status, handleApiCall]);
+    }, [driverData?.status, handleApiCall, user, activeOrders]);
+
+    // ✅ SEPARATE CLEANUP: Remove RTDB location when going offline
+    useEffect(() => {
+        if (driverData?.status === 'offline' && user?.uid) {
+            const locationRef = ref(rtdb, `rider_locations/${user.uid}`);
+            remove(locationRef).then(() => {
+                console.log('[RTDB] Location removed (rider offline)');
+            }).catch((err) => {
+                console.error('[RTDB] Cleanup failed:', err);
+            });
+        }
+    }, [driverData?.status, user?.uid]);
 
     // ✅ STEP 8B: Screen Wake Lock
     useEffect(() => {
@@ -427,10 +579,11 @@ export default function RiderDashboardPage() {
         }
     }, [activeOrders.length]);
 
-    // Helper: One-time restaurant active check (not a listener!)
-    const checkRestaurantActive = useCallback(async (restaurantId) => {
+    // Helper: One-time restaurant data fetch (checks active status + gets settings like QR)
+    const fetchRestaurantData = useCallback(async (restaurantId) => {
         if (!restaurantId) {
             setIsRestaurantActive(false);
+            setRestaurantData(null);
             return;
         }
 
@@ -439,12 +592,49 @@ export default function RiderDashboardPage() {
                 getDoc(doc(db, 'restaurants', restaurantId)),
                 getDoc(doc(db, 'shops', restaurantId))
             ]);
-            setIsRestaurantActive(restSnap.exists() || shopSnap.exists());
+
+            let restData = null;
+            let finalCollectionName = 'restaurants';
+
+            if (restSnap.exists()) {
+                restData = restSnap.data();
+                finalCollectionName = 'restaurants';
+            } else if (shopSnap.exists()) {
+                restData = shopSnap.data();
+                finalCollectionName = 'shops';
+            }
+
+            if (restData) {
+                // ✅ FETCH SPECIFIC RIDER DATA (QR Code) from the restaurant's subcollection
+                if (user?.uid) {
+                    try {
+                        const riderSubRef = doc(db, finalCollectionName, restaurantId, 'deliveryBoys', user.uid);
+                        const riderSubSnap = await getDoc(riderSubRef);
+
+                        // Per-Rider QR Logic
+                        if (riderSubSnap.exists() && riderSubSnap.data().paymentQRCode) {
+                            restData = { ...restData, paymentQRCode: riderSubSnap.data().paymentQRCode };
+                        } else {
+                            // User Requirement: "alag alag qr". If removal needed, we set null.
+                            restData.paymentQRCode = null;
+                        }
+                    } catch (subErr) {
+                        console.error("Error fetching rider specific details:", subErr);
+                        restData.paymentQRCode = null;
+                    }
+                }
+
+                setIsRestaurantActive(true);
+                setRestaurantData(restData);
+            } else {
+                setIsRestaurantActive(false);
+                setRestaurantData(null);
+            }
         } catch (error) {
-            console.error('[RiderDash] Restaurant check error:', error);
+            console.error('[RiderDash] Restaurant fetch error:', error);
             setIsRestaurantActive(false);
         }
-    }, []);
+    }, [user?.uid]);
 
     // Helper: One-time invites fetch (not a listener!)
     const fetchInvitesOnce = useCallback(async (userId) => {
@@ -461,7 +651,7 @@ export default function RiderDashboardPage() {
     useEffect(() => {
         if (isUserLoading) return;
         if (!user) {
-            router.push('/rider-dashboard/login');
+            router.push('/rider-auth');
             return;
         }
 
@@ -476,9 +666,9 @@ export default function RiderDashboardPage() {
                     setDriverData(data);
                     setError('');
 
-                    // One-time restaurant check (not a listener!)
+                    // One-time restaurant data fetch
                     if (data.currentRestaurantId) {
-                        checkRestaurantActive(data.currentRestaurantId);
+                        fetchRestaurantData(data.currentRestaurantId);
                     } else {
                         setIsRestaurantActive(false);
                     }
@@ -497,13 +687,14 @@ export default function RiderDashboardPage() {
         unsubscribes.push(unsubscribeDriver);
 
         // LISTENER 2: Active orders (critical real-time data)
-        // ✅ Include all statuses from Steps 4-5 pickup and failure flows
+        // ✅ Include all statuses from dispatch to delivery (except completed)
         const ordersQuery = query(
             collection(db, "orders"),
             where("deliveryBoyId", "==", user.uid),
             where("status", "in", [
+                "ready_for_pickup", // ✅ ADDED THIS
                 "dispatched", "reached_restaurant", "picked_up",
-                "on_the_way", "delivery_attempted", "failed_delivery"
+                "on_the_way", "rider_arrived", "delivery_attempted", "failed_delivery"
             ])
         );
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
@@ -522,7 +713,7 @@ export default function RiderDashboardPage() {
             unsubscribes.forEach(unsub => unsub());
         };
 
-    }, [user, isUserLoading, router, checkRestaurantActive, fetchInvitesOnce]);
+    }, [user, isUserLoading, router, fetchRestaurantData, fetchInvitesOnce]);
 
     const handleToggleOnline = async () => {
         const newStatus = driverData?.status === 'online' ? 'offline' : 'online';
@@ -569,6 +760,22 @@ export default function RiderDashboardPage() {
             let endpoint, body;
 
             switch (currentStatus) {
+                case 'undo_dispatched': // ↩️ NEW: Undo Logic (Legacy)
+                    endpoint = '/api/rider/update-order-status';
+                    body = { orderId, newStatus: 'ready_for_pickup' };
+                    break;
+                case 'undo_on_the_way': // ↩️ UNDO 'Reached Location' -> Back to 'Ready'
+                    endpoint = '/api/rider/update-order-status';
+                    body = { orderId, newStatus: 'ready_for_pickup' };
+                    break;
+                case 'undo_rider_arrived': // ↩️ UNDO 'Mark Delivered' -> Back to 'On The Way'
+                    endpoint = '/api/rider/update-order-status';
+                    body = { orderId, newStatus: 'on_the_way' };
+                    break;
+                case 'ready_for_pickup': // ✅ NEW: Directly to ON THE WAY (Skipping restaurant steps)
+                    endpoint = '/api/rider/update-order-status'; // Generic update
+                    body = { orderId, newStatus: 'on_the_way' };
+                    break;
                 case 'dispatched':
                     endpoint = '/api/rider/reached-restaurant';
                     body = { orderIds: [orderId] };
@@ -582,16 +789,14 @@ export default function RiderDashboardPage() {
                     body = { orderIds: [orderId] };
                     break;
                 case 'on_the_way':
+                    // NEW: Rider reached customer location
+                    endpoint = '/api/rider/update-order-status';
+                    body = { orderId, newStatus: 'rider_arrived' };
+                    break;
+                case 'rider_arrived':
+                    // NEW: Mark as delivered after reaching
                     endpoint = '/api/rider/update-order-status';
                     body = { orderId, newStatus: 'delivered' };
-                    break;
-                case 'delivery_attempted':
-                    endpoint = '/api/rider/mark-failed';
-                    body = { orderIds: [orderId], reason: 'Customer unreachable' };
-                    break;
-                case 'failed_delivery':
-                    endpoint = '/api/rider/return-order';
-                    body = { orderIds: [orderId] };
                     break;
                 default:
                     throw new Error('Unknown status');
@@ -602,9 +807,15 @@ export default function RiderDashboardPage() {
             // 🔥 POLISH 4: Auto scroll to top on status change
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
-            // Remove from active orders if delivered or returned
-            if (currentStatus === 'on_the_way' || currentStatus === 'failed_delivery') {
+            // 🎯 CRITICAL FIX: Only remove card when marking as delivered!
+            // Check if THIS button press will set status to 'delivered'
+            const willBeDelivered = (currentStatus === 'rider_arrived'); // Only "Mark Delivered" button
+
+            if (willBeDelivered || currentStatus === 'failed_delivery' || currentStatus === 'returned') {
+                console.log('[Dashboard] Removing order card - Status:', currentStatus, 'Will be delivered:', willBeDelivered);
                 setActiveOrders(prev => prev.filter(o => o.id !== orderId));
+            } else {
+                console.log('[Dashboard] Keeping order card visible - Status:', currentStatus);
             }
         } catch (err) {
             setInfoDialog({ isOpen: true, title: 'Action Failed', message: err.message });
@@ -625,151 +836,109 @@ export default function RiderDashboardPage() {
             return;
         }
 
-        try {
-            setIsOptimizingRoute(true);
+        setIsOptimizingRoute(true);
 
-            // ✅ OPTIMIZATION: Single order = Direct navigation (no API call needed!)
-            if (activeOrders.length === 1) {
-                const order = activeOrders[0];
+        // ✅ OPTIMIZATION: Single order = Direct navigation (no API call needed!)
+        if (activeOrders.length === 1) {
+            const order = activeOrders[0];
 
-                // Debug: Check what location data exists
-                console.log('[Navigate] Order location data:', {
-                    customerLocation: order.customerLocation,
-                    deliveryLocation: order.deliveryLocation,
-                    address: order.address
-                });
+            // Debug: Check what location data exists
+            console.log('[Navigate] Order location data:', {
+                customerLocation: order.customerLocation,
+                deliveryLocation: order.deliveryLocation,
+                address: order.address
+            });
 
-                // Try multiple possible location fields
-                let lat, lng;
+            // Try multiple possible location fields
+            let lat, lng;
 
-                // Option 1: customerLocation (most common)
-                if (order.customerLocation) {
-                    lat = order.customerLocation._latitude || order.customerLocation.latitude;
-                    lng = order.customerLocation._longitude || order.customerLocation.longitude;
-                }
+            // Option 1: customerLocation (most common)
+            if (order.customerLocation) {
+                lat = order.customerLocation._latitude || order.customerLocation.latitude;
+                lng = order.customerLocation._longitude || order.customerLocation.longitude;
+            }
 
-                // Option 2: deliveryLocation
-                if (!lat && order.deliveryLocation) {
-                    lat = order.deliveryLocation._latitude || order.deliveryLocation.latitude;
-                    lng = order.deliveryLocation._longitude || order.deliveryLocation.longitude;
-                }
+            // Option 2: deliveryLocation
+            if (!lat && order.deliveryLocation) {
+                lat = order.deliveryLocation._latitude || order.deliveryLocation.latitude;
+                lng = order.deliveryLocation._longitude || order.deliveryLocation.longitude;
+            }
 
-                // Option 3: address.coordinates
-                if (!lat && order.address?.coordinates) {
-                    lat = order.address.coordinates._latitude || order.address.coordinates.latitude;
-                    lng = order.address.coordinates._longitude || order.address.coordinates.longitude;
-                }
+            // Option 3: address.coordinates
+            if (!lat && order.address?.coordinates) {
+                lat = order.address.coordinates._latitude || order.address.coordinates.latitude;
+                lng = order.address.coordinates._longitude || order.address.coordinates.longitude;
+            }
 
-                console.log('[Navigate] Extracted coordinates:', { lat, lng });
+            console.log('[Navigate] Extracted coordinates:', { lat, lng });
 
-                if (!lat || !lng) {
-                    setInfoDialog({
-                        isOpen: true,
-                        title: 'Location Missing',
-                        message: `Customer location not available.\n\nPlease check order details in owner dashboard.`
-                    });
-                    setIsOptimizingRoute(false);
-                    return;
-                }
-
-                // Direct navigation for single order
-                const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
-                window.open(mapsUrl, '_blank');
-
+            if (!lat || !lng) {
                 setInfoDialog({
                     isOpen: true,
-                    title: '🗺️ Navigation Started!',
-                    message: `Navigate to ${order.customerName}\n💰 Cash to collect: ₹${order.totalAmount}`
+                    title: 'Location Missing',
+                    message: `Customer location not available.\n\nPlease check order details in owner dashboard.`
                 });
-
                 setIsOptimizingRoute(false);
                 return;
             }
 
-            // Multiple orders: Use TSP optimization API
+            // Direct navigation for single order
+            const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+            window.open(mapsUrl, '_blank');
+
+            setInfoDialog({
+                isOpen: true,
+                title: '🗺️ Navigation Started!',
+                message: `Navigate to ${order.customerName}\n💰 Cash to collect: ₹${order.totalAmount}`
+            });
+
+            setIsOptimizingRoute(false);
+            return;
+        }
+
+        // 🎯 CALL API TO OPTIMIZE ROUTE (on-demand, only when clicked!)
+        try {
             const result = await handleApiCall('/api/rider/optimize-route', 'POST', {
                 orderIds: activeOrders.map(o => o.id),
                 restaurantId: driverData.currentRestaurantId
             });
 
             if (result.success) {
-                setRouteOptimizationResult(result);
+                console.log('[Navigate All] API Success! Route optimized');
+
+                // ✅ Store result so badges appear on dashboard
+                setOptimizedRouteData(result);
 
                 // Open Google Maps with optimized route
-                window.open(result.googleMapsUrl, '_blank');
+                if (result.googleMapsUrl) {
+                    const newWindow = window.open(result.googleMapsUrl, '_blank');
 
-                // Show success message with fuel savings
-                const savings = result.metrics?.fuelSavings;
-                const savingsMsg = savings && savings.moneyRupees > 0
-                    ? `\n💰 Fuel saved: ₹${savings.moneyRupees.toFixed(2)} (${savings.distanceKm.toFixed(2)} km less)`
-                    : '';
-
-                setInfoDialog({
-                    isOpen: true,
-                    title: '🗺️ Navigation Started!',
-                    message: `Optimized route for ${result.metrics.deliveryCount} deliveries${savingsMsg}\n\nFollow Google Maps for turn-by-turn directions.`
-                });
-
-                console.log('[Route Optimizer] Success:', result);
-            }
-
-        } catch (err) {
-            console.error('[Route Optimizer] Error:', err);
-
-            // ✅ FIX: Use coordinates in fallback, NOT address string!
-            if (activeOrders.length > 0) {
-                const firstOrder = activeOrders[0];
-                const lat = firstOrder.customerLocation?._latitude || firstOrder.customerLocation?.lat;
-                const lng = firstOrder.customerLocation?._longitude || firstOrder.customerLocation?.lng;
-
-                if (lat && lng) {
-                    // Build fallback URL with COORDINATES for all orders
-                    let fallbackUrl = `https://www.google.com/maps/dir/?api=1&travelmode=driving`;
-
-                    // Add all customer coordinates as waypoints
-                    const coordinates = activeOrders
-                        .map(order => {
-                            const lat = order.customerLocation?._latitude || order.customerLocation?.lat;
-                            const lng = order.customerLocation?._longitude || order.customerLocation?.lng;
-                            return lat && lng ? `${lat},${lng}` : null;
-                        })
-                        .filter(coord => coord !== null);
-
-                    if (coordinates.length > 0) {
-                        // First coordinate is destination, rest are waypoints
-                        fallbackUrl += `&destination=${coordinates[0]}`;
-
-                        if (coordinates.length > 1) {
-                            const waypoints = coordinates.slice(1).join('|');
-                            fallbackUrl += `&waypoints=${waypoints}`;
-                        }
-
-                        window.open(fallbackUrl, '_blank');
-
-                        // ✅ FIX: Don't show error if fallback succeeded!
-                        setInfoDialog({
-                            isOpen: true,
-                            title: '🗺️ Navigation Started',
-                            message: `Opening navigation for ${coordinates.length} stop(s).\n\n⚠️ Route not optimized (using original order).`
-                        });
-
-                        setIsOptimizingRoute(false);
-                        return; // Exit without showing error!
+                    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+                        window.location.href = result.googleMapsUrl;
                     }
                 }
-            }
 
-            // Only show error if fallback also failed
+                // Maps opens silently - no popup needed!
+                console.log('[Navigate All] Success - Maps opened');
+            } else {
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Optimization Failed',
+                    message: 'Could not optimize route. Please try again.'
+                });
+            }
+        } catch (err) {
+            console.error('[Navigate All] Error:', err);
             setInfoDialog({
                 isOpen: true,
                 title: 'Navigation Failed',
-                message: err.message || 'Could not start navigation. Please check order details.'
+                message: err.message || 'Could not start navigation.'
             });
-
         } finally {
             setIsOptimizingRoute(false);
         }
     }
+
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-background"><GoldenCoinSpinner /></div>
@@ -782,18 +951,29 @@ export default function RiderDashboardPage() {
     const isDriverOnline = driverData?.status === 'online';
     const isBusy = driverData?.status === 'on-delivery';
 
-    // ✅ PHASE 1: Focus Mode -Sort orders by priority (earliest assigned first)
+    // 🎯 SIMPLE STATUS-BASED SORT (No API calls, no logs!)
+    // Orders displayed by status priority - fast and clean
     const sortedOrders = [...activeOrders].sort((a, b) => {
         const statusOrder = {
+            'rider_arrived': 0, // Top priority
             'on_the_way': 1,
-            'delivery_attempted': 2,
-            'picked_up': 3,
-            'reached_restaurant': 4,
-            'dispatched': 5,
-            'failed_delivery': 6
+            'ready_for_pickup': 2, // ✅ New status priority
+            'delivery_attempted': 3,
+            'picked_up': 4,
+            'reached_restaurant': 5,
+            'dispatched': 6,
+            'failed_delivery': 7
         };
         return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
     });
+
+    // Sequence badges ONLY after Navigate All is clicked
+    let deliverySequenceMap = new Map();
+    if (optimizedRouteData && optimizedRouteData.optimizedRoute) {
+        optimizedRouteData.optimizedRoute.forEach((order, index) => {
+            deliverySequenceMap.set(order.id, index + 1); // 1st, 2nd, 3rd...
+        });
+    }
 
     const primaryDelivery = sortedOrders[0];
     const secondaryDeliveries = sortedOrders.slice(1);
@@ -823,6 +1003,17 @@ export default function RiderDashboardPage() {
                         🔋 Low battery ({Math.round(batteryLevel)}%) may affect tracking. Charge soon.
                     </div>
                 )}
+
+                {/* 📜 HISTORY BUTTON */}
+                <Link href="/rider-dashboard/history">
+                    <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-xl shadow-lg font-bold text-center flex items-center justify-center gap-2"
+                    >
+                        📜 Delivery History
+                    </motion.button>
+                </Link>
 
                 {/* ✅ PHASE 1 & 8: Status Card with GPS Info */}
                 <motion.div
@@ -861,19 +1052,7 @@ export default function RiderDashboardPage() {
                     )}
                 </motion.div>
 
-                {/* 🏪 RESTAURANT CONNECTIONS CARD */}
-                {driverData?.currentRestaurantId && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-gradient-to-br from-primary/10 to-purple-500/10 border border-primary/30 rounded-xl p-5 shadow-lg"
-                    >
-                        <h3 className="text-md font-bold text-foreground mb-3 flex items-center gap-2">
-                            🏪 Connected Restaurant
-                        </h3>
-                        <RestaurantConnectionCard restaurantId={driverData.currentRestaurantId} />
-                    </motion.div>
-                )}
+
 
                 {/* 🚀 NAVIGATE ALL DELIVERIES - TSP OPTIMIZED ROUTE */}
                 {activeOrders.length > 0 && (
@@ -980,6 +1159,10 @@ export default function RiderDashboardPage() {
                             isPrimary={true}
                             onStatusAction={handleStatusAction}
                             isLoading={actionLoading === primaryDelivery.id}
+                            sequenceNumber={deliverySequenceMap.get(primaryDelivery.id)}
+                            paymentQRCode={restaurantData?.paymentQRCode} // ✅ Pass QR Code
+                            onShowQR={() => setQrModalOpen(true)}
+                            onShowInfo={setInfoDialog}
                         />
                     </div>
                 )}
@@ -1002,6 +1185,10 @@ export default function RiderDashboardPage() {
                                         isPrimary={false}
                                         onStatusAction={handleStatusAction}
                                         isLoading={actionLoading === order.id}
+                                        sequenceNumber={deliverySequenceMap.get(order.id)}
+                                        paymentQRCode={restaurantData?.paymentQRCode} // ✅ Pass QR Code
+                                        onShowQR={() => setQrModalOpen(true)}
+                                        onShowInfo={setInfoDialog}
                                     />
                                 </div>
                             ))}
@@ -1021,6 +1208,35 @@ export default function RiderDashboardPage() {
                         </CardContent>
                     </Card>
                 )}
+
+                {/* QR Code Modal */}
+                <AnimatePresence>
+                    {qrModalOpen && restaurantData?.paymentQRCode && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+                            onClick={() => setQrModalOpen(false)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                className="bg-white p-6 rounded-2xl max-w-sm w-full shadow-2xl text-center"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <h3 className="text-xl font-bold mb-4 text-black">Scan to Pay</h3>
+                                <div className="bg-gray-100 p-4 rounded-xl inline-block mb-4">
+                                    <img src={restaurantData.paymentQRCode} alt="Payment QR" className="w-64 h-64 object-contain" />
+                                </div>
+                                <p className="text-gray-500 text-sm mb-6">Show this QR code to the customer for payment.</p>
+                                <Button onClick={() => setQrModalOpen(false)} className="w-full">Close</Button>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
             </div>
         </div>
     );

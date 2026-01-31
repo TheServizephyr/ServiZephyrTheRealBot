@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Phone, Edit, Save, XCircle, KeyRound, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { User, Phone, Edit, Save, XCircle, KeyRound, Eye, EyeOff, Loader2, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import InfoDialog from '@/components/InfoDialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const SectionCard = ({ title, description, children, footer }) => (
-    <motion.div 
+    <motion.div
         className="bg-card border border-border rounded-xl"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -32,6 +32,78 @@ const SectionCard = ({ title, description, children, footer }) => (
         {footer && <div className="p-6 bg-muted/30 border-t border-border rounded-b-xl">{footer}</div>}
     </motion.div>
 );
+
+// 🏪 Restaurant Connection Card Component
+const RestaurantConnectionCard = ({ restaurantId }) => {
+    const [restaurant, setRestaurant] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchRestaurant = async () => {
+            try {
+                // Try restaurants collection first
+                let docRef = doc(db, 'restaurants', restaurantId);
+                let docSnap = await getDoc(docRef);
+
+                if (!docSnap.exists()) {
+                    // Try shops collection
+                    docRef = doc(db, 'shops', restaurantId);
+                    docSnap = await getDoc(docRef);
+                }
+
+                if (docSnap.exists()) {
+                    setRestaurant({ id: docSnap.id, ...docSnap.data() });
+                }
+            } catch (err) {
+                console.error('[Restaurant Card] Fetch error:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (restaurantId) {
+            fetchRestaurant();
+        }
+    }, [restaurantId]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center py-4">
+                <Loader2 className="animate-spin text-primary" size={24} />
+            </div>
+        );
+    }
+
+    if (!restaurant) {
+        return <p className="text-sm text-muted-foreground text-center">Restaurant not found</p>;
+    }
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-start gap-3">
+                <div className="bg-primary/20 p-3 rounded-full">
+                    <ShoppingBag className="text-primary" size={20} />
+                </div>
+                <div className="flex-1">
+                    <h4 className="text-lg font-bold text-foreground">{restaurant.name}</h4>
+                    {restaurant.address && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                            📍 {restaurant.address.street}, {restaurant.address.city}
+                        </p>
+                    )}
+                    {restaurant.ownerPhone && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                            📞 {restaurant.ownerPhone}
+                        </p>
+                    )}
+                </div>
+                <div className="bg-green-500/20 px-3 py-1 rounded-full">
+                    <span className="text-xs font-bold text-green-400">✓ Active</span>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function RiderProfilePage() {
     const { user, isUserLoading } = useUser();
@@ -93,7 +165,7 @@ export default function RiderProfilePage() {
             />
             <h1 className="text-3xl font-bold tracking-tight">My Rider Profile</h1>
 
-            <SectionCard 
+            <SectionCard
                 title="Personal Information"
                 description="Manage your personal details."
                 footer={
@@ -101,15 +173,15 @@ export default function RiderProfilePage() {
                         {isEditing ? (
                             <>
                                 <Button variant="secondary" onClick={() => { setIsEditing(false); setEditedData(riderData); }}>
-                                    <XCircle className="mr-2 h-4 w-4"/> Cancel
+                                    <XCircle className="mr-2 h-4 w-4" /> Cancel
                                 </Button>
                                 <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                                    <Save className="mr-2 h-4 w-4"/> Save Profile
+                                    <Save className="mr-2 h-4 w-4" /> Save Profile
                                 </Button>
                             </>
                         ) : (
                             <Button onClick={() => setIsEditing(true)}>
-                                <Edit className="mr-2 h-4 w-4"/> Edit Profile
+                                <Edit className="mr-2 h-4 w-4" /> Edit Profile
                             </Button>
                         )}
                     </div>
@@ -128,16 +200,26 @@ export default function RiderProfilePage() {
                     </div>
                     <div className="space-y-6">
                         <div>
-                            <Label htmlFor="name" className="flex items-center gap-2"><User size={14}/> Full Name</Label>
-                            <Input id="name" value={editedData?.name || ''} onChange={e => setEditedData({...editedData, name: e.target.value})} disabled={!isEditing} />
+                            <Label htmlFor="name" className="flex items-center gap-2"><User size={14} /> Full Name</Label>
+                            <Input id="name" value={editedData?.name || ''} onChange={e => setEditedData({ ...editedData, name: e.target.value })} disabled={!isEditing} />
                         </div>
                         <div>
-                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={14}/> Phone Number</Label>
-                            <Input id="phone" value={editedData?.phone || ''} onChange={e => setEditedData({...editedData, phone: e.target.value})} disabled={!isEditing} />
+                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={14} /> Phone Number</Label>
+                            <Input id="phone" value={editedData?.phone || ''} onChange={e => setEditedData({ ...editedData, phone: e.target.value })} disabled={!isEditing} />
                         </div>
                     </div>
                 </div>
             </SectionCard>
+
+            {/* 🏪 Connected Restaurant Card */}
+            {riderData?.currentRestaurantId && (
+                <SectionCard
+                    title="Connected Restaurant"
+                    description="The restaurant you are currently delivering for."
+                >
+                    <RestaurantConnectionCard restaurantId={riderData.currentRestaurantId} />
+                </SectionCard>
+            )}
         </div>
     );
 }

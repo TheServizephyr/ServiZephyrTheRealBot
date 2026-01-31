@@ -38,7 +38,7 @@ function RiderLayoutContent({ children }) {
 
         if (!user) {
             console.log('[Rider Layout] No user after auth check, redirecting');
-            router.push('/rider-dashboard/login');
+            router.push('/rider-auth');
             return;
         }
 

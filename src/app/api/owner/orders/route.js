@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, getDatabase, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import Razorpay from 'razorpay';
@@ -247,7 +247,8 @@ export async function PATCH(req) {
         const batch = firestore.batch();
         let deliveryBoyData = null;
 
-        if (newStatus === 'dispatched' && deliveryBoyId) {
+        // ✅ FIX: Allow checks for 'ready_for_pickup' (New Flow) or 'dispatched' (Old Flow)
+        if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && deliveryBoyId) {
             console.log(`[API][PATCH /orders] Dispatch logic started for rider ${deliveryBoyId}.`);
             const businessCollectionName = businessSnap.data().businessType === 'shop' ? 'shops' : (businessSnap.data().businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
             const deliveryBoyRef = firestore.collection(businessCollectionName).doc(businessId).collection('deliveryBoys').doc(deliveryBoyId);
@@ -260,7 +261,7 @@ export async function PATCH(req) {
                 const activeOrdersQuery = firestore.collection('orders')
                     .where('deliveryBoyId', '==', deliveryBoyId)
                     .where('status', 'in', [
-                        'dispatched', 'reached_restaurant', 'picked_up', 'on_the_way', 'delivery_attempted'
+                        'ready_for_pickup', 'dispatched', 'reached_restaurant', 'picked_up', 'on_the_way', 'delivery_attempted'
                     ]);
 
                 const activeOrdersSnap = await activeOrdersQuery.get();
@@ -305,7 +306,7 @@ export async function PATCH(req) {
             if (newStatus === 'rejected' && rejectionReason) {
                 updateData.rejectionReason = rejectionReason;
             }
-            if (newStatus === 'dispatched' && deliveryBoyId) {
+            if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && deliveryBoyId) {
                 updateData.deliveryBoyId = deliveryBoyId;
             }
 
@@ -411,6 +412,9 @@ export async function PATCH(req) {
                     status: newStatus,
                     deliveryBoy: deliveryBoyData,
                     businessType: businessData.businessType || 'restaurant',
+                    // ✅ NEW: Pass deliveryType to allow conditional logic (e.g. suppressing 'ready_for_pickup' for delivery)
+                    deliveryType: orderData.deliveryType,
+                    trackingToken: orderData.trackingToken // ✅ Pass token for secure URL
                 };
 
                 sendOrderStatusUpdateToCustomer(notificationPayload).catch(e =>
@@ -423,6 +427,58 @@ export async function PATCH(req) {
 
         await batch.commit();
         console.log(`[API][PATCH /orders] Batch update completed successfully for ${idsToUpdate.length} orders.`);
+
+        // ✅ RTDB Write for Real-time Tracking (NEW!)
+        console.log('[RTDB] Starting RTDB write for', idsToUpdate.length, 'orders');
+        try {
+            const database = await getDatabase();
+            console.log('[RTDB] Database instance obtained successfully');
+
+            for (const id of idsToUpdate) {
+                console.log(`[RTDB] Processing order ${id}`);
+                const orderRef = firestore.collection('orders').doc(id);
+                const orderSnap = await orderRef.get();
+                const orderData = orderSnap.data();
+
+                if (!orderData) {
+                    console.warn(`[RTDB] No orderData found for ${id}`);
+                    continue;
+                }
+
+                console.log(`[RTDB] Order ${id} deliveryType:`, orderData.deliveryType);
+
+                const isDelivery = orderData.deliveryType === 'delivery' || orderData.deliveryType === 'takeaway';
+                const isDineIn = orderData.deliveryType === 'dine-in';
+
+                console.log(`[RTDB] Order ${id} - isDelivery:${isDelivery}, isDineIn:${isDineIn}`);
+
+                if (isDelivery) {
+                    const trackingRef = database.ref(`delivery_tracking/${id}`);
+                    await trackingRef.set({
+                        status: newStatus,
+                        updatedAt: Date.now(),
+                        token: orderData.trackingToken || 'temp_token' // Use real token from Firestore
+                    });
+                    console.log(`[RTDB] ✅ Delivery tracking updated for ${id} with status: ${newStatus}`);
+                } else if (isDineIn) {
+                    const trackingRef = database.ref(`dine_in_tracking/${id}`);
+                    await trackingRef.set({
+                        status: newStatus,
+                        updatedAt: Date.now(),
+                        tableNumber: orderData.tableId || 'N/A',
+                        token: orderData.trackingToken || 'temp_token' // Use real token from Firestore
+                    });
+                    console.log(`[RTDB] ✅ Dine-in tracking updated for ${id} with status: ${newStatus}`);
+                } else {
+                    console.warn(`[RTDB] Order ${id} has unknown deliveryType: ${orderData.deliveryType}`);
+                }
+            }
+            console.log('[RTDB] All RTDB writes completed');
+        } catch (rtdbError) {
+            // Non-fatal - Firestore is source of truth
+            console.error('[API][PATCH /orders] ❌ RTDB write failed:', rtdbError);
+            console.error('[RTDB] Error stack:', rtdbError.stack);
+        }
 
         // ✅ CRITICAL FIX: Invalidate cache for all updated orders
         // Without this, customers see stale 'pending' status for 60s after restaurant changes to 'rejected'

@@ -16,6 +16,7 @@ const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
     || (title || '').toLowerCase().includes('invalid')
     || (title || '').toLowerCase().includes('exceeded')
     || (title || '').toLowerCase().includes('capacity');
+  const isWarning = type === 'warning' || (title || '').toLowerCase().includes('warning') || (title || '').toLowerCase().includes('restricted');
   const isLoading = (title || '').toLowerCase().includes('processing')
     || (title || '').toLowerCase().includes('loading')
     || (title || '').toLowerCase().includes('wait')
@@ -138,6 +139,8 @@ const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
           <DialogHeader className="flex flex-col items-center text-center">
             {isError ? (
               <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+            ) : isWarning ? (
+              <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
             ) : isLoading ? (
               <Loader2 className="h-12 w-12 text-primary mb-4 animate-spin" />
             ) : (

@@ -73,10 +73,32 @@ export async function POST(request) {
 
         console.log('[Route Optimizer] Extracted restaurant location:', restaurantLocation);
 
+        // Extract restaurant FULL ADDRESS for Google Maps (CRITICAL for auto-resolution!)
+        // Priority: Full address > Street address > Restaurant name (last resort)
+        if (typeof restaurantData.address === 'object' && restaurantData.address.full) {
+            // Best option: Use full formatted address
+            restaurantLocation.address = restaurantData.address.full;
+        } else if (typeof restaurantData.address === 'string') {
+            // Fallback: Plain address string
+            restaurantLocation.address = restaurantData.address;
+        } else if (restaurantData.restaurantName) {
+            // Last resort: Restaurant name + coordinates (Google might still struggle)
+            restaurantLocation.address = restaurantData.restaurantName;
+        } else if (restaurantData.name) {
+            restaurantLocation.address = restaurantData.name;
+        }
+
+        console.log('[Route Optimizer] Restaurant address for Maps:', restaurantLocation.address);
+
         if (!restaurantLocation.lat || !restaurantLocation.lng) {
-            console.error('[Route Optimizer] Could not extract restaurant coordinates from any field!');
-            console.error('[Route Optimizer] Available data:', JSON.stringify(restaurantData, null, 2));
-            return Response.json({ error: 'Invalid restaurant location - please update restaurant address in settings' }, { status: 400 });
+            console.error('[Route Optimizer] Could not extract restaurant coordinates:', {
+                lat: restaurantLocation.lat,
+                lng: restaurantLocation.lng,
+                availableFields: Object.keys(restaurantData)
+            });
+            return Response.json({
+                error: 'Restaurant location not configured. Please add restaurant address in settings.'
+            }, { status: 400 });
         }
 
         // Fetch all orders
@@ -132,8 +154,10 @@ export async function POST(request) {
         // Optimize route
         const optimizationResult = optimizeDeliveryRoute(restaurantLocation, orders);
 
-        // Generate Google Maps URL with optimized waypoints
-        const googleMapsUrl = formatRouteForGoogleMaps(optimizationResult.optimizedRoute);
+        // Generate Google Maps URL with optimized waypoints (ROUND TRIP - includes restaurant at end)
+        console.log('[Route Optimizer] Passing restaurant to Maps formatter:', restaurantLocation);
+        const googleMapsUrl = formatRouteForGoogleMaps(optimizationResult.optimizedRoute, restaurantLocation);
+        console.log('[Route Optimizer] Generated Maps URL:', googleMapsUrl);
 
         // Log optimization for analytics
         console.log(`[Route Optimizer] SUCCESS for Rider ${riderId}:`, {

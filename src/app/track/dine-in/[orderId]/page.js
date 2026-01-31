@@ -10,6 +10,8 @@ import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTime
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { getDineInDetails } from '@/lib/dineInStorage';
+import { rtdb } from '@/lib/firebase'; // ✅ RTDB for real-time tracking
+import { ref, onValue, off } from 'firebase/database'; // ✅ RTDB listeners
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -187,50 +189,42 @@ function DineInTrackingContent() {
         fetchData();
     }, [fetchData]);
 
-    // RULE 2, 3, 4: Adaptive polling with final state and timeout
+    // ✅ RTDB LISTENER: Real-time dine-in status updates (NO POLLING!)
     useEffect(() => {
+        if (!orderId || !orderData) return;
+
         const currentStatus = orderData?.order?.status;
 
-        // EARLY EXIT: Stop polling if final state
+        // Don't listen if already in final state
         if (currentStatus && isFinalState(currentStatus)) {
-            console.log(`[DineInTrack] Final state (${currentStatus}) - stopping all polling`);
-            clearPollingTimer(orderId);
+            console.log(`[DineInTrack] Final state (${currentStatus}) - no listener needed`);
             return;
         }
 
-        // Don't poll if page not visible
-        if (!isVisible) {
-            console.log('[DineInTrack] Page hidden - pausing polling');
-            return;
-        }
+        console.log('[RTDB] Attaching dine-in status listener for', orderId);
+        const statusRef = ref(rtdb, `dine_in_tracking/${orderId}`);
 
-        const pollingStartTime = getPollingStartTime(orderId);
-        const pollingInterval = currentStatus
-            ? getPollingInterval(currentStatus)
-            : 30000;
+        const unsubscribe = onValue(statusRef, (snapshot) => {
+            const rtdbData = snapshot.val();
+            if (rtdbData && rtdbData.status) {
+                console.log('[RTDB] Dine-in status updated:', rtdbData.status);
 
-        if (!pollingInterval) {
-            console.log('[DineInTrack] No interval for status - stopping');
-            clearPollingTimer(orderId);
-            return;
-        }
-
-        console.log(`[DineInTrack] Status: ${currentStatus}, Polling every ${pollingInterval / 1000}s`);
-
-        const interval = setInterval(() => {
-            if (document.hidden) return;
-            if (Date.now() - pollingStartTime > POLLING_MAX_TIME) {
-                console.warn('[DineInTrack] 60min exceeded');
-                clearInterval(interval);
-                clearPollingTimer(orderId);
-                return;
+                // Update only status, keep rest of order data from Firestore
+                setOrderData(prev => ({
+                    ...prev,
+                    order: {
+                        ...prev.order,
+                        status: rtdbData.status
+                    }
+                }));
             }
-            fetchData(true);
-        }, pollingInterval);
+        }, (error) => {
+            console.error('[RTDB] Dine-in listener error:', error);
+        });
 
         return () => {
-            console.log('[DineInTrack] Cleaning up interval');
-            clearInterval(interval);
+            console.log('[RTDB] Cleaning up dine-in status listener');
+            off(statusRef, 'value', unsubscribe);
         };
     }, [orderData?.order?.status, orderId, fetchData, isVisible]); // Fixed dependency
 

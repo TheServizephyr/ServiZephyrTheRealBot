@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, MapPin, CheckCircle, PackageCheck } from 'lucide-react';
+import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, MapPin, CheckCircle, PackageCheck, Maximize, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTimer, POLLING_MAX_TIME } from '@/lib/trackingConstants';
 import dynamic from 'next/dynamic';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { rtdb } from '@/lib/firebase'; // ✅ RTDB for real-time tracking
+import { ref, onValue, off } from 'firebase/database'; // ✅ RTDB listeners
 
 const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), {
     ssr: false,
@@ -19,11 +21,13 @@ const statusConfig = {
     paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
     confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1, description: "The restaurant has confirmed your order." },
     preparing: { title: 'Preparing Your Order', icon: <CookingPot size={24} />, step: 2, description: "Your meal is being prepared." },
-    dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3, description: "Our delivery hero is on their way." },
-    delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
-    rejected: { title: 'Order Cancelled', icon: <XCircle size={24} />, step: 4, isError: true, description: "The restaurant could not accept your order." },
-    picked_up: { title: 'Picked Up', icon: <ShoppingBag size={24} />, step: 4, description: "You have picked up your order." },
-    ready_for_pickup: { title: 'Ready for Pickup', icon: <PackageCheck size={24} />, step: 3, description: 'Your order is ready for pickup.' }
+    dispatched: { title: 'Rider Assigned', icon: <Bike size={24} />, step: 3, description: "A delivery partner has been assigned to your order." },
+    on_the_way: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 4, description: "Our delivery hero is on their way." },
+    rider_arrived: { title: 'Rider Reached', icon: <MapPin size={24} />, step: 5, description: "Your delivery partner has arrived at your location!" },
+    delivered: { title: 'Delivered', icon: <Home size={24} />, step: 6, description: "Enjoy your meal!" },
+    rejected: { title: 'Order Cancelled', icon: <XCircle size={24} />, step: 6, isError: true, description: "The restaurant could not accept your order." },
+    picked_up: { title: 'Picked Up', icon: <ShoppingBag size={24} />, step: 6, description: "You have picked up your order." },
+    ready_for_pickup: { title: 'Ready for Pickup', icon: <PackageCheck size={24} />, step: 4, description: 'Your order is ready for pickup.' }
 };
 
 // Internal Components
@@ -67,13 +71,60 @@ const EnhancedTimeline = ({ currentStatus }) => {
     const steps = [
         { key: 'confirmed', label: 'Order Confirmed', icon: <CheckCircle size={16} /> },
         { key: 'preparing', label: 'Cooking', icon: <CookingPot size={16} /> },
-        { key: 'dispatched', label: 'Out for Delivery', icon: <Bike size={16} /> },
+        { key: 'dispatched', label: 'Rider Assigned', icon: <Bike size={16} /> },
+        { key: 'on_the_way', label: 'Out for Delivery', icon: <Bike size={16} /> },
+        { key: 'rider_arrived', label: 'Rider Reached', icon: <MapPin size={16} /> },
         { key: 'delivered', label: 'Delivered', icon: <Home size={16} /> },
     ];
 
-    const currentStepIndex = steps.findIndex(s => s.key === currentStatus) === -1
-        ? (currentStatus === 'placed' || currentStatus === 'pending' || currentStatus === 'paid' ? -1 : 3)
-        : steps.findIndex(s => s.key === currentStatus);
+    // 🎯 CRITICAL: Map ALL database statuses to timeline steps
+    const getTimelineStep = (status) => {
+        switch (status) {
+            // Initial states
+            case 'pending':
+            case 'paid':
+            case 'placed':
+                return -1; // Before timeline starts
+
+            case 'confirmed':
+                return 0; // Order Confirmed
+
+            case 'preparing':
+                return 1; // Cooking
+
+            // Rider assignment & restaurant pickup (all show as "Rider Assigned")
+            case 'ready_for_pickup': // ✅ Added support for new flow
+            case 'reached_restaurant':
+            case 'picked_up':
+                return 2; // Rider Assigned (rider collecting food)
+
+            // Delivery in progress
+            case 'dispatched': // ✅ MOVED `dispatched` here (Step 3: Out for Delivery)
+            case 'on_the_way':
+                return 3; // Out for Delivery (rider clicked START DELIVERY)
+
+            // Rider reached customer
+            case 'rider_arrived':
+                return 4; // Rider Reached (rider clicked REACHED LOCATION)
+
+            // Final states
+            case 'delivered':
+            case 'picked_up_by_customer':
+                return 5; // Delivered
+
+            // Error/cancelled states
+            case 'rejected':
+            case 'cancelled':
+            case 'failed_delivery':
+                return 5; // Show as final state
+
+            default:
+                console.warn('[Timeline] Unknown status:', status);
+                return -1;
+        }
+    };
+
+    const currentStepIndex = getTimelineStep(currentStatus);
 
     return (
         <div className="relative pl-4 border-l-2 border-gray-100 space-y-8 my-8 ml-2">
@@ -116,6 +167,7 @@ function OrderTrackingContent() {
     const [error, setError] = useState(null);
     const [isVisible, setIsVisible] = useState(true); // RULE 1: Visibility tracking
     const mapRef = useRef(null);
+    const [isMapExpanded, setIsMapExpanded] = useState(false);
 
     const fetchData = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
@@ -148,26 +200,9 @@ function OrderTrackingContent() {
         }
     }, [orderId, sessionToken]);
 
-    // RULE 1: Visibility API
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            const visible = !document.hidden;
-            setIsVisible(visible);
-
-            if (visible) {
-                console.log('[DeliveryTrack] Page visible - resuming polling');
-                fetchData(true); // Immediate fetch on return
-            } else {
-                console.log('[DeliveryTrack] Page hidden - pausing polling');
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, [fetchData]);
+    // ✅ RULE 1: Visibility API Removed
+    // RTDB listener handles real-time updates efficiently. 
+    // Re-fetching on visibility change is redundant and causes confusing cache logs.
 
     // ✅ BROWSER BACK BUTTON INTERCEPTION
     useEffect(() => {
@@ -184,10 +219,11 @@ function OrderTrackingContent() {
         return () => window.removeEventListener('popstate', handlePopState);
     }, [orderData, router]);
 
+    // ✅ FIX: Payment Verification - Stable Dependencies
+    const paymentStatus = searchParams.get('payment_status'); // Extract value
+
     useEffect(() => {
-        // Payment Verification Logic
         const verifyPayment = async () => {
-            const paymentStatus = searchParams.get('payment_status');
             if (paymentStatus === 'success' && orderId) {
                 try {
                     await fetch(`/api/payment/phonepe/status/${orderId}`);
@@ -200,60 +236,47 @@ function OrderTrackingContent() {
             }
         };
         verifyPayment();
-    }, [orderId, searchParams, fetchData]);
+    }, [orderId, paymentStatus, fetchData]); // ✅ Depend on primitive string, not object
 
-    // RULE 2, 3, 4: Adaptive polling with final state detection and timeout
+    // ✅ RTDB LISTENER: Real-time status updates (NO POLLING!)
+    // ✅ RTDB LISTENER: Real-time status updates (NO POLLING!)
     useEffect(() => {
-        // RULE 2: Don't poll if order is in final state
-        if (orderData && isFinalState(orderData.order?.status)) {
-            console.log('[DeliveryTrack] Final state reached - stopping polling');
-            clearPollingTimer(orderId);
+        if (!orderId || !orderData) return;
+
+        const currentStatus = orderData.order?.status;
+
+        // Don't listen if already in final state
+        if (isFinalState(currentStatus)) {
+            console.log('[DeliveryTrack] Final state - no listener needed');
             return;
         }
 
-        // Don't poll if page is hidden
-        if (!isVisible) {
-            console.log('[DeliveryTrack] Page hidden - skipping polling setup');
-            return;
-        }
+        console.log('[RTDB] Attaching status listener for', orderId);
+        const statusRef = ref(rtdb, `delivery_tracking/${orderId}`);
 
-        // RULE 4: Get polling start time (localStorage-based, refresh-safe)
-        const pollingStartTime = getPollingStartTime(orderId);
+        const unsubscribe = onValue(statusRef, (snapshot) => {
+            const rtdbData = snapshot.val();
+            // Only update if status implies a change and data exists
+            if (rtdbData && rtdbData.status && rtdbData.status !== currentStatus) {
+                console.log('[RTDB] Status updated:', rtdbData.status);
 
-        // RULE 3: Get adaptive interval based on order status
-        const pollingInterval = orderData?.order?.status
-            ? getPollingInterval(orderData.order.status)
-            : 30000; // Default 30s if no status yet
-
-        if (!pollingInterval) {
-            // Final state - no polling needed
-            console.log('[DeliveryTrack] No polling interval for status:', orderData?.order?.status);
-            clearPollingTimer(orderId);
-            return;
-        }
-
-        console.log(`[DeliveryTrack] Polling every ${pollingInterval / 1000}s for status:`, orderData?.order?.status);
-
-        const interval = setInterval(() => {
-            // Check visibility and timeout before each poll
-            if (document.hidden) {
-                console.log('[DeliveryTrack] Skipping poll - page hidden');
-                return;
+                setOrderData(prev => ({
+                    ...prev,
+                    order: {
+                        ...prev.order,
+                        status: rtdbData.status
+                    }
+                }));
             }
+        }, (error) => {
+            console.error('[RTDB] Listener error:', error);
+        });
 
-            // RULE 4: Check hard timeout
-            if (Date.now() - pollingStartTime > POLLING_MAX_TIME) {
-                console.warn('[DeliveryTrack] Max polling time (60min) exceeded - stopping');
-                clearInterval(interval);
-                clearPollingTimer(orderId);
-                return;
-            }
-
-            fetchData(true);
-        }, pollingInterval);
-
-        return () => clearInterval(interval);
-    }, [orderData, orderId, fetchData, isVisible]);
+        return () => {
+            console.log('[RTDB] Cleaning up status listener');
+            off(statusRef, 'value', unsubscribe);
+        };
+    }, [orderId, orderData?.order?.status]); // ✅ Dependency on primitive STATUS, not full object loop
 
     const handleRecenter = () => {
         if (!mapRef.current) return;
@@ -289,154 +312,167 @@ function OrderTrackingContent() {
     };
 
     return (
-        <div className="h-screen w-full flex flex-col md:flex-row bg-gray-50 overflow-hidden font-sans">
-            {/* LEFT: Live Map Section */}
-            <div className="relative w-full md:w-[60%] h-[50vh] md:h-full bg-gray-200">
-                <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
-                    <span className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                    </span>
-                    <span className="text-sm font-bold text-gray-700">Live Tracking</span>
-                </div>
+        <div className="h-screen w-full flex flex-col bg-gradient-to-br from-indigo-50 via-white to-purple-50 overflow-hidden font-sans">
+            {/* MAIN CONTENT AREA */}
+            <div className="flex-1 flex flex-col relative overflow-hidden">
 
-                <LiveTrackingMap {...mapLocations} mapRef={mapRef} />
+                {/* HEADER INFO - MOVED ABOVE MAP */}
+                {!isMapExpanded && (
+                    <div className="px-5 pt-6 pb-2 flex justify-between items-start bg-transparent z-20">
+                        <div>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderId.slice(0, 8)}</p>
+                            <h1 className="text-2xl font-black text-gray-900 leading-tight">{orderData.restaurant.name}</h1>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-white/50">
+                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                        </Button>
+                    </div>
+                )}
 
-                <Button
-                    onClick={handleRecenter}
-                    className="absolute bottom-6 right-6 z-10 rounded-full w-12 h-12 shadow-xl bg-white text-gray-700 hover:bg-gray-100"
+                {/* MAP SECTION - BOXED & EXPANDABLE */}
+                <motion.div
+                    layout
+                    className={`relative w-full z-10 transition-all duration-300 ease-in-out ${isMapExpanded ? 'absolute inset-0 h-full z-50' : 'h-[35vh] mx-4 w-[calc(100%-2rem)] rounded-3xl overflow-hidden shadow-2xl border-4 border-white ring-1 ring-gray-200'}`}
                 >
-                    <Navigation size={20} />
-                </Button>
-            </div>
-
-            {/* RIGHT: Info Panel */}
-            <div className="w-full md:w-[40%] h-[50vh] md:h-full bg-white shadow-2xl z-20 flex flex-col">
-                {/* Header */}
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
-                    <div>
-                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Order #{orderId.slice(0, 8)}</p>
-                        <h1 className="text-xl font-bold text-gray-800 mt-1">{orderData.restaurant.name}</h1>
+                    <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                        </span>
+                        <span className="text-xs font-bold text-gray-700">Live</span>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => fetchData(true)} className="text-gray-400 hover:text-gray-600">
-                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+
+                    <LiveTrackingMap {...mapLocations} mapRef={mapRef} />
+
+                    {/* EXPAND / COLLAPSE BUTTON */}
+                    <Button
+                        onClick={() => setIsMapExpanded(!isMapExpanded)}
+                        className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 h-10 w-10 backdrop-blur-sm transition-all"
+                    >
+                        {isMapExpanded ? <X size={20} /> : <Maximize size={20} />}
                     </Button>
-                </div>
 
-                {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+                    {!isMapExpanded && (
+                        <div className="absolute bottom-4 right-4 z-10">
+                            <Button
+                                onClick={handleRecenter}
+                                size="sm"
+                                className="rounded-full shadow-md bg-white text-gray-700 hover:bg-gray-50 h-10 w-10 p-0"
+                            >
+                                <Navigation size={18} />
+                            </Button>
+                        </div>
+                    )}
+                </motion.div>
 
-                    {/* ✅ STEP 3C: Rider Offline Warning */}
-                    {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
-                        <div className="bg-red-100 border border-red-300 text-red-700 p-4 rounded-lg mb-4 flex items-start gap-3">
-                            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                            </svg>
-                            <div>
-                                <p className="font-semibold text-sm">⚠️ Rider Network Issue</p>
-                                <p className="text-xs mt-1">Delivery partner's location hasn't updated recently. Delivery may be delayed.</p>
+                {/* SCROLLABLE DETAILS SECTION - Only visible if map is NOT expanded */}
+                {!isMapExpanded && (
+                    <div className="flex-1 overflow-y-auto px-4 pb-24 scrollbar-hide pt-4">
+
+                        {/* RIDER OFFLINE WARNING */}
+                        {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
+                            <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl mb-4 flex items-start gap-3 text-sm">
+                                <span className="text-xl">⚠️</span>
+                                <div>
+                                    <p className="font-bold">Signal Lost</p>
+                                    <p className="text-xs opacity-80 mt-0.5">Rider's location isn't updating. Don't worry, they are moving!</p>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Rider Card (Only if assigned) */}
-                    {orderData.deliveryBoy && (
-                        <RiderCard rider={orderData.deliveryBoy} />
-                    )}
-
-                    {/* ✅ STEP 7C: Distance & ETA Display */}
-                    {orderData.deliveryBoy && orderData.deliveryBoy.distanceKm !== null && orderData.deliveryBoy.eta && (
-                        <div className="bg-blue-50 border border-blue-200 text-blue-700 p-4 rounded-lg mb-4 flex items-start gap-3">
-                            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                            </svg>
-                            <div className="flex-1">
-                                <p className="font-semibold text-sm">🚴 Rider is {orderData.deliveryBoy.distanceKm} km away</p>
-                                <p className="text-xs mt-1">⏱ Estimated arrival: {orderData.deliveryBoy.eta}</p>
+                        {/* RIDER CARD */}
+                        {orderData.deliveryBoy && (
+                            <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-4 mb-6 flex items-center gap-4">
+                                <img
+                                    src={orderData.deliveryBoy.photoUrl || 'https://cdn-icons-png.flaticon.com/512/10664/10664883.png'}
+                                    alt={orderData.deliveryBoy.name}
+                                    className="w-14 h-14 rounded-full object-cover border-2 border-gray-100"
+                                />
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-bold text-gray-900 truncate">{orderData.deliveryBoy.name}</h3>
+                                    <p className="text-xs text-blue-600 font-bold">Delivery Partner</p>
+                                </div>
+                                <a href={`tel:${orderData.deliveryBoy.phone}`} className="no-underline">
+                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white rounded-full px-4 h-9 shadow-green-200 shadow-lg">
+                                        <Phone size={14} className="mr-2" /> Call
+                                    </Button>
+                                </a>
                             </div>
+                        )}
+
+                        {/* STATUS TIMELINE */}
+                        <div className="mb-8">
+                            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Live Status</h2>
+                            <EnhancedTimeline currentStatus={orderData.order.status} />
                         </div>
-                    )}
 
-                    {/* Order Status */}
-                    <div className="mb-8">
-                        <div className="flex justify-between items-end mb-4">
-                            <h2 className="text-lg font-bold text-gray-800">Delivery Status</h2>
-                        </div>
+                        {/* ORDER SUMMARY */}
+                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
+                            <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-50">
+                                <h3 className="font-bold text-gray-800 text-sm">Summary</h3>
+                                {/* PAYMENT STATUS BADGE */}
+                                {(() => {
+                                    const paymentDetails = orderData.order.paymentDetails || {};
+                                    const method = (orderData.order.paymentMethod || paymentDetails.method || '').toLowerCase();
 
-                        {/* Custom Timeline */}
-                        <EnhancedTimeline currentStatus={orderData.order.status} />
-                    </div>
+                                    // Robust check for COD/Cash
+                                    const isPOD = ['cod', 'cash', 'pay_on_delivery', 'pay_at_counter', 'delivery'].some(k => method.includes(k));
 
-                    {/* Order Items Summary */}
-                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-bold text-gray-600 text-sm">Order Summary</h3>
-                            {/* Dynamic Payment Status Badge */}
-                            {(() => {
-                                // FIXED: Access nested paymentDetails from Firestore structure
-                                const paymentDetails = orderData.order.paymentDetails || {};
-                                const method = (paymentDetails.method || orderData.order.paymentMethod || '').toLowerCase();
+                                    return isPOD ? (
+                                        <div className="flex items-center gap-1.5 bg-yellow-50 px-2.5 py-1 rounded-lg border border-yellow-100">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                                            <span className="text-[10px] text-yellow-700 font-extrabold uppercase tracking-wide">Pay on Delivery</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-lg border border-green-100">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                                            <span className="text-[10px] text-green-700 font-extrabold uppercase tracking-wide">Paid Online</span>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
 
-                                console.log('[Page] Resolved Method:', method, 'from:', orderData.order);
-
-                                const isPOD = method.includes('cod') ||
-                                    method.includes('cash') ||
-                                    method.includes('delivery') ||
-                                    method === 'pay_on_delivery' ||
-                                    method === 'pay_at_counter';
-
-                                return isPOD ? (
-                                    <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-bold">Pay on Delivery</span>
-                                ) : (
-                                    <div className="flex flex-col items-end">
-                                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">Paid Online</span>
-                                    </div>
-                                );
-                            })()}
-                        </div>
-                        <div className="space-y-2">
-                            {orderData.order.items?.map((item, i) => {
-                                console.log(`[OrderTracking] Item ${i}:`, item); // DEBUG ITEM
-
-                                // Price Calculation Strategy:
-                                // 1. Try unit price fields (price, itemPrice)
-                                // 2. If 0, try total fields (totalPrice, total) and divide by quantity
-                                // 3. Ensure we don't divide by zero
-
-                                let unitPrice = Number(item.price) || Number(item.itemPrice) || 0;
-                                const quantity = Number(item.quantity) || 1;
-
-                                if (unitPrice === 0) {
-                                    const totalField = Number(item.totalPrice) || Number(item.total) || 0;
-                                    if (totalField > 0) {
-                                        unitPrice = totalField / quantity;
+                            <div className="space-y-3">
+                                {orderData.order.items?.map((item, i) => {
+                                    let unitPrice = Number(item.price) || Number(item.itemPrice) || 0;
+                                    const quantity = Number(item.quantity) || 1;
+                                    if (unitPrice === 0) {
+                                        const totalField = Number(item.totalPrice) || Number(item.total) || 0;
+                                        if (totalField > 0) unitPrice = totalField / quantity;
                                     }
-                                }
+                                    const totalItemPrice = unitPrice * quantity;
 
-                                const totalItemPrice = unitPrice * quantity;
-
-                                return (
-                                    <div key={i} className="flex justify-between text-sm text-gray-600">
-                                        <span>{quantity}x {item.name}</span>
-                                        <span className="font-medium">₹{totalItemPrice}</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <div className="border-t border-gray-200 mt-3 pt-3 flex justify-between font-bold text-gray-800">
-                            <span>Total Bill</span>
-                            <span>₹{orderData.order.totalAmount}</span>
+                                    return (
+                                        <div key={i} className="flex justify-between text-sm text-gray-600">
+                                            <div className="flex items-start gap-2">
+                                                <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[20px] text-center">{quantity}x</span>
+                                                <span className="font-medium">{item.name}</span>
+                                            </div>
+                                            <span className="font-bold text-gray-800">₹{totalItemPrice}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="border-t border-dashed border-gray-200 mt-4 pt-3 flex justify-between items-center">
+                                <span className="text-gray-500 text-sm font-medium">Total Bill</span>
+                                <span className="text-xl font-black text-gray-900">₹{orderData.order.totalAmount}</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-
-                {/* Footer Actions - Stick to bottom on mobile */}
-                <div className="p-4 border-t border-gray-100 bg-white sticky bottom-0 z-30">
-                    <Button className="w-full h-12 text-lg font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl">
-                        Need Help?
-                    </Button>
-                </div>
+                )}
             </div>
+
+            {/* FOOTER ACTION - Only visible if map is NOT expanded */}
+            {!isMapExpanded && (
+                <div className="p-4 bg-white border-t border-gray-100 sticky bottom-0 z-30 pb-safe">
+                    <a href={`tel:${orderData.restaurant.phone}`} className="block w-full">
+                        <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
+                            <Phone size={18} />
+                            Call Restaurant
+                        </Button>
+                    </a>
+                </div>
+            )}
         </div>
     );
 }

@@ -42,7 +42,8 @@ function initializeAdmin() {
   const serviceAccount = getServiceAccount();
   if (serviceAccount) {
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || "https://studio-6552995429-8bffe-default-rtdb.asia-southeast1.firebasedatabase.app"  // ✅ RTDB
     });
     console.log("[firebase-admin] Firebase Admin SDK initialized successfully.");
     return admin;
@@ -132,6 +133,11 @@ const verifyAndGetUid = async (req) => {
   }
 }
 
+const getDatabase = async () => {
+  const adminSdk = getAdminInstance();
+  return adminSdk.database(); // ✅ RTDB for real-time tracking
+};
 
-export { getAuth, getFirestore, FieldValue, GeoPoint, Timestamp, verifyAndGetUid };
+
+export { getAuth, getFirestore, getDatabase, FieldValue, GeoPoint, Timestamp, verifyAndGetUid };
 

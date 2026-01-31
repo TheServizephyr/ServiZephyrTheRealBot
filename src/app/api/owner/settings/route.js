@@ -209,7 +209,8 @@ export async function GET(req) {
             convenienceFeeLabel: businessData?.convenienceFeeLabel || 'Payment Processing Fee',
             packagingChargeEnabled: businessData?.packagingChargeEnabled || false,
             packagingChargeAmount: businessData?.packagingChargeAmount || 0,
-            businessId: businessId
+            businessId: businessId,
+            paymentQRCode: businessData?.paymentQRCode || null, // ✅ Return QR Code URL
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -254,7 +255,11 @@ export async function PATCH(req) {
         if (updates.razorpayAccountId !== undefined) businessUpdateData.razorpayAccountId = updates.razorpayAccountId;
         if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
         if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
+        if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
+        if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
         if (updates.address !== undefined) businessUpdateData.address = updates.address;
+        // ✅ Payment QR Code
+        if (updates.paymentQRCode !== undefined) businessUpdateData.paymentQRCode = updates.paymentQRCode;
 
         // Order and Payment Settings
         if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;

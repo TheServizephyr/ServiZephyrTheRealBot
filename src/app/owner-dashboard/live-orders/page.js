@@ -38,7 +38,8 @@ const statusConfig = {
     'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
-const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+// ✅ FIX: Added 'ready_for_pickup' to delivery flow (Rider Assigned stage)
+const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'dispatched', 'delivered'];
 const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
 
@@ -433,8 +434,13 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         'confirmed': { text: 'Start Preparing', icon: CookingPot, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_PREPARING },
         'preparing': isPickup
             ? { text: 'Ready for Pickup', icon: PackageCheck, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_READY }
-            : { text: 'Out for Delivery', icon: Bike, action: () => onAssignClick([order]), permission: PERMISSIONS.ASSIGN_RIDER },
-        'ready_for_pickup': { text: 'Mark as Picked Up', icon: PartyPopper, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_SERVED },
+            : { text: 'Assign Rider', icon: Bike, action: () => onAssignClick([order]), permission: PERMISSIONS.ASSIGN_RIDER }, // ✅ Changed text
+        'ready_for_pickup': {
+            text: isPickup ? 'Mark as Picked Up' : 'Mark Out for Delivery', // ✅ Dynamic text
+            icon: isPickup ? PartyPopper : Bike,
+            action: () => onNext(nextStatus),
+            permission: PERMISSIONS.MARK_ORDER_SERVED
+        },
         'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_SERVED },
     };
 
@@ -771,13 +777,14 @@ export default function LiveOrdersPage() {
                 const restaurantId = restaurantSnapshot.docs[0].id;
                 console.log('[LiveOrders] Found restaurantId:', restaurantId);
 
-                // Real-time listener for ACTIVE orders only (performance optimization)
+                // Real-time listener for ALL recent orders (Active + recent history)
+                // We need 'delivered' and 'rejected' stats for the tabs to work
                 console.log('[LiveOrders] Setting up query with restaurantId:', restaurantId);
                 const ordersQuery = query(
                     collection(db, 'orders'),
                     where('restaurantId', '==', restaurantId),
-                    where('status', 'in', ['pending', 'confirmed', 'preparing', 'dispatched', 'ready_for_pickup']), // ✅ Active orders only
-                    orderBy('orderDate', 'desc')
+                    orderBy('orderDate', 'desc'), // Show newest first
+                    limit(100) // Limit to last 100 orders to keep it lightweight
                 );
 
                 const unsubscribe = onSnapshot(
@@ -786,7 +793,7 @@ export default function LiveOrdersPage() {
                         const fetchedOrders = [];
                         querySnapshot.forEach((doc) => {
                             const orderData = doc.data();
-                            console.log('[LiveOrders] Order found:', { id: doc.id, restaurantId: orderData.restaurantId, status: orderData.status });
+                            // console.log('[LiveOrders] Order found:', { id: doc.id, status: orderData.status });
                             fetchedOrders.push({ id: doc.id, ...orderData });
                         });
 
@@ -827,14 +834,18 @@ export default function LiveOrdersPage() {
         };
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
-    // 🔧 FIX: Page Visibility API - Auto-refresh when tab becomes active again
-    // Prevents "Failed to fetch" errors when user returns after leaving tab inactive
+    // 🔧 FIX: Page Visibility API
+    // Only refresh for impersonation/employee modes (polling).
+    // For Owner, the Firestore listener (onSnapshot) handles reconnection automatically.
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                console.log('[LiveOrders] Tab became visible, refreshing data...');
-                // Refresh data immediately when user returns to tab
-                fetchInitialData(true);
+                if (impersonatedOwnerId || employeeOfOwnerId) {
+                    console.log('[LiveOrders] Tab visible (Impersonation) - refreshing data...');
+                    fetchInitialData(true);
+                } else {
+                    console.log('[LiveOrders] Tab visible (Owner) - Firestore listener handles updates.');
+                }
             }
         };
 
@@ -843,7 +854,7 @@ export default function LiveOrdersPage() {
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, []); // Empty deps - listener stays throughout component lifecycle
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
         const user = auth.currentUser;
@@ -909,7 +920,7 @@ export default function LiveOrdersPage() {
         setOrders(prevOrders =>
             prevOrders.map(order =>
                 orderIds.includes(order.id)
-                    ? { ...order, status: 'dispatched', deliveryBoyId: riderId }
+                    ? { ...order, status: 'ready_for_pickup', deliveryBoyId: riderId } // ✅ Optimistic to ready_for_pickup
                     : order
             )
         );
@@ -919,7 +930,7 @@ export default function LiveOrdersPage() {
                 await handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
             }
 
-            await handleAPICall('PATCH', { orderIds, newStatus: 'dispatched', deliveryBoyId: riderId });
+            await handleAPICall('PATCH', { orderIds, newStatus: 'ready_for_pickup', deliveryBoyId: riderId }); // ✅ Status -> ready_for_pickup (Notification suppressed)
             // Firestore listener will confirm the update
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);

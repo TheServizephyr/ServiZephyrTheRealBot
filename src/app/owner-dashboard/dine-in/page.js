@@ -1654,7 +1654,9 @@ const DineInPageContent = () => {
     };
 
 
-    // Real-time listener for dine-in tables (replaces 5-second polling)
+    // Real-time listener for dine-in tables (Signal-based Refresh)
+    // We listen for ANY change in tables or orders, and then fetch the full aggregated data from API
+    // This saves massive reads by avoiding recreating the complex aggregation logic client-side
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) {
@@ -1662,74 +1664,83 @@ const DineInPageContent = () => {
             return;
         }
 
-        // 🔧 PERMANENT FIX: Always use API polling for reliability
-        // Firestore listener was querying wrong collection causing tables to disappear
-        console.log('[Dine-In] Using API polling for reliable data loading');
-        fetchData();
-        const interval = setInterval(() => fetchData(true), 15000); // Refresh every 15s
-        return () => clearInterval(interval);
+        // For impersonation/employee: Use polling (fallback)
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+            console.log('[Dine-In] Using API polling for impersonation/employee');
+            fetchData();
+            const interval = setInterval(() => fetchData(true), 15000);
+            return () => clearInterval(interval);
+        }
 
-        // For owner's own dashboard - use REAL-TIME Firestore listener
+        // For Owner: Use Signal-based Refresh
         if (!restaurantDetails?.id) {
-            console.log('[Dine-In] Waiting for restaurant ID...');
-            fetchData(); // Fallback to API
+            fetchData(); // Initial load
             return;
         }
+
         setLoading(true);
         const restaurantId = restaurantDetails.id;
+        console.log('[Dine-In] Setting up Signal-based Refresh for', restaurantId);
 
-        // Note: This assumes dine_in_tables collection exists in Firestore
-        // If API creates this data differently, might need backend updates
+        // 1. Listen to Tables
         const tablesQuery = query(
-            collection(db, 'restaurants', restaurantDetails.id, 'tables')
+            collection(db, 'restaurants', restaurantId, 'tables')
         );
 
-        const unsubscribe = onSnapshot(
-            tablesQuery,
-            (querySnapshot) => {
-                const tables = [];
-                querySnapshot.forEach((doc) => {
-                    tables.push({ id: doc.id, ...doc.data() });
-                });
+        // 2. Listen to Active Orders (Metadata only)
+        const ordersQuery = query(
+            collection(db, 'orders'),
+            where('restaurantId', '==', restaurantId),
+            where('deliveryType', '==', 'dine-in'),
+            where('status', 'not-in', ['picked_up', 'rejected', 'cancelled', 'delivered'])
+            // Note: We include 'delivered' in API but exclude here to reduce noise? 
+            // Actually API includes delivered until paid/cleaned. 
+            // Let's just listen to active stuff to trigger updates.
+        );
 
-                console.log(`[Dine-In] Real-time update: ${tables.length} tables`);
-
-                // Update state with real-time data
-                // Note: serviceRequests and closedTabs might need separate listeners
-                setAllData(prev => ({
-                    tables: tables,
-                    serviceRequests: prev.serviceRequests || [],
-                    closedTabs: prev.closedTabs || []
-                }));
-
-                setLoading(false);
-            },
-            (error) => {
-                console.error('[Dine-In] Firestore listener error:', error);
-                setInfoDialog({
-                    isOpen: true,
-                    title: 'Connection Error',
-                    message: 'Could not connect to live tables. Please refresh the page.'
-                });
-                setLoading(false);
+        let lastUpdate = 0;
+        const triggerRefresh = () => {
+            const now = Date.now();
+            // Debounce updates (max 1 refresh per 2 seconds)
+            if (now - lastUpdate > 2000) {
+                console.log('[Dine-In] Signal received! Refreshing data...');
+                lastUpdate = now;
+                fetchData(true);
             }
-        );
+        };
 
-        // Cleanup function - CRITICAL for preventing zombie listeners
+        const unsubscribeTables = onSnapshot(tablesQuery, triggerRefresh, (err) => console.warn('Tables listener err:', err));
+        const unsubscribeOrders = onSnapshot(ordersQuery, triggerRefresh, (err) => console.warn('Orders listener err:', err));
+
+        // Initial fetch handled by listeners firing once on setup? 
+        // Snapshot listeners fire immediately with current state.
+        // So triggerRefresh will run once for tables and once for orders immediately.
+        // But we set loading=true above.
+        // fetchData(true) will run, but we need to wait for it for loading=false?
+        // fetchData implementation handles specific loading states.
+
+        // Let's do an explicit initial fetch to be sure, then let signals take over.
+        fetchData().then(() => setLoading(false));
+
         return () => {
-            console.log('[Dine-In] Cleaning up real-time listener');
-            unsubscribe();
+            console.log('[Dine-In] Cleaning up signal listeners');
+            unsubscribeTables();
+            unsubscribeOrders();
         };
     }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id]);
 
-    // 🔧 FIX: Page Visibility API - Auto-refresh when tab becomes active again
-    // Prevents "Failed to fetch" errors when user returns after leaving tab inactive
+    // 🔧 FIX: Page Visibility API
+    // Only refresh for impersonation/employee modes (polling).
+    // For Owner, the Signal listeners handle updates automatically.
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                console.log('[Dine-In] Tab became visible, refreshing data...');
-                // Refresh data immediately when user returns to tab
-                fetchData(true);
+                if (impersonatedOwnerId || employeeOfOwnerId) {
+                    console.log('[Dine-In] Tab visible (Impersonation) - refreshing...');
+                    fetchData(true);
+                } else {
+                    console.log('[Dine-In] Tab visible (Owner) - Signal listeners active.');
+                }
             }
         };
 
@@ -1738,7 +1749,7 @@ const DineInPageContent = () => {
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, []); // Empty deps - listener stays throughout component lifecycle
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({

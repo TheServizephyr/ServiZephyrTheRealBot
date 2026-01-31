@@ -245,32 +245,41 @@ function greedyRouteOptimization(restaurant, customers) {
 }
 
 /**
- * Helper to format route for Google Maps waypoints
+ * Helper to format route for Google Maps waypoints (ROUND TRIP)
+ * Uses COORDINATES ONLY for 100% reliability (no address parsing issues!)
  * @param {Array} optimizedRoute - Array of orders in optimal sequence
- * @returns {string} Google Maps waypoints URL parameter
+ * @param {Object} restaurantLocation - Restaurant coordinates {lat, lng}
+ * @returns {string} Google Maps URL with coordinate-based navigation
  */
-export function formatRouteForGoogleMaps(optimizedRoute) {
+export function formatRouteForGoogleMaps(optimizedRoute, restaurantLocation = null) {
     if (!optimizedRoute || optimizedRoute.length === 0) return '';
 
-    // First customer is destination, rest are waypoints
-    const destination = optimizedRoute[0];
-    const waypoints = optimizedRoute.slice(1);
+    const allCustomers = optimizedRoute;
 
-    const destLat = destination.lat;
-    const destLng = destination.lng;
+    let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving`;
 
-    let url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
-
-    if (waypoints.length > 0) {
-        const waypointStr = waypoints
-            .map(order => {
-                return `${order.lat},${order.lng}`;
-            })
+    // ✅ COORDINATES ONLY - No spelling/parsing issues!
+    if (allCustomers.length > 0) {
+        const waypointStr = allCustomers
+            .map(order => `${order.lat},${order.lng}`)
             .join('|');
 
         url += `&waypoints=${waypointStr}`;
     }
 
+    // Add restaurant as final destination (ROUND TRIP!)
+    console.log('[formatRouteForGoogleMaps] Restaurant location param:', restaurantLocation);
+
+    if (restaurantLocation && restaurantLocation.lat && restaurantLocation.lng) {
+        console.log('[formatRouteForGoogleMaps] Adding restaurant as destination (coordinates only)');
+        url += `&destination=${restaurantLocation.lat},${restaurantLocation.lng}`;
+    } else {
+        console.warn('[formatRouteForGoogleMaps] No restaurant! Using last customer');
+        const lastCustomer = allCustomers[allCustomers.length - 1];
+        url += `&destination=${lastCustomer.lat},${lastCustomer.lng}`;
+    }
+
+    console.log('[formatRouteForGoogleMaps] Final URL:', url);
     return url;
 }
 

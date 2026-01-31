@@ -1,0 +1,73 @@
+{
+    "rules": {
+        "delivery_tracking": {
+            "$orderId": {
+                ".read": true,
+                ".write": "auth != null",
+                ".validate": "newData.hasChildren(['status', 'updatedAt', 'token'])",
+                "status": {
+                    ".validate": "newData.isString()"
+                },
+                "updatedAt": {
+                    ".validate": "newData.isNumber()"
+                },
+                "token": {
+                    ".validate": "newData.isString()"
+                },
+                "riderId": {
+                    ".validate": "newData.isString()"
+                }
+            }
+        },
+        "rider_locations": {
+            "$riderId": {
+                ".read": true,
+                ".write": "$riderId === auth.uid",
+                ".validate": "newData.hasChildren(['latitude', 'longitude', 'timestamp'])",
+                "latitude": {
+                    ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+                },
+                "longitude": {
+                    ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+                },
+                "timestamp": {
+                    ".validate": "newData.isNumber()"
+                },
+                "orderId": {
+                    ".validate": "newData.isString()"
+                },
+                "isOnline": {
+                    ".validate": "newData.isBoolean()"
+                },
+                "speed": {
+                    ".validate": "newData.isNumber()"
+                },
+                "bearing": {
+                    ".validate": "newData.isNumber()"
+                },
+                "accuracy": {
+                    ".validate": "newData.isNumber()"
+                }
+            }
+        },
+        "dine_in_tracking": {
+            "$orderId": {
+                ".read": true,
+                ".write": "auth != null",
+                ".validate": "newData.hasChildren(['status', 'updatedAt', 'token'])",
+                "status": {
+                    ".validate": "newData.isString()"
+                },
+                "updatedAt": {
+                    ".validate": "newData.isNumber()"
+                },
+                "token": {
+                    ".validate": "newData.isString()"
+                },
+                "tableNumber": {
+                    ".validate": "newData.isString() || newData.isNumber()"
+                }
+            }
+        }
+    }
+}

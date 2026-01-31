@@ -15,6 +15,8 @@ import { useSearchParams } from 'next/navigation';
 import { Switch } from '@/components/ui/switch';
 import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
+import { Trash2, Upload, QrCode } from 'lucide-react'; // Added icons
+import imageCompression from 'browser-image-compression'; // ✅ Image Compression
 
 export const dynamic = 'force-dynamic';
 
@@ -292,8 +294,156 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
     );
 };
 
+// ✅ PER-RIDER QR MANAGER
+const RiderQRManager = ({ rider, onUpdate }) => {
+    const [uploading, setUploading] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '', type: 'info' });
+
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploading(true);
+        try {
+            // 0. AUTH CHECK
+            const user = auth.currentUser;
+            if (!user) throw new Error("You must be logged in.");
+            const idToken = await user.getIdToken();
+
+            // 1. COMPRESS IMAGE
+            const options = {
+                maxSizeMB: 0.5,
+                maxWidthOrHeight: 1024,
+                useWebWorker: true
+            };
+            const compressedFile = await imageCompression(file, options);
+            console.log(`Original: ${(file.size / 1024).toFixed(2)}KB, Compressed: ${(compressedFile.size / 1024).toFixed(2)}KB`);
+
+            // 2. PREPARE FORM DATA
+            const formData = new FormData();
+            formData.append('file', compressedFile, compressedFile.name);
+            formData.append('riderId', rider.id);
+
+            // 3. SERVER-SIDE UPLOAD (Avoids CORS issues)
+            const res = await fetch('/api/owner/settings/upload-qr-url', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: formData
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.message || 'Failed to upload image');
+            }
+
+            const { publicUrl } = await res.json();
+
+            // 4. SAVE URL TO RIDER PROFILE
+            await onUpdate({ id: rider.id, paymentQRCode: publicUrl });
+
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'QR Code updated successfully!', type: 'success' });
+        } catch (error) {
+            console.error(error);
+            setInfoDialog({ isOpen: true, title: 'Upload Failed', message: error.message || 'Failed to upload QR Code', type: 'error' });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleRemove = async () => {
+        if (!confirm('Are you sure you want to remove this QR code?')) return;
+        setUploading(true);
+        try {
+            await onUpdate({ id: rider.id, paymentQRCode: null }); // Remove
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'QR Code removed successfully!', type: 'success' });
+        } catch (error) {
+            console.error(error);
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to remove QR Code', type: 'error' });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <>
+            <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                <div onClick={() => setIsOpen(true)} className="cursor-pointer hover:bg-muted p-1 rounded-md transition-colors" title="Manage Payment QR">
+                    {rider.paymentQRCode ? (
+                        <div className="relative">
+                            <QrCode size={18} className="text-green-500" />
+                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-background"></div>
+                        </div>
+                    ) : (
+                        <QrCode size={18} className="text-muted-foreground" />
+                    )}
+                </div>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Manage Payment QR for {rider.name}</DialogTitle>
+                        <DialogDescription>
+                            Upload a UPI QR code (Paytm/PhonePe/GPay) for this rider to collect payments.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col items-center gap-4 py-4">
+                        <div className="bg-muted p-4 rounded-xl border border-dashed border-border flex items-center justify-center w-64 h-64 relative overflow-hidden">
+                            {rider.paymentQRCode ? (
+                                <img src={rider.paymentQRCode} alt="QR" className="w-full h-full object-contain" />
+                            ) : (
+                                <div className="text-center text-muted-foreground">
+                                    <QrCode size={48} className="mx-auto mb-2 opacity-50" />
+                                    <p>No QR Code Uploaded</p>
+                                </div>
+                            )}
+                            {uploading && (
+                                <div className="absolute inset-0 bg-background/50 flex items-center justify-center backdrop-blur-sm">
+                                    <RefreshCw className="animate-spin text-primary" size={32} />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-2 w-full">
+                            <div className="flex-1">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    id={`qr-upload-${rider.id}`}
+                                    className="hidden"
+                                    onChange={handleFileChange}
+                                    disabled={uploading}
+                                />
+                                <label htmlFor={`qr-upload-${rider.id}`} className="w-full">
+                                    <Button variant="outline" className="w-full cursor-pointer" asChild disabled={uploading}>
+                                        <span><Upload size={16} className="mr-2" /> {rider.paymentQRCode ? 'Update QR' : 'Upload QR'}</span>
+                                    </Button>
+                                </label>
+                            </div>
+                            {rider.paymentQRCode && (
+                                <Button variant="destructive" onClick={handleRemove} disabled={uploading}>
+                                    <Trash2 size={16} />
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ ...infoDialog, isOpen: false })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+                variant={infoDialog.type === 'error' ? 'destructive' : 'default'}
+            />
+        </>
+    );
+};
+
 export default function DeliveryPage() {
     const [data, setData] = useState({ boys: [], performance: {}, readyOrders: [], weeklyPerformance: [] });
+    const [settings, setSettings] = useState({}); // Store settings for QR code
     const [loading, setLoading] = useState(true);
     const [isInviteModalOpen, setInviteModalOpen] = useState(false);
     const [isAssignModalOpen, setAssignModalOpen] = useState(false);
@@ -315,6 +465,12 @@ export default function DeliveryPage() {
             url.searchParams.append('employee_of', employeeOfOwnerId);
         }
 
+        // Handle query params for DELETE
+        // Handle query params for DELETE
+        if (method === 'DELETE' && body?.id) {
+            url.searchParams.append('id', body.id);
+        }
+
         const res = await fetch(url.toString(), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -329,7 +485,9 @@ export default function DeliveryPage() {
         if (!isManualRefresh) setLoading(true);
         try {
             const result = await handleApiCall('GET', undefined, '/api/owner/delivery');
+            const settingsResult = await handleApiCall('GET', undefined, '/api/owner/settings'); // Fetch settings for QR
             setData(result);
+            setSettings(settingsResult);
         } catch (error) {
             console.error(error);
             setInfoDialog({ isOpen: true, title: "Error", message: "Could not load delivery data: " + error.message });
@@ -392,6 +550,16 @@ export default function DeliveryPage() {
         }
     };
 
+    const handleRiderUpdate = async (updates) => {
+        try {
+            await handleApiCall('PATCH', { boy: updates }, '/api/owner/delivery');
+            await fetchData(true);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Error updating rider: ${error.message}` });
+            throw error;
+        }
+    };
+
     return (
         <div className="p-4 md:p-6 text-foreground bg-background min-h-screen">
             <InfoDialog
@@ -428,6 +596,9 @@ export default function DeliveryPage() {
                     <PerformanceCard title="Top Performer" value={data.performance?.topPerformer?.name || 'N/A'} icon={Trophy} isLoading={loading} />
                 </div>
 
+                {/* Per-Rider Logic: PaymentQRSection Removed */}
+                {/* <PaymentQRSection ... /> */}
+
                 <div className="bg-card rounded-xl p-4 flex flex-col border border-border">
                     <h3 className="text-lg font-semibold mb-4">Delivery Team ({data.boys?.length || 0})</h3>
                     <div className="overflow-y-auto space-y-3">
@@ -441,7 +612,10 @@ export default function DeliveryPage() {
                             >
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <p className="font-bold text-foreground">{boy.name}</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-bold text-foreground">{boy.name}</p>
+                                            <RiderQRManager rider={boy} onUpdate={handleRiderUpdate} />
+                                        </div>
                                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Phone size={12} />{boy.phone}</p>
                                     </div>
                                     <StatusBadge status={boy.status} />
@@ -473,6 +647,23 @@ export default function DeliveryPage() {
                                         </Label>
                                     </div>
                                     <div className="flex gap-2">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 w-8 p-0"
+                                            onClick={async () => {
+                                                if (confirm(`Remove ${boy.name} from your team?`)) {
+                                                    try {
+                                                        await handleApiCall('DELETE', { id: boy.id });
+                                                        fetchData(true);
+                                                    } catch (e) {
+                                                        alert(e.message);
+                                                    }
+                                                }
+                                            }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </Button>
                                         <Button size="sm" disabled={boy.status !== 'Available'} onClick={() => handleAssignClick(boy)}>
                                             <Bike size={14} className="mr-1" /> Assign Order
                                         </Button>

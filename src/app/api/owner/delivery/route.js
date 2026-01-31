@@ -333,3 +333,25 @@ export async function PATCH(req) {
     }
 }
 
+export async function DELETE(req) {
+    try {
+        const auth = await getAuth();
+        const firestore = await getFirestore();
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { searchParams } = new URL(req.url);
+        const boyId = searchParams.get('id');
+
+        if (!boyId) {
+            return NextResponse.json({ message: 'Boy ID is required for deletion.' }, { status: 400 });
+        }
+
+        const boyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc(boyId);
+        await boyRef.delete();
+
+        return NextResponse.json({ message: 'Delivery Boy removed successfully!' }, { status: 200 });
+
+    } catch (error) {
+        console.error("DELETE DELIVERY BOY ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}

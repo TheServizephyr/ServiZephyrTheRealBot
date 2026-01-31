@@ -141,12 +141,11 @@ export async function GET(request, { params }) {
                     if (riderLat && riderLng && customerLat && customerLng) {
                         distanceKm = getDistanceKm(riderLat, riderLng, customerLat, customerLng);
 
-                        // ✅ STEP 7B: Smart ETA estimation
+                        // ✅ STEP 7B: Smart ETA estimation (VAGUE for safety)
+                        // User requested to remove specific timings to avoid anger due to straight-line inaccuracy.
                         const estimateETA = (dist) => {
-                            if (dist < 1) return "5–8 min";
-                            if (dist < 3) return "8–15 min";
-                            if (dist < 6) return "15–25 min";
-                            return "25+ min";
+                            if (dist < 2) return "Arriving Soon";
+                            return "On the Way";
                         };
 
                         eta = estimateETA(distanceKm);

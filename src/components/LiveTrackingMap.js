@@ -131,7 +131,13 @@ const LiveTrackingMap = (props) => {
                 defaultCenter={center}
                 defaultZoom={12}
                 gestureHandling={'greedy'}
-                disableDefaultUI={true}
+                disableDefaultUI={false} // Enable controls
+                options={{
+                    zoomControl: true,
+                    streetViewControl: false,
+                    mapTypeControl: false,
+                    fullscreenControl: false, // We have our own custom full screen button
+                }}
             >
                 <MapComponent
                     restaurantLocation={restaurantLocation}
