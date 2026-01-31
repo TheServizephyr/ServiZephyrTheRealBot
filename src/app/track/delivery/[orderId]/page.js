@@ -313,10 +313,10 @@ function OrderTrackingContent() {
 
     return (
         <div className="h-screen w-full flex flex-col bg-gradient-to-br from-indigo-50 via-white to-purple-50 overflow-hidden font-sans">
-            {/* MAIN CONTENT AREA */}
-            <div className="flex-1 flex flex-col relative overflow-hidden">
-
-                {/* HEADER INFO - MOVED ABOVE MAP */}
+            {/* MAIN SCROLLABLE AREA */}
+            <div className={`flex-1 overflow-y-auto ${isMapExpanded ? 'overflow-hidden' : ''}`}> {/* Allow page scroll */}
+                
+                {/* HEADER INFO */}
                 {!isMapExpanded && (
                     <div className="px-5 pt-6 pb-2 flex justify-between items-start bg-transparent z-20">
                         <div>
@@ -329,46 +329,48 @@ function OrderTrackingContent() {
                     </div>
                 )}
 
-                {/* MAP SECTION - BOXED & EXPANDABLE */}
-                <motion.div
+                {/* MAP SECTION */}
+                <motion.div 
                     layout
-                    className={`relative w-full z-10 transition-all duration-300 ease-in-out ${isMapExpanded ? 'absolute inset-0 h-full z-50' : 'h-[35vh] mx-4 w-[calc(100%-2rem)] rounded-3xl overflow-hidden shadow-2xl border-4 border-white ring-1 ring-gray-200'}`}
+                    className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-screen z-50' : 'h-[40vh] px-4 py-2'}`}
                 >
-                    <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2">
-                        <span className="relative flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                        </span>
-                        <span className="text-xs font-bold text-gray-700">Live</span>
-                    </div>
-
-                    <LiveTrackingMap {...mapLocations} mapRef={mapRef} />
-
-                    {/* EXPAND / COLLAPSE BUTTON */}
-                    <Button
-                        onClick={() => setIsMapExpanded(!isMapExpanded)}
-                        className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 h-10 w-10 backdrop-blur-sm transition-all"
-                    >
-                        {isMapExpanded ? <X size={20} /> : <Maximize size={20} />}
-                    </Button>
-
-                    {!isMapExpanded && (
-                        <div className="absolute bottom-4 right-4 z-10">
-                            <Button
-                                onClick={handleRecenter}
-                                size="sm"
-                                className="rounded-full shadow-md bg-white text-gray-700 hover:bg-gray-50 h-10 w-10 p-0"
-                            >
-                                <Navigation size={18} />
-                            </Button>
+                    <div className={`relative w-full h-full overflow-hidden shadow-2xl border-4 border-white ring-1 ring-gray-200 ${isMapExpanded ? '' : 'rounded-3xl'}`}>
+                        <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2">
+                            <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                            </span>
+                            <span className="text-xs font-bold text-gray-700">Live</span>
                         </div>
-                    )}
+
+                        <LiveTrackingMap {...mapLocations} mapRef={mapRef} />
+
+                        {/* EXPAND / COLLAPSE BUTTON */}
+                        <Button
+                            onClick={() => setIsMapExpanded(!isMapExpanded)}
+                            className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 h-10 w-10 backdrop-blur-sm transition-all"
+                        >
+                            {isMapExpanded ? <X size={20} /> : <Maximize size={20} />}
+                        </Button>
+
+                        {!isMapExpanded && (
+                            <div className="absolute bottom-4 right-4 z-10">
+                                <Button
+                                    onClick={handleRecenter}
+                                    size="sm"
+                                    className="rounded-full shadow-md bg-white text-gray-700 hover:bg-gray-50 h-10 w-10 p-0"
+                                >
+                                    <Navigation size={18} />
+                                </Button>
+                            </div>
+                        )}
+                    </div>
                 </motion.div>
 
-                {/* SCROLLABLE DETAILS SECTION - Only visible if map is NOT expanded */}
+                {/* DETAILS SECTION - Scrolls with the page */}
                 {!isMapExpanded && (
-                    <div className="flex-1 overflow-y-auto px-4 pb-24 scrollbar-hide pt-4">
-
+                    <div className="px-4 pb-32 pt-2">
+                        
                         {/* RIDER OFFLINE WARNING */}
                         {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
                             <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl mb-4 flex items-start gap-3 text-sm">
