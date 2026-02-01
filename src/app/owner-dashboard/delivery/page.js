@@ -505,11 +505,14 @@ export default function DeliveryPage() {
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     // ✅ FIX 3: Auto-refresh delivery data every 10 seconds for real-time updates
+    // ✅ FIX 3: Optimized Polling - 60s Interval & Pause in Background
     useEffect(() => {
         const interval = setInterval(() => {
-            // Silent refresh (don't show loading spinner)
-            fetchData(true);
-        }, 10000); // 10 seconds
+            // Only poll if the tab is visible to save costs
+            if (document.visibilityState === 'visible') {
+                fetchData(true);
+            }
+        }, 60000); // 60 seconds (Reduced from 10s to save costs)
 
         return () => clearInterval(interval);
     }, [impersonatedOwnerId, employeeOfOwnerId]);

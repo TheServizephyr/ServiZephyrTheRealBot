@@ -454,21 +454,38 @@ export async function PATCH(req) {
 
                 if (isDelivery) {
                     const trackingRef = database.ref(`delivery_tracking/${id}`);
-                    await trackingRef.set({
-                        status: newStatus,
-                        updatedAt: Date.now(),
-                        token: orderData.trackingToken || 'temp_token' // Use real token from Firestore
-                    });
-                    console.log(`[RTDB] ✅ Delivery tracking updated for ${id} with status: ${newStatus}`);
+
+                    if (['delivered', 'rejected', 'cancelled', 'returned_to_restaurant', 'failed_delivery'].includes(newStatus)) {
+                        // CLEANUP: If finalized, remove from RTDB to save space
+                        await trackingRef.remove();
+                        console.log(`[RTDB] 🗑️ Cleaned up delivery_tracking for finalized order ${id}`);
+                    } else {
+                        // UPDATE
+                        await trackingRef.set({
+                            status: newStatus,
+                            updatedAt: Date.now(),
+                            token: orderData.trackingToken || 'temp_token'
+                        });
+                        console.log(`[RTDB] ✅ Delivery tracking updated for ${id} with status: ${newStatus}`);
+                    }
+
                 } else if (isDineIn) {
                     const trackingRef = database.ref(`dine_in_tracking/${id}`);
-                    await trackingRef.set({
-                        status: newStatus,
-                        updatedAt: Date.now(),
-                        tableNumber: orderData.tableId || 'N/A',
-                        token: orderData.trackingToken || 'temp_token' // Use real token from Firestore
-                    });
-                    console.log(`[RTDB] ✅ Dine-in tracking updated for ${id} with status: ${newStatus}`);
+
+                    if (['served', 'paid', 'rejected', 'cancelled'].includes(newStatus)) {
+                        // CLEANUP: If finalized, remove from RTDB
+                        await trackingRef.remove();
+                        console.log(`[RTDB] 🗑️ Cleaned up dine_in_tracking for finalized order ${id}`);
+                    } else {
+                        // UPDATE
+                        await trackingRef.set({
+                            status: newStatus,
+                            updatedAt: Date.now(),
+                            tableNumber: orderData.tableId || 'N/A',
+                            token: orderData.trackingToken || 'temp_token'
+                        });
+                        console.log(`[RTDB] ✅ Dine-in tracking updated for ${id} with status: ${newStatus}`);
+                    }
                 } else {
                     console.warn(`[RTDB] Order ${id} has unknown deliveryType: ${orderData.deliveryType}`);
                 }

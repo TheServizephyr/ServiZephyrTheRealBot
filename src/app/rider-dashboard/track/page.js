@@ -94,7 +94,12 @@ export default function RiderTrackPage() {
         if (!user) router.push('/rider-auth');
         else {
             fetchData();
-            const interval = setInterval(() => fetchData(true), 30000);
+            // Polling every 60s (was 30s) + Visibility Check to save costs
+            const interval = setInterval(() => {
+                if (document.visibilityState === 'visible') {
+                    fetchData(true);
+                }
+            }, 60000);
             return () => clearInterval(interval);
         }
     }, [user, isUserLoading, router, fetchData]);

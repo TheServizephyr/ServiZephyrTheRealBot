@@ -92,7 +92,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
 }
 
 const LiveTrackingMap = (props) => {
-    const { restaurantLocation, riderLocation, customerLocation, mapRef } = props;
+    const { restaurantLocation, riderLocation, customerLocation, mapRef, isInteractive = true } = props; // Default to true if not provided
 
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
@@ -130,13 +130,13 @@ const LiveTrackingMap = (props) => {
                 style={{ width: '100%', height: '100%' }}
                 defaultCenter={center}
                 defaultZoom={12}
-                gestureHandling={'greedy'}
-                disableDefaultUI={false} // Enable controls
+                gestureHandling={isInteractive ? 'greedy' : 'none'} // Disable gestures if not interactive to allow page scroll
+                disableDefaultUI={!isInteractive} // Hide controls if not interactive
                 options={{
-                    zoomControl: true,
+                    zoomControl: isInteractive, // Only show zoom if interactive
                     streetViewControl: false,
                     mapTypeControl: false,
-                    fullscreenControl: false, // We have our own custom full screen button
+                    fullscreenControl: false,
                 }}
             >
                 <MapComponent

@@ -25,10 +25,17 @@ function RiderLayoutContent({ children }) {
     useEffect(() => {
         if (isUserLoading) return;
 
+        // Check if we expect a session (PWA resume resilience)
+        const storedRole = typeof window !== 'undefined' ? localStorage.getItem('role') : null;
+        const isRiderSession = storedRole === 'rider';
+
         // Give auth time to settle (race condition fix)
+        // If we expect a session, give it more time (2.5s) to reconnect socket on mobile
+        const timeoutDuration = isRiderSession ? 2500 : 500;
+
         const timer = setTimeout(() => {
             setAuthChecked(true);
-        }, 500);
+        }, timeoutDuration);
 
         return () => clearTimeout(timer);
     }, [isUserLoading]);

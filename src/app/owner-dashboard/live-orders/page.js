@@ -713,11 +713,16 @@ export default function LiveOrdersPage() {
             return;
         }
 
-        // For impersonation or employee access, use API polling (can't use Firestore directly)
+        // For impersonation or employee access, use API polling (can't use Firestore directly due to permission rules)
         if (impersonatedOwnerId || employeeOfOwnerId) {
             console.log('[LiveOrders] Using API polling for impersonation/employee access');
             fetchInitialData();
-            const interval = setInterval(() => fetchInitialData(true), 30000);
+            // Optimized Polling: 60s + Visibility Check
+            const interval = setInterval(() => {
+                if (document.visibilityState === 'visible') {
+                    fetchInitialData(true);
+                }
+            }, 60000);
             return () => clearInterval(interval);
         }
 

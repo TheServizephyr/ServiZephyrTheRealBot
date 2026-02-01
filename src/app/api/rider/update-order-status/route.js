@@ -128,20 +128,28 @@ export async function PATCH(req) {
 
         await batch.commit();
 
-        // ✅ RTDB Write for Real-time Tracking (Cheap!)
+        // ✅ RTDB Write for Real-time Tracking (Dual Write)
         try {
             const database = await getDatabase();
             const trackingRef = database.ref(`delivery_tracking/${orderId}`);
-            await trackingRef.set({
-                status: newStatus,
-                updatedAt: Date.now(),
-                riderId: uid,
-                token: orderData.sessionToken || 'temp_token' // TODO: Add real token in order creation
-            });
-            console.log(`[API update-order-status] ✅ RTDB updated for order ${orderId}`);
+
+            if (newStatus === 'delivered' || newStatus === 'rejected') {
+                // CLEANUP: If finalized, remove from RTDB to save space
+                await trackingRef.remove();
+                console.log(`[API update-order-status] 🗑️ Cleaned up RTDB for finalized order ${orderId}`);
+            } else {
+                // UPDATE: Sync status
+                await trackingRef.set({
+                    status: newStatus,
+                    updatedAt: Date.now(),
+                    riderId: uid,
+                    token: orderData.sessionToken || 'temp_token'
+                });
+                console.log(`[API update-order-status] ✅ RTDB updated for order ${orderId}`);
+            }
         } catch (rtdbError) {
             // Non-fatal - Firestore is source of truth
-            console.warn('[API update-order-status] RTDB write failed (non-fatal):', rtdbError);
+            console.warn('[API update-order-status] RTDB write/cleanup failed (non-fatal):', rtdbError);
         }
 
         // 🔥 CRITICAL: Invalidate Redis cache so tracking page gets fresh status immediately!

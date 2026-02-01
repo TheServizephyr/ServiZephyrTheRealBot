@@ -315,51 +315,170 @@ function OrderTrackingContent() {
         <div className="h-[100dvh] w-full flex flex-col bg-gradient-to-br from-indigo-50 via-white to-purple-50 overflow-hidden font-sans">
             {/* MAIN SCROLLABLE AREA */}
             <div className={`flex-1 overflow-y-auto overflow-x-hidden w-full ${isMapExpanded ? 'overflow-hidden' : ''}`}> {/* Allow page scroll */}
-                
-                {/* HEADER INFO */}
-                {!isMapExpanded && (
-                    <div className="w-full px-5 pt-6 pb-2 flex justify-between items-start bg-transparent z-20">
-                        <div>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderId.slice(0, 8)}</p>
-                            <h1 className="text-2xl font-black text-gray-900 leading-tight">{orderData.restaurant.name}</h1>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-white/50">
-                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                        </Button>
-                    </div>
-                )}
 
-                {/* MAP SECTION */}
-                <div 
-                    className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-[100dvh] z-50' : 'h-[40vh] px-4 py-2'}`}
+                {/* HEADER & STATUS CARD - VERTICAL STACK (No longer floating over map) */}
+                <div className="px-5 pt-6 pb-4 z-20">
+                    <motion.div
+                        initial={{ y: -20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        className="bg-white/90 backdrop-blur-sm shadow-sm rounded-2xl p-4 border border-gray-100"
+                    >
+                        <div className="flex justify-between items-start mb-3">
+                            <div>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderId?.slice(0, 8) || '...'}</p>
+                                <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-gray-50">
+                                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                            </Button>
+                        </div>
+
+                        {/* DYNAMIC STATUS BAR */}
+                        {(() => {
+                            const status = orderData?.order?.status || 'pending';
+                            let statusText = "Order In Progress";
+                            let statusColor = "bg-gray-100 text-gray-600";
+                            let icon = <Loader2 size={16} className="animate-spin" />;
+
+                            // Determine if it's a delivery order to adjust 'ready' status text
+                            const isDelivery = orderData.deliveryBoy ||
+                                (orderData.order.deliveryMode === 'delivery') ||
+                                (orderData.order.type === 'delivery');
+
+                            // Custom Status Logic
+                            switch (status) {
+                                case 'pending':
+                                case 'placed':
+                                case 'paid':
+                                    statusText = "Order Placed";
+                                    statusColor = "bg-blue-50 text-blue-700";
+                                    icon = <CheckCircle size={18} />;
+                                    break;
+
+                                case 'confirmed':
+                                case 'accepted':
+                                    statusText = "Order Confirmed";
+                                    statusColor = "bg-green-50 text-green-700";
+                                    icon = <Check size={18} />;
+                                    break;
+
+                                case 'preparing':
+                                case 'cooking':
+                                    statusText = "Preparing Your Food";
+                                    statusColor = "bg-orange-50 text-orange-700";
+                                    icon = <CookingPot size={18} className="animate-pulse" />;
+                                    break;
+
+                                case 'dispatched':
+                                case 'reached_restaurant':
+                                case 'rider_assigned':
+                                    // User requested explicit "Rider Assigned" for these states
+                                    statusText = "Rider Assigned";
+                                    statusColor = "bg-indigo-50 text-indigo-700"; // Distinct color
+                                    icon = <Bike size={18} />;
+                                    break;
+
+                                case 'ready':
+                                case 'ready_for_pickup':
+                                    if (isDelivery) {
+                                        // Delivery: Food is ready, waiting for rider pickup -> Show "Rider Assigned" (or "Food Ready")
+                                        // User preferred "Rider Assigned"
+                                        statusText = "Rider Assigned";
+                                        statusColor = "bg-indigo-50 text-indigo-700 text-sm";
+                                        icon = <Bike size={18} />;
+                                    } else {
+                                        // Pickup: Customer picks up
+                                        statusText = "Ready for Pickup";
+                                        statusColor = "bg-blue-100 text-blue-800";
+                                        icon = <PackageCheck size={18} />;
+                                    }
+                                    break;
+
+                                case 'picked_up':
+                                case 'out_for_delivery':
+                                case 'on_the_way':
+                                    statusText = "Out for Delivery";
+                                    statusColor = "bg-green-100 text-green-800";
+                                    icon = <Bike size={18} className="animate-bounce" />;
+                                    break;
+
+                                case 'reached':
+                                case 'rider_arrived':
+                                    statusText = "Rider Reached";
+                                    statusColor = "bg-teal-50 text-teal-700";
+                                    icon = <MapPin size={18} />;
+                                    break;
+
+                                case 'delivered':
+                                case 'picked_up_by_customer':
+                                    statusText = "Food Delivered";
+                                    statusColor = "bg-green-600 text-white shadow-green-200";
+                                    icon = <PackageCheck size={18} />;
+                                    break;
+
+                                case 'cancelled':
+                                case 'rejected':
+                                case 'failed_delivery':
+                                    statusText = "Order Cancelled";
+                                    statusColor = "bg-red-50 text-red-700";
+                                    icon = <XCircle size={18} />;
+                                    break;
+
+                                default:
+                                    // Fallback for unknown states
+                                    statusText = "Order In Progress";
+                                    statusColor = "bg-gray-50 text-gray-500";
+                                    icon = <RefreshCw size={16} className="animate-spin opacity-50" />;
+                            }
+
+                            return (
+                                <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${statusColor} font-bold shadow-sm transition-colors duration-300`}>
+                                    <div className="shrink-0">{icon}</div>
+                                    <span className="text-sm tracking-wide truncate">{statusText}</span>
+                                </div>
+                            );
+                        })()}
+                    </motion.div>
+                </div>
+
+                {/* MAP SECTION - BOXED */}
+                <div
+                    className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-[100dvh] z-50' : 'h-[50vh] px-4 py-1'}`}
                 >
                     <div className={`relative w-full h-full overflow-hidden shadow-2xl border-4 border-white ring-1 ring-gray-200 ${isMapExpanded ? '' : 'rounded-3xl'}`}>
-                        <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2">
-                            <span className="relative flex h-2.5 w-2.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                            </span>
-                            <span className="text-xs font-bold text-gray-700">Live</span>
+
+                        {/* LIVE BADGE */}
+                        {!isMapExpanded && (
+                            <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 pointer-events-none border border-white/50">
+                                <span className="relative flex h-2.5 w-2.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                                </span>
+                                <span className="text-xs font-bold text-gray-700">Live Tracking</span>
+                            </div>
+                        )}
+
+                        {/* MAP CONTAINER - Pointer events disabled when collapsed to allow page scroll */}
+                        <div className={`w-full h-full ${!isMapExpanded ? 'pointer-events-none' : ''}`}>
+                            <LiveTrackingMap {...mapLocations} mapRef={mapRef} isInteractive={isMapExpanded} />
                         </div>
 
-                        <LiveTrackingMap {...mapLocations} mapRef={mapRef} />
-
-                        {/* EXPAND / COLLAPSE BUTTON */}
+                        {/* EXPAND / COLLAPSE BUTTON - pointer-events-auto needed explicitly since parent might propagate none? No, siblings are fine, but good practice */}
                         <Button
                             onClick={() => setIsMapExpanded(!isMapExpanded)}
-                            className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 h-10 w-10 backdrop-blur-sm transition-all"
+                            className="absolute bottom-4 right-4 z-10 bg-white text-gray-800 shadow-xl rounded-full p-3 h-12 w-12 hover:bg-gray-50 border border-gray-100 pointer-events-auto"
                         >
-                            {isMapExpanded ? <X size={20} /> : <Maximize size={20} />}
+                            {isMapExpanded ? <X size={24} /> : <Maximize size={24} />}
                         </Button>
 
                         {!isMapExpanded && (
-                            <div className="absolute bottom-4 right-4 z-10">
+                            <div className="absolute bottom-20 right-4 z-10 pointer-events-auto">
                                 <Button
                                     onClick={handleRecenter}
                                     size="sm"
-                                    className="rounded-full shadow-md bg-white text-gray-700 hover:bg-gray-50 h-10 w-10 p-0"
+                                    className="rounded-full shadow-xl bg-white text-gray-800 hover:bg-gray-50 h-12 w-12 p-0 border border-gray-100"
                                 >
-                                    <Navigation size={18} />
+                                    <Navigation size={22} />
                                 </Button>
                             </div>
                         )}
@@ -369,7 +488,7 @@ function OrderTrackingContent() {
                 {/* DETAILS SECTION - Scrolls with the page */}
                 {!isMapExpanded && (
                     <div className="w-full px-4 pb-32 pt-2">
-                        
+
                         {/* RIDER OFFLINE WARNING */}
                         {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
                             <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl mb-4 flex items-start gap-3 text-sm">
@@ -401,11 +520,7 @@ function OrderTrackingContent() {
                             </div>
                         )}
 
-                        {/* STATUS TIMELINE */}
-                        <div className="mb-8">
-                            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Live Status</h2>
-                            <EnhancedTimeline currentStatus={orderData.order.status} />
-                        </div>
+                        {/* STATUS TIMELINE - REMOVED */}
 
                         {/* ORDER SUMMARY */}
                         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
@@ -413,13 +528,12 @@ function OrderTrackingContent() {
                                 <h3 className="font-bold text-gray-800 text-sm">Summary</h3>
                                 {/* PAYMENT STATUS BADGE */}
                                 {(() => {
-                                    const paymentDetails = orderData.order.paymentDetails || {};
-                                    const method = (orderData.order.paymentMethod || paymentDetails.method || '').toLowerCase();
+                                    const paymentStatus = (orderData.order.paymentStatus || '').toLowerCase();
 
-                                    // Robust check for COD/Cash
-                                    const isPOD = ['cod', 'cash', 'pay_on_delivery', 'pay_at_counter', 'delivery'].some(k => method.includes(k));
+                                    // Logic: If explicitly PAID -> Online. Else (pending/pay_at_counter) -> Pay on Delivery
+                                    const isPaidOnline = paymentStatus === 'paid' || paymentStatus === 'success';
 
-                                    return isPOD ? (
+                                    return !isPaidOnline ? (
                                         <div className="flex items-center gap-1.5 bg-yellow-50 px-2.5 py-1 rounded-lg border border-yellow-100">
                                             <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
                                             <span className="text-[10px] text-yellow-700 font-extrabold uppercase tracking-wide">Pay on Delivery</span>
