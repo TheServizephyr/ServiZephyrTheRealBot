@@ -1102,7 +1102,7 @@ const CartPageInternal = () => {
                                                 {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                                                 {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
 
-                                                {!isStreetVendor && deliveryType === 'delivery' && !activeOrderId && (
+                                                {!isStreetVendor && deliveryType === 'delivery' && (
                                                     <div className="flex justify-between">
                                                         <span>Delivery Fee:</span>
                                                         <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
