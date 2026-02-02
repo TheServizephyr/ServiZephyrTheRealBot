@@ -141,6 +141,8 @@ export async function GET(req) {
                 packagingChargeAmount: businessData.packagingChargeAmount || 0,
                 // Include delivery fees for public menu (often needed for cart calc)
                 deliveryFeeType: fallback('deliveryFeeType', 'fixed'),
+                // FIXED: Calculate deliveryCharge for frontend compatibility
+                deliveryCharge: fallback('deliveryFeeType', 'fixed') === 'fixed' ? fallback('deliveryFixedFee', 30) : 0,
                 deliveryFixedFee: fallback('deliveryFixedFee', 30),
                 deliveryPerKmFee: fallback('deliveryPerKmFee', 5),
                 deliveryFreeThreshold: fallback('deliveryFreeThreshold', 500),
@@ -205,6 +207,8 @@ export async function GET(req) {
             deliveryEnabled: fallback('deliveryEnabled', true),
             deliveryRadius: fallback('deliveryRadius', 5),
             deliveryFeeType: fallback('deliveryFeeType', 'fixed'),
+            // FIXED: Calculate deliveryCharge for frontend compatibility
+            deliveryCharge: fallback('deliveryFeeType', 'fixed') === 'fixed' ? fallback('deliveryFixedFee', 30) : 0,
             deliveryFixedFee: fallback('deliveryFixedFee', 30),
             deliveryPerKmFee: fallback('deliveryPerKmFee', 5),
             deliveryFreeThreshold: fallback('deliveryFreeThreshold', 500),
@@ -369,6 +373,8 @@ export async function PATCH(req) {
             deliveryEnabled: fallback('deliveryEnabled', true),
             deliveryRadius: fallback('deliveryRadius', 5),
             deliveryFeeType: fallback('deliveryFeeType', 'fixed'),
+            // FIXED: Calculate deliveryCharge (Unified Field)
+            deliveryCharge: fallback('deliveryFeeType', 'fixed') === 'fixed' ? fallback('deliveryFixedFee', 30) : 0,
             deliveryFixedFee: fallback('deliveryFixedFee', 30),
             deliveryPerKmFee: fallback('deliveryPerKmFee', 5),
             deliveryFreeThreshold: fallback('deliveryFreeThreshold', 500),

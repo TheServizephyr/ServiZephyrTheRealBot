@@ -327,6 +327,12 @@ const CartPageInternal = () => {
                                 packagingChargeAmount: freshSettings.packagingChargeAmount,
                                 // NEW: Update coupons from fresh settings
                                 coupons: freshSettings.coupons || [],
+                                // FIXED: Update delivery settings from fresh server data
+                                deliveryFeeType: freshSettings.deliveryFeeType,
+                                deliveryFixedFee: freshSettings.deliveryFixedFee,
+                                deliveryPerKmFee: freshSettings.deliveryPerKmFee,
+                                deliveryFreeThreshold: freshSettings.deliveryFreeThreshold,
+                                deliveryCharge: freshSettings.deliveryCharge, // Crucial: Update the calculated charge
                             };
 
                             setPackagingConfig({
