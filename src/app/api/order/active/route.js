@@ -170,12 +170,7 @@ export async function POST(req) {
         const orderData = docs[0];
         const orderDoc = { id: orderData.id }; // Construct pseudo-doc since we mapped it
 
-        if (activeOrderQuery.empty) {
-            return NextResponse.json({ activeOrder: null }, { status: 200 });
-        }
 
-        const orderDoc = activeOrderQuery.docs[0];
-        const orderData = orderDoc.data();
 
         return NextResponse.json({
             activeOrder: {
