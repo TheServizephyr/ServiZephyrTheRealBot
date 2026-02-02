@@ -352,6 +352,7 @@ export async function GET(request, { params }) {
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
+                createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : orderData.createdAt, // Added for bundling logic
                 items: aggregatedItems, // Aggregated items (Active)
                 batches: orderData.batches || [], // NEW FIELD
                 subtotal: aggregatedSubtotal, // Aggregated subtotal

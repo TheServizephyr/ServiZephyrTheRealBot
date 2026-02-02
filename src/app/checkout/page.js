@@ -138,6 +138,8 @@ const CheckoutPageInternal = () => {
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     const [detailsConfirmed, setDetailsConfirmed] = useState(false);
     const [activeOrderId, setActiveOrderId] = useState(searchParams.get('activeOrderId'));
+    const [bundlingRef] = useState(searchParams.get('bundlingRef')); // NEW: Reference for bundling validation
+    const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null); // NEW: Details for bundling check
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState(null);
     const [paymentGateway, setPaymentGateway] = useState('razorpay');
@@ -267,15 +269,14 @@ const CheckoutPageInternal = () => {
 
             // --- FIX: Logic to determine if details form is needed ---
             // FIXED: Properly check delivery type to show correct form flow
-            if (activeOrderId) {
-                setDetailsConfirmed(true); // Don't ask for name on add-on orders
+            // CRITICAL: For delivery, we MUST ignore activeOrderId to force address selection (Multi-Order support)
+            if (activeOrderId && deliveryType !== 'delivery') {
+                setDetailsConfirmed(true); // Don't ask for name on add-on orders (Dine-in/Pickup)
             } else if (deliveryType === 'street-vendor-pre-order') {
                 setDetailsConfirmed(true); // Skip old form, use new inline UI for name/phone
-            } else if (deliveryType === 'delivery' && !isLoggedInUser) {
-                // CRITICAL FIX: Show address/details form for guest delivery orders
-                setDetailsConfirmed(false);
-            } else if (deliveryType === 'delivery' && isLoggedInUser) {
-                // FIXED: Even logged-in users need to confirm address for delivery
+            } else if (deliveryType === 'delivery') {
+                // CRITICAL FIX: ALWAYS show address/details form for delivery orders (Guest OR Logged In)
+                // This fix ensures address page is NOT skipped.
                 setDetailsConfirmed(false);
             } else {
                 setDetailsConfirmed(true); // Otherwise, assume details are known (dine-in, pickup)
@@ -401,6 +402,22 @@ const CheckoutPageInternal = () => {
         }
     }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed, activeOrderId]);
 
+    // SMART BUNDLING: Fetch details for bundlingRef
+    useEffect(() => {
+        if (bundlingRef) {
+            console.log("[Checkout Page] Fetching bundlingRef order details:", bundlingRef);
+            fetch(`/api/order/status/${bundlingRef}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.order) {
+                        console.log("[Checkout Page] Bundling order details fetched:", data.order);
+                        setBundlingOrderDetails(data.order);
+                    }
+                })
+                .catch(err => console.error("Failed to fetch bundling order:", err));
+        }
+    }, [bundlingRef]);
+
     const deliveryType = useMemo(() => cartData?.deliveryType || 'delivery', [cartData]);
     const diningPreference = useMemo(() => cartData?.diningPreference || null, [cartData]);
 
@@ -410,7 +427,8 @@ const CheckoutPageInternal = () => {
         router.push(`/add-address?${params.toString()}`);
     };
 
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible } = useMemo(() => {
+
         const currentSubtotal = cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0);
         if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0 };
 
@@ -427,7 +445,96 @@ const CheckoutPageInternal = () => {
             }
         });
 
-        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree || activeOrderId) ? 0 : (cartData.deliveryCharge || 0);
+        // (End of appliedCoupons loop)
+
+
+        // SMART BUNDLING CHECK (Checkout Phase)
+        let isSmartBundlingEligible = false;
+        if (bundlingOrderDetails && bundlingOrderDetails.createdAt && selectedAddress) {
+            // 1. Check Time (10 mins)
+            let createdAtDate = bundlingOrderDetails.createdAt;
+            if (typeof createdAtDate === 'string') createdAtDate = new Date(createdAtDate);
+            if (createdAtDate && createdAtDate.seconds) createdAtDate = new Date(createdAtDate.seconds * 1000);
+
+            const now = new Date();
+            const diffMinutes = (now - createdAtDate) / (1000 * 60);
+
+            // 2. Check Status
+            const status = bundlingOrderDetails.status;
+            const isStatusEligible = !['out_for_delivery', 'delivered', 'cancelled', 'rejected'].includes(status);
+
+            // 3. Check Address (CRITICAL: Must match)
+            // We compare IDs if available, otherwise check strictly.
+            // bundlingOrderDetails.customerAddress might be just a string or object.
+            // selectedAddress is the object from userAddresses.
+            // Simplest check: If selectedAddress.id matches active order's address ID (if we stored it).
+            // If not, we might need fuzzy match. For now, strict on ID is safer if available, else maybe skip strict address check IF user flow guarantees it?
+            // No, user can change address. We MUST check.
+            // Let's check if selectedAddress.id matches. (Assuming we store addressId on order, which we might not).
+            // Fallback: Compare generated string representation "line1, city" vs "line1, city".
+
+            let addressMatch = false;
+
+            // 1. Strict ID Match
+            if (selectedAddress.id && bundlingOrderDetails.customerAddress?.id === selectedAddress.id) {
+                addressMatch = true;
+            }
+            // 2. Fallback: Content Match (if distinct objects but same location)
+            else if (selectedAddress && bundlingOrderDetails.customerAddress) {
+                const addr1 = bundlingOrderDetails.customerAddress;
+                const addr2 = selectedAddress;
+
+                const clean = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+                console.log("[Bundling Check] Addr1 (Active):", addr1);
+                console.log("[Bundling Check] Addr2 (Selected):", addr2);
+                console.log(`[Bundling Check] Comparing: '${clean(addr1.addressLine1)}' vs '${clean(addr2.addressLine1)}'`);
+
+                // Helper to extract a comparable string from an address (string or object)
+                const getAddrString = (addr) => {
+                    if (!addr) return '';
+                    // Case A: Address is already a string
+                    if (typeof addr === 'string') return addr.trim().toLowerCase().replace(/\s+/g, ' ');
+
+                    // Case B: Address is an object - try specific keys
+                    const keys = ['full', 'addressLine1', 'street', 'line1', 'address'];
+                    for (const k of keys) {
+                        if (addr[k] && String(addr[k]).trim().length > 0) return String(addr[k]).trim().toLowerCase().replace(/\s+/g, ' ');
+                    }
+
+                    // Case C: Construct from components if no full string
+                    const parts = [addr.addressLine1, addr.street, addr.city, addr.zipCode, addr.postcode].filter(Boolean);
+                    if (parts.length > 0) return parts.join(' ').trim().toLowerCase().replace(/\s+/g, ' ');
+
+                    return '';
+                };
+
+                const str1 = getAddrString(addr1);
+                const str2 = getAddrString(addr2);
+
+                console.log(`[Bundling Check] Match Validated? '${str1}' === '${str2}'`);
+
+                // CRITICAL: Only match if strings are non-empty and identical
+                if (str1 && str2 && str1 === str2) {
+                    addressMatch = true;
+                }
+                // Check Full String address if available
+                else if (clean(addr1.full) === clean(addr2.full) && clean(addr1.full).length > 10) {
+                    addressMatch = true;
+                }
+            }
+            // Logic: If user selects the SAME address object from the list, IDs match.
+            // If user adds new address, ID won't match (and rightfully so, might be different).
+
+            // Relaxed Logic for User Experience: If the user selects an address that LOOKS the same?
+            // For safety against abuse: Strict Match is better. 'Same Saved Address'
+
+            if (diffMinutes <= 10 && isStatusEligible && addressMatch) {
+                isSmartBundlingEligible = true;
+            }
+        }
+
+        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree || activeOrderId || isSmartBundlingEligible) ? 0 : (cartData.deliveryCharge || 0);
         const tip = (isStreetVendor || deliveryType !== 'delivery' || activeOrderId) ? 0 : (cartData.tipAmount || 0);
         const taxableAmount = currentSubtotal - couponDiscountValue;
 
@@ -471,9 +578,10 @@ const CheckoutPageInternal = () => {
             sgst: sgstAmount,
             convenienceFee: calculatedConvenienceFee,
             grandTotal: finalGrandTotal,
-            packagingCharge
+            packagingCharge,
+            isSmartBundlingEligible
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, bundlingOrderDetails, selectedAddress]);
 
     const handleAddMoreToTab = () => {
         const params = new URLSearchParams({
@@ -1065,6 +1173,15 @@ const CheckoutPageInternal = () => {
                                             <span>Subtotal</span>
                                             <span>₹{subtotal.toFixed(2)}</span>
                                         </div>
+                                        {/* DELIVERY CHARGE ROW */}
+                                        {((finalDeliveryCharge > 0) || (deliveryType === 'delivery' && activeOrderId) || isSmartBundlingEligible) && (
+                                            <div className="flex justify-between text-sm">
+                                                <span>Delivery Fee</span>
+                                                <span className={finalDeliveryCharge === 0 ? "text-green-600 font-bold" : ""}>
+                                                    {finalDeliveryCharge === 0 ? "FREE (Bundled)" : `₹${finalDeliveryCharge.toFixed(2)}`}
+                                                </span>
+                                            </div>
+                                        )}
                                         {cgst > 0 && (
                                             <>
                                                 <div className="flex justify-between text-sm">
@@ -1087,7 +1204,7 @@ const CheckoutPageInternal = () => {
                                         <div className="border-t border-dashed pt-2 mt-2" />
                                         <div className="flex justify-between text-sm">
                                             <span>Order Total</span>
-                                            <span className="font-semibold">₹{(subtotal + cgst + sgst + packagingCharge).toFixed(2)}</span>
+                                            <span className="font-semibold">₹{(subtotal + finalDeliveryCharge + cgst + sgst + packagingCharge).toFixed(2)}</span>
                                         </div>
                                         {convenienceFee > 0 && (
                                             <>

@@ -156,29 +156,102 @@ const EnhancedTimeline = ({ currentStatus }) => {
     );
 };
 
+// New Component for Order Tabs
+const OrderTabs = ({ activeOrders, currentOrderId, onSwitch }) => {
+    if (!activeOrders || activeOrders.length <= 1) return null;
+
+    return (
+        <div className="px-5 pt-4 overflow-x-auto whitespace-nowrap scrollbar-hide">
+            <div className="flex gap-3">
+                {activeOrders.map((order, index) => {
+                    const isActive = order.orderId === currentOrderId;
+                    return (
+                        <button
+                            key={order.orderId}
+                            onClick={() => onSwitch(order.orderId)}
+                            className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${isActive
+                                ? 'bg-gray-900 text-white border-gray-900 shadow-lg'
+                                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                }`}
+                        >
+                            Order #{index + 1}
+                            {/* Status Dot */}
+                            <span className={`ml-2 inline-block w-2 h-2 rounded-full ${['delivered', 'picked_up'].includes(order.status) ? 'bg-green-500' : 'bg-orange-500 animate-pulse'
+                                }`}></span>
+                        </button>
+                    )
+                })}
+            </div>
+        </div>
+    );
+};
+
 function OrderTrackingContent() {
-    const { orderId } = useParams();
+    const { orderId: paramOrderId } = useParams();
     const router = useRouter();
     const searchParams = useSearchParams();
     const sessionToken = searchParams.get('token');
+    const userPhone = searchParams.get('phone');
 
+    // Internal State
+    const [currentOrderId, setCurrentOrderId] = useState(paramOrderId);
+    const [activeOrders, setActiveOrders] = useState([]); // List of all active orders for this user
+
+    // ... existing state ...
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [isVisible, setIsVisible] = useState(true); // RULE 1: Visibility tracking
     const mapRef = useRef(null);
     const [isMapExpanded, setIsMapExpanded] = useState(false);
 
+    // SMART BUNDLING STATE
+    const [isBundlingEligible, setIsBundlingEligible] = useState(false);
+    const [timeRemaining, setTimeRemaining] = useState(null);
+    const [deliverySettings, setDeliverySettings] = useState(null); // To check if fees are enabled
+
+    // 1. Fetch ALL active orders for this user (for Tabs)
+    useEffect(() => {
+        // Derive phone from URL param OR fetched order data
+        const phoneToUse = userPhone || orderData?.order?.customerPhone || orderData?.order?.phone;
+
+        if (!phoneToUse) return;
+
+        const fetchActiveOrders = async () => {
+            try {
+                const res = await fetch(`/api/order/active?phone=${phoneToUse}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    // Filter valid delivery orders or active ones
+                    if (data.activeOrders) {
+                        // Ensure we get an array, and prioritize the current order
+                        let orders = Array.isArray(data.activeOrders) ? data.activeOrders : [data.activeOrders];
+
+                        // FILTER: Only show DELIVERY orders on this page (exclude dine-in/pickup if separated)
+                        orders = orders.filter(o => o.deliveryType === 'delivery');
+
+                        // If API returns single object inside activeOrders key (unlikely but safe)
+                        setActiveOrders(orders);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch active orders list", e);
+            }
+        };
+        fetchActiveOrders();
+    }, [userPhone, orderData]);
+
+
     const fetchData = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
-        if (!orderId || !sessionToken) {
+        if (!currentOrderId || !sessionToken) {
             setError("Order ID or tracking token is missing.");
             setLoading(false);
             return;
         }
 
         try {
-            const res = await fetch(`/api/order/status/${orderId}`);
+            // Use currentOrderId instead of paramOrderId
+            const res = await fetch(`/api/order/status/${currentOrderId}`);
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to fetch order status.');
@@ -186,27 +259,16 @@ function OrderTrackingContent() {
             const data = await res.json();
             const status = data.order?.status;
 
-            // Clean up live order if finalized
-            if (['delivered', 'picked_up', 'rejected'].includes(status)) {
-                const liveOrderKey = `liveOrder_${data.restaurant?.id}`;
-                localStorage.removeItem(liveOrderKey);
-            }
-
             setOrderData(data);
         } catch (err) {
             setError(err.message);
         } finally {
             if (!isBackground) setLoading(false);
         }
-    }, [orderId, sessionToken]);
+    }, [currentOrderId, sessionToken]); // depend on currentOrderId
 
-    // ✅ RULE 1: Visibility API Removed
-    // RTDB listener handles real-time updates efficiently. 
-    // Re-fetching on visibility change is redundant and causes confusing cache logs.
-
-    // ✅ BROWSER BACK BUTTON INTERCEPTION
+    // BROWSER BACK BUTTON INTERCEPTION
     useEffect(() => {
-        // Push state functionality to trap back button
         const preventBack = () => {
             window.history.pushState(null, document.title, window.location.href);
             const restaurantId = orderData?.order?.restaurantId;
@@ -219,14 +281,16 @@ function OrderTrackingContent() {
                 const params = new URLSearchParams();
                 if (token) params.set('token', token);
                 if (phone) params.set('phone', phone);
-                if (orderId) params.set('activeOrderId', orderId); // ✅ Keep Track Button Alive
+                // Important: Don't pass activeOrderId if we are just going back, OR pass it if we want to keep one active. 
+                // Given the new "Multi-Order" flow, we might NOT want to lock the menu to this order.
+                // But for safety, let's keep the params clean.
+
                 if (params.toString()) targetUrl += `?${params.toString()}`;
 
                 router.replace(targetUrl);
             }
         };
 
-        // Initialize history stack
         window.history.pushState(null, document.title, window.location.href);
         window.addEventListener('popstate', preventBack);
 
@@ -235,64 +299,96 @@ function OrderTrackingContent() {
         };
     }, [orderData, router]);
 
-    // ✅ FIX: Payment Verification - Stable Dependencies
-    const paymentStatus = searchParams.get('payment_status'); // Extract value
-
+    // Payment Verification
+    const paymentStatus = searchParams.get('payment_status');
     useEffect(() => {
         const verifyPayment = async () => {
-            if (paymentStatus === 'success' && orderId) {
+            if (paymentStatus === 'success' && currentOrderId) {
                 try {
-                    await fetch(`/api/payment/phonepe/status/${orderId}`);
+                    await fetch(`/api/payment/phonepe/status/${currentOrderId}`);
                     await fetchData();
-                } catch (e) {
-                    console.error("Error verifying payment:", e);
-                }
+                } catch (e) { console.error(e); }
             } else {
                 fetchData();
             }
         };
         verifyPayment();
-    }, [orderId, paymentStatus, fetchData]); // ✅ Depend on primitive string, not object
+    }, [currentOrderId, paymentStatus, fetchData]);
 
-    // ✅ RTDB LISTENER: Real-time status updates (NO POLLING!)
-    // ✅ RTDB LISTENER: Real-time status updates (NO POLLING!)
+    // RTDB Listener
     useEffect(() => {
-        if (!orderId || !orderData) return;
-
+        if (!currentOrderId || !orderData) return;
         const currentStatus = orderData.order?.status;
+        if (isFinalState(currentStatus)) return;
 
-        // Don't listen if already in final state
-        if (isFinalState(currentStatus)) {
-            console.log('[DeliveryTrack] Final state - no listener needed');
-            return;
-        }
-
-        console.log('[RTDB] Attaching status listener for', orderId);
-        const statusRef = ref(rtdb, `delivery_tracking/${orderId}`);
-
+        console.log('[RTDB] Attaching status listener for', currentOrderId);
+        const statusRef = ref(rtdb, `delivery_tracking/${currentOrderId}`);
         const unsubscribe = onValue(statusRef, (snapshot) => {
             const rtdbData = snapshot.val();
-            // Only update if status implies a change and data exists
             if (rtdbData && rtdbData.status && rtdbData.status !== currentStatus) {
                 console.log('[RTDB] Status updated:', rtdbData.status);
-
                 setOrderData(prev => ({
                     ...prev,
-                    order: {
-                        ...prev.order,
-                        status: rtdbData.status
-                    }
+                    order: { ...prev.order, status: rtdbData.status }
                 }));
             }
-        }, (error) => {
-            console.error('[RTDB] Listener error:', error);
         });
+        return () => off(statusRef, 'value', unsubscribe);
+    }, [currentOrderId, orderData?.order?.status]);
 
-        return () => {
-            console.log('[RTDB] Cleaning up status listener');
-            off(statusRef, 'value', unsubscribe);
+    // FETCH DELIVERY SETTINGS (One time)
+    useEffect(() => {
+        if (orderData?.restaurant?.id) {
+            fetch(`/api/owner/settings?restaurantId=${orderData.restaurant.id}`)
+                .then(res => res.json())
+                .then(data => setDeliverySettings(data))
+                .catch(err => console.error("Failed to fetch settings:", err));
+        }
+    }, [orderData?.restaurant?.id]);
+
+    // BUNDLING TIMER
+    useEffect(() => {
+        if (!orderData?.order?.createdAt) return;
+
+        const checkTime = () => {
+            const createdAt = new Date(orderData.order.createdAt.seconds ? orderData.order.createdAt.seconds * 1000 : orderData.order.createdAt);
+            const now = new Date();
+            const diffSeconds = (now - createdAt) / 1000;
+            const windowSeconds = 10 * 60; // 10 minutes
+
+            if (diffSeconds < windowSeconds) {
+                setTimeRemaining(windowSeconds - diffSeconds);
+                setIsBundlingEligible(true);
+            } else {
+                setTimeRemaining(0);
+                setIsBundlingEligible(false);
+            }
         };
-    }, [orderId, orderData?.order?.status]); // ✅ Dependency on primitive STATUS, not full object loop
+
+        checkTime(); // Initial check
+        const interval = setInterval(checkTime, 1000);
+        return () => clearInterval(interval);
+    }, [orderData?.order?.createdAt]);
+
+
+    // Tab Switch Handler
+    const handleSwitchOrder = (newId) => {
+        setCurrentOrderId(newId);
+        // Update URL visually so refresh keeps user on correct tab
+        // Using window.history.replaceState to avoid full reload
+        const newUrl = new URL(window.location.href);
+        // Note: Next.js router might contend with this, but strictly for UI switching within the page, state is enough.
+        // If we want deep linking, we'd need router.replace but that might re-trigger initial props.
+        // For now, state-based switching is smoothest.
+    };
+
+    // Auto-update Param if changed externally
+    useEffect(() => {
+        if (paramOrderId && paramOrderId !== currentOrderId) {
+            setCurrentOrderId(paramOrderId);
+        }
+    }, [paramOrderId]);
+
 
     const handleRecenter = () => {
         if (!mapRef.current) return;
@@ -329,19 +425,22 @@ function OrderTrackingContent() {
 
     return (
         <div className="h-[100dvh] w-full flex flex-col bg-gradient-to-br from-indigo-50 via-white to-purple-50 overflow-hidden font-sans">
-            {/* MAIN SCROLLABLE AREA */}
-            <div className={`flex-1 overflow-y-auto overflow-x-hidden w-full ${isMapExpanded ? 'overflow-hidden' : ''}`}> {/* Allow page scroll */}
+            {/* TABS SECTION */}
+            <OrderTabs activeOrders={activeOrders} currentOrderId={currentOrderId} onSwitch={handleSwitchOrder} />
 
-                {/* HEADER & STATUS CARD - VERTICAL STACK (No longer floating over map) */}
+            <div className={`flex-1 overflow-y-auto overflow-x-hidden w-full ${isMapExpanded ? 'overflow-hidden' : ''}`}>
+
+                {/* HEADER & STATUS CARD */}
                 <div className="px-5 pt-6 pb-4 z-20">
                     <motion.div
+                        key={currentOrderId} // Animate on switch active
                         initial={{ y: -20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         className="bg-white/90 backdrop-blur-sm shadow-sm rounded-2xl p-4 border border-gray-100"
                     >
                         <div className="flex justify-between items-start mb-3">
                             <div>
-                                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderId?.slice(0, 8) || '...'}</p>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{currentOrderId?.slice(0, 8) || '...'}</p>
                                 <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
                             </div>
                             <div className="flex items-center gap-2">
@@ -353,7 +452,9 @@ function OrderTrackingContent() {
                                         const params = new URLSearchParams();
                                         if (token) params.set('token', token);
                                         if (phone) params.set('phone', phone);
-                                        if (orderId) params.set('activeOrderId', orderId); // ✅ Keep Track Button Alive
+                                        // FIXED: Pass activeOrderId to preserve bundled session state
+                                        if (currentOrderId) params.set('activeOrderId', currentOrderId);
+
                                         if (params.toString()) targetUrl += `?${params.toString()}`;
 
                                         router.push(targetUrl);
@@ -477,6 +578,49 @@ function OrderTrackingContent() {
                     </motion.div>
                 </div>
 
+                {/* SMART BUNDLING BANNER */}
+                {deliverySettings?.deliveryCodEnabled !== false && ( // Simple check, or check explicit delivery toggle
+                    <div className="px-5 mb-4">
+                        {isBundlingEligible ? (
+                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-green-800 font-bold text-sm">Free Delivery on Add-ons!</p>
+                                    <p className="text-green-600 text-xs mt-0.5">
+                                        Order within <span className="font-mono font-bold bg-green-200 px-1 rounded">{Math.floor(timeRemaining / 60)}:{(Math.floor(timeRemaining % 60)).toString().padStart(2, '0')}</span> to bundle.
+                                    </p>
+                                </div>
+                                <Button size="sm" onClick={() => {
+                                    const params = new URLSearchParams();
+                                    if (sessionToken) params.set('token', sessionToken);
+                                    if (sessionToken) params.set('token', sessionToken);
+                                    // Use param phone OR fallback to order phone to keep session valid
+                                    const phoneToUse = userPhone || orderData?.order?.phone || orderData?.order?.customerPhone;
+                                    if (phoneToUse) params.set('phone', phoneToUse);
+                                    params.set('activeOrderId', currentOrderId);
+                                    router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
+                                }} className="bg-green-600 hover:bg-green-700 text-white rounded-lg h-9 text-xs font-bold">
+                                    + Add Items
+                                </Button>
+                            </div>
+                        ) : (
+                            // Only show "Window Closed" if it was recently closed? Or persistent? 
+                            // User requirement: "persistent banner... indicating standard shipping applies."
+                            // We should show it if Status is still active (not delivered)
+                            !isFinalState(orderData?.order?.status) && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-3 opacity-80">
+                                    <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                                        <PackageCheck size={16} />
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-700 font-bold text-xs">Bundling Window Closed</p>
+                                        <p className="text-gray-500 text-[10px]">Standard delivery fees apply to new orders.</p>
+                                    </div>
+                                </div>
+                            )
+                        )}
+                    </div>
+                )}
+
                 {/* MAP SECTION - BOXED */}
                 <div
                     className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-[100dvh] z-50' : 'h-[50vh] px-4 py-1'}`}
@@ -543,7 +687,7 @@ function OrderTrackingContent() {
                                     src={orderData.deliveryBoy.photoUrl || 'https://cdn-icons-png.flaticon.com/512/10664/10664883.png'}
                                     alt={orderData.deliveryBoy.name}
                                     className="w-14 h-14 rounded-full object-cover border-2 border-gray-100"
-                                />
+                                ></img>
                                 <div className="flex-1 min-w-0">
                                     <h3 className="font-bold text-gray-900 truncate">{orderData.deliveryBoy.name}</h3>
                                     <p className="text-xs text-blue-600 font-bold">Delivery Partner</p>
@@ -556,17 +700,27 @@ function OrderTrackingContent() {
                             </div>
                         )}
 
-                        {/* STATUS TIMELINE - REMOVED */}
-
                         {/* ORDER SUMMARY */}
                         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
                             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-50">
-                                <h3 className="font-bold text-gray-800 text-sm">Summary</h3>
+                                <div>
+                                    <h3 className="font-bold text-gray-800 text-sm">Bill Summary</h3>
+                                    {orderData.order.createdAt && (
+                                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">
+                                            {(() => {
+                                                try {
+                                                    const d = new Date(orderData.order.createdAt._seconds
+                                                        ? orderData.order.createdAt._seconds * 1000
+                                                        : orderData.order.createdAt);
+                                                    return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                                                } catch (e) { return ''; }
+                                            })()}
+                                        </p>
+                                    )}
+                                </div>
                                 {/* PAYMENT STATUS BADGE */}
                                 {(() => {
                                     const paymentStatus = (orderData.order.paymentStatus || '').toLowerCase();
-
-                                    // Logic: If explicitly PAID -> Online. Else (pending/pay_at_counter) -> Pay on Delivery
                                     const isPaidOnline = paymentStatus === 'paid' || paymentStatus === 'success';
 
                                     return !isPaidOnline ? (
@@ -604,8 +758,67 @@ function OrderTrackingContent() {
                                     );
                                 })}
                             </div>
-                            <div className="border-t border-dashed border-gray-200 mt-4 pt-3 flex justify-between items-center">
-                                <span className="text-gray-500 text-sm font-medium">Total Bill</span>
+
+                            {/* Detailed Cost Breakdown */}
+                            <div className="border-t border-dashed border-gray-200 mt-4 pt-3 space-y-2">
+                                {(() => {
+                                    const subtotal = Number(orderData.order.subtotal) || 0;
+                                    const total = Number(orderData.order.totalAmount);
+                                    let delivery = Number(orderData.order.deliveryCharge) || 0;
+                                    const tax = (Number(orderData.order.cgst) || 0) + (Number(orderData.order.sgst) || 0);
+                                    const packing = Number(orderData.order.packagingCharge) || 0;
+                                    const platform = Number(orderData.order.convenienceFee) || 0;
+                                    const discount = Number(orderData.order.discount) || 0;
+
+                                    // Fallback: If extra charges exist but aren't labeled, attribute to Delivery
+                                    const calculatedExtras = total - subtotal;
+                                    if (delivery === 0 && tax === 0 && packing === 0 && platform === 0 && calculatedExtras > 0) {
+                                        delivery = calculatedExtras;
+                                    }
+
+                                    return (
+                                        <>
+                                            <div className="flex justify-between text-xs text-gray-500">
+                                                <span>Item Total</span>
+                                                <span>₹{subtotal}</span>
+                                            </div>
+                                            {delivery > 0 && (
+                                                <div className="flex justify-between text-xs text-gray-500">
+                                                    <span>Delivery Fee</span>
+                                                    <span>₹{delivery}</span>
+                                                </div>
+                                            )}
+                                            {tax > 0 && (
+                                                <div className="flex justify-between text-xs text-gray-500">
+                                                    <span>Taxes (GST)</span>
+                                                    <span>₹{tax}</span>
+                                                </div>
+                                            )}
+                                            {packing > 0 && (
+                                                <div className="flex justify-between text-xs text-gray-500">
+                                                    <span>Packaging/Restaurant Charges</span>
+                                                    <span>₹{packing}</span>
+                                                </div>
+                                            )}
+                                            {platform > 0 && (
+                                                <div className="flex justify-between text-xs text-gray-500">
+                                                    <span>Platform Fee</span>
+                                                    <span>₹{platform}</span>
+                                                </div>
+                                            )}
+                                            {discount > 0 && (
+                                                <div className="flex justify-between text-xs text-green-600 font-medium">
+                                                    <span>Discount</span>
+                                                    <span>-₹{discount}</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </div>
+
+                            <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between items-center">
+                                <span className="text-gray-700 text-sm font-bold">Total Bill</span>
                                 <span className="text-xl font-black text-gray-900">₹{orderData.order.totalAmount}</span>
                             </div>
                         </div>
@@ -614,17 +827,19 @@ function OrderTrackingContent() {
             </div>
 
             {/* FOOTER ACTION - Only visible if map is NOT expanded */}
-            {!isMapExpanded && (
-                <div className="p-4 bg-white border-t border-gray-100 sticky bottom-0 z-30 pb-safe">
-                    <a href={`tel:${orderData.restaurant.phone}`} className="block w-full">
-                        <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
-                            <Phone size={18} />
-                            Call Restaurant
-                        </Button>
-                    </a>
-                </div>
-            )}
-        </div>
+            {
+                !isMapExpanded && (
+                    <div className="p-4 bg-white border-t border-gray-100 sticky bottom-0 z-30 pb-safe">
+                        <a href={`tel:${orderData.restaurant.phone}`} className="block w-full">
+                            <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
+                                <Phone size={18} />
+                                Call Restaurant
+                            </Button>
+                        </a>
+                    </div>
+                )
+            }
+        </div >
     );
 }
 

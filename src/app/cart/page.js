@@ -198,7 +198,7 @@ const CartPageInternal = () => {
     const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
     const [loadingPage, setLoadingPage] = useState(true);
 
-    const activeOrderId = searchParams.get('activeOrderId');
+    const activeOrderId = searchParams.get('activeOrderId') || searchParams.get('bundlingRef');
     const [liveOrder, setLiveOrder] = useState(null);
 
     const [outOfStockItems, setOutOfStockItems] = useState([]);
@@ -206,6 +206,7 @@ const CartPageInternal = () => {
     const [packagingConfig, setPackagingConfig] = useState({ enabled: false, amount: 0 });
     const [orderState, setOrderState] = useState(ORDER_STATE.IDLE);
     const [orderError, setOrderError] = useState(null);
+    const [activeOrderDetails, setActiveOrderDetails] = useState(null); // NEW: Store full details for bundling check
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
@@ -214,6 +215,20 @@ const CartPageInternal = () => {
             setLiveOrder(JSON.parse(liveOrderData));
         } else if (activeOrderId) {
             setLiveOrder({ orderId: activeOrderId, trackingToken: token });
+        }
+
+        // NEW: Fetch active order details for Bundling Logic
+        if (activeOrderId) {
+            console.log("[Cart Page] Fetching active order details for bundling check:", activeOrderId);
+            fetch(`/api/order/status/${activeOrderId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.order) {
+                        console.log("[Cart Page] Active order details fetched:", data.order);
+                        setActiveOrderDetails(data.order);
+                    }
+                })
+                .catch(err => console.error("[Cart Page] Failed to fetch active order:", err));
         }
     }, [activeOrderId, token, restaurantId]);
 
@@ -573,6 +588,15 @@ const CartPageInternal = () => {
         }
 
         const params = new URLSearchParams(searchParams.toString());
+
+        // SMART BUNDLING: For delivery, we DO NOT pass activeOrderId (avoids legacy merge).
+        // Instead, we pass 'bundlingRef' so Checkout can validate 10-min rule.
+        if (deliveryType === 'delivery' && params.get('activeOrderId')) {
+            const aId = params.get('activeOrderId');
+            params.delete('activeOrderId');
+            params.append('bundlingRef', aId);
+        }
+
         let checkoutUrl = `/checkout?${params.toString()}`;
 
         console.log("[Cart Page] Proceeding to checkout URL:", checkoutUrl);
@@ -621,7 +645,11 @@ const CartPageInternal = () => {
         if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);
         if (tabId) params.append('tabId', tabId);
-        if (activeOrderId) params.append('activeOrderId', activeOrderId);
+
+        // FIXED: Always pass activeOrderId if present (supports Smart Bundling for delivery)
+        if (activeOrderId) {
+            params.append('activeOrderId', activeOrderId);
+        }
 
         let backUrl = `/order/${restaurantId}`;
         const paramsString = params.toString();
@@ -640,6 +668,28 @@ const CartPageInternal = () => {
             updateCartInStorage({ tipAmount: newTip });
         }
     };
+
+    // SMART BUNDLING LOGIC (10-Minute Rule)
+    const isBundleEligible = useMemo(() => {
+        if (!activeOrderDetails || !activeOrderDetails.createdAt) return false;
+
+        // Check 10 minute window
+        // Ensure accurate date parsing
+        let createdAtDate = activeOrderDetails.createdAt;
+        if (typeof createdAtDate === 'string') createdAtDate = new Date(createdAtDate);
+        if (createdAtDate && createdAtDate.seconds) createdAtDate = new Date(createdAtDate.seconds * 1000); // Firestore timestamp fallback
+
+        const now = new Date();
+        const diffMinutes = (now - createdAtDate) / (1000 * 60);
+
+        // Check Status
+        const status = activeOrderDetails.status;
+        const isStatusEligible = !['out_for_delivery', 'delivered', 'cancelled', 'rejected'].includes(status);
+
+        console.log(`[Cart Page Bundling Check] Time Diff: ${diffMinutes.toFixed(2)} mins, Status: ${status}, Eligible: ${diffMinutes <= 10 && isStatusEligible}`);
+
+        return diffMinutes <= 10 && isStatusEligible;
+    }, [activeOrderDetails]);
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
@@ -681,8 +731,12 @@ const CartPageInternal = () => {
 
     const finalDeliveryCharge = useMemo(() => {
         if (deliveryType === 'pickup' || deliveryType === 'dine-in' || !cartData || deliveryType === 'street-vendor-pre-order') return 0;
+
+        // Smart Bundling: If eligible, waive delivery fee
+        if (isBundleEligible && cartData.deliveryCharge > 0) return 0;
+
         return isDeliveryFree ? 0 : (cartData.deliveryCharge || 0);
-    }, [isDeliveryFree, cartData, deliveryType]);
+    }, [isDeliveryFree, cartData, deliveryType, isBundleEligible]);
 
     const { cgst, sgst, grandTotal } = useMemo(() => {
         // Removed hardcoded 0 tax for street vendors. Now respects cartData.gstEnabled.
@@ -1107,9 +1161,11 @@ const CartPageInternal = () => {
                                                         <span>Delivery Fee:</span>
                                                         <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
                                                             {isDeliveryFree ? 'FREE' : (
-                                                                (cartData?.deliveryFeeType === 'per-km' && finalDeliveryCharge === 0)
-                                                                    ? <span className="text-xs text-muted-foreground">Calculated at Checkout</span>
-                                                                    : `₹${finalDeliveryCharge.toFixed(2)}`
+                                                                isBundleEligible ? <><span className="line-through text-muted-foreground mr-2">₹{cartData.deliveryCharge}</span> <span className="text-green-500 font-bold">FREE (Bundled)</span></> : (
+                                                                    (cartData?.deliveryFeeType === 'per-km' && finalDeliveryCharge === 0)
+                                                                        ? <span className="text-xs text-muted-foreground">Calculated at Checkout</span>
+                                                                        : `₹${finalDeliveryCharge.toFixed(2)}`
+                                                                )
                                                             )}
                                                         </span>
                                                     </div>
@@ -1172,7 +1228,10 @@ const CartPageInternal = () => {
                                     : (liveOrder && liveOrder.restaurantId === restaurantId)
                                         ? cartData?.businessType === 'street-vendor'
                                             ? <> <ShoppingBag size={20} className="mr-2" /> Place New Order </>
-                                            : <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </>
+                                            // FIXED: For delivery, always "Place New Order" unless existing order logic is desired (now disabled)
+                                            : deliveryType === 'delivery'
+                                                ? 'Proceed to Checkout'
+                                                : <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </>
                                         : (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')
                                 }
                             </Button>

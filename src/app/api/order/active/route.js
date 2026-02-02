@@ -7,14 +7,108 @@ export const dynamic = 'force-dynamic';
 // GET: Fetch order data by tabId (for dine-in checkout)
 export async function GET(req) {
     try {
+        console.log("[API] GET /order/active called");
         const { searchParams } = new URL(req.url);
         const tabId = searchParams.get('tabId');
+        const phone = searchParams.get('phone');
 
-        if (!tabId) {
-            return NextResponse.json({ message: 'TabId is required' }, { status: 400 });
+        if (!tabId && !phone) {
+            return NextResponse.json({ message: 'TabId or Phone is required' }, { status: 400 });
         }
 
         const firestore = await getFirestore();
+
+        // SCENARIO 1: DELIVERY/TAKEAWAY (Query by Phone)
+        if (phone) {
+            console.log(`[API /order/active] Searching active orders for phone input: ${phone}`);
+
+            // Generate Phone Variants (Raw, +91, 0)
+            const cleanPhone = phone.replace(/\D/g, '').slice(-10); // Last 10 digits
+            const variants = [
+                cleanPhone,
+                `+91${cleanPhone}`,
+                `0${cleanPhone}`,
+                phone // Original input just in case
+            ];
+            const uniquePhones = [...new Set(variants)];
+            console.log(`[API /order/active] Phone variants:`, uniquePhones);
+
+            const ordersRef = firestore.collection('orders');
+            const activeStatuses = ['pending', 'placed', 'accepted', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'confirmed'];
+            const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+            const yesterday = new Date(Date.now() - ONE_DAY_MS);
+
+            // Firestore limitation: Can't use multiple 'in' clauses. 
+            // Query for each phone variant separately active statuses.
+            // But 'status' uses 'in'. So we must loop phone variants.
+
+            const fieldsToCheck = ['customer.phone', 'customerPhone', 'phone'];
+            const queries = [];
+
+            uniquePhones.forEach(p => {
+                fieldsToCheck.forEach(field => {
+                    queries.push(
+                        ordersRef
+                            .where(field, '==', p)
+                            .where('status', 'in', activeStatuses)
+                            .limit(50) // Increased limit to find recent orders
+                            .get()
+                            .then(snap => {
+                                // Optional: Log match for debugging
+                                if (!snap.empty) console.log(`[API Match] Found ${snap.size} docs for ${field} == ${p}`);
+                                return snap;
+                            })
+                    );
+                });
+            });
+
+            const snapshots = await Promise.all(queries);
+
+            // Merge Results
+            const mergedDocs = new Map();
+            snapshots.forEach(snap => {
+                snap.forEach(doc => {
+                    // Filter Stale Orders (Older than 24 hours) here to keep map clean
+                    const d = doc.data();
+                    const createdAt = d.createdAt?.toMillis ? d.createdAt.toMillis() : 0;
+                    if (createdAt > yesterday.getTime()) {
+                        mergedDocs.set(doc.id, doc);
+                    }
+                });
+            });
+
+            if (mergedDocs.size === 0) {
+                return NextResponse.json({ activeOrders: [] }, { status: 200 });
+            }
+
+            const snapshotDocs = Array.from(mergedDocs.values());
+
+            // Better Approach: Sort the docs array first
+            const sortedDocs = snapshotDocs.sort((a, b) => {
+                const tA = a.data().createdAt?.toMillis() || 0;
+                const tB = b.data().createdAt?.toMillis() || 0;
+                return tB - tA; // Descending
+            });
+
+            const finalActiveOrders = sortedDocs.map(doc => {
+                const d = doc.data();
+                return {
+                    orderId: doc.id,
+                    status: d.status,
+                    trackingToken: d.trackingToken || d.token,
+                    restaurantId: d.restaurantId,
+                    totalAmount: d.grandTotal || d.totalAmount,
+                    items: d.items || [],
+                    deliveryType: d.deliveryType // ✅ Added for filtering
+                };
+            });
+
+            console.log(`[API /order/active] Found ${finalActiveOrders.length} active orders for phone ${phone}`);
+            return NextResponse.json({ activeOrders: finalActiveOrders }, { status: 200 });
+        }
+
+        // SCENARIO 2: DINE-IN (Query by TabId)
+        // (Existing logic follows...)
 
         // Fetch ALL orders for this dine-in tab using Dual-Strategy (Robust)
         // Query by ID only to avoid "Missing Index" errors with status filters
