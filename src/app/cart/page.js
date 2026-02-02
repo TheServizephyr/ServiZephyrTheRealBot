@@ -1100,7 +1100,11 @@ const CartPageInternal = () => {
                                                     <div className="flex justify-between">
                                                         <span>Delivery Fee:</span>
                                                         <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
-                                                            {isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}
+                                                            {isDeliveryFree ? 'FREE' : (
+                                                                (cartData?.deliveryFeeType === 'per-km' && finalDeliveryCharge === 0)
+                                                                    ? <span className="text-xs text-muted-foreground">Calculated at Checkout</span>
+                                                                    : `₹${finalDeliveryCharge.toFixed(2)}`
+                                                            )}
                                                         </span>
                                                     </div>
                                                 )}
