@@ -163,11 +163,13 @@ export async function GET(req, { params }) {
             logoUrl: businessData.logoUrl,
             bannerUrls: businessData.bannerUrls,
             // MERGED DELIVERY SETTINGS (Sub-collection takes precedence => fallback to legacy)
-            deliveryCharge: deliveryConfigSnap.exists ? deliveryConfig.deliveryCharge : businessData.deliveryCharge,
-            deliveryFreeThreshold: deliveryConfigSnap.exists ? deliveryConfig.freeDeliveryThreshold : businessData.deliveryFreeThreshold,
-            minOrderValue: deliveryConfigSnap.exists ? deliveryConfig.minOrderValue : businessData.minOrderValue,
+            // Use deliveryFixedFee as source of truth for fixed charge
+            deliveryCharge: deliveryConfigSnap.exists ? (deliveryConfig.deliveryFeeType === 'fixed' ? deliveryConfig.deliveryFixedFee : 0) : (businessData.deliveryCharge || 0),
+            deliveryFixedFee: deliveryConfigSnap.exists ? deliveryConfig.deliveryFixedFee : (businessData.deliveryFixedFee || 30),
+            deliveryFreeThreshold: deliveryConfigSnap.exists ? deliveryConfig.deliveryFreeThreshold : (businessData.deliveryFreeThreshold || 500),
+            minOrderValue: deliveryConfigSnap.exists ? deliveryConfig.minOrderValue : (businessData.minOrderValue || 0),
 
-            // NEW: Fields required for Per-Km calculation
+            // Correctly expose Per-Km settings
             deliveryFeeType: deliveryConfigSnap.exists ? deliveryConfig.deliveryFeeType : (businessData.deliveryFeeType || 'fixed'),
             deliveryPerKmFee: deliveryConfigSnap.exists ? deliveryConfig.deliveryPerKmFee : (businessData.deliveryPerKmFee || 0),
             deliveryRadius: deliveryConfigSnap.exists ? deliveryConfig.deliveryRadius : (businessData.deliveryRadius || 5),

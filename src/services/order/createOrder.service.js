@@ -44,6 +44,54 @@ import {
     buildErrorResponse
 } from './orderResponseBuilder';
 
+// --- HELPER: Optimize Item Snapshot (Reduce Document Size) ---
+const optimizeItemSnapshot = (item) => {
+    if (!item) return item;
+
+    // Base Snapshot with required fields
+    const snapshot = {
+        id: item.id,
+        name: item.name,
+        categoryId: item.categoryId || 'general',
+        isVeg: !!item.isVeg, // Ensure boolean
+
+        // Critical: Ensure price/totalPrice are never undefined
+        // V2 uses serverVerifiedPrice/Total, V1 uses price/totalPrice
+        price: (item.price !== undefined) ? item.price : ((item.serverVerifiedPrice !== undefined) ? item.serverVerifiedPrice : 0),
+        quantity: item.quantity || 1,
+
+        // Selected Add-ons (Only what the user chose)
+        selectedAddOns: item.selectedAddOns ? item.selectedAddOns.map(addon => ({
+            name: addon.name,
+            price: addon.price || 0,
+            quantity: addon.quantity || 1
+        })) : [],
+
+        // Financials
+        totalPrice: (item.totalPrice !== undefined) ? item.totalPrice : ((item.serverVerifiedTotal !== undefined) ? item.serverVerifiedTotal : 0),
+
+        // Identifiers
+        cartItemId: item.cartItemId || null, // Ensure not undefined
+
+        // Flags
+        isAddon: !!item.isAddon
+    };
+
+    // Conditionally add optional fields (AVOID SETTING TO UNDEFINED)
+    if (item.portion) {
+        snapshot.portion = {
+            name: item.portion.name,
+            price: item.portion.price || 0
+        };
+    }
+
+    if (item.addedAt) {
+        snapshot.addedAt = item.addedAt;
+    }
+
+    return snapshot;
+};
+
 /**
  * CREATE ORDER V2 with HYBRID FALLBACK
  * 
@@ -618,50 +666,4 @@ async function generateSecureToken(firestore, identifier) {
     return token;
 }
 
-// --- HELPER: Optimize Item Snapshot (Reduce Document Size) ---
-const optimizeItemSnapshot = (item) => {
-    if (!item) return item;
 
-    // Base Snapshot with required fields
-    const snapshot = {
-        id: item.id,
-        name: item.name,
-        categoryId: item.categoryId || 'general',
-        isVeg: !!item.isVeg, // Ensure boolean
-
-        // Critical: Ensure price/totalPrice are never undefined
-        // V2 uses serverVerifiedPrice/Total, V1 uses price/totalPrice
-        price: (item.price !== undefined) ? item.price : ((item.serverVerifiedPrice !== undefined) ? item.serverVerifiedPrice : 0),
-        quantity: item.quantity || 1,
-
-        // Selected Add-ons (Only what the user chose)
-        selectedAddOns: item.selectedAddOns ? item.selectedAddOns.map(addon => ({
-            name: addon.name,
-            price: addon.price || 0,
-            quantity: addon.quantity || 1
-        })) : [],
-
-        // Financials
-        totalPrice: (item.totalPrice !== undefined) ? item.totalPrice : ((item.serverVerifiedTotal !== undefined) ? item.serverVerifiedTotal : 0),
-
-        // Identifiers
-        cartItemId: item.cartItemId || null, // Ensure not undefined
-
-        // Flags
-        isAddon: !!item.isAddon
-    };
-
-    // Conditionally add optional fields (AVOID SETTING TO UNDEFINED)
-    if (item.portion) {
-        snapshot.portion = {
-            name: item.portion.name,
-            price: item.portion.price || 0
-        };
-    }
-
-    if (item.addedAt) {
-        snapshot.addedAt = item.addedAt;
-    }
-
-    return snapshot;
-};
