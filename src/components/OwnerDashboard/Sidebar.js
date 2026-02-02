@@ -124,6 +124,9 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         const user = auth.currentUser;
         if (user) {
           try {
+            // Force token refresh to handle idle states/stale tokens
+            await user.getIdToken(true);
+
             const userDocRef = doc(db, "users", user.uid);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {

@@ -96,6 +96,9 @@ function OwnerDashboardContent({ children }) {
         // Fetch employee role from Firestore linkedOutlets
         console.log('[Layout] Employee detected, checking Firestore...');
         try {
+          // Force token refresh before Direct Firestore Access to prevent permission errors
+          await user.getIdToken(true);
+
           const userDocRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userDocRef);
 
