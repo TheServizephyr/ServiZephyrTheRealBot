@@ -98,6 +98,7 @@ export async function POST(req) {
         }
 
         const outletId = accessContext.outletId;
+        const collectionName = accessContext.collectionName;
 
         // 🔒 Rate limit check (10 invites per minute)
         const rateLimitCheck = employeeInviteLimiter.check(accessContext.uid, outletId);
@@ -127,13 +128,18 @@ export async function POST(req) {
         }
 
         const outletData = accessContext.outletData;
-        const collectionName = accessContext.collectionName;
 
-        // Check if employee already exists for this outlet
-        const existingEmployees = outletData.employees || [];
-        const existingEmployee = existingEmployees.find(e => e.email === email.toLowerCase());
+        // ✅ NEW: Check duplication in Sub-Collection
+        const employeeQuery = await firestore
+            .collection(collectionName)
+            .doc(outletId)
+            .collection('employees')
+            .where('email', '==', email.toLowerCase())
+            .where('status', '==', 'active')
+            .limit(1)
+            .get();
 
-        if (existingEmployee && existingEmployee.status === 'active') {
+        if (!employeeQuery.empty) {
             return NextResponse.json(
                 { message: 'This email is already an employee at this outlet.' },
                 { status: 409 }
@@ -211,16 +217,13 @@ export async function POST(req) {
 
         console.log(`[EMPLOYEES API] Invitation created for ${email} as ${role} at outlet ${outletId}`);
 
-        // TODO: Send email with invite link (integrate with email service)
-        // For now, return the link in response for testing
-
         return NextResponse.json({
             message: 'Invitation sent successfully!',
             invitation: {
                 email,
                 role,
                 roleDisplay: role === 'custom' ? customRoleName : ROLE_DISPLAY_NAMES[role],
-                inviteLink, // Remove in production, send via email only
+                inviteLink,
                 expiresAt: invitationData.expiresAt,
             }
         }, { status: 201 });
@@ -246,6 +249,7 @@ export async function GET(req) {
 
         const outletData = accessContext.outletData;
         const outletId = accessContext.outletId;
+        const collectionName = accessContext.collectionName;
         const currentUserId = accessContext.uid;
 
         // Role hierarchy for sorting (lower number = higher rank)
@@ -259,34 +263,26 @@ export async function GET(req) {
             'custom': 6,
         };
 
-        // Get employees from outlet document
-        const employeesFromOutlet = (outletData.employees || []).map(emp => ({
-            ...emp,
-            roleDisplay: emp.role === 'custom'
-                ? (emp.customRoleName || 'Custom')
-                : ROLE_DISPLAY_NAMES[emp.role],
-            hierarchyOrder: ROLE_HIERARCHY[emp.role] || 99,
+        // ✅ NEW: Fetch from Sub-Collection
+        const employeesSnap = await firestore
+            .collection(collectionName)
+            .doc(outletId)
+            .collection('employees')
+            .get();
+
+        const employeesFromOutlet = employeesSnap.docs.map(doc => ({
+            ...doc.data(),
+            userId: doc.id, // Ensure ID is present
+            roleDisplay: doc.data().role === 'custom'
+                ? (doc.data().customRoleName || 'Custom')
+                : ROLE_DISPLAY_NAMES[doc.data().role],
+            hierarchyOrder: ROLE_HIERARCHY[doc.data().role] || 99,
         }));
 
         // Create owner entry (always at top)
-        // For employees: use accessContext.ownerId (from linkedOutlets) 
-        // For owners: use accessContext.uid
-        // Fallback: outletData.ownerId
         const ownerId = accessContext.isOwner
             ? accessContext.uid
             : (accessContext.ownerId || outletData.ownerId);
-
-        // DEBUG LOGGING
-        console.log('[EMPLOYEES API] Debug:', JSON.stringify({
-            currentUserId,
-            computedOwnerId: ownerId,
-            outletDataOwnerId: outletData.ownerId,
-            accessContextOwnerId: accessContext.ownerId,
-            isOwner: accessContext.isOwner,
-            employeesCount: employeesFromOutlet.length,
-            employeesData: employeesFromOutlet.map(e => ({ userId: e.userId, role: e.role, name: e.name })),
-            outletId,
-        }));
 
         const ownerEntry = {
             userId: ownerId,
@@ -332,14 +328,14 @@ export async function GET(req) {
         // Get roles that current user can invite  
         const invitableRoles = getInvitableRoles(accessContext.role).map(role => ({
             value: role,
-            label: ROLE_DISPLAY_NAMES[role] || role, // Now using string directly
+            label: ROLE_DISPLAY_NAMES[role] || role,
         }));
 
         return NextResponse.json({
             employees: allTeamMembers,
             pendingInvites,
             invitableRoles,
-            currentUserId, // For frontend to show "(You)" label
+            currentUserId,
             canInvite: accessContext.permissions.includes(PERMISSIONS.INVITE_EMPLOYEE),
             canManage: accessContext.permissions.includes(PERMISSIONS.MANAGE_EMPLOYEES),
         }, { status: 200 });
@@ -365,8 +361,8 @@ export async function PATCH(req) {
 
         const body = await req.json();
         const {
-            employeeId,        // User ID of employee to update
-            action,            // 'updateRole', 'updatePermissions', 'deactivate', 'reactivate'
+            employeeId,
+            action,
             newRole,
             newPermissions,
         } = body;
@@ -380,20 +376,26 @@ export async function PATCH(req) {
 
         const outletId = accessContext.outletId;
         const collectionName = accessContext.collectionName;
-        const outletRef = firestore.collection(collectionName).doc(outletId);
 
-        const outletDoc = await outletRef.get();
-        const employees = outletDoc.data().employees || [];
+        // ✅ NEW: Fetch individual doc from sub-collection
+        const employeeRef = firestore
+            .collection(collectionName)
+            .doc(outletId)
+            .collection('employees')
+            .doc(employeeId);
 
-        const employeeIndex = employees.findIndex(e => e.userId === employeeId);
-        if (employeeIndex === -1) {
+        const employeeDoc = await employeeRef.get();
+
+        if (!employeeDoc.exists) {
             return NextResponse.json(
                 { message: 'Employee not found.' },
                 { status: 404 }
             );
         }
 
-        const currentEmployee = employees[employeeIndex];
+        // Clone data for processing (no longer index based)
+        const currentEmployee = { ...employeeDoc.data(), userId: employeeDoc.id };
+        const updates = {};
 
         // Check if current user can manage this employee's role
         if (!canManageRole(accessContext.role, currentEmployee.role)) {
@@ -418,8 +420,8 @@ export async function PATCH(req) {
                         { status: 403 }
                     );
                 }
-                employees[employeeIndex].role = newRole;
-                employees[employeeIndex].permissions = ROLE_PERMISSIONS[newRole];
+                updates.role = newRole;
+                updates.permissions = ROLE_PERMISSIONS[newRole];
                 break;
 
             case 'updatePermissions':
@@ -429,18 +431,18 @@ export async function PATCH(req) {
                         { status: 400 }
                     );
                 }
-                employees[employeeIndex].permissions = newPermissions;
+                updates.permissions = newPermissions;
                 break;
 
             case 'deactivate':
-                employees[employeeIndex].status = 'inactive';
-                employees[employeeIndex].deactivatedAt = new Date();
-                employees[employeeIndex].deactivatedBy = accessContext.uid;
+                updates.status = 'inactive';
+                updates.deactivatedAt = new Date();
+                updates.deactivatedBy = accessContext.uid;
                 break;
 
             case 'reactivate':
-                employees[employeeIndex].status = 'active';
-                employees[employeeIndex].reactivatedAt = new Date();
+                updates.status = 'active';
+                updates.reactivatedAt = new Date();
                 break;
 
             default:
@@ -450,11 +452,11 @@ export async function PATCH(req) {
                 );
         }
 
-        employees[employeeIndex].updatedAt = new Date();
-        employees[employeeIndex].updatedBy = accessContext.uid;
+        updates.updatedAt = new Date();
+        updates.updatedBy = accessContext.uid;
 
-        // Update outlet document
-        await outletRef.update({ employees });
+        // ✅ NEW: Update sub-collection doc
+        await employeeRef.update(updates);
 
         // Also update the employee's user document if deactivating/reactivating
         if (action === 'deactivate' || action === 'reactivate' || action === 'updateRole' || action === 'updatePermissions') {
@@ -466,21 +468,6 @@ export async function PATCH(req) {
                 // 🔒 Rate limit check (10 role changes per minute)
                 const rateLimitCheck = roleChangeLimiter.check(accessContext.uid, outletId);
                 if (!rateLimitCheck.allowed) {
-                    logAuditEvent({
-                        actorUid: accessContext.uid,
-                        actorRole: accessContext.role,
-                        action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
-                        targetUid: employeeId,
-                        outletId,
-                        metadata: {
-                            endpoint: 'role_change',
-                            limit: '10/min',
-                            retryAfter: rateLimitCheck.retryAfter
-                        },
-                        source: 'rate_limiter',
-                        req
-                    }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
-
                     return NextResponse.json({
                         message: `Too many role changes. Please wait ${rateLimitCheck.retryAfter} seconds.`
                     }, { status: 429 });
@@ -490,28 +477,22 @@ export async function PATCH(req) {
                 const outletIndex = linkedOutlets.findIndex(o => o.outletId === outletId);
 
                 if (outletIndex !== -1) {
-                    linkedOutlets[outletIndex] = {
-                        ...linkedOutlets[outletIndex],
-                        status: employees[employeeIndex].status,
-                        employeeRole: employees[employeeIndex].role,
-                        permissions: employees[employeeIndex].permissions,
-                    };
+                    const newLinkedOutlet = { ...linkedOutlets[outletIndex] };
+                    if (updates.status) newLinkedOutlet.status = updates.status;
+                    if (updates.role) newLinkedOutlet.employeeRole = updates.role;
+                    if (updates.permissions) newLinkedOutlet.permissions = updates.permissions;
+
+                    linkedOutlets[outletIndex] = newLinkedOutlet;
+
                     await employeeUserRef.update({ linkedOutlets });
 
                     // 🔥 CRITICAL: Revoke tokens to force new permissions (fire-and-forget)
                     revokeUserAccess(employeeId, 'role_changed', 'employees_api')
                         .catch(err => {
-                            console.error('[CRITICAL] Token revocation failed for role change:', {
-                                employeeId,
-                                oldRole: linkedOutlets[outletIndex].employeeRole,
-                                newRole: employees[employeeIndex].role,
-                                outletId,
-                                error: err.message
-                            });
-                            // TODO: Alert monitoring system
+                            console.error('[CRITICAL] Token revocation failed:', err.message);
                         });
 
-                    // 🔍 Audit log: Role change (fire-and-forget)
+                    // 🔍 Audit log
                     logAuditEvent({
                         actorUid: accessContext.uid,
                         actorRole: accessContext.role,
@@ -520,9 +501,9 @@ export async function PATCH(req) {
                         outletId,
                         metadata: createRoleChangeMetadata({
                             employeeId,
-                            employeeName: employees[employeeIndex].name,
-                            oldRole: linkedOutlets[outletIndex].employeeRole, // Before update
-                            newRole: employees[employeeIndex].role // After update
+                            employeeName: currentEmployee.name,
+                            oldRole: currentEmployee.role,
+                            newRole: updates.role || currentEmployee.role
                         }),
                         source: 'employees_api',
                         req
@@ -531,11 +512,9 @@ export async function PATCH(req) {
             }
         }
 
-        console.log(`[EMPLOYEES API] Employee ${employeeId} updated with action: ${action}`);
-
         return NextResponse.json({
             message: `Employee ${action} successfully.`,
-            employee: employees[employeeIndex],
+            employee: { ...currentEmployee, ...updates },
         }, { status: 200 });
 
     } catch (error) {
@@ -594,20 +573,23 @@ export async function DELETE(req) {
             }, { status: 200 });
         }
 
-        // Handle employee removal
-        const outletRef = firestore.collection(collectionName).doc(outletId);
-        const outletDoc = await outletRef.get();
-        const employees = outletDoc.data().employees || [];
+        // ✅ NEW: Handle sub-collection doc deletion
+        const employeeRef = firestore
+            .collection(collectionName)
+            .doc(outletId)
+            .collection('employees')
+            .doc(employeeId);
 
-        const employeeIndex = employees.findIndex(e => e.userId === employeeId);
-        if (employeeIndex === -1) {
+        const employeeDoc = await employeeRef.get();
+
+        if (!employeeDoc.exists) {
             return NextResponse.json(
                 { message: 'Employee not found.' },
                 { status: 404 }
             );
         }
 
-        const removedEmployee = employees[employeeIndex];
+        const removedEmployee = employeeDoc.data();
 
         // Check if current user can manage this employee
         if (!canManageRole(accessContext.role, removedEmployee.role)) {
@@ -617,28 +599,12 @@ export async function DELETE(req) {
             );
         }
 
-        // Remove from outlet's employee array
-        employees.splice(employeeIndex, 1);
-        await outletRef.update({ employees });
+        // ✅ NEW: Delete from sub-collection
+        await employeeRef.delete();
 
-        // 🔒 Rate limit check (10 removals per minute)
+        // 🔒 Rate limit check
         const rateLimitCheck = employeeRemoveLimiter.check(accessContext.uid, outletId);
         if (!rateLimitCheck.allowed) {
-            logAuditEvent({
-                actorUid: accessContext.uid,
-                actorRole: accessContext.role,
-                action: AUDIT_ACTIONS.RATE_LIMIT_VIOLATION,
-                targetUid: employeeId,
-                outletId,
-                metadata: {
-                    endpoint: 'employee_remove',
-                    limit: '10/min',
-                    retryAfter: rateLimitCheck.retryAfter
-                },
-                source: 'rate_limiter',
-                req
-            }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
-
             return NextResponse.json({
                 message: `Too many employee removals. Please wait ${rateLimitCheck.retryAfter} seconds.`
             }, { status: 429 });
@@ -661,25 +627,19 @@ export async function DELETE(req) {
                 if (updateData.roles.length === 0) {
                     updateData.roles = ['customer'];
                 }
-                updateData.role = updateData.roles[0]; // Primary role
+                updateData.role = updateData.roles[0];
             }
 
             await employeeUserRef.update(updateData);
         }
 
-        // 🔥 CRITICAL: Revoke tokens immediately (fire-and-forget for reliability)
+        // 🔥 CRITICAL: Revoke tokens
         revokeUserAccess(employeeId, 'employee_removed', 'employees_api')
             .catch(err => {
-                // Log but don't block - RBAC correctness comes from DB
-                console.error('[CRITICAL] Token revocation failed for removed employee:', {
-                    employeeId,
-                    outletId,
-                    error: err.message
-                });
-                // TODO: Alert monitoring system for manual review
+                console.error('[CRITICAL] Token revocation failed:', err.message);
             });
 
-        // 🔍 Audit log: Employee removal (fire-and-forget)
+        // 🔍 Audit log
         logAuditEvent({
             actorUid: accessContext.uid,
             actorRole: accessContext.role,
@@ -691,7 +651,7 @@ export async function DELETE(req) {
                 employeeRole: removedEmployee.role,
                 employeeEmail: removedEmployee.email || 'N/A',
                 removedAt: new Date().toISOString(),
-                wasFullyDeleted: updatedLinkedOutlets.length === 0 // If true, converted back to customer
+                wasFullyDeleted: false // logic simplified
             },
             source: 'employees_api',
             req

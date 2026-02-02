@@ -155,58 +155,51 @@ export async function POST(req) {
     console.log(`[API LOG] AI detected ${scannedData.items.length} items. Starting database write.`);
 
     const firestore = await getFirestore();
+    const batch = firestore.batch();
 
     // Get vendor document to check existing categories
     const vendorDocRef = firestore.collection('street_vendors').doc(vendorId);
     const vendorDocSnap = await vendorDocRef.get();
     const vendorData = vendorDocSnap.data();
-    const currentCustomCategories = vendorData.customCategories || [];
 
-    // Extract unique categories from scanned items
-    const uniqueCategories = new Set();
-    scannedData.items.forEach(item => {
-      if (item.categoryId) {
-        uniqueCategories.add(item.categoryId);
-      }
+    // Fetch all existing custom categories from the subcollection
+    const existingCustomCategoriesSnap = await vendorDocRef.collection('custom_categories').get();
+    const allCategories = {};
+    existingCustomCategoriesSnap.docs.forEach(doc => {
+      allCategories[doc.id] = doc.data();
     });
+    console.log(`[AI Scan] Found ${Object.keys(allCategories).length} existing custom categories.`);
 
-    console.log(`[AI Scan] Unique categories in scan:`, Array.from(uniqueCategories).join(', '));
+    // 5. Update Custom Categories (Optimized for Sub-collection)
+    const newCategoriesToCreate = [...new Set(scannedData.items
+      .map(i => i.categoryId)
+      .filter(id => id && !allCategories[id] && id !== 'general')
+    )];
 
-    // Find new categories that need to be saved
-    const newCategories = [];
-    uniqueCategories.forEach(catId => {
-      // Check if already exists in custom categories
-      if (currentCustomCategories.some(cat => cat.id === catId)) {
-        console.log(`[AI Scan] Category '${catId}' already exists, skipping`);
-        return;
-      }
+    if (newCategoriesToCreate.length > 0) {
+      // Fetch existing to determine current Max Order
+      const existingCatsSnap = await vendorDocRef.collection('custom_categories').orderBy('order', 'desc').limit(1).get();
+      let maxOrder = existingCatsSnap.empty ? 0 : (existingCatsSnap.docs[0].data().order || 0);
 
-      // Use AI-provided title if available, otherwise infer from ID
-      const categoryTitleMap = new Map();
-      scannedData.items.forEach(item => {
-        if (item.categoryId && item.categoryTitle) {
-          categoryTitleMap.set(item.categoryId, item.categoryTitle);
+      for (const catId of newCategoriesToCreate) {
+        const catRef = vendorDocRef.collection('custom_categories').doc(catId);
+        const catSnap = await catRef.get();
+
+        if (!catSnap.exists) {
+          // Find the categoryTitle from the scanned items for this categoryId
+          const title = scannedData.items.find(i => i.categoryId === catId)?.categoryTitle || catId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          maxOrder++;
+          batch.set(catRef, {
+            id: catId,
+            title: title,
+            order: maxOrder,
+            createdAt: FieldValue.serverTimestamp()
+          });
+          console.log(`[AI Scan] Preparing to add new category: '${catId}' -> '${title}' with order ${maxOrder}`);
         }
-      });
-
-      const title = categoryTitleMap.get(catId) || catId.split('-').map(word =>
-        word.charAt(0).toUpperCase() + word.slice(1)
-      ).join(' ');
-
-      newCategories.push({ id: catId, title });
-      console.log(`[AI Scan] New category detected: '${catId}' -> '${title}'`);
-    });
-
-    const batch = firestore.batch();
-
-    // If there are new categories, update vendor document
-    if (newCategories.length > 0) {
-      const updatedCategories = [...currentCustomCategories, ...newCategories];
-      batch.set(vendorDocRef, { customCategories: updatedCategories }, { merge: true });
-      console.log(`[AI Scan] Adding ${newCategories.length} new categories:`,
-        newCategories.map(c => `${c.id} (${c.title})`).join(', '));
+      }
     } else {
-      console.log(`[AI Scan] No new categories to add`);
+      console.log(`[AI Scan] No new categories to add to subcollection.`);
     }
 
     const menuCollectionRef = firestore.collection('street_vendors').doc(vendorId).collection('menu');

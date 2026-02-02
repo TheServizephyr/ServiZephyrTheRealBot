@@ -122,7 +122,9 @@ export async function GET(req) {
 
         let menuData = {};
         const businessData = businessSnap.data();
-        const customCategories = businessData.customCategories || [];
+        // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
+        const customCatSnap = await firestore.collection(collectionName).doc(businessId).collection('custom_categories').orderBy('order', 'asc').get();
+        const customCategories = customCatSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'shop' : 'street-vendor'));
         console.log(`[API LOG] GET /api/owner/menu: Determined businessType as '${businessType}'.`);
@@ -207,15 +209,23 @@ export async function POST(req) {
             const formattedId = newCategory.trim().toLowerCase().replace(/\s+/g, '-');
             finalCategoryId = formattedId;
 
-            const businessRef = businessSnap.ref;
-            const businessData = businessSnap.data();
-            const currentCategories = businessData.customCategories || [];
+            // Check sub-collection
+            const customCatRef = firestore.collection(collectionName).doc(businessId).collection('custom_categories').doc(formattedId);
+            const customCatSnap = await customCatRef.get();
 
-            if (!currentCategories.some(cat => cat.id === formattedId)) {
+            if (!customCatSnap.exists) {
                 console.log(`[API LOG] POST /api/owner/menu: Category "${formattedId}" does not exist. Adding to batch.`);
-                const newCategoryObject = { id: formattedId, title: newCategory.trim() };
-                const updatedCategories = [...currentCategories, newCategoryObject];
-                batch.update(businessRef, { customCategories: updatedCategories });
+
+                // Get max order
+                const allCats = await firestore.collection(collectionName).doc(businessId).collection('custom_categories').orderBy('order', 'desc').limit(1).get();
+                const maxOrder = allCats.empty ? 0 : (allCats.docs[0].data().order || 0);
+
+                batch.set(customCatRef, {
+                    id: formattedId,
+                    title: newCategory.trim(),
+                    order: maxOrder + 1,
+                    createdAt: FieldValue.serverTimestamp()
+                });
             } else {
                 console.log(`[API LOG] POST /api/owner/menu: Category "${formattedId}" already exists.`);
             }

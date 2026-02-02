@@ -44,7 +44,8 @@ export async function GET(req, { params }) {
         }
 
         // STEP 2: Build version-based cache key
-        const cacheKey = `menu:${restaurantId}:v${menuVersion}`;
+        // PATCH: Added _patch1 to force cache refresh due to Delivery Settings Migration fix (missing deliveryEnabled)
+        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch1`;
         console.log(`[Menu API] 🔑 Cache key: ${cacheKey} (menuVersion: ${menuVersion})`);
 
         // STEP 3: Check Redis cache with version-specific key
@@ -72,16 +73,23 @@ export async function GET(req, { params }) {
         console.log(`[Menu API] ✅ Found business: ${businessData.name} in ${collectionName}`);
         console.log(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${restaurantId}/coupons`);
 
-        // Fetch menu and coupons in parallel
-        const [menuSnap, couponsSnap] = await Promise.all([
+        // Fetch menu, coupons, AND delivery settings in parallel
+        const [menuSnap, couponsSnap, deliveryConfigSnap] = await Promise.all([
             businessRef.collection('menu').get(),
-            businessRef.collection('coupons').where('status', '==', 'active').get()
+            businessRef.collection('coupons').where('status', '==', 'active').get(),
+            businessRef.collection('delivery_settings').doc('config').get()
         ]);
 
         console.log(`[Menu API] 📊 Coupons query returned ${couponsSnap.size} documents`);
 
+        // Check delivery settings
+        const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
+        console.log(`[Menu API] 🚚 Delivery Config found: ${deliveryConfigSnap.exists}`, deliveryConfigSnap.exists ? deliveryConfig : '(using legacy/defaults)');
+
         let menuData = {};
-        const customCategories = businessData.customCategories || [];
+        // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
+        const customCatSnap = await businessRef.collection('custom_categories').orderBy('order', 'asc').get();
+        const customCategories = customCatSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         const restaurantCategoryConfig = {
             "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
@@ -98,9 +106,7 @@ export async function GET(req, { params }) {
         };
 
         const businessType = businessData.businessType || collectionName.slice(0, -1);
-        const baseCategories = (businessType === 'restaurant' || businessType === 'street-vendor') ? restaurantCategoryConfig : shopCategoryConfig;
-
-        const allCategories = { ...baseCategories };
+        const allCategories = { ...(businessType === 'restaurant' || businessType === 'street-vendor' ? restaurantCategoryConfig : shopCategoryConfig) };
         customCategories.forEach(cat => {
             if (!allCategories[cat.id]) {
                 allCategories[cat.id] = { title: cat.title };
@@ -156,12 +162,15 @@ export async function GET(req, { params }) {
             approvalStatus: businessData.approvalStatus || 'approved',
             logoUrl: businessData.logoUrl,
             bannerUrls: businessData.bannerUrls,
-            deliveryCharge: businessData.deliveryCharge,
-            deliveryFreeThreshold: businessData.deliveryFreeThreshold,
+            // MERGED DELIVERY SETTINGS (Sub-collection takes precedence => fallback to legacy)
+            deliveryCharge: deliveryConfigSnap.exists ? deliveryConfig.deliveryCharge : businessData.deliveryCharge,
+            deliveryFreeThreshold: deliveryConfigSnap.exists ? deliveryConfig.freeDeliveryThreshold : businessData.deliveryFreeThreshold,
+            minOrderValue: deliveryConfigSnap.exists ? deliveryConfig.minOrderValue : businessData.minOrderValue,
             menu: menuData,
             coupons: coupons,
             loyaltyPoints: 0, // User-specific data removed for better caching
-            deliveryEnabled: businessData.deliveryEnabled,
+            // MERGED DELIVERY ENABLED STATUS
+            deliveryEnabled: deliveryConfigSnap.exists ? deliveryConfig.deliveryEnabled : businessData.deliveryEnabled,
             pickupEnabled: businessData.pickupEnabled,
             dineInEnabled: businessData.dineInEnabled,
             businessAddress: businessData.address,

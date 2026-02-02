@@ -588,23 +588,18 @@ export default function RiderDashboardPage() {
         }
 
         try {
-            const [restSnap, shopSnap] = await Promise.all([
-                getDoc(doc(db, 'restaurants', restaurantId)),
-                getDoc(doc(db, 'shops', restaurantId))
-            ]);
-
-            let restData = null;
+            // Optimized: Try 'restaurants' first, then 'shops' to save reads
+            let restSnap = await getDoc(doc(db, 'restaurants', restaurantId));
             let finalCollectionName = 'restaurants';
 
-            if (restSnap.exists()) {
-                restData = restSnap.data();
-                finalCollectionName = 'restaurants';
-            } else if (shopSnap.exists()) {
-                restData = shopSnap.data();
+            if (!restSnap.exists()) {
+                restSnap = await getDoc(doc(db, 'shops', restaurantId));
                 finalCollectionName = 'shops';
             }
 
-            if (restData) {
+            if (restSnap.exists()) {
+                let restData = restSnap.data();
+
                 // ✅ FETCH SPECIFIC RIDER DATA (QR Code) from the restaurant's subcollection
                 if (user?.uid) {
                     try {
@@ -696,6 +691,7 @@ export default function RiderDashboardPage() {
                 "dispatched", "reached_restaurant", "picked_up",
                 "on_the_way", "rider_arrived", "delivery_attempted", "failed_delivery"
             ])
+            // limit(50) // Removed limit for now as it breaks if >50 active orders (rare but possible)
         );
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
             const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

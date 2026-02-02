@@ -41,7 +41,7 @@ function DeliverySettingsPageContent() {
                     return;
                 }
                 const idToken = await user.getIdToken();
-                const res = await fetch('/api/owner/settings', {
+                const res = await fetch('/api/owner/delivery-settings', {
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
                 if (!res.ok) throw new Error("Failed to load settings.");
@@ -85,9 +85,9 @@ function DeliverySettingsPageContent() {
                 deliveryFreeThreshold: Number(settings.deliveryFreeThreshold),
             };
 
-            const response = await fetch('/api/owner/settings', {
+            const response = await fetch('/api/owner/delivery-settings', {
                 method: 'PATCH',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${idToken}`
                 },
@@ -98,7 +98,7 @@ function DeliverySettingsPageContent() {
                 const errorData = await response.json();
                 throw new Error(errorData.message || 'Failed to save settings');
             }
-            
+
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Delivery settings saved successfully!' });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save settings: ${error.message}` });
@@ -106,9 +106,9 @@ function DeliverySettingsPageContent() {
             setIsSaving(false);
         }
     };
-    
+
     const handleSettingChange = (key, value) => {
-        setSettings(prev => ({...prev, [key]: value}));
+        setSettings(prev => ({ ...prev, [key]: value }));
     }
 
     if (loading) {
@@ -121,9 +121,9 @@ function DeliverySettingsPageContent() {
 
     return (
         <div className="p-4 md:p-6 space-y-6">
-            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             <header className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft/></Button>
+                <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft /></Button>
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Delivery Settings</h1>
                     <p className="text-muted-foreground mt-1">Control every aspect of your delivery service.</p>
@@ -133,7 +133,7 @@ function DeliverySettingsPageContent() {
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><ToggleRight/> Order Acceptance</CardTitle>
+                        <CardTitle className="flex items-center gap-2"><ToggleRight /> Order Acceptance</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
@@ -141,16 +141,16 @@ function DeliverySettingsPageContent() {
                                 <span className="font-bold text-lg">Accepting Delivery Orders</span>
                                 <span className="text-sm text-muted-foreground">Turn this off to temporarily stop all new delivery orders.</span>
                             </Label>
-                            <Switch id="accepting-orders" checked={settings.deliveryEnabled} onCheckedChange={(val) => handleSettingChange('deliveryEnabled', val)} className="data-[state=checked]:bg-green-500"/>
+                            <Switch id="accepting-orders" checked={settings.deliveryEnabled} onCheckedChange={(val) => handleSettingChange('deliveryEnabled', val)} className="data-[state=checked]:bg-green-500" />
                         </div>
                     </CardContent>
                 </Card>
             </motion.div>
-            
+
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><MapIcon/> Service Area</CardTitle>
+                        <CardTitle className="flex items-center gap-2"><MapIcon /> Service Area</CardTitle>
                         <CardDescription>Set the maximum distance you are willing to deliver to.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-6">
@@ -167,10 +167,10 @@ function DeliverySettingsPageContent() {
                 </Card>
             </motion.div>
 
-             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}>
                 <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><IndianRupee/> Delivery Charges</CardTitle>
+                        <CardTitle className="flex items-center gap-2"><IndianRupee /> Delivery Charges</CardTitle>
                         <CardDescription>Choose your delivery fee structure.</CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -183,13 +183,13 @@ function DeliverySettingsPageContent() {
                                     </Label>
                                     <div className="flex items-center gap-2 w-32">
                                         <span>₹</span>
-                                        <Input type="number" value={settings.deliveryFixedFee} onChange={e => handleSettingChange('deliveryFixedFee', e.target.value)} disabled={settings.deliveryFeeType !== 'fixed'}/>
+                                        <Input type="number" value={settings.deliveryFixedFee} onChange={e => handleSettingChange('deliveryFixedFee', e.target.value)} disabled={settings.deliveryFeeType !== 'fixed'} />
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-2 pl-8">Charge a single, flat rate for all deliveries.</p>
                             </div>
 
-                             <div className="p-4 rounded-lg border has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                            <div className="p-4 rounded-lg border has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                                 <div className="flex items-center justify-between">
                                     <Label htmlFor="per-km" className="font-semibold flex items-center gap-3 cursor-pointer">
                                         <RadioGroupItem value="per-km" id="per-km" />
@@ -197,14 +197,14 @@ function DeliverySettingsPageContent() {
                                     </Label>
                                     <div className="flex items-center gap-2 w-32">
                                         <span>₹</span>
-                                        <Input type="number" value={settings.deliveryPerKmFee} onChange={e => handleSettingChange('deliveryPerKmFee', e.target.value)} disabled={settings.deliveryFeeType !== 'per-km'}/>
+                                        <Input type="number" value={settings.deliveryPerKmFee} onChange={e => handleSettingChange('deliveryPerKmFee', e.target.value)} disabled={settings.deliveryFeeType !== 'per-km'} />
                                         <span className="text-muted-foreground text-sm">/km</span>
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-2 pl-8">Charge based on the delivery distance.</p>
                             </div>
 
-                             <div className="p-4 rounded-lg border has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                            <div className="p-4 rounded-lg border has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                                 <div className="flex items-center justify-between">
                                     <Label htmlFor="free-over" className="font-semibold flex items-center gap-3 cursor-pointer">
                                         <RadioGroupItem value="free-over" id="free-over" />
@@ -212,7 +212,7 @@ function DeliverySettingsPageContent() {
                                     </Label>
                                     <div className="flex items-center gap-2 w-32">
                                         <span>₹</span>
-                                        <Input type="number" value={settings.deliveryFreeThreshold} onChange={e => handleSettingChange('deliveryFreeThreshold', e.target.value)} disabled={settings.deliveryFeeType !== 'free-over'}/>
+                                        <Input type="number" value={settings.deliveryFreeThreshold} onChange={e => handleSettingChange('deliveryFreeThreshold', e.target.value)} disabled={settings.deliveryFeeType !== 'free-over'} />
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-2 pl-8">Offer free delivery for orders above a certain value.</p>
@@ -221,7 +221,7 @@ function DeliverySettingsPageContent() {
                     </CardContent>
                     <CardFooter className="border-t pt-6">
                         <Button onClick={handleSave} disabled={isSaving} className="w-full md:w-auto ml-auto bg-primary hover:bg-primary/90">
-                           <Save className="mr-2 h-4 w-4" /> {isSaving ? 'Saving...' : 'Save Settings'}
+                            <Save className="mr-2 h-4 w-4" /> {isSaving ? 'Saving...' : 'Save Settings'}
                         </Button>
                     </CardFooter>
                 </Card>

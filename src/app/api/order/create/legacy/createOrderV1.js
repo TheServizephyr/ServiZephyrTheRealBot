@@ -32,6 +32,10 @@ const generateSecureToken = async (firestore, customerPhone) => {
  * 
  * Phase 5 Step 1: Isolated for feature flag switching.
  * Will be replaced by V2 service layer implementation.
+ * 
+ * NOTE: As of Feb 2026, V2 (Service Layer) is the active implementation.
+ * Please check `src/services/orderService.js` for the current logic.
+ * Modifications here may not affect the live system if the feature flag is ON.
  */
 export async function createOrderV1(req) {
     console.log("[API /order/create] POST request received.");
@@ -452,7 +456,7 @@ export async function createOrderV1(req) {
             }
         }
 
-        // Process items to ensure totalPrice is saved (for refund calculations)
+        // Process items to ensure totalPrice is saved and optimize for size
         const processedItems = items.map(item => {
             // Ensure totalPrice exists (calculate if missing)
             let totalPrice = item.totalPrice || item.price || 0;
@@ -471,11 +475,11 @@ export async function createOrderV1(req) {
                 }
             }
 
-            // Return item with guaranteed totalPrice field
-            return {
+            // Return optimized item snapshot
+            return optimizeItemSnapshot({
                 ...item,
                 totalPrice: totalPrice
-            };
+            });
         });
 
         // --- Post-paid Dine-In ---

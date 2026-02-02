@@ -17,6 +17,16 @@ import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import imageCompression from 'browser-image-compression';
 
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+// Helper: Upload file to Firebase Storage
+const uploadToStorage = async (file, path) => {
+    const storage = getStorage();
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, file);
+    return await getDownloadURL(storageRef);
+};
+
 export const dynamic = 'force-dynamic';
 
 // --- Sub-components for better structure ---
@@ -105,9 +115,11 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
         try {
             const user = getAuth().currentUser;
             if (user) {
+                // Re-authenticate isn't consistently implemented across both, protecting with try/catch
+                // Assuming simple delete for now based on original file, or adding re-auth if needed.
+                // Original file had simple delete:
                 await user.delete();
                 setInfoDialog({ isOpen: true, title: 'Success', message: 'Account deleted successfully.' });
-                // You would typically redirect the user to a logged-out page here.
                 setTimeout(() => window.location.href = "/", 2000);
             }
         } catch (error) {
@@ -119,81 +131,82 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
     };
 
     return (
-        <>
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                <DialogContent className="sm:max-w-md bg-destructive/10 border-destructive text-foreground backdrop-blur-md">
-                    <DialogHeader>
-                        <DialogTitle className="text-2xl text-destructive-foreground">Permanently Delete Account</DialogTitle>
-                        <DialogDescription className="text-destructive-foreground/80">
-                            This action is irreversible. All your data, including restaurants, orders, and customer information, will be permanently lost.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Label htmlFor="delete-confirm" className="font-semibold">To confirm, please type "DELETE" in the box below.</Label>
-                        <input
-                            id="delete-confirm"
-                            type="text"
-                            value={confirmationText}
-                            onChange={(e) => setConfirmationText(e.target.value)}
-                            className="mt-2 w-full p-2 border rounded-md bg-background border-destructive/50 text-foreground focus:ring-destructive"
-                            placeholder="DELETE"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
-                        <Button
-                            variant="destructive"
-                            disabled={isDeleteDisabled}
-                            onClick={handleDelete}
-                        >
-                            I understand, delete my account
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </>
+            <DialogContent className="sm:max-w-md bg-destructive/10 border-destructive text-foreground backdrop-blur-md">
+                <DialogHeader>
+                    <DialogTitle className="text-2xl text-destructive-foreground">Permanently Delete Account</DialogTitle>
+                    <DialogDescription className="text-destructive-foreground/80">
+                        This action is irreversible. All your data, including restaurants, orders, and customer information, will be permanently lost.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="delete-confirm" className="font-semibold">To confirm, please type "DELETE" in the box below.</Label>
+                    <input
+                        id="delete-confirm"
+                        type="text"
+                        value={confirmationText}
+                        onChange={(e) => setConfirmationText(e.target.value)}
+                        className="mt-2 w-full p-2 border rounded-md bg-background border-destructive/50 text-foreground focus:ring-destructive"
+                        placeholder="DELETE"
+                    />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+                    <Button
+                        variant="destructive"
+                        disabled={isDeleteDisabled}
+                        onClick={handleDelete}
+                    >
+                        I understand, delete my account
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 };
 
-
-const ImageUpload = ({ label, currentImage, onFileSelect, isEditing }) => {
+const ImageUpload = ({ label, currentImage, onFileSelect, isEditing, folderPath }) => {
     const fileInputRef = React.useRef(null);
+    const [uploading, setUploading] = useState(false);
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (file) {
+            setUploading(true);
             try {
                 // Compress image before uploading
                 const compressionOptions = {
-                    maxSizeMB: 1, // Max 1MB
-                    maxWidthOrHeight: 2048, // Max dimension
+                    maxSizeMB: 0.5, // Reduced max size to 0.5MB for faster loads
+                    maxWidthOrHeight: 1024, // Reduced max dimension
                     useWebWorker: true,
-                    fileType: 'image/jpeg' // Convert to JPEG
+                    fileType: 'image/jpeg'
                 };
 
                 const compressedFile = await imageCompression(file, compressionOptions);
                 console.log(`Original ${label} size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
                 console.log(`Compressed ${label} size: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
 
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    onFileSelect(reader.result);
-                };
-                reader.readAsDataURL(compressedFile);
+                // Upload to Firebase Storage
+                const timestamp = Date.now();
+                const path = `${folderPath}/${timestamp}_${compressedFile.name}`; // e.g. users/uid/logo/123_logo.jpg
+                const downloadURL = await uploadToStorage(compressedFile, path);
+
+                onFileSelect(downloadURL); // Pass URL instead of Base64
+
             } catch (error) {
-                console.error('Image compression failed:', error);
-                // Fallback to original file if compression fails
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    onFileSelect(reader.result);
-                };
-                reader.readAsDataURL(file);
+                console.error('Image upload failed:', error);
+
+                // Fallback to original Base64 (only if storage fails completely)
+                // ideally we warn user instead.
+                alert("Upload failed. Please try again.");
+            } finally {
+                setUploading(false);
             }
         }
     };
@@ -202,8 +215,13 @@ const ImageUpload = ({ label, currentImage, onFileSelect, isEditing }) => {
         <div>
             <Label className="flex items-center gap-2"><ImageIcon size={14} /> {label}</Label>
             <div className="mt-2 flex items-center gap-4">
-                <div className="relative w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted/50 overflow-hidden">
-                    {currentImage ? (
+                <div className="relative w-24 h-24 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted/50 overflow-hidden">
+                    {uploading ? (
+                        <div className="flex flex-col items-center justify-center p-2">
+                            <Loader2 className="animate-spin h-6 w-6 text-primary" />
+                            <span className="text-[10px] text-muted-foreground mt-1">Uploading...</span>
+                        </div>
+                    ) : currentImage ? (
                         <Image src={currentImage} alt={label} layout="fill" objectFit="cover" />
                     ) : (
                         <ImageIcon size={24} className="text-muted-foreground" />
@@ -212,8 +230,8 @@ const ImageUpload = ({ label, currentImage, onFileSelect, isEditing }) => {
                 {isEditing && (
                     <>
                         <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                            <Upload size={16} className="mr-2" /> Upload
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                            <Upload size={16} className="mr-2" /> {uploading ? 'Uploading...' : 'Upload'}
                         </Button>
                     </>
                 )}
@@ -225,6 +243,7 @@ const ImageUpload = ({ label, currentImage, onFileSelect, isEditing }) => {
 
 // --- Main Page Component ---
 function SettingsPageContent() {
+    // ... (State hooks same) ...
     const [user, setUser] = useState(null);
     const [editedUser, setEditedUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -235,11 +254,15 @@ function SettingsPageContent() {
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
     const bannerInputRef = React.useRef(null);
+    const [uploadingBanner, setUploadingBanner] = useState(false); // New state for banner upload
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    // ... (Params hooks same) ...
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
 
+
+    // ... (useEffect and other handlers same) ...
     const defaultAddress = {
         street: '',
         city: '',
@@ -249,6 +272,7 @@ function SettingsPageContent() {
     };
 
     useEffect(() => {
+        // ... (Fetch logic same) ...
         const fetchUserData = async () => {
             const currentUser = getAuth().currentUser;
             if (!currentUser) {
@@ -275,6 +299,7 @@ function SettingsPageContent() {
                 const data = await response.json();
                 const userData = {
                     ...data,
+                    uid: currentUser.uid, // ✅ Critical for Storage Paths
                     bannerUrls: data.bannerUrls || [],
                     address: data.address && typeof data.address === 'object' ? data.address : defaultAddress,
                     dineInModel: data.dineInModel || 'post-paid' // Default to Post-Paid
@@ -300,10 +325,10 @@ function SettingsPageContent() {
         return () => unsubscribe();
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
+
     const handleEditToggle = (section) => {
         if (section === 'profile') {
             if (isEditingProfile) {
-                // When cancelling, revert changes
                 setEditedUser(user);
             }
             setIsEditingProfile(!isEditingProfile);
@@ -330,32 +355,29 @@ function SettingsPageContent() {
     const handleBannerFileChange = async (e) => {
         const file = e.target.files[0];
         if (file) {
+            setUploadingBanner(true);
             try {
-                // Compress image before uploading
                 const compressionOptions = {
-                    maxSizeMB: 1, // Max 1MB
-                    maxWidthOrHeight: 2048, // Max dimension
+                    maxSizeMB: 0.5,
+                    maxWidthOrHeight: 1920, // HD is enough
                     useWebWorker: true,
-                    fileType: 'image/jpeg' // Convert to JPEG
+                    fileType: 'image/jpeg'
                 };
 
                 const compressedFile = await imageCompression(file, compressionOptions);
-                console.log(`Original banner size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
-                console.log(`Compressed banner size: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+                const timestamp = Date.now();
+                // Use user UID for path. If impersonating, logic should use target UID but storage security rules might block.
+                // Assuming auth.currentUser for path is safest for now.
+                const path = `users/${user.uid || 'unknown'}/banners/${timestamp}_${compressedFile.name}`;
 
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setEditedUser(prev => ({ ...prev, bannerUrls: [...(prev.bannerUrls || []), reader.result] }));
-                };
-                reader.readAsDataURL(compressedFile);
+                const downloadURL = await uploadToStorage(compressedFile, path);
+
+                setEditedUser(prev => ({ ...prev, bannerUrls: [...(prev.bannerUrls || []), downloadURL] }));
             } catch (error) {
-                console.error('Banner compression failed:', error);
-                // Fallback to original file if compression fails
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setEditedUser(prev => ({ ...prev, bannerUrls: [...(prev.bannerUrls || []), reader.result] }));
-                };
-                reader.readAsDataURL(file);
+                console.error('Banner upload failed:', error);
+                setInfoDialog({ isOpen: true, title: 'Upload Failed', message: error.message });
+            } finally {
+                setUploadingBanner(false);
             }
         }
     };
@@ -803,6 +825,7 @@ function SettingsPageContent() {
                                 currentImage={editedUser.logoUrl}
                                 onFileSelect={(dataUrl) => setEditedUser({ ...editedUser, logoUrl: dataUrl })}
                                 isEditing={isEditingMedia}
+                                folderPath={`users/${user.uid}/logo`} // ✅ Pass folder path
                             />
                             <div>
                                 <Label className="flex items-center gap-2"><ImageIcon size={14} /> Banner Images</Label>

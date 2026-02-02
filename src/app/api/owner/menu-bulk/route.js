@@ -112,53 +112,59 @@ export async function POST(req) {
             ? {} // Empty object - no hardcoded categories for street vendors
             : (businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig);
 
-        const currentCustomCategories = businessData.customCategories || [];
-        console.log(`[Bulk Upload] Current custom categories:`, currentCustomCategories.map(c => c.id).join(', '));
-
-        // Extract unique categories from items
-        const uniqueCategories = new Set();
-        items.forEach(item => {
-            if (item.categoryId) {
-                uniqueCategories.add(item.categoryId);
-            }
-        });
-        console.log(`[Bulk Upload] Unique categories in upload:`, Array.from(uniqueCategories).join(', '));
-
-        // Find new categories that need to be saved
-        const newCategories = [];
-        uniqueCategories.forEach(catId => {
-            // Skip if hardcoded or already in custom categories
-            if (hardcodedCategories[catId]) {
-                console.log(`[Bulk Upload] Category '${catId}' is hardcoded, skipping`);
-                return;
-            }
-            if (currentCustomCategories.some(cat => cat.id === catId)) {
-                console.log(`[Bulk Upload] Category '${catId}' already exists in custom categories, skipping`);
-                return;
-            }
-
-            // New category found - create title from ID
-            const title = catId.split('-').map(word =>
-                word.charAt(0).toUpperCase() + word.slice(1)
-            ).join(' ');
-
-            newCategories.push({ id: catId, title });
-            console.log(`[Bulk Upload] New category detected: '${catId}' -> '${title}'`);
-        });
-
         const batch = firestore.batch();
         const menuRef = firestore.collection(collectionName).doc(restaurantId).collection('menu');
         const allItems = [];
 
-        // If there are new categories, update business document
-        if (newCategories.length > 0) {
-            const updatedCategories = [...currentCustomCategories, ...newCategories];
-            // Use set with merge to ensure it works even if field doesn't exist
-            batch.set(businessRef, { customCategories: updatedCategories }, { merge: true });
-            console.log(`[Bulk Upload] Adding ${newCategories.length} new categories:`,
-                newCategories.map(c => `${c.id} (${c.title})`).join(', '));
+        // 1. Build a map of all existing categories (hardcoded + custom)
+        const allCategories = { ...hardcodedCategories };
+
+        const existingCustomCategoriesSnap = await businessRef.collection('custom_categories').get();
+        existingCustomCategoriesSnap.forEach(doc => {
+            const data = doc.data();
+            allCategories[data.id] = { title: data.title, order: data.order };
+        });
+        console.log(`[Bulk Upload] Total existing categories (hardcoded + custom):`, Object.keys(allCategories).join(', '));
+
+        // 2. Identify unique category IDs from the uploaded items
+        const uniqueItemCategoryIds = new Set(items.map(i => i.categoryId).filter(Boolean));
+        console.log(`[Bulk Upload] Unique categories in upload:`, Array.from(uniqueItemCategoryIds).join(', '));
+
+        // 3. Determine which categories are truly new and need to be added to the sub-collection
+        const newCategoriesToAdd = [];
+        uniqueItemCategoryIds.forEach(catId => {
+            if (!allCategories[catId]) {
+                newCategoriesToAdd.push(catId);
+            }
+        });
+
+        // 4. Add new custom categories to the sub-collection
+        if (newCategoriesToAdd.length > 0) {
+            // Fetch existing sub-collection to determine max order
+            const existingCatsSnap = await businessRef.collection('custom_categories').orderBy('order', 'desc').limit(1).get();
+            let maxOrder = existingCatsSnap.empty ? 0 : (existingCatsSnap.docs[0].data().order || 0);
+
+            for (const catId of newCategoriesToAdd) {
+                // Check if exists (double-check in case of concurrent writes or previous batch operations)
+                const catRef = businessRef.collection('custom_categories').doc(catId);
+                const catSnap = await catRef.get();
+
+                if (!catSnap.exists) {
+                    // Try to find a categoryTitle in the items, otherwise generate from ID
+                    const title = items.find(i => i.categoryId === catId)?.categoryTitle || catId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    maxOrder++;
+                    batch.set(catRef, {
+                        id: catId,
+                        title: title,
+                        order: maxOrder,
+                        createdAt: FieldValue.serverTimestamp()
+                    });
+                    allCategories[catId] = { title, order: maxOrder }; // Update local map for subsequent items
+                }
+            }
+            console.log(`[Bulk Upload] Adding ${newCategoriesToAdd.length} new categories to sub-collection.`);
         } else {
-            console.log(`[Bulk Upload] No new categories to add`);
+            console.log(`[Bulk Upload] No new categories to add to sub-collection.`);
         }
 
         for (const item of items) {
