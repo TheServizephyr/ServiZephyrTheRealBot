@@ -413,6 +413,26 @@ export async function createOrderV1(req) {
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
 
+        // --- PREFETCH DELIVERY SETTINGS (Fix for Sub-collection Migration) ---
+        let deliverySettings = {};
+        if (businessRef) {
+            try {
+                const dsSnap = await businessRef.collection('delivery_settings').doc('config').get();
+                if (dsSnap.exists) {
+                    deliverySettings = dsSnap.data();
+                    console.log(`[API /order/create] Loaded delivery settings from sub-collection.`);
+                }
+            } catch (err) {
+                console.error(`[API /order/create] Failed to load delivery settings:`, err);
+            }
+        }
+
+        // Helper to get effective setting (Sub-collection > Parent Doc)
+        const getSetting = (key) => {
+            if (deliverySettings[key] !== undefined) return deliverySettings[key];
+            return businessData[key];
+        };
+
         // --- PAYMENT METHOD VALIDATION ---
         console.log(`[API /order/create] Validating payment method: ${paymentMethod} for deliveryType: ${deliveryType}`);
 
@@ -420,9 +440,9 @@ export async function createOrderV1(req) {
             let isCodeEnabled = false;
 
             if (deliveryType === 'delivery') {
-                isCodeEnabled = businessData.deliveryCodEnabled;
+                isCodeEnabled = getSetting('deliveryCodEnabled');
             } else if (deliveryType === 'pickup') {
-                isCodeEnabled = businessData.pickupPodEnabled;
+                isCodeEnabled = getSetting('pickupPodEnabled');
             } else if (deliveryType === 'dine-in') {
                 isCodeEnabled = businessData.dineInPayAtCounterEnabled;
             } else if (deliveryType === 'street-vendor-pre-order') {
@@ -439,9 +459,9 @@ export async function createOrderV1(req) {
             let isOnlineEnabled = false;
 
             if (deliveryType === 'delivery') {
-                isOnlineEnabled = businessData.deliveryOnlinePaymentEnabled;
+                isOnlineEnabled = getSetting('deliveryOnlinePaymentEnabled');
             } else if (deliveryType === 'pickup') {
-                isOnlineEnabled = businessData.pickupOnlinePaymentEnabled;
+                isOnlineEnabled = getSetting('pickupOnlinePaymentEnabled');
             } else if (deliveryType === 'dine-in') {
                 isOnlineEnabled = businessData.dineInOnlinePaymentEnabled;
             } else if (deliveryType === 'street-vendor-pre-order') {

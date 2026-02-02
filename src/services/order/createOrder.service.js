@@ -21,7 +21,7 @@ import { nanoid } from 'nanoid';
 import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 
 // V1 Fallback for online payments (not tested in V2)
-import { createOrderV1 } from '@/app/api/order/create/legacy/createOrderV1';
+import { createOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';

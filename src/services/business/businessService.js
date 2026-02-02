@@ -57,10 +57,22 @@ export async function findBusinessById(firestore, businessId) {
 
             if (docSnap.exists) {
                 console.log(`[BusinessService] Found business ${businessId} in collection: ${collectionName}`);
+
+                // Fetch delivery settings sub-collection
+                let deliverySettings = {};
+                try {
+                    const dsSnap = await docRef.collection('delivery_settings').doc('config').get();
+                    if (dsSnap.exists) {
+                        deliverySettings = dsSnap.data();
+                    }
+                } catch (e) {
+                    console.warn(`[BusinessService] Failed to load delivery settings for ${businessId}`, e);
+                }
+
                 return {
                     id: businessId,
                     ref: docRef,
-                    data: docSnap.data(),
+                    data: { ...docSnap.data(), ...deliverySettings }, // Merge settings
                     collection: collectionName,
                     type: getBusinessTypeFromCollection(collectionName)
                 };
@@ -108,10 +120,21 @@ export async function getBusinessById(firestore, businessId, businessType) {
         return null;
     }
 
+    // Fetch delivery settings sub-collection
+    let deliverySettings = {};
+    try {
+        const dsSnap = await docRef.collection('delivery_settings').doc('config').get();
+        if (dsSnap.exists) {
+            deliverySettings = dsSnap.data();
+        }
+    } catch (e) {
+        console.warn(`[BusinessService] Failed to load delivery settings for ${businessId}`, e);
+    }
+
     return {
         id: businessId,
         ref: docRef,
-        data: docSnap.data(),
+        data: { ...docSnap.data(), ...deliverySettings }, // Merge settings
         collection: collectionName,
         type: businessType
     };

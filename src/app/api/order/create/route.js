@@ -12,7 +12,7 @@
  */
 
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
-import { createOrderV1 } from './legacy/createOrderV1';
+import { createOrderV1 } from './legacy/createOrderV1_LEGACY';
 import { createOrderV2 } from '@/services/orderService';
 
 export async function POST(req) {
