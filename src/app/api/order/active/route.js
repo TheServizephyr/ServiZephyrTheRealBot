@@ -155,10 +155,20 @@ export async function POST(req) {
         const activeOrderQuery = await ordersRef
             .where('restaurantId', '==', restaurantId)
             .where('customer.phone', '==', phone)
-            .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'ready_for_pickup'])
-            .orderBy('createdAt', 'desc')
-            .limit(1)
+            .where('status', 'in', ['pending', 'placed', 'accepted', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived']) // Added all active statuses
+            .limit(20) // Safety Cap: Prevent fetching too many docs
             .get();
+
+        if (activeOrderQuery.empty) {
+            return NextResponse.json({ activeOrder: null }, { status: 200 });
+        }
+
+        // Sort in memory to avoid composite index requirement
+        const docs = activeOrderQuery.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        docs.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+
+        const orderData = docs[0];
+        const orderDoc = { id: orderData.id }; // Construct pseudo-doc since we mapped it
 
         if (activeOrderQuery.empty) {
             return NextResponse.json({ activeOrder: null }, { status: 200 });

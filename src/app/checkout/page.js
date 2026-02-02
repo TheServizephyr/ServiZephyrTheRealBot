@@ -702,7 +702,7 @@ const CheckoutPageInternal = () => {
                         const trackingUrl = (orderData.deliveryType === 'dine-in' && !!tableId)
                             ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${phoneParam}`
                             : `/track/${data.firestore_order_id}?token=${data.token}${phoneParam}`;
-                        router.push(trackingUrl);
+                        router.replace(trackingUrl);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
                     redirect: orderData.deliveryType === 'dine-in' ? true : false,
@@ -737,8 +737,22 @@ const CheckoutPageInternal = () => {
                     // ✅ Route to NEW order (not old activeOrderId!)
                     const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
                     const redirectUrl = `/track/${trackingPath}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+
+                    // SAVE ACTIVE ORDER FOR TRACKING BUTTON
+                    if (typeof window !== 'undefined') {
+                        const liveOrderData = {
+                            orderId: finalOrderId,
+                            trackingToken: data.token,
+                            restaurantId: restaurantId,
+                            deliveryType: deliveryType,
+                            status: 'placed' // Initial status
+                        };
+                        localStorage.setItem(`liveOrder_${restaurantId}`, JSON.stringify(liveOrderData));
+                        console.log(`[Checkout] Saved liveOrder to storage:`, liveOrderData);
+                    }
+
                     console.log(`[Checkout] Redirecting to NEW order: ${finalOrderId}`);
-                    router.push(redirectUrl);
+                    router.replace(redirectUrl); // CHANGED: Replaced push with replace to skip checkout on back
                     return;
                 }
 
@@ -755,7 +769,7 @@ const CheckoutPageInternal = () => {
                 } else {
                     // Direct routing based on business type
                     const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
-                    router.push(`/track/${trackingPath}/${data.firestore_order_id}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
+                    router.replace(`/track/${trackingPath}/${data.firestore_order_id}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
                 }
             }
         } catch (err) {

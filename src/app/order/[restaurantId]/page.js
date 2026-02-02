@@ -755,7 +755,7 @@ const OrderPageInternal = () => {
             pollStatus();
 
             // ✅ Poll every 5 seconds to auto-hide Track button when order completes
-            const intervalId = setInterval(pollStatus, 5000);
+            const intervalId = setInterval(pollStatus, 10000);
 
             return () => clearInterval(intervalId);
         } else if (activeOrderId && activeOrderToken) {
@@ -778,8 +778,12 @@ const OrderPageInternal = () => {
                             return;
                         }
 
-                        // Only set liveOrder if status is still active
-                        setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId });
+                        // Only set liveOrder if status is still active and not already set
+                        setLiveOrder(prev => {
+                            // Avoid re-render if identity matches
+                            if (prev && prev.orderId === activeOrderId) return prev;
+                            return { orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId };
+                        });
                     }
                 } catch (e) {
                     console.error("Failed to check order status from URL", e);
@@ -788,7 +792,7 @@ const OrderPageInternal = () => {
 
             // ✅ CRITICAL FIX: Assign interval FIRST, THEN run initial check
             // This ensures intervalId is set when clearInterval is called!
-            intervalId = setInterval(checkOrderStatus, 5000);
+            intervalId = setInterval(checkOrderStatus, 10000);
             checkOrderStatus(); // Initial check (intervalId is now set!)
 
             return () => {
@@ -1580,8 +1584,14 @@ const OrderPageInternal = () => {
     const getTrackingUrl = () => {
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
 
-        // ✅ FIX: Route based on business type
-        const trackingPath = restaurantData.businessType === 'street-vendor'
+        // ✅ FIX: Route based on delivery type stored in liveOrder
+        const orderDeliveryType = liveOrder.deliveryType || 'delivery';
+
+        if (orderDeliveryType === 'dine-in') {
+            return `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`;
+        }
+
+        const trackingPath = (restaurantData.businessType === 'street-vendor' || orderDeliveryType === 'street-vendor-pre-order')
             ? `/track/pre-order/${liveOrder.orderId}`
             : `/track/${liveOrder.orderId}`;
 

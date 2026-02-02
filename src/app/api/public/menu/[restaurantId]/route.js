@@ -44,8 +44,8 @@ export async function GET(req, { params }) {
         }
 
         // STEP 2: Build version-based cache key
-        // PATCH: Added _patch1 to force cache refresh due to Delivery Settings Migration fix (missing deliveryEnabled)
-        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch1`;
+        // PATCH: Added _patch2 to force cache refresh due to Delivery Fee Calculation fix (missing feeType/perKm)
+        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch2`;
         console.log(`[Menu API] 🔑 Cache key: ${cacheKey} (menuVersion: ${menuVersion})`);
 
         // STEP 3: Check Redis cache with version-specific key
@@ -166,6 +166,12 @@ export async function GET(req, { params }) {
             deliveryCharge: deliveryConfigSnap.exists ? deliveryConfig.deliveryCharge : businessData.deliveryCharge,
             deliveryFreeThreshold: deliveryConfigSnap.exists ? deliveryConfig.freeDeliveryThreshold : businessData.deliveryFreeThreshold,
             minOrderValue: deliveryConfigSnap.exists ? deliveryConfig.minOrderValue : businessData.minOrderValue,
+
+            // NEW: Fields required for Per-Km calculation
+            deliveryFeeType: deliveryConfigSnap.exists ? deliveryConfig.deliveryFeeType : (businessData.deliveryFeeType || 'fixed'),
+            deliveryPerKmFee: deliveryConfigSnap.exists ? deliveryConfig.deliveryPerKmFee : (businessData.deliveryPerKmFee || 0),
+            deliveryRadius: deliveryConfigSnap.exists ? deliveryConfig.deliveryRadius : (businessData.deliveryRadius || 5),
+
             menu: menuData,
             coupons: coupons,
             loyaltyPoints: 0, // User-specific data removed for better caching

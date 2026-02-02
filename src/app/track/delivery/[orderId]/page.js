@@ -206,17 +206,33 @@ function OrderTrackingContent() {
 
     // ✅ BROWSER BACK BUTTON INTERCEPTION
     useEffect(() => {
-        const handlePopState = (event) => {
-            event.preventDefault();
+        // Push state functionality to trap back button
+        const preventBack = () => {
+            window.history.pushState(null, document.title, window.location.href);
             const restaurantId = orderData?.order?.restaurantId;
             if (restaurantId) {
-                console.log('[DeliveryTrack] Browser back intercepted → redirecting to order page');
-                router.replace(`/order/${restaurantId}`);
+                console.log('[DeliveryTrack] Back intercepted -> going to menu');
+                // Persist session tokens
+                const token = searchParams.get('token');
+                const phone = searchParams.get('phone');
+                let targetUrl = `/order/${restaurantId}`;
+                const params = new URLSearchParams();
+                if (token) params.set('token', token);
+                if (phone) params.set('phone', phone);
+                if (orderId) params.set('activeOrderId', orderId); // ✅ Keep Track Button Alive
+                if (params.toString()) targetUrl += `?${params.toString()}`;
+
+                router.replace(targetUrl);
             }
         };
 
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
+        // Initialize history stack
+        window.history.pushState(null, document.title, window.location.href);
+        window.addEventListener('popstate', preventBack);
+
+        return () => {
+            window.removeEventListener('popstate', preventBack);
+        };
     }, [orderData, router]);
 
     // ✅ FIX: Payment Verification - Stable Dependencies
@@ -328,9 +344,29 @@ function OrderTrackingContent() {
                                 <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderId?.slice(0, 8) || '...'}</p>
                                 <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-gray-50">
-                                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Button variant="ghost" size="sm" onClick={() => {
+                                    if (orderData?.restaurant?.id) {
+                                        const token = searchParams.get('token');
+                                        const phone = searchParams.get('phone');
+                                        let targetUrl = `/order/${orderData.restaurant.id}`;
+                                        const params = new URLSearchParams();
+                                        if (token) params.set('token', token);
+                                        if (phone) params.set('phone', phone);
+                                        if (orderId) params.set('activeOrderId', orderId); // ✅ Keep Track Button Alive
+                                        if (params.toString()) targetUrl += `?${params.toString()}`;
+
+                                        router.push(targetUrl);
+                                    } else {
+                                        router.back();
+                                    }
+                                }} className="text-gray-500 hover:bg-gray-50 h-8 w-8 p-0 rounded-full">
+                                    <ArrowLeft size={18} />
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-gray-50">
+                                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                                </Button>
+                            </div>
                         </div>
 
                         {/* DYNAMIC STATUS BAR */}
