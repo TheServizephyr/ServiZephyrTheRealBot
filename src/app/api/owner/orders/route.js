@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, getDatabase, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
-import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
+import { sendOrderStatusUpdateToCustomer, sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import Razorpay from 'razorpay';
 
@@ -174,11 +174,16 @@ export async function PATCH(req) {
 
         const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason, action, shouldRefund, paymentStatus, paymentMethod } = body;
 
+        console.log(`[API][PATCH /orders] newStatus received:`, newStatus);
+        console.log(`[API][PATCH /orders] rejectionReason:`, rejectionReason);
+
+        console.log(`[API][PATCH /orders] 🔍 Starting owner verification...`);
         const { businessId, businessSnap } = await verifyOwnerWithAudit(
             req,
             'update_order_status',
             { orderId, orderIds, newStatus, rejectionReason, action, paymentStatus }
         );
+        console.log(`[API][PATCH /orders] ✅ Owner verified. businessId:`, businessId);
 
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
 
@@ -429,6 +434,45 @@ export async function PATCH(req) {
 
         await batch.commit();
         console.log(`[API][PATCH /orders] Batch update completed successfully for ${idsToUpdate.length} orders.`);
+
+        // ✅ AUTO-CLOSE RESTAURANT ON ORDER REJECTION
+        console.log(`[API][PATCH /orders] 🔍 Checking if should auto-close... newStatus='${newStatus}'`);
+        if (newStatus === 'rejected') {
+            console.log(`[API][PATCH /orders] 🚨 TRIGGERED: Auto-closing restaurant due to order rejection`);
+            try {
+                const businessData = businessSnap.data();
+                console.log(`[API][PATCH /orders] businessData.businessType:`, businessData.businessType);
+                console.log(`[API][PATCH /orders] businessData.isOpen (current):`, businessData.isOpen);
+
+                const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
+                console.log(`[API][PATCH /orders] Determined collection:`, businessCollectionName);
+
+                const businessRef = firestore.collection(businessCollectionName).doc(businessId);
+                console.log(`[API][PATCH /orders] Business ref path:`, businessRef.path);
+
+                // Update restaurant isOpen status to false
+                console.log(`[API][PATCH /orders] 📝 Updating isOpen to false...`);
+                await businessRef.update({ isOpen: false });
+                console.log(`[API][PATCH /orders] ✅ Database updated successfully`);
+
+                // Send notification to owner about the status change
+                console.log(`[API][PATCH /orders] 📲 Sending notification to owner...`);
+                sendRestaurantStatusChangeNotification({
+                    ownerPhone: businessData.ownerPhone,
+                    botPhoneNumberId: businessData.botPhoneNumberId,
+                    newStatus: false, // Restaurant is now closed
+                    restaurantId: businessId,
+                }).catch(e => console.error("[API][PATCH /orders] Failed to send restaurant closure notification:", e));
+
+                console.log(`[API][PATCH /orders] ✅ Restaurant auto-closed successfully`);
+            } catch (closeError) {
+                console.error(`[API][PATCH /orders] ❌ Failed to auto-close restaurant:`, closeError);
+                console.error(`[API][PATCH /orders] Error stack:`, closeError.stack);
+                // Non-fatal - order rejection already succeeded
+            }
+        } else {
+            console.log(`[API][PATCH /orders] ⏭️ Skipping auto-close (status is not 'rejected')`);
+        }
 
         // ✅ RTDB Write for Real-time Tracking (NEW!)
         console.log('[RTDB] Starting RTDB write for', idsToUpdate.length, 'orders');

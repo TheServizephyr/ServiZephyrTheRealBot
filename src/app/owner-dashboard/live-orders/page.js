@@ -194,13 +194,15 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantC
                                 <p className="text-sm text-muted-foreground">
                                     Mark your restaurant as closed now so new orders won&apos;t come in and you won&apos;t have to reject them.
                                 </p>
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <Checkbox
+                                <Label htmlFor="restaurant-closed-toggle" className="flex items-center justify-between cursor-pointer">
+                                    <span className="font-medium text-sm">Mark restaurant closed now</span>
+                                    <Switch
+                                        id="restaurant-closed-toggle"
                                         checked={markRestaurantClosed}
                                         onCheckedChange={(checked) => setMarkRestaurantClosed(!!checked)}
+                                        aria-label="Toggle restaurant closed status"
                                     />
-                                    <span className="font-medium text-sm">Mark restaurant closed now</span>
-                                </label>
+                                </Label>
                             </motion.div>
                         )}
 
@@ -283,7 +285,8 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantC
                                 isSubmitting ||
                                 !reason ||
                                 (reason === 'other' && !otherReason.trim()) ||
-                                (reason === 'item_unavailable' && orderItemsWithIds.length > 0 && outOfStockItemIds.length === 0)
+                                (reason === 'item_unavailable' && orderItemsWithIds.length > 0 && outOfStockItemIds.length === 0) ||
+                                (reason === 'restaurant_closed' && !markRestaurantClosed) // Require toggle to be ON
                             }
                         >
                             {isSubmitting ? "Rejecting..." : "Confirm Rejection"}

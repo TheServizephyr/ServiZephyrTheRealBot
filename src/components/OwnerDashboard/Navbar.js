@@ -149,7 +149,26 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
             </AnimatePresence>
           </button>
 
-          <DropdownMenu>
+          <DropdownMenu onOpenChange={(open) => {
+            if (open) {
+              // Refresh restaurant status when dropdown opens
+              const refreshStatus = async () => {
+                const currentUser = auth.currentUser;
+                if (!currentUser) return;
+                try {
+                  const idToken = await currentUser.getIdToken();
+                  const res = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                  if (res.ok) {
+                    const data = await res.json();
+                    setRestaurantStatus(data.isOpen);
+                  }
+                } catch (error) {
+                  console.error("Failed to refresh restaurant status:", error);
+                }
+              };
+              refreshStatus();
+            }
+          }}>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar>

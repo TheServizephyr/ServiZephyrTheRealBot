@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut } from 'lucide-react';
+import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut, Check, CheckCheck } from 'lucide-react';
 import Image from 'next/image';
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
@@ -42,6 +42,15 @@ const tagConfig = {
 const ConversationItem = ({ conversation, active, onClick }) => {
     const TagIcon = tagConfig[conversation.tag]?.icon;
 
+    // Get appropriate icon based on last message type
+    const getMessageIcon = (type) => {
+        if (type === 'image') return <ImageIcon size={14} />;
+        if (type === 'video') return <span className="text-xs">🎥</span>;
+        if (type === 'document') return <span className="text-xs">📄</span>;
+        if (type === 'audio') return <span className="text-xs">🎵</span>;
+        return null;
+    };
+
     return (
         <div
             onClick={() => onClick(conversation)}
@@ -61,7 +70,7 @@ const ConversationItem = ({ conversation, active, onClick }) => {
                 </div>
                 <div className="flex justify-between items-center">
                     <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
-                        {conversation.lastMessageType === 'image' && <ImageIcon size={14} />}
+                        {getMessageIcon(conversation.lastMessageType)}
                         {conversation.lastMessage}
                     </p>
                     {conversation.tag && TagIcon && (
@@ -74,29 +83,112 @@ const ConversationItem = ({ conversation, active, onClick }) => {
 };
 
 
+
 const MessageBubble = ({ message }) => {
     const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
     const isOwner = message.sender === 'owner';
 
+    const renderContent = () => {
+        // Image
+        if (message.type === 'image' && message.mediaUrl) {
+            return (
+                <div className="p-2">
+                    <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
+                        <Image
+                            src={message.mediaUrl}
+                            alt="Chat image"
+                            width={250}
+                            height={250}
+                            className="rounded-lg cursor-pointer"
+                            unoptimized={true} // ✅ FIX: Bypass Next.js optimization for Firebase Storage
+                        />
+                    </a>
+                </div>
+            );
+        }
+
+        // Video
+        if (message.type === 'video' && message.mediaUrl) {
+            return (
+                <div className="p-2">
+                    <video controls className="rounded-lg max-w-full" style={{ maxHeight: '300px' }}>
+                        <source src={message.mediaUrl} type="video/mp4" />
+                        Your browser does not support video playback.
+                    </video>
+                    {message.fileName && <p className="text-xs mt-1 opacity-70">{message.fileName}</p>}
+                </div>
+            );
+        }
+
+        // Audio
+        if (message.type === 'audio' && message.mediaUrl) {
+            return (
+                <div className="p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">🎵</span>
+                        <span className="text-sm font-medium">{message.fileName || 'Audio'}</span>
+                    </div>
+                    <audio controls className="w-full" style={{ maxWidth: '300px' }}>
+                        <source src={message.mediaUrl} />
+                        Your browser does not support audio playback.
+                    </audio>
+                </div>
+            );
+        }
+
+        // Document
+        if (message.type === 'document' && message.mediaUrl) {
+            const fileExt = message.fileName?.split('.').pop()?.toLowerCase() || 'file';
+            let icon = '📄';
+            if (fileExt === 'pdf') icon = '📕';
+            else if (['doc', 'docx'].includes(fileExt)) icon = '📘';
+            else if (['xls', 'xlsx'].includes(fileExt)) icon = '📊';
+
+            return (
+                <div className="p-3">
+                    <a
+                        href={message.mediaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                    >
+                        <span className="text-3xl">{icon}</span>
+                        <div>
+                            <p className="font-medium text-sm">{message.fileName || 'Document'}</p>
+                            <p className="text-xs opacity-70">Click to open</p>
+                        </div>
+                    </a>
+                </div>
+            );
+        }
+
+        // Text (default)
+        return <p className="px-3">{message.text}</p>;
+    };
+
     return (
         <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} mb-3`}>
             <div className={`max-w-xs lg:max-w-md px-1 py-2 rounded-2xl ${isOwner ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
-                {message.type === 'image' && message.mediaUrl ? (
-                    <div className="p-2">
-                        <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
-                            <Image src={message.mediaUrl} alt="Chat image" width={250} height={250} className="rounded-lg cursor-pointer" />
-                        </a>
-                    </div>
-                ) : (
-                    <p className="px-3">{message.text}</p>
-                )}
-                <p className={`text-xs mt-1 px-3 ${isOwner ? 'text-primary-foreground/70' : 'text-muted-foreground'} text-right`}>
-                    {format(timestamp, 'p')}
-                </p>
+                {renderContent()}
+                <div className={`text-xs mt-1 px-3 flex items-center justify-end gap-1 ${isOwner ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                    <span>{format(timestamp, 'p')}</span>
+                    {isOwner && (
+                        <span>
+                            {message.status === 'read' ? (
+                                <CheckCheck size={14} className="text-blue-300" />
+                            ) : message.status === 'delivered' ? (
+                                <CheckCheck size={14} className="opacity-70" />
+                            ) : (
+                                <Check size={14} className="opacity-70" />
+                            )}
+                        </span>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
+
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) => (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -219,15 +311,44 @@ function WhatsAppDirectPageContent() {
             return;
         }
 
-        // ALWAYS USE API - Cost optimization (no direct Firestore reads)
-        console.log('[WhatsApp] Using API polling for messages (cost optimization)');
-        fetchMessages(activeConversation.id);
-        const interval = setInterval(() => fetchMessages(activeConversation.id), 30000); // Poll every 30s
+        console.log('[WhatsApp] Subscribing to real-time messages for:', activeConversation.id);
+        setLoadingMessages(true);
+
+        const fetchAndMarkRead = async () => {
+            try {
+                const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: activeConversation.id });
+                const msgs = data.messages || [];
+                setMessages(msgs);
+
+                // Identify unread customer messages
+                const unreadMessageIds = msgs
+                    .filter(m => m.sender === 'customer' && m.status !== 'read')
+                    .map(m => m.id);
+
+                if (unreadMessageIds.length > 0) {
+                    console.log('[WhatsApp] Marking messages as read:', unreadMessageIds);
+                    // Fire and forget - don't await to avoid blocking UI
+                    handleApiCall('/api/owner/whatsapp-direct/messages', 'PATCH', {
+                        conversationId: activeConversation.id,
+                        messageIds: unreadMessageIds
+                    }).catch(err => console.error("Failed to mark messages as read:", err));
+                }
+
+            } catch (error) {
+                console.error("Error fetching messages:", error);
+            } finally {
+                setLoadingMessages(false);
+            }
+        };
+
+        fetchAndMarkRead();
+        const interval = setInterval(fetchAndMarkRead, 3000); // Poll every 3s
+
         return () => {
             console.log('[WhatsApp] Cleaning up messages polling interval');
             clearInterval(interval);
         };
-    }, [activeConversation, fetchMessages]);
+    }, [activeConversation, handleApiCall]);
 
     const handleConversationClick = async (conversation) => {
         setActiveConversation(conversation);
@@ -263,23 +384,38 @@ function WhatsAppDirectPageContent() {
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (file && activeConversation) {
-            handleImageUpload(file);
+            // Validate file size on frontend (25MB)
+            const MAX_SIZE = 25 * 1024 * 1024;
+            if (file.size > MAX_SIZE) {
+                setInfoDialog({ isOpen: true, title: 'File Too Large', message: `File size exceeds 25MB limit. Please select a smaller file.` });
+                if (fileInputRef.current) fileInputRef.current.value = '';
+                return;
+            }
+            handleFileUpload(file);
         }
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
     };
 
-    const handleImageUpload = async (file) => {
+    const handleFileUpload = async (file) => {
         if (!activeConversation) return;
         setUploadingFile(file.name);
         setUploadProgress(0);
 
         try {
-            const { presignedUrl, publicUrl } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
+            // Get media type from MIME type
+            const mimeType = file.type;
+            let mediaType = 'file';
+            if (mimeType.startsWith('image/')) mediaType = 'image';
+            else if (mimeType.startsWith('video/')) mediaType = 'video';
+            else if (mimeType.startsWith('audio/')) mediaType = 'audio';
+            else if (mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('sheet')) mediaType = 'document';
+
+            const { presignedUrl, publicUrl, fileName } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
                 fileName: file.name,
                 fileType: file.type,
-                conversationId: activeConversation.id
+                fileSize: file.size
             });
 
             const uploadResponse = await fetch(presignedUrl, {
@@ -293,18 +429,27 @@ function WhatsAppDirectPageContent() {
             if (!uploadResponse.ok) {
                 const errorText = await uploadResponse.text();
                 console.error("Firebase upload failed:", errorText);
-                throw new Error('Failed to upload image to storage.');
+                throw new Error('Failed to upload file to storage.');
             }
 
-            await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', {
+            // Send message with appropriate media URL
+            const messagePayload = {
                 conversationId: activeConversation.id,
-                imageUrl: publicUrl
-            });
+                fileName: fileName || file.name
+            };
+
+            if (mediaType === 'image') messagePayload.imageUrl = publicUrl;
+            else if (mediaType === 'video') messagePayload.videoUrl = publicUrl;
+            else if (mediaType === 'document') messagePayload.documentUrl = publicUrl;
+            else if (mediaType === 'audio') messagePayload.audioUrl = publicUrl;
+            else messagePayload.documentUrl = publicUrl; // Fallback
+
+            await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', messagePayload);
 
             await fetchMessages(activeConversation.id);
 
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Upload Failed", message: "Could not send image: " + error.message });
+            setInfoDialog({ isOpen: true, title: "Upload Failed", message: "Could not send file: " + error.message });
         } finally {
             setUploadingFile(null);
             setUploadProgress(0);
@@ -481,7 +626,13 @@ function WhatsAppDirectPageContent() {
                             ))}
                         </div>
                         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
-                            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/png, image/jpeg" />
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                className="hidden"
+                                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+                            />
                             <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="flex-shrink-0">
                                 <Paperclip />
                             </Button>

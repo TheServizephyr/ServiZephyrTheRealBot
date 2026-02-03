@@ -37,6 +37,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock,
     const [otherReason, setOtherReason] = useState('');
     const [shouldRefund, setShouldRefund] = useState('true');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [confirmRestaurantClosure, setConfirmRestaurantClosure] = useState(false);
 
     const [isOutOfStockModalOpen, setIsOutOfStockModalOpen] = useState(false);
 
@@ -56,6 +57,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock,
             setShouldRefund('true'); // Default to refund
             setIsSubmitting(false);
             setIsOutOfStockModalOpen(false);
+            setConfirmRestaurantClosure(false); // Reset confirmation
         }
     }, [isOpen]);
 

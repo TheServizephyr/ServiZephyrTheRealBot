@@ -4,6 +4,34 @@ import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { nanoid } from 'nanoid';
 
+// ✅ ALLOWED FILE TYPES (Images, Videos, Documents, Audio)
+const ALLOWED_MIME_TYPES = {
+    images: ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'],
+    videos: ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/webm'],
+    documents: [
+        'application/pdf',
+        'application/msword', // .doc
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/vnd.ms-excel', // .xls
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+    ],
+    audio: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/mp4'],
+};
+
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+
+function isFileTypeAllowed(mimeType) {
+    return Object.values(ALLOWED_MIME_TYPES).flat().includes(mimeType);
+}
+
+function getMediaType(mimeType) {
+    if (ALLOWED_MIME_TYPES.images.includes(mimeType)) return 'image';
+    if (ALLOWED_MIME_TYPES.videos.includes(mimeType)) return 'video';
+    if (ALLOWED_MIME_TYPES.documents.includes(mimeType)) return 'document';
+    if (ALLOWED_MIME_TYPES.audio.includes(mimeType)) return 'audio';
+    return 'unknown';
+}
+
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req); // Use central helper
@@ -36,32 +64,61 @@ async function verifyOwnerAndGetBusinessRef(req) {
 export async function POST(req) {
     try {
         const businessId = await verifyOwnerAndGetBusinessRef(req);
-        const { fileName, fileType, conversationId } = await req.json();
+        const { fileName, fileType, fileSize } = await req.json();
 
-        if (!fileName || !fileType || !conversationId) {
-            return NextResponse.json({ message: 'Missing required parameters.' }, { status: 400 });
+        if (!fileName || !fileType) {
+            return NextResponse.json({ message: 'Missing required parameters (fileName, fileType).' }, { status: 400 });
         }
 
-        const bucket = getStorage().bucket(`gs://${process.env.FIREBASE_PROJECT_ID}.firebasestorage.app`);
+        // ✅ VALIDATE FILE TYPE
+        if (!isFileTypeAllowed(fileType)) {
+            return NextResponse.json({
+                message: `File type not allowed. Supported: Images, Videos, Documents (PDF, Word, Excel), and Audio files.`,
+                allowedTypes: ALLOWED_MIME_TYPES
+            }, { status: 400 });
+        }
+
+        // ✅ VALIDATE FILE SIZE (25MB limit)
+        if (fileSize && fileSize > MAX_FILE_SIZE) {
+            return NextResponse.json({
+                message: `File size exceeds limit. Maximum allowed: 25MB`,
+                maxSize: MAX_FILE_SIZE
+            }, { status: 400 });
+        }
+
+        // ✅ FIX: Use correct project ID
+        const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'studio-6552995429-8bffe';
+        const bucket = getStorage().bucket(`${projectId}.firebasestorage.app`);
+
         const extension = fileName.split('.').pop();
         const uniqueFileName = `${nanoid()}.${extension}`;
-        const filePath = `whatsapp_media/${businessId}/${conversationId}/${uniqueFileName}`;
+        const mediaType = getMediaType(fileType);
+        const filePath = `whatsapp_media/${businessId}/${Date.now()}_${uniqueFileName}`;
 
         const file = bucket.file(filePath);
 
-        const [url] = await file.getSignedUrl({
+        // Generate Signed URL for UPLOAD (Write)
+        const [uploadUrl] = await file.getSignedUrl({
             version: 'v4',
             action: 'write',
             expires: Date.now() + 15 * 60 * 1000, // 15 minutes
             contentType: fileType,
         });
 
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+        // ✅ FIX: Generate Signed URL for READ (Public access for WhatsApp & Frontend)
+        // Valid for 7 days (matches our retention policy)
+        const [readUrl] = await file.getSignedUrl({
+            version: 'v4',
+            action: 'read',
+            expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
 
         return NextResponse.json({
             success: true,
-            presignedUrl: url,
-            publicUrl: publicUrl
+            presignedUrl: uploadUrl,
+            publicUrl: readUrl, // ✅ Use signed read URL
+            mediaType: mediaType,
+            fileName: uniqueFileName
         }, { status: 200 });
 
     } catch (error) {

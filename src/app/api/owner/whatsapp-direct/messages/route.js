@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendWhatsAppMessage, markWhatsAppMessageAsRead } from '@/lib/whatsapp';
 
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
@@ -94,10 +94,10 @@ export async function GET(req) {
 // Send a new message from the owner
 export async function POST(req) {
     try {
-        const { conversationId, text, imageUrl } = await req.json();
+        const { conversationId, text, imageUrl, videoUrl, documentUrl, audioUrl, fileName } = await req.json();
 
-        if (!conversationId || (!text && !imageUrl)) {
-            return NextResponse.json({ message: 'Conversation ID and text or imageUrl are required.' }, { status: 400 });
+        if (!conversationId || (!text && !imageUrl && !videoUrl && !documentUrl && !audioUrl)) {
+            return NextResponse.json({ message: 'Conversation ID and at least one content parameter (text, imageUrl, videoUrl, documentUrl, audioUrl) are required.' }, { status: 400 });
         }
 
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
@@ -112,7 +112,9 @@ export async function POST(req) {
 
         let messagePayload;
         let firestoreMessageData;
+        let lastMessagePreview;
 
+        // ✅ HANDLE DIFFERENT MEDIA TYPES
         if (text) {
             messagePayload = {
                 type: 'interactive',
@@ -128,22 +130,44 @@ export async function POST(req) {
                 }
             };
             firestoreMessageData = { type: 'text', text: text };
+            lastMessagePreview = text;
         } else if (imageUrl) {
-            console.warn("[API WARNING] Buttons cannot be sent with image messages. Sending image only.");
-            messagePayload = { type: 'image', link: imageUrl };
+            console.warn("[API WARNING] Buttons cannot be sent with media messages. Sending image only.");
+            messagePayload = { type: 'image', image: { link: imageUrl } };
             firestoreMessageData = { type: 'image', mediaUrl: imageUrl, text: 'Image' };
+            lastMessagePreview = '📷 Image';
+        } else if (videoUrl) {
+            messagePayload = { type: 'video', video: { link: videoUrl } };
+            firestoreMessageData = { type: 'video', mediaUrl: videoUrl, text: 'Video', fileName: fileName || 'video' };
+            lastMessagePreview = '🎥 Video';
+        } else if (documentUrl) {
+            messagePayload = { type: 'document', document: { link: documentUrl, filename: fileName || 'document' } };
+            firestoreMessageData = { type: 'document', mediaUrl: documentUrl, text: 'Document', fileName: fileName || 'document' };
+            lastMessagePreview = `📄 ${fileName || 'Document'}`;
+        } else if (audioUrl) {
+            messagePayload = { type: 'audio', audio: { link: audioUrl } };
+            firestoreMessageData = { type: 'audio', mediaUrl: audioUrl, text: 'Audio', fileName: fileName || 'audio' };
+            lastMessagePreview = '🎵 Audio';
         }
 
-        await sendWhatsAppMessage(customerPhoneWithCode, messagePayload, botPhoneNumberId);
+        const response = await sendWhatsAppMessage(customerPhoneWithCode, messagePayload, botPhoneNumberId);
 
-        const firestore = getFirestore();
+        let messageDocId;
+        if (response && response.messages && response.messages.length > 0) {
+            messageDocId = response.messages[0].id; // ✅ FIX: Use WhatsApp Message ID
+        } else {
+            console.warn("[API WARNING] No WhatsApp Message ID returned. Using random ID.");
+            messageDocId = firestore.collection('temp').doc().id; // Fallback
+        }
+
+        const firestore = await getFirestore();
         const conversationRef = businessDoc.ref.collection('conversations').doc(conversationId);
-        const messageRef = conversationRef.collection('messages').doc();
+        const messageRef = conversationRef.collection('messages').doc(messageDocId); // ✅ Use WAMID
 
         const batch = firestore.batch();
 
         batch.set(messageRef, {
-            id: messageRef.id,
+            id: messageDocId, // Store WAMID
             sender: 'owner',
             timestamp: FieldValue.serverTimestamp(),
             status: 'sent',
@@ -151,9 +175,10 @@ export async function POST(req) {
         });
 
         batch.set(conversationRef, {
-            lastMessage: imageUrl ? '📷 Image' : text,
-            lastMessageType: imageUrl ? 'image' : 'text',
+            lastMessage: lastMessagePreview,
+            lastMessageType: firestoreMessageData.type,
             lastMessageTimestamp: FieldValue.serverTimestamp(),
+            state: 'direct_chat', // ✅ FIX: Force conversation to direct_chat mode so bot doesn't reply
         }, { merge: true });
 
         await batch.commit();
@@ -163,5 +188,53 @@ export async function POST(req) {
     } catch (error) {
         console.error("POST MESSAGE ERROR:", error);
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
+    }
+}
+
+// Mark messages as read
+export async function PATCH(req) {
+    try {
+        const { conversationId, messageIds } = await req.json();
+
+        if (!conversationId || !Array.isArray(messageIds) || messageIds.length === 0) {
+            return NextResponse.json({ message: 'Conversation ID and Message IDs are required.' }, { status: 400 });
+        }
+
+        const businessDoc = await verifyOwnerAndGetBusinessRef(req);
+        const businessData = businessDoc.data();
+        const botPhoneNumberId = businessData.botPhoneNumberId;
+
+        if (!botPhoneNumberId) {
+            throw { message: 'WhatsApp bot is not connected for this business.', status: 400 };
+        }
+
+        const firestore = await getFirestore();
+        const messagesCollection = businessDoc.ref.collection('conversations').doc(conversationId).collection('messages');
+        const batch = firestore.batch();
+        let updateCount = 0;
+
+        // Process in parallel for speed
+        await Promise.all(messageIds.map(async (msgId) => {
+            // 1. Mark as read on WhatsApp (External)
+            await markWhatsAppMessageAsRead(msgId, botPhoneNumberId);
+
+            // 2. Mark as read in Firestore (Internal)
+            const msgRef = messagesCollection.doc(msgId);
+            batch.update(msgRef, { status: 'read' });
+            updateCount++;
+        }));
+
+        if (updateCount > 0) {
+            await batch.commit();
+        }
+
+        // Reset unread count
+        await businessDoc.ref.collection('conversations').doc(conversationId).set({ unreadCount: 0 }, { merge: true });
+
+        return NextResponse.json({ message: 'Messages marked as read' }, { status: 200 });
+
+    } catch (error) {
+        console.error("PATCH MESSAGES ERROR:", error);
+        return NextResponse.json({ message: error.message || 'Error marking messages as read' }, { status: error.status || 500 });
     }
 }

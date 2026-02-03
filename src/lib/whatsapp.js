@@ -12,7 +12,7 @@ const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
  */
 export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNumberId) => {
     console.log(`[WhatsApp Lib] Preparing to send message to ${phoneNumber} from Bot ID ${businessPhoneNumberId}.`);
-    
+
     if (!ACCESS_TOKEN || !businessPhoneNumberId) {
         const errorMessage = "WhatsApp credentials (Access Token or Business Phone ID) are not configured in environment variables.";
         console.error(`[WhatsApp Lib] CRITICAL: ${errorMessage}`);
@@ -28,21 +28,13 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             text: { body: payload }
         };
         console.log(`[WhatsApp Lib] Payload is a simple text message.`);
-    } else if (payload.type === 'image') {
-        dataPayload = {
-            messaging_product: 'whatsapp',
-            to: phoneNumber,
-            type: 'image',
-            image: { link: payload.link }
-        };
-        console.log(`[WhatsApp Lib] Payload is an image message.`);
-    } else if (payload.type === 'interactive') {
+    } else if (['image', 'video', 'audio', 'document', 'interactive'].includes(payload.type)) {
         dataPayload = {
             messaging_product: 'whatsapp',
             to: phoneNumber,
             ...payload
         };
-        console.log(`[WhatsApp Lib] Payload is an interactive message.`);
+        console.log(`[WhatsApp Lib] Payload is a ${payload.type} message.`);
     } else {
         dataPayload = {
             messaging_product: 'whatsapp',
@@ -52,7 +44,7 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
         };
         console.log(`[WhatsApp Lib] Payload is a template message: ${payload.name}`);
     }
-    
+
     console.log('[WhatsApp Lib] Full request payload:', JSON.stringify(dataPayload, null, 2));
 
     try {
@@ -66,6 +58,7 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             data: dataPayload
         });
         console.log(`[WhatsApp Lib] Successfully initiated message to ${phoneNumber}. Response:`, JSON.stringify(response.data, null, 2));
+        return response.data; // ✅ FIX: Return data so we can get the WAMID
     } catch (error) {
         console.error(`[WhatsApp Lib] FAILED to send message to ${phoneNumber}.`);
         if (error.response) {
@@ -77,5 +70,85 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
         } else {
             console.error('[WhatsApp Lib] Error setting up request:', error.message);
         }
+    }
+};
+
+/**
+ * Downloads media from WhatsApp using the Media ID.
+ * @param {string} mediaId The WhatsApp Media ID.
+ * @returns {Promise<{buffer: Buffer, mimeType: string}>} The media buffer and mime type.
+ */
+export const downloadWhatsAppMedia = async (mediaId) => {
+    try {
+        console.log(`[WhatsApp Lib] downloadWhatsAppMedia called for ID: ${mediaId}`);
+        if (!ACCESS_TOKEN) {
+            console.error("[WhatsApp Lib] CRITICAL: ACCESS_TOKEN is missing in downloadWhatsAppMedia");
+            throw new Error("Missing ACCESS_TOKEN");
+        }
+
+        console.log(`[WhatsApp Lib] Getting media URL for ID: ${mediaId}`);
+        // 1. Get Media URL
+        const urlResponse = await axios({
+            method: 'GET',
+            url: `https://graph.facebook.com/v19.0/${mediaId}`,
+            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+        });
+
+        const mediaUrl = urlResponse.data.url;
+        const mimeType = urlResponse.data.mime_type;
+        console.log(`[WhatsApp Lib] Media URL found: ${mediaUrl}, Type: ${mimeType}`);
+
+        // 2. Download Binary Data
+        const binaryResponse = await axios({
+            method: 'GET',
+            url: mediaUrl,
+            headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` },
+            responseType: 'arraybuffer'
+        });
+
+        return {
+            buffer: Buffer.from(binaryResponse.data),
+            mimeType: mimeType
+        };
+
+    } catch (error) {
+        console.error(`[WhatsApp Lib] Failed to download media ${mediaId}:`, error.message);
+        throw error;
+    }
+};
+
+/**
+ * Marks a message as read in WhatsApp.
+ * @param {string} messageId The WhatsApp Message ID to mark as read.
+ * @param {string} businessPhoneNumberId The ID of the WhatsApp Business phone number.
+ */
+export const markWhatsAppMessageAsRead = async (messageId, businessPhoneNumberId) => {
+    try {
+        console.log(`[WhatsApp Lib] Marking message ${messageId} as READ.`);
+
+        if (!ACCESS_TOKEN || !businessPhoneNumberId) {
+            throw new Error("Missing Credentials");
+        }
+
+        const response = await axios({
+            method: 'POST',
+            url: `https://graph.facebook.com/v19.0/${businessPhoneNumberId}/messages`,
+            headers: {
+                'Authorization': `Bearer ${ACCESS_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            data: {
+                messaging_product: 'whatsapp',
+                status: 'read',
+                message_id: messageId
+            }
+        });
+
+        console.log(`[WhatsApp Lib] Message ${messageId} marked as read. Response: ${response.data?.success}`);
+        return true;
+    } catch (error) {
+        console.error(`[WhatsApp Lib] Failed to mark message ${messageId} as read:`, error.message);
+        // Don't throw here, just log failure. It's a non-critical UX feature.
+        return false;
     }
 };
