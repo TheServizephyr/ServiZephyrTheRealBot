@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut, Check, CheckCheck, Mic, Trash2 } from 'lucide-react';
 import Image from 'next/image';
@@ -91,7 +91,7 @@ const ConversationItem = ({ conversation, active, onClick }) => {
 
 
 
-const MessageBubble = ({ message }) => {
+const MessageBubble = React.memo(({ message }) => {
     const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
     const isOwner = message.sender === 'owner';
 
@@ -146,8 +146,8 @@ const MessageBubble = ({ message }) => {
                 <div className="p-2 w-full max-w-xs">
                     <CustomAudioPlayer
                         src={message.mediaUrl}
-                        fileName={message.fileName}
-                        className={isOwner ? "bg-primary/20" : "bg-muted/50"}
+                        fileName="Voice Message"
+                        className={isOwner ? "bg-black/5 text-primary-foreground" : "bg-white/90 text-foreground shadow-sm"}
                     />
                 </div>
             );
@@ -204,7 +204,7 @@ const MessageBubble = ({ message }) => {
             </div>
         </div>
     );
-};
+});
 
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) => (
@@ -250,24 +250,35 @@ function WhatsAppDirectPageContent() {
     const timerRef = useRef(null);
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
     }
 
-    useEffect(scrollToBottom, [messages, uploadingFile]);
+    // Auto-scroll when messages update or conversation changes
+    useEffect(() => {
+        // Immediate scroll for new messages or conversation switch
+        scrollToBottom();
+
+        // Safety timeout for image loading/layout shifts
+        const timeoutId = setTimeout(scrollToBottom, 300);
+        return () => clearTimeout(timeoutId);
+    }, [messages, activeConversation?.id, loadingMessages]);
 
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Priority: ogg (best for WhatsApp PTT/Opus) -> mp4 (fallback) -> webm
+            // Priority: WebM/Opus (Chrome Native) -> MP4 (Fallback)
+            // WhatsApp accepts Opus audio if we send it as .ogg (even if container is webm)
             let mimeType = 'audio/webm';
 
-            // Try explicit Opus codecs for better compatibility
-            if (MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')) {
-                mimeType = 'audio/ogg; codecs=opus';
-            } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-                mimeType = 'audio/ogg';
+            if (MediaRecorder.isTypeSupported('audio/webm; codecs=opus')) {
+                mimeType = 'audio/webm; codecs=opus';
+            } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+                mimeType = 'audio/webm';
             } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                // Keep MP4 as fallback, but prefer WebM/Opus for the OGG hack
                 mimeType = 'audio/mp4';
             }
             console.log("Using MIME type for recording:", mimeType);
@@ -279,6 +290,7 @@ function WhatsAppDirectPageContent() {
 
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
+                    // console.log(`[Recording] Chunk received: ${event.data.size} bytes`);
                     audioChunksRef.current.push(event.data);
                 }
             };
@@ -308,12 +320,25 @@ function WhatsAppDirectPageContent() {
                 mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
 
                 if (shouldSend) {
-                    let ext = 'webm';
-                    if (mimeType.includes('mp4')) ext = 'm4a';
-                    else if (mimeType.includes('ogg')) ext = 'ogg'; // ✅ Handle .ogg extension
+                    // FORCE OGG STRATEGY:
+                    // Chrome records WebM/Opus. WhatsApp wants OGG/Opus.
+                    // Renaming .webm -> .ogg acts as a container masquerade that works for WhatsApp Voice Notes.
 
-                    // Sanitize mimeType for file creation (strip codecs for cleaner handling if needed, but keeping verified type is safer)
-                    const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, { type: mimeType });
+                    let ext = 'ogg';
+                    let finalMime = 'audio/ogg';
+
+                    // Only use other formats if explicitly not webm/opus
+                    if (mimeType.includes('mp4') && !mimeType.includes('opus')) {
+                        ext = 'mp4';
+                        finalMime = mimeType;
+                    } else if (mimeType.includes('wav')) {
+                        ext = 'wav';
+                        finalMime = mimeType;
+                    }
+
+                    console.log(`[Recording] Finalizing. RealMime: ${mimeType} -> SendingAs: ${finalMime}, Ext: ${ext}, Blob: ${audioBlob.size}`);
+
+                    const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, { type: finalMime });
                     handleFileUpload(audioFile);
                 }
 
@@ -353,7 +378,15 @@ function WhatsAppDirectPageContent() {
             body: method !== 'GET' ? JSON.stringify(body) : undefined,
         });
 
-        const data = await res.json();
+        const text = await res.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            console.error(`[API Error] Non-JSON response from ${endpoint}:`, text.slice(0, 500));
+            throw new Error(`API Error (${res.status}): Server returned invalid response.`);
+        }
+
         if (!res.ok) throw new Error(data.message || 'API call failed');
         return data;
     }, [impersonatedOwnerId, employeeOfOwnerId]); // Stable reference
@@ -649,7 +682,7 @@ function WhatsAppDirectPageContent() {
     );
 
     const ChatWindow = (
-        <main className="w-full flex-grow flex flex-col bg-background h-full">
+        <main className="flex-1 flex flex-col bg-background h-full min-w-0 overflow-hidden">
             {activeConversation ? (
                 <>
                     <header className="p-4 border-b border-border flex items-center justify-between gap-3">
