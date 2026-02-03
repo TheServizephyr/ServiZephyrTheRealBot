@@ -336,8 +336,6 @@ function WhatsAppDirectPageContent() {
                         finalMime = mimeType;
                     }
 
-                    console.log(`[Recording] Finalizing. RealMime: ${mimeType} -> SendingAs: ${finalMime}, Ext: ${ext}, Blob: ${audioBlob.size}`);
-
                     const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, { type: finalMime });
                     handleFileUpload(audioFile);
                 }

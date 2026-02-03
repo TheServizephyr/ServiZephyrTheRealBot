@@ -1,6 +1,5 @@
 
 import { NextResponse } from 'next/server';
-console.log("🔥 MESSAGES ROUTE LOADED - API READY");
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage, markWhatsAppMessageAsRead } from '@/lib/whatsapp';
 
