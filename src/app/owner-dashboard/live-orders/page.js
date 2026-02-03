@@ -43,12 +43,25 @@ const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pick
 const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
 
-const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
+const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantClosed, onMarkItemsOutOfStock }) => {
     const [reason, setReason] = useState('');
     const [otherReason, setOtherReason] = useState('');
     const [shouldRefund, setShouldRefund] = useState('true');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [markRestaurantClosed, setMarkRestaurantClosed] = useState(false);
+    const [outOfStockItemIds, setOutOfStockItemIds] = useState([]);
+
+    // Unique order items that have menu item IDs (for out-of-stock selection)
+    const orderItemsWithIds = useMemo(() => {
+        const seen = new Set();
+        return (order?.items || []).filter(i => {
+            const id = i.id || i.itemId;
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        }).map(i => ({ id: i.id || i.itemId, name: i.name || i.itemName || 'Unknown Item', quantity: i.quantity || 1 }));
+    }, [order?.items]);
 
     // Calculate online payment amount
     const paymentDetailsArray = Array.isArray(order?.paymentDetails) ? order.paymentDetails : [order?.paymentDetails].filter(Boolean);
@@ -65,8 +78,16 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
             setOtherReason('');
             setShouldRefund('true'); // Default to refund
             setIsSubmitting(false);
+            setMarkRestaurantClosed(false);
+            setOutOfStockItemIds([]);
         }
     }, [isOpen]);
+
+    const toggleOutOfStockItem = (itemId) => {
+        setOutOfStockItemIds(prev =>
+            prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
+        );
+    };
 
     // Smart pre-selection based on reason
     useEffect(() => {
@@ -83,12 +104,24 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
             setInfoDialog({ isOpen: true, title: 'Validation Error', message: 'Please select or enter a reason for rejection.' });
             return;
         }
+        // For item_unavailable, require at least one item selected when items with IDs exist
+        if (reason === 'item_unavailable' && orderItemsWithIds.length > 0 && outOfStockItemIds.length === 0) {
+            setInfoDialog({ isOpen: true, title: 'Select Items', message: 'Please select at least one item to mark as out of stock. This will prevent future orders from including these items.' });
+            return;
+        }
         setIsSubmitting(true);
         try {
+            // Execute actions before rejection
+            if (reason === 'restaurant_closed' && markRestaurantClosed && onMarkRestaurantClosed) {
+                await onMarkRestaurantClosed();
+            }
+            if (reason === 'item_unavailable' && outOfStockItemIds.length > 0 && onMarkItemsOutOfStock) {
+                await onMarkItemsOutOfStock(outOfStockItemIds);
+            }
             await onConfirm(order.id, finalReason, shouldRefund === 'true');
             onClose();
         } catch (error) {
-            // parent shows dialog
+            setInfoDialog({ isOpen: true, title: 'Error', message: error?.message || 'Something went wrong. Please try again.' });
         } finally {
             setIsSubmitting(false);
         }
@@ -150,6 +183,52 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                             </motion.div>
                         )}
 
+                        {/* Restaurant Closed - Mark closed to avoid future rejections */}
+                        {reason === 'restaurant_closed' && onMarkRestaurantClosed && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="p-4 border border-amber-500/30 rounded-lg bg-amber-500/10 space-y-3"
+                            >
+                                <p className="font-semibold text-sm text-amber-400">🏪 Avoid Future Rejections</p>
+                                <p className="text-sm text-muted-foreground">
+                                    Mark your restaurant as closed now so new orders won&apos;t come in and you won&apos;t have to reject them.
+                                </p>
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <Checkbox
+                                        checked={markRestaurantClosed}
+                                        onCheckedChange={(checked) => setMarkRestaurantClosed(!!checked)}
+                                    />
+                                    <span className="font-medium text-sm">Mark restaurant closed now</span>
+                                </label>
+                            </motion.div>
+                        )}
+
+                        {/* Item(s) Out of Stock - Select which items to mark */}
+                        {reason === 'item_unavailable' && orderItemsWithIds.length > 0 && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="p-4 border border-orange-500/30 rounded-lg bg-orange-500/10 space-y-3"
+                            >
+                                <p className="font-semibold text-sm text-orange-400">📦 Mark Items Out of Stock</p>
+                                <p className="text-sm text-muted-foreground">
+                                    Select which items are out of stock. They will be marked unavailable so future orders won&apos;t include them.
+                                </p>
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                    {orderItemsWithIds.map((item) => (
+                                        <label key={item.id} className="flex items-center space-x-3 cursor-pointer p-2 rounded-md hover:bg-background/50">
+                                            <Checkbox
+                                                checked={outOfStockItemIds.includes(item.id)}
+                                                onCheckedChange={() => toggleOutOfStockItem(item.id)}
+                                            />
+                                            <span className="text-sm flex-1">{item.quantity}x {item.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+
                         {/* Refund Policy Selection */}
                         {hasOnlinePayment && reason && (
                             <motion.div
@@ -197,7 +276,16 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                        <Button variant="destructive" onClick={handleConfirm} disabled={isSubmitting || !reason || (reason === 'other' && !otherReason.trim())}>
+                        <Button
+                            variant="destructive"
+                            onClick={handleConfirm}
+                            disabled={
+                                isSubmitting ||
+                                !reason ||
+                                (reason === 'other' && !otherReason.trim()) ||
+                                (reason === 'item_unavailable' && orderItemsWithIds.length > 0 && outOfStockItemIds.length === 0)
+                            }
+                        >
                             {isSubmitting ? "Rejecting..." : "Confirm Rejection"}
                         </Button>
                     </DialogFooter>
@@ -956,7 +1044,16 @@ export default function LiveOrdersPage() {
     };
 
 
-    const handleRejectOrder = async (orderId, reason) => {
+    const handleMarkRestaurantClosed = async () => {
+        await handleAPICall('PATCH', { isOpen: false }, '/api/owner/settings');
+    };
+
+    const handleMarkItemsOutOfStock = async (itemIds) => {
+        if (!itemIds?.length) return;
+        await handleAPICall('PATCH', { itemIds, action: 'outOfStock' }, '/api/owner/menu');
+    };
+
+    const handleRejectOrder = async (orderId, reason, shouldRefund = true) => {
         setUpdatingOrderId(orderId);
 
         // OPTIMISTIC UPDATE - Update UI instantly
@@ -970,7 +1067,7 @@ export default function LiveOrdersPage() {
         );
 
         try {
-            await handleAPICall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: reason });
+            await handleAPICall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: reason, shouldRefund });
             // Firestore listener will confirm
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);
@@ -1102,6 +1199,8 @@ export default function LiveOrdersPage() {
                     onClose={() => setRejectionModalData({ isOpen: false, order: null })}
                     onConfirm={handleRejectOrder}
                     order={rejectionModalData.order}
+                    onMarkRestaurantClosed={handleMarkRestaurantClosed}
+                    onMarkItemsOutOfStock={handleMarkItemsOutOfStock}
                 />
             )}
 
