@@ -726,101 +726,176 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
-        const liveOrderDataStr = localStorage.getItem(liveOrderKey);
 
-        if (liveOrderDataStr) {
-            const liveOrderData = JSON.parse(liveOrderDataStr);
-            const pollStatus = async () => {
+        const pollStatus = async () => {
+            const raw = localStorage.getItem(liveOrderKey);
+            if (!raw) {
+                // If storage is empty, just reset liveOrder (unless URL has one)
+                // But wait, if URL has one, the second effect handles it?
+                // Actually, let's keep it simple: If storage empty, we don't set liveOrder from storage.
+                // But we might need to clear it if it WAS set from storage previously.
+                // If raw is empty, we do nothing here, let the second block handle URL param.
+                return;
+            }
+
+            let allOrders = [];
+            try {
+                const parsed = JSON.parse(raw);
+                allOrders = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (e) {
+                console.error("Failed to parse live orders", e);
+                localStorage.removeItem(liveOrderKey);
+                return;
+            }
+
+            if (allOrders.length === 0) {
+                localStorage.removeItem(liveOrderKey);
+                return;
+            }
+
+            // Check status for ALL stored orders to clean up completed ones
+            const activeOrders = [];
+            let latestActiveOrder = null;
+
+            for (const order of allOrders) {
                 try {
-                    const res = await fetch(`/api/order/status/${liveOrderData.orderId}`);
+                    const res = await fetch(`/api/order/status/${order.orderId}`);
                     if (res.ok) {
                         const statusData = await res.json();
                         const status = statusData.order?.status;
-                        if (['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'].includes(status)) {
-                            localStorage.removeItem(liveOrderKey);
-                            setLiveOrder(null);
-                        } else {
-                            setLiveOrder(liveOrderData);
+                        const finalStates = ['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'];
+
+                        if (!finalStates.includes(status)) {
+                            activeOrders.push(order);
+                            latestActiveOrder = order; // Assuming append order, last is latest
                         }
                     } else {
-                        localStorage.removeItem(liveOrderKey);
-                        setLiveOrder(null);
-                    }
-                } catch (e) {
-                    console.error("Failed to poll live order status", e);
-                    localStorage.removeItem(liveOrderKey);
-                    setLiveOrder(null);
-                }
-            };
-            pollStatus();
-
-            // ✅ Poll every 5 seconds to auto-hide Track button when order completes
-            const intervalId = setInterval(pollStatus, 10000);
-
-            return () => clearInterval(intervalId);
-        } else if (activeOrderId && activeOrderToken) {
-            // Check if the order from URL is still active before showing track button
-            let intervalId = null; // Move declaration outside
-
-            const checkOrderStatus = async () => {
-                try {
-                    const res = await fetch(`/api/order/status/${activeOrderId}`);
-                    if (res.ok) {
-                        const statusData = await res.json();
-                        const status = statusData.order?.status;
-
-                        // ✅ CRITICAL: Stop polling if order reached final state
-                        const finalStates = ['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'];
-                        if (finalStates.includes(status)) {
-                            console.log(`[Order Page] activeOrderId ${activeOrderId} reached final state: ${status} - Stopping polling`);
-                            if (intervalId) clearInterval(intervalId); // Stop polling!
-                            setLiveOrder(null); // Clear live order completely
-                            return;
+                        // 404 or error, keep it to be safe (unless we want to aggressively clean)
+                        if (res.status === 404) {
+                            console.log(`[Poll] Order ${order.orderId} not found, removing.`);
+                        } else {
+                            activeOrders.push(order);
+                            latestActiveOrder = order;
                         }
-
-                        // Only set liveOrder if status is still active and not already set
-                        setLiveOrder(prev => {
-                            // Avoid re-render if identity matches
-                            if (prev && prev.orderId === activeOrderId) return prev;
-                            return { orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId };
-                        });
                     }
                 } catch (e) {
-                    console.error("Failed to check order status from URL", e);
+                    console.error(`[Poll] Error checking ${order.orderId}`, e);
+                    activeOrders.push(order);
+                    latestActiveOrder = order;
                 }
-            };
+            }
 
-            // ✅ CRITICAL FIX: Assign interval FIRST, THEN run initial check
-            // This ensures intervalId is set when clearInterval is called!
-            intervalId = setInterval(checkOrderStatus, 10000);
-            checkOrderStatus(); // Initial check (intervalId is now set!)
+            // Update Storage with only active orders
+            if (activeOrders.length !== allOrders.length) {
+                console.log("[Poll] Cleaning up completed orders. Remaining:", activeOrders.length);
+                if (activeOrders.length === 0) {
+                    localStorage.removeItem(liveOrderKey);
+                    setLiveOrder(null); // Clear state if no active orders left
+                } else {
+                    localStorage.setItem(liveOrderKey, JSON.stringify(activeOrders));
+                }
+            }
 
-            return () => {
-                if (intervalId) clearInterval(intervalId);
-            };
-        } else if (phone && token && restaurantId) {
-            // FIX: Check for active order on server if not in local storage
-            const checkActiveOrder = async () => {
+            // Set State & Auto-Redirect
+            if (activeOrders.length > 0) {
+                // AUTO-REDIRECT: If no activeOrderId in URL, go to latest
+                if (!activeOrderId && latestActiveOrder) {
+                    console.log("[Order Page] Auto-redirecting to latest active order:", latestActiveOrder.orderId);
+                    const newParams = new URLSearchParams(searchParams.toString());
+                    newParams.set('activeOrderId', latestActiveOrder.orderId);
+                    if (latestActiveOrder.trackingToken) {
+                        newParams.set('token', latestActiveOrder.trackingToken);
+                    }
+                    router.replace(`/order/${restaurantId}?${newParams.toString()}`, { scroll: false });
+                }
+
+                // UI STATE: Show Tracking Button for relevant order
+                // If URL has ID, show that one (if valid/active).
+                // If URL has no ID, show latest.
+                const matchingOrder = activeOrders.find(o => o.orderId === activeOrderId) || latestActiveOrder;
+                setLiveOrder(matchingOrder);
+            } else {
+                // No active orders in storage
+                // If activeOrderId exists in URL but not in storage (maybe visited fresh link?), second effect handles it.
+                // But if we just cleared storage, we should probably clear state.
+                if (!activeOrderId) setLiveOrder(null);
+            }
+        };
+
+
+        // SERVER FETCH: Verify and fetch active order if missing from local storage (New Device/Session)
+        const checkActiveOrder = async () => {
+            // Read current storage state directly
+            const storedRaw = localStorage.getItem(liveOrderKey);
+            let storedOrders = [];
+            try {
+                const parsed = storedRaw ? JSON.parse(storedRaw) : [];
+                storedOrders = Array.isArray(parsed) ? parsed : []; // Force Array
+            } catch (e) {
+                console.warn("Error parsing stored orders, resetting:", e);
+                storedOrders = [];
+            }
+
+            // ALWAYS check server if phone is present (User explicitly followed a link with phone)
+            // This prioritizes the link context over local storage state
+            if (phone) { // Removed token check requirement for fetch, as API relies on phone
+                console.log("[Order Page] Phone active. Checking server for active orders...");
                 try {
-                    const res = await fetch('/api/order/active', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token, restaurantId })
-                    });
+                    const res = await fetch(`/api/order/active?phone=${phone}&token=${token || ''}&restaurantId=${restaurantId}`);
                     if (res.ok) {
                         const data = await res.json();
-                        if (data.activeOrder) {
-                            setLiveOrder(data.activeOrder);
-                            localStorage.setItem(liveOrderKey, JSON.stringify(data.activeOrder));
+
+                        let serverOrders = [];
+                        if (data.activeOrders) serverOrders = data.activeOrders; // ✅ FIX: API returns 'activeOrders'
+                        else if (data.order) serverOrders = [data.order];
+                        else if (data.orders) serverOrders = data.orders;
+
+                        if (serverOrders.length > 0) {
+                            console.log("[Order Page] Found active orders from server:", serverOrders);
+
+                            // Map to storage format
+                            const formattedOrders = serverOrders.map(o => ({
+                                orderId: o.orderId || o.id,
+                                trackingToken: o.trackingToken || token,
+                                restaurantId: restaurantId,
+                                status: o.status,
+                                deliveryType: o.deliveryType || 'delivery', // Ensure delivery type is captured
+                                timestamp: Date.now()
+                            }));
+
+                            // FILTER: Strictly prioritize 'delivery' type as per user request.
+                            // "Sirf delivery order par hi laagu hoga" - No Street Vendor, No Dine-In.
+                            const deliveryOrder = formattedOrders.find(o => o.deliveryType?.toLowerCase() === 'delivery');
+
+                            if (deliveryOrder) {
+                                console.log("%c[Restore] ✅ Found Active DELIVERY Order:", "color: green; font-weight: bold;", deliveryOrder);
+
+                                const mergedOrders = [...storedOrders.filter(so => !formattedOrders.find(fo => fo.orderId === so.orderId)), ...formattedOrders];
+                                localStorage.setItem(liveOrderKey, JSON.stringify(mergedOrders));
+                                setLiveOrder(deliveryOrder);
+                            } else {
+                                console.log("%c[Restore] ❌ No Standard Delivery Order Found.", "color: orange; font-weight: bold;");
+                                console.log("Available Orders (Skipped):", formattedOrders.map(o => `${o.orderId} (${o.deliveryType})`));
+                            }
+                        } else {
+                            console.log("[Order Page] No active orders found on server.");
                         }
                     }
                 } catch (e) {
-                    console.error("Failed to check active order", e);
+                    console.error("[Order Page] Error checking server for active orders:", e);
                 }
-            };
-            checkActiveOrder();
-        }
-    }, [activeOrderId, activeOrderToken, restaurantId, phone, token]);
+            }
+        };
+
+        // Run initial checks
+        pollStatus();
+        checkActiveOrder();
+
+        const intervalId = setInterval(pollStatus, 10000); // Poll every 10s
+
+        return () => clearInterval(intervalId);
+    }, [restaurantId, searchParams, activeOrderId, router, phone, token]);
+
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -1566,8 +1641,6 @@ const OrderPageInternal = () => {
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
-                    onBookTable={handleBookTable}
-                    onBookTable={handleBookTable}
                     setIsQrScannerOpen={setIsQrScannerOpen}
                     setInfoDialog={setInfoDialog}
                     newTabPax={newTabPax}
@@ -1582,7 +1655,7 @@ const OrderPageInternal = () => {
     }
 
     const getTrackingUrl = () => {
-        if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
+        if (!liveOrder) return null;
 
         // ✅ FIX: Route based on delivery type stored in liveOrder
         const orderDeliveryType = liveOrder.deliveryType || 'delivery';
@@ -1623,7 +1696,6 @@ const OrderPageInternal = () => {
                     onBookTable={handleBookTable}
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
-                    onJoinTab={handleJoinTab}
                     onJoinTab={handleJoinTab}
                     setIsQrScannerOpen={setIsQrScannerOpen}
                     setInfoDialog={setInfoDialog}

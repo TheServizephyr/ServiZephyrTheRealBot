@@ -118,7 +118,7 @@ export default function PublicBillPage() {
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Billed To</p>
-                            <h3 className="font-bold text-slate-800 text-lg">{order.customer || 'Guest'}</h3>
+                            <h3 className="font-bold text-slate-800 text-lg">{order.customerName || order.customer || 'Guest'}</h3>
                             <p className="text-sm text-slate-500">{order.customerPhone}</p>
                         </div>
                         <div className="text-right">
@@ -166,10 +166,40 @@ export default function PublicBillPage() {
                                 order.items?.reduce((acc, i) => acc + (i.price * i.quantity), 0)
                             )}</span>
                         </div>
-                        {/* Taxes, discounts would go here if available in order object */}
+                        {order.deliveryCharge > 0 && (
+                            <div className="flex justify-between text-sm text-slate-500">
+                                <span>Delivery Charge</span>
+                                <span>+ {formatCurrency(order.deliveryCharge)}</span>
+                            </div>
+                        )}
+                        {order.packingCharge > 0 && (
+                            <div className="flex justify-between text-sm text-slate-500">
+                                <span>Packing Charge</span>
+                                <span>+ {formatCurrency(order.packingCharge)}</span>
+                            </div>
+                        )}
+                        {order.cgst > 0 && (
+                            <div className="flex justify-between text-sm text-slate-500">
+                                <span>CGST (2.5%)</span>
+                                <span>+ {formatCurrency(order.cgst)}</span>
+                            </div>
+                        )}
+                        {order.sgst > 0 && (
+                            <div className="flex justify-between text-sm text-slate-500">
+                                <span>SGST (2.5%)</span>
+                                <span>+ {formatCurrency(order.sgst)}</span>
+                            </div>
+                        )}
+                        {order.discount > 0 && (
+                            <div className="flex justify-between text-sm text-slate-500 text-green-600">
+                                <span>Discount</span>
+                                <span>- {formatCurrency(order.discount)}</span>
+                            </div>
+                        )}
+
                         <div className="flex justify-between text-xl font-bold text-slate-900 pt-2 border-t border-dashed border-slate-200 mt-2">
                             <span>Grand Total</span>
-                            <span className="text-green-600">{formatCurrency(order.totalAmount)}</span>
+                            <span className="text-green-600 font-mono">{formatCurrency(order.totalAmount)}</span>
                         </div>
                     </div>
 
@@ -185,7 +215,7 @@ export default function PublicBillPage() {
 
                     <div className="mt-8 text-center">
                         <p className="text-xs text-slate-400">
-                            Thank you for dining with us! <br />
+                            Thank you for ordering with us! <br />
                             Powered by <span className="font-bold text-slate-500">ServiZephyr</span>
                         </p>
                     </div>
@@ -201,13 +231,16 @@ export default function PublicBillPage() {
                         billDetails={{
                             subtotal: order.items?.reduce((acc, i) => acc + (i.price * i.quantity), 0),
                             grandTotal: order.totalAmount,
-                            cgst: 0,
-                            sgst: 0
+                            deliveryCharge: order.deliveryCharge || 0,
+                            packingCharge: order.packingCharge || 0,
+                            discount: order.discount || 0,
+                            cgst: order.cgst || 0,
+                            sgst: order.sgst || 0
                         }}
                         customerDetails={{
-                            name: order.customer,
-                            phone: order.customerPhone,
-                            address: order.customerAddress
+                            name: order.customerName || order.customer || 'Guest',
+                            phone: order.customerPhone || 'N/A',
+                            address: order.customerAddress || ''
                         }}
                     />
                 </div>

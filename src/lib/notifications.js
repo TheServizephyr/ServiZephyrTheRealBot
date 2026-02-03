@@ -108,26 +108,25 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             console.log(`[Notification Lib] Using template '${templateName}' with secure tracking URL.`);
             break;
 
+
+
         case 'confirmed':
-            templateName = 'invoice_generated'; // User-defined template name
+            // FALLBACK TO STANDARD TEMPLATE
+            // User requested to restore previous working behavior as 'invoice_generated' is failing.
+            templateName = 'order_status_update';
 
             const billUrl = `https://servizephyr.com/public/bill/${orderId}`;
+            const finalMessage = `${confirmedMessage || "Your order has been confirmed! We will start preparing it shortly."} View Bill: ${billUrl}`;
 
-            let formattedDate = 'Recent';
-            try {
-                const d = orderDate?.seconds ? new Date(orderDate.seconds * 1000) : (orderDate ? new Date(orderDate) : new Date());
-                formattedDate = d.toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-            } catch (e) { console.error('Date format error', e); }
-
-            const confirmationParams = [
-                { type: "text", text: customerName }, // {{1}}
-                { type: "text", text: restaurantName }, // {{2}}
-                { type: "text", text: `₹${Number(amount).toFixed(0)}` }, // {{3}} Amount
-                { type: "text", text: formattedDate }, // {{4}} Date
-                { type: "text", text: billUrl } // {{5}} Link
+            const confirmedParams = [
+                { type: "text", text: customerName },
+                { type: "text", text: orderId.substring(0, 8) },
+                { type: "text", text: restaurantName },
+                { type: "text", text: finalMessage },
             ];
-            components.push({ type: "body", parameters: confirmationParams });
-            console.log(`[Notification Lib] Using template '${templateName}' (Invoice) for order confirmed.`);
+
+            components.push({ type: "body", parameters: confirmedParams });
+            console.log(`[Notification Lib] Reverted to standard '${templateName}' for order confirmed.`);
             break;
 
         case 'preparing':
@@ -192,7 +191,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
     const statusPayload = {
         name: templateName,
-        language: { code: "en" },
+        language: { code: "en" }, // Reverted to 'en' based on user screenshot (English vs English US)
         components: components,
     };
 

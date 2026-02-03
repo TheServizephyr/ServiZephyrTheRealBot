@@ -47,16 +47,29 @@ export async function GET(req) {
 
             uniquePhones.forEach(p => {
                 fieldsToCheck.forEach(field => {
+                    const query = ordersRef
+                        .where(field, '==', p)
+                        .where('status', 'in', activeStatuses)
+                        .where('createdAt', '>', yesterday) // OPTIMIZATION: Filter by date at DB Level
+                        .limit(10); // Reduced limit as we are now time-bound
+
                     queries.push(
-                        ordersRef
-                            .where(field, '==', p)
-                            .where('status', 'in', activeStatuses)
-                            .limit(50) // Increased limit to find recent orders
-                            .get()
+                        query.get()
                             .then(snap => {
-                                // Optional: Log match for debugging
-                                if (!snap.empty) console.log(`[API Match] Found ${snap.size} docs for ${field} == ${p}`);
+                                if (!snap.empty) console.log(`[API Match] Found ${snap.size} RECENT active docs for ${field} == ${p}`);
                                 return snap;
+                            })
+                            .catch(err => {
+                                if (err.code === 9) { // FAILED_PRECONDITION (Missing Index)
+                                    console.warn(`[Index Required] Missing Index for query: ${err.details}`);
+                                    console.warn(`[Fallback] Fetching without date filter...`);
+                                    return ordersRef
+                                        .where(field, '==', p)
+                                        .where('status', 'in', activeStatuses)
+                                        .limit(20)
+                                        .get();
+                                }
+                                throw err;
                             })
                     );
                 });

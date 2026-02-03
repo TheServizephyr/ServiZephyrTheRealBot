@@ -772,9 +772,36 @@ const CheckoutPageInternal = () => {
                                         // Payment completed, redirect to order placed page (same as Razorpay)
                                         console.log("[Checkout Page] PhonePe payment concluded, redirecting to order placed page");
                                         localStorage.removeItem(`cart_${restaurantId}`);
-                                        localStorage.removeItem('current_order_key'); // ← Clear idempotency key
-                                        console.log('[Idempotency] Key cleared after PhonePe payment success');
-                                        // Use same redirect as Razorpay success - include restaurantId for proper routing
+                                        localStorage.removeItem('current_order_key');
+
+                                        // SAVE ACTIVE ORDER FOR TRACKING (ARRAY SUPPORT)
+                                        if (typeof window !== 'undefined') {
+                                            const storageKey = `liveOrder_${restaurantId}`;
+                                            let existingData = [];
+                                            try {
+                                                const raw = localStorage.getItem(storageKey);
+                                                if (raw) {
+                                                    const parsed = JSON.parse(raw);
+                                                    existingData = Array.isArray(parsed) ? parsed : [parsed];
+                                                }
+                                            } catch (e) {
+                                                console.error("Error parsing live orders", e);
+                                                existingData = [];
+                                            }
+
+                                            const newOrder = {
+                                                orderId: data.firestore_order_id,
+                                                trackingToken: data.token,
+                                                restaurantId: restaurantId,
+                                                status: 'placed',
+                                                timestamp: Date.now()
+                                            };
+
+                                            // Add new order and ensure uniqueness
+                                            const updatedOrders = [...existingData.filter(o => o.orderId !== newOrder.orderId), newOrder];
+                                            localStorage.setItem(storageKey, JSON.stringify(updatedOrders));
+                                        }
+
                                         router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
                                     }
                                 }
@@ -805,6 +832,35 @@ const CheckoutPageInternal = () => {
                     handler: async (response) => {
                         console.log(`[Checkout Page] Razorpay payment successful:`, response);
                         localStorage.removeItem(`cart_${restaurantId}`);
+
+                        // SAVE ACTIVE ORDER FOR TRACKING (ARRAY SUPPORT)
+                        if (typeof window !== 'undefined') {
+                            const storageKey = `liveOrder_${restaurantId}`;
+                            let existingData = [];
+                            try {
+                                const raw = localStorage.getItem(storageKey);
+                                if (raw) {
+                                    const parsed = JSON.parse(raw);
+                                    existingData = Array.isArray(parsed) ? parsed : [parsed];
+                                }
+                            } catch (e) {
+                                console.error("Error parsing live orders", e);
+                                existingData = [];
+                            }
+
+                            const newOrder = {
+                                orderId: data.firestore_order_id,
+                                trackingToken: data.token,
+                                restaurantId: restaurantId,
+                                status: 'placed',
+                                timestamp: Date.now()
+                            };
+
+                            // Add new order and ensure uniqueness
+                            const updatedOrders = [...existingData.filter(o => o.orderId !== newOrder.orderId), newOrder];
+                            localStorage.setItem(storageKey, JSON.stringify(updatedOrders));
+                        }
+
                         // FIXED: Use central router for all flows
                         const phoneParam = phoneFromUrl ? `&phone=${phoneFromUrl}` : '';
                         const trackingUrl = (orderData.deliveryType === 'dine-in' && !!tableId)
@@ -846,17 +902,34 @@ const CheckoutPageInternal = () => {
                     const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
                     const redirectUrl = `/track/${trackingPath}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
 
-                    // SAVE ACTIVE ORDER FOR TRACKING BUTTON
+                    // SAVE ACTIVE ORDER FOR TRACKING BUTTON (ARRAY SUPPORT)
                     if (typeof window !== 'undefined') {
-                        const liveOrderData = {
+                        const storageKey = `liveOrder_${restaurantId}`;
+                        let existingData = [];
+                        try {
+                            const raw = localStorage.getItem(storageKey);
+                            if (raw) {
+                                const parsed = JSON.parse(raw);
+                                existingData = Array.isArray(parsed) ? parsed : [parsed];
+                            }
+                        } catch (e) {
+                            console.error("Error parsing live orders", e);
+                            existingData = [];
+                        }
+
+                        const newOrder = {
                             orderId: finalOrderId,
                             trackingToken: data.token,
                             restaurantId: restaurantId,
                             deliveryType: deliveryType,
-                            status: 'placed' // Initial status
+                            status: 'placed',
+                            timestamp: Date.now()
                         };
-                        localStorage.setItem(`liveOrder_${restaurantId}`, JSON.stringify(liveOrderData));
-                        console.log(`[Checkout] Saved liveOrder to storage:`, liveOrderData);
+
+                        // Add new order and ensure uniqueness
+                        const updatedOrders = [...existingData.filter(o => o.orderId !== newOrder.orderId), newOrder];
+                        localStorage.setItem(storageKey, JSON.stringify(updatedOrders));
+                        console.log(`[Checkout] Saved liveOrder to storage (Array):`, updatedOrders);
                     }
 
                     console.log(`[Checkout] Redirecting to NEW order: ${finalOrderId}`);
