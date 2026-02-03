@@ -70,21 +70,26 @@ export default function OrderHistoryPage() {
             console.log('[OrderHistory] Found restaurantId:', restaurantId);
 
             // Query completed orders within date range
+            // OPTIMIZATION: Query by Date only, then filter status in memory.
+            // This avoids complicated composite index requirements (Status + Date + Sort).
             const ordersQuery = query(
                 collection(db, 'orders'),
                 where('restaurantId', '==', restaurantId),
-                where('status', 'in', ['delivered', 'picked_up', 'rejected']),
                 where('orderDate', '>=', Timestamp.fromDate(dateRange.from)),
                 where('orderDate', '<=', Timestamp.fromDate(dateRange.to)),
-                orderBy('orderDate', 'desc'),
-                limit(100) // Limit to prevent slow queries
+                orderBy('orderDate', 'desc'), // Sorting by date is safe with date range filter
+                limit(100)
             );
 
             const ordersSnapshot = await getDocs(ordersQuery);
             const fetchedOrders = [];
+            const historyStatuses = ['delivered', 'picked_up', 'rejected', 'cancelled', 'failed_delivery'];
 
             ordersSnapshot.forEach((doc) => {
-                fetchedOrders.push({ id: doc.id, ...doc.data() });
+                const data = doc.data();
+                if (historyStatuses.includes(data.status)) {
+                    fetchedOrders.push({ id: doc.id, ...data });
+                }
             });
 
             console.log(`[OrderHistory] Fetched ${fetchedOrders.length} completed orders`);

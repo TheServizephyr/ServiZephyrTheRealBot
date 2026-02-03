@@ -10,8 +10,12 @@ import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
 import { useReactToPrint } from 'react-to-print';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Label } from '@/components/ui/label';
 
 export const dynamic = 'force-dynamic';
+
+import { EscPosEncoder } from '@/services/printer/escpos';
+import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -31,9 +35,10 @@ function CustomBillPage() {
         phone: '',
         address: ''
     });
-    
+
     // State to control modal visibility
     const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+    const [usbDevice, setUsbDevice] = useState(null);
 
     // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
@@ -48,15 +53,15 @@ function CustomBillPage() {
                 const user = auth.currentUser;
                 if (!user) throw new Error("Authentication required.");
                 const idToken = await user.getIdToken();
-                
+
                 let menuUrl = `/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId || ''}`;
                 let settingsUrl = `/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`;
-                
+
                 const [menuRes, settingsRes] = await Promise.all([
                     fetch(menuUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
                     fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
                 ]);
-                
+
                 if (!menuRes.ok || !settingsRes.ok) throw new Error('Failed to fetch data.');
 
                 const menuData = await menuRes.json();
@@ -101,7 +106,7 @@ function CustomBillPage() {
 
             const newCart = [...currentCart];
             const item = newCart[itemIndex];
-            
+
             const newQuantity = item.quantity + change;
             if (newQuantity <= 0) {
                 return newCart.filter(i => i.cartItemId !== cartItemId);
@@ -111,7 +116,7 @@ function CustomBillPage() {
             }
         });
     };
-    
+
     const { subtotal, cgst, sgst, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
         const tax = sub * 0.025; // 2.5% CGST and 2.5% SGST
@@ -120,9 +125,69 @@ function CustomBillPage() {
     }, [cart]);
 
 
+    const handleDirectPrint = async () => {
+        try {
+            let device = usbDevice;
+            if (!device || !device.opened) {
+                try {
+                    device = await connectPrinter();
+                    setUsbDevice(device);
+                } catch (err) {
+                    return; // User cancelled
+                }
+            }
+
+            const encoder = new EscPosEncoder();
+
+            // Header
+            encoder.initialize().align('center')
+                .bold(true).text(restaurant?.name || 'Restaurant').newline()
+                .bold(false).text(restaurant?.address?.street || restaurant?.address || '').newline()
+                .text('--------------------------------').newline()
+                .align('left').bold(true)
+                .text(`Bill To: ${customerDetails.name || 'Guest'}`).newline()
+                .bold(false)
+                .text(`Date: ${new Date().toLocaleString('en-IN')}`).newline()
+                .text('--------------------------------').newline();
+
+            // Items
+            cart.forEach(item => {
+                const qty = item.quantity;
+                const unitPrice = (item.totalPrice / qty).toFixed(0);
+                const total = item.totalPrice.toFixed(0);
+                encoder.text(item.name).newline();
+                encoder.text(`  ${qty} x ${unitPrice}`).align('right').text(total).align('left').newline();
+            });
+
+            // Totals
+            encoder.text('--------------------------------').newline()
+                .align('right');
+
+            encoder.text(`Subtotal: ${subtotal.toFixed(0)}`).newline();
+            if (cgst > 0) encoder.text(`CGST: ${cgst.toFixed(0)}`).newline();
+            if (sgst > 0) encoder.text(`SGST: ${sgst.toFixed(0)}`).newline();
+
+            encoder.bold(true).size('large')
+                .text(`TOTAL: ${grandTotal.toFixed(0)}`).newline()
+                .size('normal').bold(false).align('center')
+                .newline()
+                .text('Thank you!').newline()
+                .newline().newline().newline()
+                .cut();
+
+            await printData(device, encoder.encode());
+            setInfoDialog({ isOpen: true, title: 'Printed', message: 'Receipt sent to thermal printer.' });
+            setIsBillModalOpen(false);
+
+        } catch (error) {
+            console.error(error);
+            setInfoDialog({ isOpen: true, title: 'Print Failed', message: `Could not print: ${error.message}. Ensure printer is USB connected.` });
+        }
+    };
+
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
-             <InfoDialog
+            <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
@@ -132,7 +197,7 @@ function CustomBillPage() {
             <Dialog open={isBillModalOpen} onOpenChange={setIsBillModalOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
                     <div ref={billPrintRef}>
-                         <BillToPrint
+                        <BillToPrint
                             order={{}}
                             restaurant={restaurant}
                             billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
@@ -140,9 +205,12 @@ function CustomBillPage() {
                             customerDetails={customerDetails}
                         />
                     </div>
-                    <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
+                    <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">
+                        <Button onClick={handleDirectPrint} variant="secondary" className="bg-slate-800 text-white hover:bg-slate-700">
+                            ⚡ Direct Print (USB)
+                        </Button>
                         <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
-                            <Printer className="mr-2 h-4 w-4" /> Print Bill
+                            <Printer className="mr-2 h-4 w-4" /> Browser Print
                         </Button>
                     </div>
                 </DialogContent>
@@ -150,7 +218,7 @@ function CustomBillPage() {
 
             <h1 className="text-3xl font-bold tracking-tight">Manual Bill Generator</h1>
             <p className="text-muted-foreground mt-1">Create a bill for orders taken over the phone or in-person.</p>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
                 {/* Left Side: Menu Selection */}
                 <div className="bg-card border border-border rounded-xl p-4">
@@ -188,33 +256,33 @@ function CustomBillPage() {
                 {/* Right Side: Live Bill Preview */}
                 <div className="flex flex-col">
                     <div className="bg-card border border-border rounded-xl p-4 mb-4">
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label className="flex items-center gap-2"><User size={16}/> Customer Name</Label>
-                                <input value={customerDetails.name} onChange={e => setCustomerDetails({...customerDetails, name: e.target.value})} className="w-full p-2 border rounded-md bg-input border-border" />
+                                <Label className="flex items-center gap-2"><User size={16} /> Customer Name</Label>
+                                <input value={customerDetails.name} onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })} className="w-full p-2 border rounded-md bg-input border-border" />
                             </div>
-                             <div className="space-y-2">
-                                <Label className="flex items-center gap-2"><Phone size={16}/> Customer Phone</Label>
-                                <input value={customerDetails.phone} onChange={e => setCustomerDetails({...customerDetails, phone: e.target.value})} className="w-full p-2 border rounded-md bg-input border-border" />
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-2"><Phone size={16} /> Customer Phone</Label>
+                                <input value={customerDetails.phone} onChange={e => setCustomerDetails({ ...customerDetails, phone: e.target.value })} className="w-full p-2 border rounded-md bg-input border-border" />
                             </div>
                             <div className="space-y-2 md:col-span-2">
-                                <Label className="flex items-center gap-2"><MapPin size={16}/> Customer Address</Label>
-                                <textarea value={customerDetails.address} onChange={e => setCustomerDetails({...customerDetails, address: e.target.value})} className="w-full p-2 border rounded-md bg-input border-border min-h-[60px]" />
+                                <Label className="flex items-center gap-2"><MapPin size={16} /> Customer Address</Label>
+                                <textarea value={customerDetails.address} onChange={e => setCustomerDetails({ ...customerDetails, address: e.target.value })} className="w-full p-2 border rounded-md bg-input border-border min-h-[60px]" />
                             </div>
                         </div>
                     </div>
 
                     <div className="bg-card border border-border rounded-xl flex-grow flex flex-col">
-                         <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
-                           <div className="preview-bill">
-                               <BillToPrint
+                        <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
+                            <div className="preview-bill">
+                                <BillToPrint
                                     order={{}}
                                     restaurant={restaurant}
                                     billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
                                     items={cart}
                                     customerDetails={customerDetails}
                                 />
-                           </div>
+                            </div>
                         </div>
                         <div className="p-4 bg-muted/50 rounded-b-lg border-t border-border flex justify-end no-print">
                             <Button onClick={() => setIsBillModalOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -224,10 +292,9 @@ function CustomBillPage() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 
 export default CustomBillPage;
 
-    

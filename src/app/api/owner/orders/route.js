@@ -414,7 +414,9 @@ export async function PATCH(req) {
                     businessType: businessData.businessType || 'restaurant',
                     // ✅ NEW: Pass deliveryType to allow conditional logic (e.g. suppressing 'ready_for_pickup' for delivery)
                     deliveryType: orderData.deliveryType,
-                    trackingToken: orderData.trackingToken // ✅ Pass token for secure URL
+                    trackingToken: orderData.trackingToken, // ✅ Pass token for secure URL
+                    amount: orderData.totalAmount || 0,
+                    orderDate: orderData.orderDate // Pass raw Firestore timestamp or ISO string
                 };
 
                 sendOrderStatusUpdateToCustomer(notificationPayload).catch(e =>

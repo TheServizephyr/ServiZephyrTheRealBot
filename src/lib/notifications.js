@@ -47,7 +47,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 };
 
 
-export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant', deliveryType = null, trackingToken = null }) => {
+export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant', deliveryType = null, trackingToken = null, amount = 0, orderDate = null }) => {
     console.log(`[Notification Lib] Preparing status update for customer ${customerPhone}. Order: ${orderId}, New Status: ${status}.`);
 
     if (!customerPhone || !botPhoneNumberId) {
@@ -109,15 +109,25 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             break;
 
         case 'confirmed':
-            templateName = 'order_status_update';
+            templateName = 'invoice_generated'; // User-defined template name
+
+            const billUrl = `https://servizephyr.com/public/bill/${orderId}`;
+
+            let formattedDate = 'Recent';
+            try {
+                const d = orderDate?.seconds ? new Date(orderDate.seconds * 1000) : (orderDate ? new Date(orderDate) : new Date());
+                formattedDate = d.toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            } catch (e) { console.error('Date format error', e); }
+
             const confirmationParams = [
-                { type: "text", text: customerName },
-                { type: "text", text: orderId.substring(0, 8) },
-                { type: "text", text: restaurantName },
-                { type: "text", text: confirmedMessage }
+                { type: "text", text: customerName }, // {{1}}
+                { type: "text", text: restaurantName }, // {{2}}
+                { type: "text", text: `₹${Number(amount).toFixed(0)}` }, // {{3}} Amount
+                { type: "text", text: formattedDate }, // {{4}} Date
+                { type: "text", text: billUrl } // {{5}} Link
             ];
             components.push({ type: "body", parameters: confirmationParams });
-            console.log(`[Notification Lib] Using template '${templateName}' for order confirmation.`);
+            console.log(`[Notification Lib] Using template '${templateName}' (Invoice) for order confirmed.`);
             break;
 
         case 'preparing':

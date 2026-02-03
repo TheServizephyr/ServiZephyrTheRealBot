@@ -7,7 +7,7 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
     if (!order) return null;
-    
+
     const finalItems = items || order.items || [];
     const finalBillDetails = billDetails || {
         subtotal: order.subtotal,
@@ -29,7 +29,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         if (item.totalPrice && item.quantity) return item.totalPrice / item.quantity;
         return 0; // Fallback
     };
-    
+
     const getItemTotal = (item) => {
         const price = getItemPrice(item);
         const qty = item.quantity || item.qty || 1;
@@ -38,7 +38,30 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
 
 
     return (
-        <div id="bill-print-root">
+        <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto font-mono text-[12px] leading-tight">
+            <style jsx global>{`
+                @media print {
+                    @page {
+                        margin: 0;
+                        size: 80mm auto; 
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background: white;
+                    }
+                    #bill-print-root {
+                        width: 100%;
+                        max-width: 79mm; /* Force receipt width even on A4 */
+                        margin: 0 auto; /* Center it for A4 readability */
+                        padding: 2mm; 
+                        font-family: 'Courier New', monospace;
+                        font-size: 13px; /* Slightly larger for clarity */
+                        color: black;
+                        line-height: 1.2;
+                    }
+                }
+            `}</style>
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
                 <h1 className="text-xl font-bold uppercase">{restaurant?.name}</h1>
                 <p className="text-xs">{restaurant?.address?.street}, {restaurant?.address?.city}</p>
@@ -66,7 +89,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         const pricePerUnit = getItemPrice(item);
                         const totalItemPrice = getItemTotal(item);
                         const quantity = item.quantity || item.qty || 1;
-                        
+
                         return (
                             <tr key={index}>
                                 <td className="py-1">{item.name}</td>
@@ -78,9 +101,9 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     })}
                 </tbody>
             </table>
-            
+
             <div className="text-xs border-t-2 border-dashed border-black pt-2 mt-2">
-                 <div className="flex justify-between">
+                <div className="flex justify-between">
                     <span>Subtotal</span>
                     <span>{formatCurrency(finalBillDetails.subtotal)}</span>
                 </div>
@@ -90,22 +113,22 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         <span>- {formatCurrency(finalBillDetails.discount)}</span>
                     </div>
                 )}
-                 <div className="flex justify-between">
+                <div className="flex justify-between">
                     <span>CGST (2.5%)</span>
                     <span>+ {formatCurrency(finalBillDetails.cgst)}</span>
                 </div>
-                 <div className="flex justify-between">
+                <div className="flex justify-between">
                     <span>SGST (2.5%)</span>
                     <span>+ {formatCurrency(finalBillDetails.sgst)}</span>
                 </div>
                 {finalBillDetails.deliveryCharge > 0 && (
-                     <div className="flex justify-between">
+                    <div className="flex justify-between">
                         <span>Delivery Charge</span>
                         <span>+ {formatCurrency(finalBillDetails.deliveryCharge)}</span>
                     </div>
                 )}
             </div>
-            
+
             <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
                 <span>GRAND TOTAL</span>
                 <span className="text-green-600">{formatCurrency(finalBillDetails.grandTotal)}</span>

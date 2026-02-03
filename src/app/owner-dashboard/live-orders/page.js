@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import BillToPrint from '@/components/BillToPrint';
+import PrintOrderDialog from '@/components/PrintOrderDialog';
 import { useReactToPrint } from 'react-to-print';
 
 
@@ -618,6 +618,10 @@ export default function LiveOrdersPage() {
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [userRole, setUserRole] = useState(null);
 
+    // Print Modal State
+    const [printModalData, setPrintModalData] = useState({ isOpen: false, order: null });
+    const [restaurantData, setRestaurantData] = useState(null);
+
     // Fetch User Role
     useEffect(() => {
         const fetchRole = async () => {
@@ -634,21 +638,11 @@ export default function LiveOrdersPage() {
         };
         fetchRole();
     }, []);
-    const [printData, setPrintData] = useState(null);
-    const [restaurantData, setRestaurantData] = useState(null);
-    const billPrintRef = useRef();
 
-    useEffect(() => {
-        if (printData) {
-            handlePrint();
-        }
-    }, [printData]);
+    const handlePrintClick = (order) => {
+        setPrintModalData({ isOpen: true, order });
+    };
 
-    const handlePrint = useReactToPrint({
-        content: () => billPrintRef.current,
-        documentTitle: `bill-${printData?.id}`,
-        onAfterPrint: () => setPrintData(null),
-    });
 
     const fetchInitialData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
@@ -782,14 +776,17 @@ export default function LiveOrdersPage() {
                 const restaurantId = restaurantSnapshot.docs[0].id;
                 console.log('[LiveOrders] Found restaurantId:', restaurantId);
 
-                // Real-time listener for ALL recent orders (Active + recent history)
-                // We need 'delivered' and 'rejected' stats for the tabs to work
-                console.log('[LiveOrders] Setting up query with restaurantId:', restaurantId);
+                // Real-time listener for ACTIVE orders only (Bandwidth Optimization)
+                // Filter: Only active statuses.
+                const activeStatuses = ['pending', 'placed', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived'];
+
+                console.log('[LiveOrders] Setting up optimized query for active orders...');
                 const ordersQuery = query(
                     collection(db, 'orders'),
                     where('restaurantId', '==', restaurantId),
-                    orderBy('orderDate', 'desc'), // Show newest first
-                    limit(100) // Limit to last 100 orders to keep it lightweight
+                    where('status', 'in', activeStatuses),
+                    // orderBy('orderDate', 'desc'), // REMOVED to avoid composite index issues with 'in' query. We sort client-side.
+                    limit(100)
                 );
 
                 const unsubscribe = onSnapshot(
@@ -798,11 +795,16 @@ export default function LiveOrdersPage() {
                         const fetchedOrders = [];
                         querySnapshot.forEach((doc) => {
                             const orderData = doc.data();
-                            // console.log('[LiveOrders] Order found:', { id: doc.id, status: orderData.status });
                             fetchedOrders.push({ id: doc.id, ...orderData });
                         });
 
-                        console.log(`[LiveOrders] Real-time update: ${fetchedOrders.length} active orders`);
+                        // CLIENT-SIDE SORT (Newest First)
+                        fetchedOrders.sort((a, b) => {
+                            const dateA = a.orderDate?.seconds || 0;
+                            const dateB = b.orderDate?.seconds || 0;
+                            return dateB - dateA;
+                        });
+
                         setOrders(fetchedOrders);
                         setLoading(false);
                     },
@@ -1073,10 +1075,13 @@ export default function LiveOrdersPage() {
                 message={infoDialog.message}
             />
 
-            {printData && (
-                <div style={{ display: 'none' }}>
-                    <BillToPrint ref={billPrintRef} order={printData} restaurant={restaurantData} />
-                </div>
+            {printModalData.isOpen && (
+                <PrintOrderDialog
+                    isOpen={printModalData.isOpen}
+                    onClose={() => setPrintModalData({ isOpen: false, order: null })}
+                    order={printModalData.order}
+                    restaurant={restaurantData}
+                />
             )}
 
             <OrderDetailModal
@@ -1288,7 +1293,7 @@ export default function LiveOrdersPage() {
                                                 onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                                 onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                                 onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
-                                                onPrintClick={() => handlePrintClick(order)}
+                                                onPrintClick={() => setPrintModalData({ isOpen: true, order: order })}
                                                 onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
                                                 employeeOfOwnerId={employeeOfOwnerId}
                                                 impersonatedOwnerId={impersonatedOwnerId}
