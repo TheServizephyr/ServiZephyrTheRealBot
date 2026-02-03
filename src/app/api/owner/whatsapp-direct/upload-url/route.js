@@ -70,8 +70,11 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Missing required parameters (fileName, fileType).' }, { status: 400 });
         }
 
-        // ✅ VALIDATE FILE TYPE
-        if (!isFileTypeAllowed(fileType)) {
+        // ✅ VALIDATE FILE TYPE (Ignore parameters like charset or codecs)
+        const baseMimeType = fileType.split(';')[0].trim().toLowerCase();
+
+        if (!isFileTypeAllowed(baseMimeType)) {
+            console.error(`[Upload URL] Rejected MIME type: ${fileType} (base: ${baseMimeType})`);
             return NextResponse.json({
                 message: `File type not allowed. Supported: Images, Videos, Documents (PDF, Word, Excel), and Audio files.`,
                 allowedTypes: ALLOWED_MIME_TYPES
@@ -92,7 +95,7 @@ export async function POST(req) {
 
         const extension = fileName.split('.').pop();
         const uniqueFileName = `${nanoid()}.${extension}`;
-        const mediaType = getMediaType(fileType);
+        const mediaType = getMediaType(baseMimeType);
         const filePath = `whatsapp_media/${businessId}/${Date.now()}_${uniqueFileName}`;
 
         const file = bucket.file(filePath);

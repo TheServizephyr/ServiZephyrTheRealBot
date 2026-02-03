@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut, Check, CheckCheck } from 'lucide-react';
+import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut, Check, CheckCheck, Mic, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
@@ -36,6 +36,12 @@ const tagConfig = {
     'Feedback': { icon: Star, color: 'text-yellow-500' },
     'Complaint': { icon: AlertTriangle, color: 'text-orange-500' },
     'Resolved': { icon: ThumbsUp, color: 'text-green-500' },
+};
+
+const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
 
@@ -225,11 +231,77 @@ function WhatsAppDirectPageContent() {
     const [activeFilter, setActiveFilter] = useState('All');
     const [isConfirmEndChatOpen, setConfirmEndChatOpen] = useState(false);
 
+    // Audio Recording State
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const timerRef = useRef(null);
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
 
     useEffect(scrollToBottom, [messages, uploadingFile]);
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            // Prefer mp4/aac for WhatsApp compatibility, fallback to webm
+            const mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
+            const mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingDuration(0);
+
+            timerRef.current = setInterval(() => {
+                setRecordingDuration(prev => prev + 1);
+            }, 1000);
+
+        } catch (error) {
+            console.error("Error accessing microphone:", error);
+            setInfoDialog({ isOpen: true, title: "Microphone Access Denied", message: "Please allow microphone access to record audio." });
+        }
+    };
+
+    const stopRecording = (shouldSend = true) => {
+        if (mediaRecorderRef.current && isRecording) {
+            const mimeType = mediaRecorderRef.current.mimeType; // Get actual used mime type
+            mediaRecorderRef.current.stop();
+            mediaRecorderRef.current.onstop = () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+                // Stop all tracks
+                mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+
+                if (shouldSend) {
+                    const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+                    const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, { type: mimeType });
+                    handleFileUpload(audioFile);
+                }
+
+                // Cleanup
+                setIsRecording(false);
+                setRecordingDuration(0);
+                clearInterval(timerRef.current);
+            };
+        }
+    };
+
+    const cancelRecording = () => {
+        stopRecording(false);
+    };
 
     const handleApiCall = useCallback(async (endpoint, method = 'GET', body = null) => {
         const user = auth.currentUser;
@@ -626,26 +698,50 @@ function WhatsAppDirectPageContent() {
                             ))}
                         </div>
                         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileChange}
-                                className="hidden"
-                                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
-                            />
-                            <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="flex-shrink-0">
-                                <Paperclip />
-                            </Button>
-                            <input
-                                type="text"
-                                placeholder="Type your message..."
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                className="flex-grow p-2 h-10 rounded-md bg-input border border-border"
-                            />
-                            <button type="submit" disabled={isSending || !newMessage.trim()} className="h-10 w-10 bg-primary text-primary-foreground rounded-md flex items-center justify-center disabled:opacity-50">
-                                {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-                            </button>
+                            {isRecording ? (
+                                <div className="flex-grow flex items-center gap-3 bg-red-50 p-2 rounded-md animate-in fade-in duration-200">
+                                    <div className="flex items-center gap-2 text-red-600 font-mono text-sm px-2 animate-pulse">
+                                        <div className="w-3 h-3 bg-red-600 rounded-full"></div>
+                                        {formatDuration(recordingDuration)}
+                                    </div>
+                                    <div className="flex-grow text-xs text-muted-foreground">Recording Audio...</div>
+                                    <Button type="button" variant="ghost" size="icon" onClick={cancelRecording} className="text-muted-foreground hover:text-destructive">
+                                        <Trash2 size={20} />
+                                    </Button>
+                                    <Button type="button" variant="destructive" size="icon" onClick={() => stopRecording(true)} className="rounded-full animate-bounce">
+                                        <Send size={18} />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <>
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        onChange={handleFileChange}
+                                        className="hidden"
+                                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+                                    />
+                                    <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="flex-shrink-0">
+                                        <Paperclip />
+                                    </Button>
+                                    <input
+                                        type="text"
+                                        placeholder="Type your message..."
+                                        value={newMessage}
+                                        onChange={(e) => setNewMessage(e.target.value)}
+                                        className="flex-grow p-2 h-10 rounded-md bg-input border border-border"
+                                    />
+                                    {newMessage.trim() ? (
+                                        <button type="submit" disabled={isSending} className="h-10 w-10 bg-primary text-primary-foreground rounded-md flex items-center justify-center disabled:opacity-50">
+                                            {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                                        </button>
+                                    ) : (
+                                        <Button type="button" variant="secondary" size="icon" onClick={startRecording} className="h-10 w-10 rounded-full">
+                                            <Mic size={20} />
+                                        </Button>
+                                    )}
+                                </>
+                            )}
                         </form>
                     </footer>
                 </>
@@ -724,4 +820,3 @@ export default function WhatsAppDirectPage() {
         </Suspense>
     )
 }
-
