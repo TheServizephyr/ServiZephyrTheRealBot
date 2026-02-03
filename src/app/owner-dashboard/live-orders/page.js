@@ -985,10 +985,6 @@ export default function LiveOrdersPage() {
         }
     };
 
-    const handlePrintClick = (order) => {
-        setPrintData(order);
-    };
-
     const handleDetailClick = async (orderId, customerId) => {
         try {
             const data = await handleAPICall('GET', { id: orderId, customerId });

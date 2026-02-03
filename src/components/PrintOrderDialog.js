@@ -93,8 +93,8 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                     </DialogTitle>
                 </DialogHeader>
 
-                <div className="max-h-[60vh] overflow-y-auto bg-muted/20 p-4 flex justify-center">
-                    <div className="bg-white shadow-sm border p-2 rounded">
+                <div className="max-h-[60vh] overflow-y-auto bg-gray-100 p-4 flex justify-center">
+                    <div className="w-[78mm] mx-auto bg-white shadow-md min-h-[100px]">
                         {/* Preview for ref */}
                         <div ref={billRef}>
                             <BillToPrint
