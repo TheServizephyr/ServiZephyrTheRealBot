@@ -271,11 +271,12 @@ const processIncomingMedia = async (mediaId, businessId) => {
 
         console.log(`[Webhook WA] Media uploaded to Storage: ${filePath}`);
 
-        // Generate Signed Read URL (7 days)
+        // Generate Signed Read URL
+        // ✅ FIX: Expiration: 7 days (standard retention)
         const [readUrl] = await file.getSignedUrl({
             version: 'v4',
             action: 'read',
-            expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
         });
 
         return readUrl;

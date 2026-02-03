@@ -101,27 +101,28 @@ export async function POST(req) {
         const file = bucket.file(filePath);
 
         // Generate Signed URL for UPLOAD (Write)
+        // ✅ Enforce the CLEAN mime type (e.g., 'audio/webm') for stability
         const [uploadUrl] = await file.getSignedUrl({
             version: 'v4',
             action: 'write',
             expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-            contentType: fileType,
+            contentType: baseMimeType,
         });
 
-        // ✅ FIX: Generate Signed URL for READ (Public access for WhatsApp & Frontend)
-        // Valid for 7 days (matches our retention policy)
+        // ✅ FIX: Generate Signed URL for READ with 7 days expiration (Max allowed by GCS V4)
         const [readUrl] = await file.getSignedUrl({
             version: 'v4',
             action: 'read',
-            expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
         });
 
         return NextResponse.json({
             success: true,
             presignedUrl: uploadUrl,
-            publicUrl: readUrl, // ✅ Use signed read URL
+            publicUrl: readUrl,
             mediaType: mediaType,
-            fileName: uniqueFileName
+            fileName: uniqueFileName,
+            finalMimeType: baseMimeType // Tell frontend exactly what content-type to use
         }, { status: 200 });
 
     } catch (error) {

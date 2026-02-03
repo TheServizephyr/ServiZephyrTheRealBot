@@ -64,11 +64,13 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
         if (error.response) {
             console.error('[WhatsApp Lib] Error Data:', JSON.stringify(error.response.data, null, 2));
             console.error('[WhatsApp Lib] Error Status:', error.response.status);
-            console.error('[WhatsApp Lib] Error Headers:', error.response.headers);
+            throw new Error(JSON.stringify(error.response.data.error || { message: "WhatsApp API returned an error" }));
         } else if (error.request) {
             console.error('[WhatsApp Lib] No response received:', error.request);
+            throw new Error("No response received from WhatsApp API");
         } else {
             console.error('[WhatsApp Lib] Error setting up request:', error.message);
+            throw new Error(error.message);
         }
     }
 };

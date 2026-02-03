@@ -20,6 +20,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import CustomAudioPlayer from '@/components/CustomAudioPlayer';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +98,18 @@ const MessageBubble = ({ message }) => {
     const renderContent = () => {
         // Image
         if (message.type === 'image' && message.mediaUrl) {
+            // eslint-disable-next-line react-hooks/rules-of-hooks
+            const [imageError, setImageError] = useState(false);
+
+            if (imageError) {
+                return (
+                    <div className="p-4 bg-muted/50 rounded-lg flex flex-col items-center justify-center min-w-[200px] text-muted-foreground">
+                        <AlertTriangle size={24} className="mb-2 opacity-50" />
+                        <span className="text-xs font-medium">Image Expired</span>
+                    </div>
+                );
+            }
+
             return (
                 <div className="p-2">
                     <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
@@ -106,7 +119,8 @@ const MessageBubble = ({ message }) => {
                             width={250}
                             height={250}
                             className="rounded-lg cursor-pointer"
-                            unoptimized={true} // ✅ FIX: Bypass Next.js optimization for Firebase Storage
+                            unoptimized={true}
+                            onError={() => setImageError(true)}
                         />
                     </a>
                 </div>
@@ -129,15 +143,12 @@ const MessageBubble = ({ message }) => {
         // Audio
         if (message.type === 'audio' && message.mediaUrl) {
             return (
-                <div className="p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">🎵</span>
-                        <span className="text-sm font-medium">{message.fileName || 'Audio'}</span>
-                    </div>
-                    <audio controls className="w-full" style={{ maxWidth: '300px' }}>
-                        <source src={message.mediaUrl} />
-                        Your browser does not support audio playback.
-                    </audio>
+                <div className="p-2 w-full max-w-xs">
+                    <CustomAudioPlayer
+                        src={message.mediaUrl}
+                        fileName={message.fileName}
+                        className={isOwner ? "bg-primary/20" : "bg-muted/50"}
+                    />
                 </div>
             );
         }
@@ -248,8 +259,19 @@ function WhatsAppDirectPageContent() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Prefer mp4/aac for WhatsApp compatibility, fallback to webm
-            const mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
+            // Priority: ogg (best for WhatsApp PTT/Opus) -> mp4 (fallback) -> webm
+            let mimeType = 'audio/webm';
+
+            // Try explicit Opus codecs for better compatibility
+            if (MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')) {
+                mimeType = 'audio/ogg; codecs=opus';
+            } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+                mimeType = 'audio/ogg';
+            } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                mimeType = 'audio/mp4';
+            }
+            console.log("Using MIME type for recording:", mimeType);
+
             const mediaRecorder = new MediaRecorder(stream, { mimeType });
 
             mediaRecorderRef.current = mediaRecorder;
@@ -286,7 +308,11 @@ function WhatsAppDirectPageContent() {
                 mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
 
                 if (shouldSend) {
-                    const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+                    let ext = 'webm';
+                    if (mimeType.includes('mp4')) ext = 'm4a';
+                    else if (mimeType.includes('ogg')) ext = 'ogg'; // ✅ Handle .ogg extension
+
+                    // Sanitize mimeType for file creation (strip codecs for cleaner handling if needed, but keeping verified type is safer)
                     const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, { type: mimeType });
                     handleFileUpload(audioFile);
                 }
@@ -484,7 +510,7 @@ function WhatsAppDirectPageContent() {
             else if (mimeType.startsWith('audio/')) mediaType = 'audio';
             else if (mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('sheet')) mediaType = 'document';
 
-            const { presignedUrl, publicUrl, fileName } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
+            const { presignedUrl, publicUrl, fileName, finalMimeType } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
                 fileName: file.name,
                 fileType: file.type,
                 fileSize: file.size
@@ -494,7 +520,7 @@ function WhatsAppDirectPageContent() {
                 method: 'PUT',
                 body: file,
                 headers: {
-                    'Content-Type': file.type,
+                    'Content-Type': finalMimeType || file.type, // ✅ Use strict MIME type from server
                 },
             });
 

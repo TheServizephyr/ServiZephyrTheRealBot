@@ -152,13 +152,12 @@ export async function POST(req) {
 
         const response = await sendWhatsAppMessage(customerPhoneWithCode, messagePayload, botPhoneNumberId);
 
-        let messageDocId;
-        if (response && response.messages && response.messages.length > 0) {
-            messageDocId = response.messages[0].id; // ✅ FIX: Use WhatsApp Message ID
-        } else {
-            console.warn("[API WARNING] No WhatsApp Message ID returned. Using random ID.");
-            messageDocId = firestore.collection('temp').doc().id; // Fallback
+        if (!response || !response.messages || response.messages.length === 0) {
+            console.error("[API ERROR] Failed to send message to WhatsApp. Response was invalid or empty.");
+            throw { message: 'Failed to send message via WhatsApp API.', status: 502 };
         }
+
+        const messageDocId = response.messages[0].id; // ✅ FIX: Use WhatsApp Message ID
 
         const firestore = await getFirestore();
         const conversationRef = businessDoc.ref.collection('conversations').doc(conversationId);
@@ -187,7 +186,17 @@ export async function POST(req) {
 
     } catch (error) {
         console.error("POST MESSAGE ERROR:", error);
-        return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
+
+        let errorMessage = error.message || 'Internal Server Error';
+        // Try to parse JSON error message from library
+        try {
+            const parsed = JSON.parse(errorMessage);
+            if (parsed && parsed.message) errorMessage = `WhatsApp Error: ${parsed.message}`;
+        } catch (e) {
+            // Not JSON, use raw message
+        }
+
+        return NextResponse.json({ message: errorMessage }, { status: error.status || 500 });
     }
 }
 
