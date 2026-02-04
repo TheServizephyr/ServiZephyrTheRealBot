@@ -269,17 +269,17 @@ function WhatsAppDirectPageContent() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Priority: WebM/Opus (Chrome Native) -> MP4 (Fallback)
-            // WhatsApp accepts Opus audio if we send it as .ogg (even if container is webm)
+            // Priority: MP4 (Best for WhatsApp) -> WebM/Opus (Chrome Native)
+            // WhatsApp prefers MP4/AAC over OGG/WebM hacks.
             let mimeType = 'audio/webm';
 
-            if (MediaRecorder.isTypeSupported('audio/webm; codecs=opus')) {
+            if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                mimeType = 'audio/mp4';
+                console.log("Using prioritized MIME type: audio/mp4");
+            } else if (MediaRecorder.isTypeSupported('audio/webm; codecs=opus')) {
                 mimeType = 'audio/webm; codecs=opus';
             } else if (MediaRecorder.isTypeSupported('audio/webm')) {
                 mimeType = 'audio/webm';
-            } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-                // Keep MP4 as fallback, but prefer WebM/Opus for the OGG hack
-                mimeType = 'audio/mp4';
             }
             console.log("Using MIME type for recording:", mimeType);
 
@@ -305,7 +305,29 @@ function WhatsAppDirectPageContent() {
 
         } catch (error) {
             console.error("Error accessing microphone:", error);
-            setInfoDialog({ isOpen: true, title: "Microphone Access Denied", message: "Please allow microphone access to record audio." });
+
+            let errorMessage = "Could not access microphone.";
+            let errorTitle = "Microphone Error";
+
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                errorTitle = "Permission Denied";
+                errorMessage = (
+                    <div className="text-left text-sm space-y-2">
+                        <p><strong>Microphone access is blocked.</strong></p>
+                        <p>Since this is a Web App (PWA), permissions are controlled by your browser, not Android Settings.</p>
+                        <p className="font-semibold text-primary mt-2">How to Fix:</p>
+                        <ol className="list-decimal pl-5 space-y-1">
+                            <li>Open <strong>Chrome Browser</strong></li>
+                            <li>Tap Top-Right Menu (⋮) &gt; <strong>Settings</strong></li>
+                            <li>Go to <strong>Site Settings</strong> &gt; <strong>Microphone</strong></li>
+                            <li>Find this app/site and tap <strong>Allow</strong></li>
+                            <li>Come back here and try again.</li>
+                        </ol>
+                    </div>
+                );
+            }
+
+            setInfoDialog({ isOpen: true, title: errorTitle, message: errorMessage });
         }
     };
 
