@@ -22,60 +22,45 @@ export async function GET(req) {
         if (phone) {
             console.log(`[API /order/active] Searching active orders for phone input: ${phone}`);
 
-            // Generate Phone Variants (Raw, +91, 0)
+            // Normalize phone to raw 10-digit format (matches order schema: customerPhone)
             const cleanPhone = phone.replace(/\D/g, '').slice(-10); // Last 10 digits
-            const variants = [
-                cleanPhone,
-                `+91${cleanPhone}`,
-                `0${cleanPhone}`,
-                phone // Original input just in case
-            ];
-            const uniquePhones = [...new Set(variants)];
-            console.log(`[API /order/active] Phone variants:`, uniquePhones);
+            console.log(`[API /order/active] Normalized phone: ${cleanPhone}`);
 
             const ordersRef = firestore.collection('orders');
             const activeStatuses = ['pending', 'placed', 'accepted', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'confirmed'];
             const ONE_DAY_MS = 24 * 60 * 60 * 1000;
             const yesterday = new Date(Date.now() - ONE_DAY_MS);
 
-            // Firestore limitation: Can't use multiple 'in' clauses. 
-            // Query for each phone variant separately active statuses.
-            // But 'status' uses 'in'. So we must loop phone variants.
+            // OPTIMIZED: Single query using customerPhone field (top-level in orders)
+            // Orders store phone as "9027872803" in customerPhone field
+            let snapshot;
+            try {
+                snapshot = await ordersRef
+                    .where('customerPhone', '==', cleanPhone)
+                    .where('status', 'in', activeStatuses)
+                    .where('createdAt', '>', yesterday)
+                    .limit(20)
+                    .get();
 
-            const fieldsToCheck = ['customer.phone', 'customerPhone', 'phone'];
-            const queries = [];
-
-            uniquePhones.forEach(p => {
-                fieldsToCheck.forEach(field => {
-                    const query = ordersRef
-                        .where(field, '==', p)
+                console.log(`[API /order/active] Found ${snapshot.size} recent orders with date filter`);
+            } catch (err) {
+                if (err.code === 9) {
+                    // Index missing - fallback without date filter
+                    console.warn(`[Index Required] Missing index for customerPhone + status + createdAt query`);
+                    console.warn(`[Fallback] Fetching without date filter...`);
+                    snapshot = await ordersRef
+                        .where('customerPhone', '==', cleanPhone)
                         .where('status', 'in', activeStatuses)
-                        .where('createdAt', '>', yesterday) // OPTIMIZATION: Filter by date at DB Level
-                        .limit(10); // Reduced limit as we are now time-bound
+                        .limit(20)
+                        .get();
 
-                    queries.push(
-                        query.get()
-                            .then(snap => {
-                                if (!snap.empty) console.log(`[API Match] Found ${snap.size} RECENT active docs for ${field} == ${p}`);
-                                return snap;
-                            })
-                            .catch(err => {
-                                if (err.code === 9) { // FAILED_PRECONDITION (Missing Index)
-                                    console.warn(`[Index Required] Missing Index for query: ${err.details}`);
-                                    console.warn(`[Fallback] Fetching without date filter...`);
-                                    return ordersRef
-                                        .where(field, '==', p)
-                                        .where('status', 'in', activeStatuses)
-                                        .limit(20)
-                                        .get();
-                                }
-                                throw err;
-                            })
-                    );
-                });
-            });
+                    console.log(`[API /order/active] Fallback query found ${snapshot.size} orders`);
+                } else {
+                    throw err;
+                }
+            }
 
-            const snapshots = await Promise.all(queries);
+            const snapshots = [snapshot];
 
             // Merge Results
             const mergedDocs = new Map();

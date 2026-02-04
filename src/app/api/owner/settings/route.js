@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid, FieldValue } from '@/lib/firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { kv } from '@vercel/kv';
@@ -291,6 +291,10 @@ export async function PATCH(req) {
         if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
             businessUpdateData.isOpen = updates.isOpen;
 
+            // Increment menuVersion to invalidate menu cache (restaurant status is part of menu response)
+            console.log(`[Settings API] 🔄 Restaurant status changed to ${updates.isOpen}. Incrementing menuVersion for ${businessId}`);
+            businessUpdateData.menuVersion = FieldValue.increment(1);
+
             sendRestaurantStatusChangeNotification({
                 ownerPhone: businessData.ownerPhone,
                 botPhoneNumberId: businessData.botPhoneNumberId,
@@ -342,14 +346,7 @@ export async function PATCH(req) {
 
         if (Object.keys(businessUpdateData).length > 0) {
             await businessRef.update(businessUpdateData);
-
-            // Invalidate menu cache when settings change (logo, banner, payment modes, etc.)
-            try {
-                await kv.del(`menu:${businessId}`);
-                console.log(`[Settings API] ✅ Cache invalidated for ${businessId} after settings update`);
-            } catch (cacheError) {
-                console.error('[Settings API] ❌ Cache invalidation failed:', cacheError);
-            }
+            console.log(`[Settings API] ✅ Settings updated for ${businessId}`);
         }
 
 

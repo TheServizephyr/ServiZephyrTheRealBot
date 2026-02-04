@@ -108,15 +108,32 @@ export default function RootLayout({ children }) {
         />
         <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
-        {/* Production: Silence Console Logs */}
-        <Script id="console-silencer" strategy="beforeInteractive">
+        {/* Development: Filter Noisy Warnings */}
+        <Script id="console-filter" strategy="beforeInteractive">
           {`
-            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+            if (typeof window !== 'undefined' && '${process.env.NODE_ENV}' === 'development') {
+              const originalWarn = console.warn;
+              const suppressPatterns = [
+                'legacy prop',
+                'has "fill" but is missing "sizes" prop',
+                'priority property',
+                'Did you forget to run the codemod',
+                'Google Maps JavaScript API',
+                'React DevTools',
+                'Largest Contentful Paint',
+              ];
+              console.warn = function (...args) {
+                const message = args.join(' ');
+                if (suppressPatterns.some(pattern => message.includes(pattern))) return;
+                originalWarn.apply(console, args);
+              };
+            }
+            // Production: Silence All Console Logs
+            if (typeof window !== 'undefined' && '${process.env.NODE_ENV}' === 'production') {
               console.log = function() {};
               console.warn = function() {};
               console.info = function() {};
               console.debug = function() {};
-              // Keep console.error for debugging critical issues
             }
           `}
         </Script>

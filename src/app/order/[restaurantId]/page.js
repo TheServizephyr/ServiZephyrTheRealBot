@@ -887,13 +887,14 @@ const OrderPageInternal = () => {
             }
         };
 
-        // Run initial checks
+        // Run initial checks (lazy cleanup on page load only)
         pollStatus();
         checkActiveOrder();
 
-        const intervalId = setInterval(pollStatus, 10000); // Poll every 10s
+        // ✅ REMOVED: Continuous polling removed to save Firestore costs
+        // Track page uses RTDB for real-time updates, no polling needed here
+        // localStorage cleanup happens lazily when user returns to order page
 
-        return () => clearInterval(intervalId);
     }, [restaurantId, searchParams, activeOrderId, router, phone, token]);
 
 

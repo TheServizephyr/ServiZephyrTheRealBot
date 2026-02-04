@@ -40,7 +40,24 @@ const nextConfig = {
         pathname: '/**',
       },
     ],
+    // Suppress legacy Image warnings in development
+    dangerouslyAllowSVG: true,
+    unoptimized: process.env.NODE_ENV === 'development',
   },
+  // Suppress console warnings in development
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Suppress Next.js Image legacy prop warnings
+      config.infrastructureLogging = {
+        level: 'error',
+      };
+    }
+    return config;
+  },
+  // Disable x-powered-by header
+  poweredByHeader: false,
+  // Suppress React DevTools suggestion
+  reactStrictMode: true,
 };
 
 module.exports = nextConfig
