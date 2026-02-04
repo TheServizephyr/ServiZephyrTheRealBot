@@ -1,5 +1,9 @@
-
 'use client';
+
+// Polyfill 'process' for opus-media-recorder library which expects a Node env
+if (typeof window !== 'undefined' && !window.process) {
+    window.process = { env: {} };
+}
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -269,21 +273,22 @@ function WhatsAppDirectPageContent() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Priority: MP4 (Best for WhatsApp) -> WebM/Opus (Chrome Native)
-            // WhatsApp prefers MP4/AAC over OGG/WebM hacks.
-            let mimeType = 'audio/webm';
+            // Use OpusMediaRecorder Polyfill to force OGG/Opus (WhatsApp Compatible)
+            // This works on ALL devices (Mobile/Desktop) efficiently.
 
-            if (MediaRecorder.isTypeSupported('audio/mp4')) {
-                mimeType = 'audio/mp4';
-                console.log("Using prioritized MIME type: audio/mp4");
-            } else if (MediaRecorder.isTypeSupported('audio/webm; codecs=opus')) {
-                mimeType = 'audio/webm; codecs=opus';
-            } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-                mimeType = 'audio/webm';
-            }
-            console.log("Using MIME type for recording:", mimeType);
+            // Dynamic import to avoid SSR issues
+            const OpusMediaRecorder = (await import('opus-media-recorder')).default;
 
-            const mediaRecorder = new MediaRecorder(stream, { mimeType });
+            const workerOptions = {
+                encoderWorkerFactory: () => new Worker('https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/encoderWorker.min.js'),
+                OggOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/OggOpusEncoder.wasm',
+                WebMOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/WebMOpusEncoder.wasm'
+            };
+
+            const mediaRecorder = new OpusMediaRecorder(stream, { mimeType: 'audio/ogg' }, workerOptions);
+            const mimeType = 'audio/ogg'; // Explicitly set for file creation logic
+
+            console.log("Initialized OpusMediaRecorder with Valid OGG/Opus");
 
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
