@@ -46,13 +46,21 @@ export async function GET(req, { params }) {
         // STEP 2: Build version-based cache key
         // PATCH: Added _patch2 to force cache refresh due to Delivery Fee Calculation fix (missing feeType/perKm)
         const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch2`;
-        console.log(`[Menu API] 🔑 Cache key: ${cacheKey} (menuVersion: ${menuVersion})`);
+
+        // 🔍 PROOF: Show Redis cache usage and menuVersion
+        console.log(`%c[Menu API] 📊 CACHE DEBUG`, 'color: cyan; font-weight: bold');
+        console.log(`[Menu API]    ├─ Restaurant: ${restaurantId}`);
+        console.log(`[Menu API]    ├─ menuVersion from Firestore: ${menuVersion}`);
+        console.log(`[Menu API]    ├─ Generated cache key: ${cacheKey}`);
+        console.log(`[Menu API]    ├─ Redis KV available: ${isKvAvailable ? '✅ YES' : '❌ NO'}`);
+        console.log(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
 
         // STEP 3: Check Redis cache with version-specific key
         if (isKvAvailable) {
             const cachedData = await kv.get(cacheKey);
             if (cachedData) {
-                console.log(`[Menu API] ✅ Cache HIT for ${cacheKey}`);
+                console.log(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
+                console.log(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
                 return NextResponse.json(cachedData, {
                     status: 200,
                     headers: {
@@ -64,7 +72,8 @@ export async function GET(req, { params }) {
                     }
                 });
             }
-            console.log(`[Menu API] ❌ Cache MISS - Fetching from Firestore for ${cacheKey}`);
+            console.log(`%c[Menu API] ❌ CACHE MISS`, 'color: red; font-weight: bold');
+            console.log(`[Menu API]    └─ Fetching from Firestore for key: ${cacheKey}`);
         } else {
             console.log(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${restaurantId}`);
         }

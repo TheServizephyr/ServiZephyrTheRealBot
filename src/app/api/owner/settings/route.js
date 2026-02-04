@@ -288,12 +288,30 @@ export async function PATCH(req) {
         // We will NOT write them to parent doc anymore to ensure single source of truth (sub-collection)
         // However, we handle NON-delivery settings here still:
 
+
         if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
             businessUpdateData.isOpen = updates.isOpen;
 
+            // 🔍 PROOF: Log current menuVersion BEFORE increment
+            const currentMenuVersion = businessData.menuVersion || 1;
+            console.log(`%c[Settings API] 📊 BEFORE UPDATE`, 'color: orange; font-weight: bold');
+            console.log(`[Settings API]    ├─ Restaurant: ${businessId}`);
+            console.log(`[Settings API]    ├─ Current menuVersion: ${currentMenuVersion}`);
+            console.log(`[Settings API]    ├─ Old isOpen: ${businessData?.isOpen}`);
+            console.log(`[Settings API]    └─ New isOpen: ${updates.isOpen}`);
+
             // Increment menuVersion to invalidate menu cache (restaurant status is part of menu response)
-            console.log(`[Settings API] 🔄 Restaurant status changed to ${updates.isOpen}. Incrementing menuVersion for ${businessId}`);
+            console.log(`[Settings API] 🔄 Incrementing menuVersion...`);
             businessUpdateData.menuVersion = FieldValue.increment(1);
+
+            // 🔍 PROOF: Show what cache keys will be affected
+            const newMenuVersion = currentMenuVersion + 1;
+            const oldCacheKey = `menu:${businessId}:v${currentMenuVersion}_patch2`;
+            const newCacheKey = `menu:${businessId}:v${newMenuVersion}_patch2`;
+            console.log(`%c[Settings API] ✅ CACHE INVALIDATION`, 'color: green; font-weight: bold');
+            console.log(`[Settings API]    ├─ Old cache key: ${oldCacheKey} (will expire)`);
+            console.log(`[Settings API]    └─ New cache key: ${newCacheKey} (will be fresh)`);
+            console.log(`[Settings API] ⏰ Timestamp: ${new Date().toISOString()}`);
 
             sendRestaurantStatusChangeNotification({
                 ownerPhone: businessData.ownerPhone,
