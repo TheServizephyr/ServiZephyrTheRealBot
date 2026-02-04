@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logAuditEvent, AUDIT_ACTIONS } from '@/lib/security/audit-log';
+import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { couponLimiter } from '@/lib/security/rate-limiter';
 
 
@@ -51,7 +52,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
         const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
         if (!query.empty) {
             const doc = query.docs[0];
-            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin' };
+            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin', businessData: doc.data() };
         }
     }
 
@@ -83,7 +84,7 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName, uid, userRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, uid, userRole, businessData } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
 
         // 🔒 Rate limit check (15 coupon operations per minute)
@@ -149,6 +150,34 @@ export async function POST(req) {
             source: 'coupons_api',
             req
         }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
+
+        // 📱 SEND WHATSAPP NOTIFICATION
+        if (businessData.botPhoneNumberId && coupon.customerId) {
+            try {
+                // 1. Fetch Customer to get Phone Number
+                const customerDoc = await firestore.collection(collectionName).doc(businessId).collection('customers').doc(coupon.customerId).get();
+                if (customerDoc.exists) {
+                    const customerData = customerDoc.data();
+                    const phone = customerData.phone || customerData.phoneNumber || customerData.contactInfo?.phone;
+
+                    if (phone) {
+                        // Ensure phone has country code (default to 91 if missing and looks like 10 digits)
+                        let formattedPhone = phone.toString().replace(/\D/g, ''); // Remove non-digits
+                        if (formattedPhone.length === 10) formattedPhone = '91' + formattedPhone;
+
+                        const discountText = isFreeDelivery ? 'FREE DELIVERY' : (coupon.type === 'percentage' ? `${coupon.value}% OFF` : `₹${coupon.value} OFF`);
+                        const message = `High five, ${customerData.name?.split(' ')[0] || 'there'}! 🙌\n\nYou've just unlocked a special reward at ${businessData.name}: *${discountText}*!\n\nUse Code: *${coupon.code}*\n${coupon.description || ''}\n\nMinimum Order: ₹${coupon.minOrder}\nValid until: ${new Date(coupon.expiryDate).toLocaleDateString('en-IN')}\n\nOrder now to redeem! 🍕`;
+
+                        await sendWhatsAppMessage(formattedPhone, message, businessData.botPhoneNumberId);
+                    } else {
+                        console.warn(`[Coupon API] Customer ${coupon.customerId} has no phone number. Skipped WhatsApp.`);
+                    }
+                }
+            } catch (waError) {
+                console.error(`[Coupon API] Failed to send WhatsApp notification: ${waError.message}`);
+                // Verify we don't fail the request request just because notification failed
+            }
+        }
 
         return NextResponse.json({ message: 'Coupon created successfully!', id: newCouponRef.id }, { status: 201 });
 

@@ -52,6 +52,11 @@ export const metadata = {
     statusBarStyle: "black-translucent",
   },
 
+  // Custom meta tags
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
+
   // Open Graph (Facebook, LinkedIn)
   openGraph: {
     type: "website",

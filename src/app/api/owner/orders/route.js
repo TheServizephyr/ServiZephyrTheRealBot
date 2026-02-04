@@ -115,10 +115,67 @@ export async function GET(req) {
         const ordersRef = firestore.collection('orders');
         // Exclude orders with status 'awaiting_payment' (payment not completed yet)
         let query = ordersRef
-            .where('restaurantId', '==', businessId)
-            .where('status', '!=', 'awaiting_payment');
+        if (customerId) {
+            console.log(`[API] Fetching orders for customerId: ${customerId} (restaurantId: ${businessId})`);
 
-        if (startDate && endDate) {
+            // Try querying by customerId first
+            // NOTE: Removed .orderBy and .limit to avoid needing a composite index (FAILED_PRECONDITION)
+            // We fetch all orders for this customer and sort in memory.
+            let customerQuery = ordersRef
+                .where('restaurantId', '==', businessId)
+                .where('customerId', '==', customerId);
+
+            let snap = await customerQuery.get();
+
+            // Fallback: If no orders found, try querying by 'userId' (common legacy field name)
+            if (snap.empty) {
+                console.log(`[API] No orders found with customerId, trying userId...`);
+                customerQuery = ordersRef
+                    .where('restaurantId', '==', businessId)
+                    .where('userId', '==', customerId);
+                snap = await customerQuery.get();
+            }
+
+            console.log(`[API] Found ${snap.size} orders for customer.`);
+
+            // Sort and limit in memory
+            let docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // Manual Sort: Descending by orderDate
+            docs.sort((a, b) => {
+                const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
+                const dateB = b.orderDate?.toDate ? b.orderDate.toDate() : new Date(b.orderDate);
+                return dateB - dateA;
+            });
+
+            // Manual Limit: Top 20
+            docs = docs.slice(0, 20);
+
+            const orders = docs.map(data => {
+                // ... (reuse the mapping logic locally or refactor)
+                // For brevity, we'll map here and return immediately to avoid variable scope issues with the main 'orders' variable
+                const statusHistory = (data.statusHistory || []).map(h => ({
+                    ...h,
+                    timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
+                }));
+                const itemsWithQty = (data.items || []).map(item => ({
+                    ...item,
+                    qty: item.quantity || item.qty,
+                }));
+                return {
+                    id: data.id,
+                    ...data,
+                    items: itemsWithQty,
+                    orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
+                    customer: data.customerName,
+                    amount: data.totalAmount,
+                    statusHistory,
+                };
+            });
+
+            return NextResponse.json({ orders }, { status: 200 });
+
+        } else if (startDate && endDate) {
             // Ensure dates are valid Date objects
             const start = new Date(startDate);
             const end = new Date(endDate);

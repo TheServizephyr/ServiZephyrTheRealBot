@@ -195,14 +195,148 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 };
 
 
-const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) => {
+const OrderDetailsModal = ({ order, isOpen, onClose }) => {
+    if (!order) return null;
+
+    const formatTime = (dateString) => {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const getAddress = (order) => {
+        const addr = order.deliveryAddress || order.address || order.location || order.customerAddress;
+        if (!addr) return null;
+        if (typeof addr === 'string') return addr;
+        if (typeof addr === 'object') {
+            return addr.full || addr.street || addr.line1 || Object.values(addr).filter(Boolean).join(', ');
+        }
+        return 'Invalid Address Format';
+    };
+
+    const address = getAddress(order);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="sm:max-w-md bg-card text-foreground border-border max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Order Details #{order.id.slice(-6).toUpperCase()}</DialogTitle>
+                    <DialogDescription>
+                        Placed on {formatDate(order.orderDate)} at {formatTime(order.orderDate)}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                    {/* Status & Payment */}
+                    <div className="flex justify-between items-center bg-muted p-3 rounded-lg">
+                        <div>
+                            <p className="text-xs text-muted-foreground uppercase font-bold">Status</p>
+                            <p className="font-medium text-primary capitalize">{order.status.replace(/_/g, ' ')}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs text-muted-foreground uppercase font-bold">Total</p>
+                            <p className="font-bold text-lg">{formatCurrency(order.amount)}</p>
+                        </div>
+                    </div>
+
+                    {/* Items */}
+                    <div>
+                        <h4 className="font-semibold mb-2 flex items-center gap-2"><Ticket size={16} /> Items</h4>
+                        <div className="space-y-2 border rounded-lg p-2 border-border">
+                            {order.items?.map((item, idx) => (
+                                <div key={idx} className="flex justify-between items-start text-sm">
+                                    <span>{item.qty}x {item.name}</span>
+                                    <span className="font-medium">
+                                        {formatCurrency(
+                                            (item.price ? Number(item.price) * Number(item.qty) : 0) ||
+                                            Number(item.totalPrice) ||
+                                            Number(item.amount) ||
+                                            0
+                                        )}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Bill Details */}
+                    <div>
+                        <h4 className="font-semibold mb-2 flex items-center gap-2"><IndianRupee size={16} /> Bill Details</h4>
+                        <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                            <div className="flex justify-between">
+                                <span>Subtotal</span>
+                                <span>{formatCurrency(order.subtotal || 0)}</span>
+                            </div>
+                            {(order.discount > 0) && (
+                                <div className="flex justify-between text-green-600">
+                                    <span>Discount</span>
+                                    <span>-{formatCurrency(order.discount)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between">
+                                <span>Taxes (GST)</span>
+                                <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>Delivery Charge</span>
+                                <span>{formatCurrency(order.deliveryCharge || 0)}</span>
+                            </div>
+                            <div className="flex justify-between font-bold border-t border-dashed border-gray-400 pt-2 mt-2 text-base">
+                                <span>Grand Total</span>
+                                <span>{formatCurrency(order.totalAmount || order.amount)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Address / Delivery Info */}
+                    <div>
+                        <h4 className="font-semibold mb-2 flex items-center gap-2"><Truck size={16} /> Delivery Info</h4>
+                        <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
+                            <p><span className="font-semibold">Type:</span> <span className="capitalize">{order.deliveryType}</span></p>
+                            {address ? (
+                                <p><span className="font-semibold">Address:</span> {address}</p>
+                            ) : (
+                                <p className="text-muted-foreground italic">No address provided</p>
+                            )}
+                            {order.customerPhone && <p><span className="font-semibold">Phone:</span> {order.customerPhone}</p>}
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="secondary" onClick={onClose} className="w-full">Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward, api }) => {
     const [activeTab, setActiveTab] = useState('history');
     const [notes, setNotes] = useState(customer.notes || '');
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
+    const [orders, setOrders] = useState([]);
+    const [loadingOrders, setLoadingOrders] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState(null); // State for selected order
+
     useEffect(() => {
         setNotes(customer.notes || '');
+        // Fetch order history
+        const fetchHistory = async () => {
+            if (!customer?.id) return;
+            setLoadingOrders(true);
+            try {
+                const data = await api(`/api/owner/orders?customerId=${customer.id}`, 'GET');
+                setOrders(data.orders || []);
+            } catch (e) {
+                console.error("Failed to fetch history", e);
+            } finally {
+                setLoadingOrders(false);
+            }
+        };
+        fetchHistory();
     }, [customer]);
 
     if (!customer) return null;
@@ -227,6 +361,11 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
 
     return (
         <>
+            <OrderDetailsModal
+                isOpen={!!selectedOrder}
+                onClose={() => setSelectedOrder(null)}
+                order={selectedOrder}
+            />
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
@@ -276,8 +415,8 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`flex-1 py-4 px-1 text-center border-b-2 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === tab.id
-                                        ? 'border-primary text-primary'
-                                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                                    ? 'border-primary text-primary'
+                                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                                     }`}
                             >
                                 <tab.icon size={16} /> {tab.label}
@@ -298,16 +437,27 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
                         >
                             {activeTab === 'history' && (
                                 <div className="space-y-4">
-                                    <h3 className="font-semibold text-foreground">All Orders ({customer.orderHistory?.length || 0})</h3>
-                                    {customer.orderHistory && customer.orderHistory.length > 0 ? customer.orderHistory.map(order => (
-                                        <div key={order.id} className="bg-muted p-3 rounded-lg flex justify-between items-center">
-                                            <div>
-                                                <p className="font-semibold text-foreground">{order.id}</p>
-                                                <p className="text-xs text-muted-foreground">{formatDate(order.date)}</p>
+                                    <h3 className="font-semibold text-foreground">All Orders ({orders.length || 0})</h3>
+                                    {loadingOrders ? (
+                                        <p className="text-muted-foreground text-center py-4">Loading history...</p>
+                                    ) : (
+                                        orders && orders.length > 0 ? orders.map(order => (
+                                            <div
+                                                key={order.id}
+                                                className="bg-muted p-3 rounded-lg flex justify-between items-center cursor-pointer hover:bg-muted/80 transition-colors"
+                                                onClick={() => setSelectedOrder(order)}
+                                            >
+                                                <div>
+                                                    <p className="font-semibold text-foreground">#{order.id.slice(-6).toUpperCase()}</p>
+                                                    <p className="text-xs text-muted-foreground">{formatDate(order.orderDate)} • {order.status}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-bold text-lg text-foreground">{formatCurrency(order.amount)}</p>
+                                                    <p className="text-xs text-muted-foreground">{order.items?.length} items</p>
+                                                </div>
                                             </div>
-                                            <p className="font-bold text-lg text-foreground">{formatCurrency(order.amount)}</p>
-                                        </div>
-                                    )) : <p className="text-muted-foreground text-center py-4">No order history available.</p>}
+                                        )) : <p className="text-muted-foreground text-center py-4">No order history available.</p>
+                                    )}
                                 </div>
                             )}
                             {activeTab === 'actions' && (
@@ -659,8 +809,20 @@ export default function CustomersPage() {
                                 >
                                     <td className="p-4 font-medium">
                                         <div className="flex flex-col">
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2">
                                                 {customer.name}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation(); // Prevent row click
+                                                        setSelectedCustomer(customer);
+                                                    }}
+                                                    title="View Profile"
+                                                >
+                                                    <User size={14} />
+                                                </Button>
                                             </div>
                                             <span className="text-xs text-muted-foreground">{customer.email || customer.phone}</span>
                                         </div>
@@ -690,6 +852,7 @@ export default function CustomersPage() {
                         onClose={() => setSelectedCustomer(null)}
                         onSaveNotes={handleSaveNotes}
                         onSendReward={handleSendReward}
+                        api={handleApiCall}
                     />
                 )}
             </AnimatePresence>
