@@ -58,6 +58,24 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
     fetchStatus();
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      // 🔒 CRITICAL: Clear ALL storage to prevent cross-account leakage
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Sign out from Firebase
+      await auth.signOut();
+
+      // 🔥 CRITICAL: Redirect to clean URL (no query params)
+      // This prevents old ?employee_of=X params from persisting
+      window.location.href = '/';
+    } catch (error) {
+      console.error("Logout failed:", error);
+      setInfoDialog({ isOpen: true, title: "Error", message: "Could not log out. Please try again." });
+    }
+  };
+
   // ... (rest of the functions remain the same) ...
 
   const handleStatusToggle = async (newStatus) => {
