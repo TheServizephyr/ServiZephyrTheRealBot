@@ -246,12 +246,40 @@ function WhatsAppDirectPageContent() {
     const [activeFilter, setActiveFilter] = useState('All');
     const [isConfirmEndChatOpen, setConfirmEndChatOpen] = useState(false);
 
-    // Audio Recording State
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const timerRef = useRef(null);
+
+    // NEW: Audio Engine State
+    const [workerBlobUrl, setWorkerBlobUrl] = useState(null);
+    const [loadingAudioEngine, setLoadingAudioEngine] = useState(true);
+
+    // Pre-load Opus Worker Blob to allow synchronous Worker creation (Required by library)
+    useEffect(() => {
+        const loadWorker = async () => {
+            try {
+                // Use UMD build to avoid 'require is not defined' errors
+                const res = await fetch('https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/encoderWorker.umd.js');
+                if (!res.ok) throw new Error(`Failed to load worker: ${res.status}`);
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                setWorkerBlobUrl(url);
+                setLoadingAudioEngine(false);
+                console.log("Audio Engine Loaded Successfully 🎧");
+            } catch (error) {
+                console.error("Failed to load Audio Engine Worker:", error);
+                setLoadingAudioEngine(false);
+            }
+        };
+        loadWorker();
+
+        return () => {
+            // Cleanup blob url on unmount
+            if (workerBlobUrl) URL.revokeObjectURL(workerBlobUrl);
+        };
+    }, []);
 
     const scrollToBottom = () => {
         if (messagesEndRef.current) {
@@ -270,25 +298,36 @@ function WhatsAppDirectPageContent() {
     }, [messages, activeConversation?.id, loadingMessages]);
 
     const startRecording = async () => {
+        // Prevent recording if engine is not ready
+        if (loadingAudioEngine) {
+            setInfoDialog({ isOpen: true, title: "Please Wait", message: "Audio engine is loading..." });
+            return;
+        }
+        if (!workerBlobUrl) {
+            setInfoDialog({ isOpen: true, title: "Error", message: "Audio engine failed to load. Please refresh the page." });
+            return;
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
             // Use OpusMediaRecorder Polyfill to force OGG/Opus (WhatsApp Compatible)
-            // This works on ALL devices (Mobile/Desktop) efficiently.
-
             // Dynamic import to avoid SSR issues
             const OpusMediaRecorder = (await import('opus-media-recorder')).default;
 
             const workerOptions = {
-                encoderWorkerFactory: () => new Worker('https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/encoderWorker.min.js'),
+                encoderWorkerFactory: () => {
+                    // SYNC RETURN: Use the pre-loaded blob URL to create the worker synchronously
+                    return new Worker(workerBlobUrl);
+                },
                 OggOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/OggOpusEncoder.wasm',
                 WebMOpusEncoderWasmPath: 'https://cdn.jsdelivr.net/npm/opus-media-recorder@latest/WebMOpusEncoder.wasm'
             };
 
             const mediaRecorder = new OpusMediaRecorder(stream, { mimeType: 'audio/ogg' }, workerOptions);
-            const mimeType = 'audio/ogg'; // Explicitly set for file creation logic
+            const mimeType = 'audio/ogg';
 
-            console.log("Initialized OpusMediaRecorder with Valid OGG/Opus");
+            console.log("Initialized OpusMediaRecorder with Valid OGG/Opus (Sync Factory)");
 
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];

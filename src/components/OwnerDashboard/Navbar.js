@@ -127,16 +127,16 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
           </button>
           <div className="flex items-center gap-4">
             {restaurantLogo && (
-              <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-border">
+              <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-border flex-shrink-0">
                 <Image src={restaurantLogo} alt="Restaurant Logo" layout="fill" objectFit="cover" />
               </div>
             )}
-            <h2 className="text-xl md:text-2xl font-bold text-foreground tracking-tight">{restaurantName}</h2>
+            <h2 className="text-lg md:text-2xl font-bold text-foreground tracking-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] sm:max-w-none">{restaurantName}</h2>
           </div>
           {/* Role Badge - Owner or Employee */}
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${userRole ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
             <UserCheck className={`h-4 w-4 ${userRole ? 'text-blue-500' : 'text-amber-500'}`} />
-            <span className={`text-xs sm:text-sm font-semibold capitalize ${userRole ? 'text-blue-500' : 'text-amber-500'}`}>
+            <span className={`hidden sm:inline text-xs sm:text-sm font-semibold capitalize ${userRole ? 'text-blue-500' : 'text-amber-500'}`}>
               {userRole || 'Owner'}
             </span>
           </div>
@@ -145,7 +145,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
         <div className={styles.navActions}>
           <button
             onClick={() => setSystemStatusOpen(true)}
-            className={styles.iconButton}
+            className={`${styles.iconButton} hidden md:flex`}
             title="Check System Permissions"
           >
             <ShieldCheck size={22} className="text-primary hover:text-primary/80 transition-colors" />
@@ -153,7 +153,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
 
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className={styles.iconButton}
+            className={`${styles.iconButton} hidden md:flex`}
           >
             <AnimatePresence mode="wait">
               <MotionDiv
@@ -220,6 +220,16 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
                 </Label>
               </div>
               <DropdownMenuSeparator />
+              <div className="md:hidden">
+                <DropdownMenuItem onClick={() => setSystemStatusOpen(true)} className="cursor-pointer">
+                  <ShieldCheck className="mr-2 h-4 w-4 text-primary" /> System Permissions
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="cursor-pointer">
+                  {theme === 'dark' ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+                  Toggle Theme
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </div>
               <DropdownMenuItem onClick={() => router.push('/owner-dashboard/settings')} className="cursor-pointer">
                 <User className="mr-2 h-4 w-4" /> Profile
               </DropdownMenuItem>
@@ -230,7 +240,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </div>
+      </div >
     </>
   );
 }

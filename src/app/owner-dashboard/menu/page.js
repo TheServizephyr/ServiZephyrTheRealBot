@@ -1147,29 +1147,31 @@ export default function MenuPage() {
             <AnimatePresence>
                 {selectedItems.length > 0 && (
                     <motion.div
-                        className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto bg-card border border-border rounded-xl shadow-2xl p-3 flex items-center gap-4 z-50"
-                        initial={{ y: 100, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: 100, opacity: 0 }}
+                        className="fixed bottom-4 left-1/2 w-[95%] md:w-auto bg-card border border-border rounded-xl shadow-2xl p-3 flex justify-between md:justify-center items-center gap-2 md:gap-4 z-50"
+                        initial={{ y: 100, x: "-50%", opacity: 0 }}
+                        animate={{ y: 0, x: "-50%", opacity: 1 }}
+                        exit={{ y: 100, x: "-50%", opacity: 0 }}
                     >
-                        <p className="text-sm font-semibold">{selectedItems.length} item(s) selected</p>
+                        <p className="text-sm font-semibold whitespace-nowrap">{selectedItems.length} <span className="hidden sm:inline">item(s) selected</span><span className="sm:hidden">selected</span></p>
 
-                        {/* 🔐 RBAC: Owner, Manager, Chef can bulk mark out of stock */}
-                        {canToggleAvailability && (
-                            <Button variant="outline" size="sm" onClick={handleBulkOutOfStock}>
-                                <XCircle size={16} className="mr-2" /> Mark Out of Stock
-                            </Button>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {/* 🔐 RBAC: Owner, Manager, Chef can bulk mark out of stock */}
+                            {canToggleAvailability && (
+                                <Button variant="outline" size="sm" onClick={handleBulkOutOfStock} className="whitespace-nowrap h-8 px-2">
+                                    <XCircle size={16} className="mr-2" /> <span className="hidden sm:inline">Mark Out of Stock</span><span className="sm:hidden">Out of Stock</span>
+                                </Button>
+                            )}
 
-                        {/* 🔐 RBAC: Only Owner can bulk delete */}
-                        {canBulkEdit && (
-                            <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                                <Trash2 size={16} className="mr-2" /> Delete Selected
+                            {/* 🔐 RBAC: Only Owner can bulk delete */}
+                            {canBulkEdit && (
+                                <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="h-8 px-2">
+                                    <Trash2 size={16} className="md:mr-2" /> <span className="hidden md:inline">Delete Selected</span>
+                                </Button>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedItems([])}>
+                                <X size={16} />
                             </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedItems([])}>
-                            <X size={16} />
-                        </Button>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
