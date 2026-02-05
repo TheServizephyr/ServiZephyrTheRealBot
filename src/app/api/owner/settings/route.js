@@ -236,6 +236,8 @@ export async function GET(req) {
             packagingChargeEnabled: businessData?.packagingChargeEnabled || false,
             packagingChargeAmount: businessData?.packagingChargeAmount || 0,
             businessId: businessId,
+            merchantId: businessData?.merchantId || '',
+            customerId: userData?.customerId || '',
             paymentQRCode: businessData?.paymentQRCode || null, // ✅ Return QR Code URL
         };
 
@@ -427,6 +429,8 @@ export async function PATCH(req) {
             packagingChargeEnabled: finalBusinessData?.packagingChargeEnabled || false,
             packagingChargeAmount: finalBusinessData?.packagingChargeAmount || 0,
             businessId: finalBusinessId,
+            merchantId: finalBusinessData?.merchantId || '',
+            customerId: finalUserData?.customerId || '',
         };
 
         return NextResponse.json(responseData, { status: 200 });
