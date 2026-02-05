@@ -339,7 +339,7 @@ const CartPageInternal = () => {
                                 ...parsedData,
                                 // Update with fresh settings
                                 gstEnabled: freshSettings.gstEnabled,
-                                gstRate: freshSettings.gstRate,
+                                gstRate: freshSettings.gstPercentage || freshSettings.gstRate || 0,
                                 gstMinAmount: freshSettings.gstMinAmount,
                                 convenienceFeeEnabled: freshSettings.convenienceFeeEnabled,
                                 convenienceFeeRate: freshSettings.convenienceFeeRate,

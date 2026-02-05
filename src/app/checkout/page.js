@@ -371,7 +371,7 @@ const CheckoutPageInternal = () => {
                     // Store vendor's add-on charges configuration
                     setVendorCharges({
                         gstEnabled: paymentData.gstEnabled || false,
-                        gstRate: paymentData.gstRate || 5,
+                        gstRate: paymentData.gstPercentage || paymentData.gstRate || 0,
                         gstMinAmount: paymentData.gstMinAmount || 0,
                         convenienceFeeEnabled: paymentData.convenienceFeeEnabled || false,
                         convenienceFeeRate: paymentData.convenienceFeeRate || 2.5,

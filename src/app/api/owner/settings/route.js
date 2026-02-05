@@ -131,7 +131,7 @@ export async function GET(req) {
                 botDisplayNumber: businessData.botDisplayNumber || null,
                 // Add-on Charges Configuration
                 gstEnabled: businessData.gstEnabled || false,
-                gstRate: businessData.gstRate || 5,
+                gstPercentage: businessData.gstPercentage || businessData.gstRate || 0,
                 gstMinAmount: businessData.gstMinAmount || 0,
                 convenienceFeeEnabled: businessData.convenienceFeeEnabled || false,
                 convenienceFeeRate: businessData.convenienceFeeRate || 2.5,
@@ -327,7 +327,7 @@ export async function PATCH(req) {
 
         // Add-on Charges Configuration
         if (updates.gstEnabled !== undefined) businessUpdateData.gstEnabled = updates.gstEnabled;
-        if (updates.gstRate !== undefined) businessUpdateData.gstRate = updates.gstRate;
+        if (updates.gstPercentage !== undefined) businessUpdateData.gstPercentage = updates.gstPercentage;
         if (updates.gstMinAmount !== undefined) businessUpdateData.gstMinAmount = updates.gstMinAmount;
         if (updates.convenienceFeeEnabled !== undefined) businessUpdateData.convenienceFeeEnabled = updates.convenienceFeeEnabled;
         if (updates.convenienceFeeRate !== undefined) businessUpdateData.convenienceFeeRate = updates.convenienceFeeRate;

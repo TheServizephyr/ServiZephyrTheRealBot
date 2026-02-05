@@ -250,6 +250,7 @@ function SettingsPageContent() {
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isEditingMedia, setIsEditingMedia] = useState(false);
     const [isEditingPayment, setIsEditingPayment] = useState(false);
+    const [isEditingGst, setIsEditingGst] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
@@ -342,6 +343,11 @@ function SettingsPageContent() {
                 setEditedUser(user);
             }
             setIsEditingPayment(!isEditingPayment);
+        } else if (section === 'gst') {
+            if (isEditingGst) {
+                setEditedUser(user);
+            }
+            setIsEditingGst(!isEditingGst);
         }
     };
 
@@ -461,6 +467,11 @@ function SettingsPageContent() {
                 dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
                 dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
             }
+        } else if (section === 'gst') {
+            payload = {
+                gstEnabled: editedUser.gstEnabled,
+                gstPercentage: editedUser.gstPercentage,
+            }
         }
 
         try {
@@ -496,6 +507,7 @@ function SettingsPageContent() {
             if (section === 'profile') setIsEditingProfile(false);
             if (section === 'media') setIsEditingMedia(false);
             if (section === 'payment') setIsEditingPayment(false);
+            if (section === 'gst') setIsEditingGst(false);
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Updated Successfully!' });
 
         } catch (error) {
@@ -801,6 +813,60 @@ function SettingsPageContent() {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </SectionCard>
+                    <SectionCard
+                        title="GST & Tax Settings"
+                        description="Configure GST for your restaurant orders."
+                        footer={
+                            <div className="flex justify-end gap-3">
+                                {isEditingGst ? (
+                                    <>
+                                        <Button variant="secondary" onClick={() => handleEditToggle('gst')}><XCircle className="mr-2 h-4 w-4" /> Cancel</Button>
+                                        <Button onClick={() => handleSave('gst')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4" /> Save GST Settings</Button>
+                                    </>
+                                ) : (
+                                    <Button onClick={() => handleEditToggle('gst')}><Edit className="mr-2 h-4 w-4" /> Edit GST Settings</Button>
+                                )}
+                            </div>
+                        }
+                    >
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                <div className="flex-1">
+                                    <Label htmlFor="gstEnabled" className="font-semibold flex items-center gap-2">
+                                        <FileText size={16} /> Enable GST
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground mt-1">Apply GST to all orders from this restaurant</p>
+                                </div>
+                                <Switch
+                                    id="gstEnabled"
+                                    checked={editedUser.gstEnabled || false}
+                                    onCheckedChange={(checked) => setEditedUser({ ...editedUser, gstEnabled: checked })}
+                                    disabled={!isEditingGst}
+                                />
+                            </div>
+
+                            {editedUser.gstEnabled && (
+                                <div className="p-4 border border-dashed border-border rounded-lg">
+                                    <Label htmlFor="gstPercentage" className="font-semibold flex items-center gap-2">
+                                        <IndianRupee size={16} /> GST Percentage (%)
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground mb-3">Enter the GST rate to apply (e.g., 5, 12, 18)</p>
+                                    <input
+                                        id="gstPercentage"
+                                        type="number"
+                                        value={editedUser.gstPercentage || 0}
+                                        onChange={(e) => setEditedUser({ ...editedUser, gstPercentage: parseFloat(e.target.value) || 0 })}
+                                        disabled={!isEditingGst}
+                                        min="0"
+                                        max="100"
+                                        step="0.01"
+                                        className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed"
+                                        placeholder="e.g., 18"
+                                    />
+                                </div>
+                            )}
                         </div>
                     </SectionCard>
                     <SectionCard
