@@ -9,7 +9,8 @@ import { nanoid } from 'nanoid';
 import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 
 
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+// Hardcoded for testing on Preview deployment where env vars might be missing
+const VERIFY_TOKEN = 'Ashwani_is_king'; // process.env.WHATSAPP_VERIFY_TOKEN;
 
 export async function GET(request) {
     console.log("[Webhook WA] GET request received for verification.");
