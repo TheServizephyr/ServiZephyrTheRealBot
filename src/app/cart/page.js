@@ -366,6 +366,14 @@ const CartPageInternal = () => {
                                 deliveryPerKmFee: freshSettings.deliveryPerKmFee,
                                 deliveryFreeThreshold: freshSettings.deliveryFreeThreshold,
                                 deliveryCharge: freshSettings.deliveryCharge, // Crucial: Update the calculated charge
+
+                                // Payment Settings (Refresh from server)
+                                deliveryOnlinePaymentEnabled: freshSettings.deliveryOnlinePaymentEnabled,
+                                deliveryCodEnabled: freshSettings.deliveryCodEnabled,
+                                pickupOnlinePaymentEnabled: freshSettings.pickupOnlinePaymentEnabled,
+                                pickupPodEnabled: freshSettings.pickupPodEnabled,
+                                dineInOnlinePaymentEnabled: freshSettings.dineInOnlinePaymentEnabled,
+                                dineInPayAtCounterEnabled: freshSettings.dineInPayAtCounterEnabled,
                             };
 
                             setPackagingConfig({

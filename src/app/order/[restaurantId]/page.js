@@ -896,6 +896,10 @@ const OrderPageInternal = () => {
         dineInModel: 'post-paid',
         dineInOnlinePaymentEnabled: true,
         dineInPayAtCounterEnabled: true,
+        deliveryOnlinePaymentEnabled: true,
+        deliveryCodEnabled: true,
+        pickupOnlinePaymentEnabled: true,
+        pickupPodEnabled: true,
     });
     const [tableStatus, setTableStatus] = useState(null);
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
@@ -1193,8 +1197,13 @@ const OrderPageInternal = () => {
                 const settingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 const settingsData = settingsRes.ok ? await settingsRes.json() : {};
 
-                const onlinePaymentEnabled = settingsData?.onlinePaymentEnabled ?? true;
-                const codEnabled = settingsData?.codEnabled ?? true;
+                // Map specific payment settings (fallback to true if undefined)
+                const deliveryOnlinePaymentEnabled = settingsData.deliveryOnlinePaymentEnabled !== false;
+                const deliveryCodEnabled = settingsData.deliveryCodEnabled !== false;
+                const pickupOnlinePaymentEnabled = settingsData.pickupOnlinePaymentEnabled !== false;
+                const pickupPodEnabled = settingsData.pickupPodEnabled !== false;
+                const dineInOnlinePaymentEnabled = settingsData.dineInOnlinePaymentEnabled !== false;
+                const dineInPayAtCounterEnabled = settingsData.dineInPayAtCounterEnabled !== false;
 
                 const fetchedSettings = {
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -1202,14 +1211,24 @@ const OrderPageInternal = () => {
                     deliveryCharge: menuData.deliveryCharge || 0,
                     deliveryFreeThreshold: menuData.deliveryFreeThreshold,
                     menu: menuData.menu || {}, coupons: menuData.coupons || [],
-                    deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
-                    dineInEnabled: menuData.dineInEnabled, businessAddress: menuData.businessAddress || null,
+
+                    // FIXED: Use fresh settingsData for Order Types (overriding cached menuData)
+                    deliveryEnabled: settingsData.deliveryEnabled !== undefined ? settingsData.deliveryEnabled : menuData.deliveryEnabled,
+                    pickupEnabled: settingsData.pickupEnabled !== undefined ? settingsData.pickupEnabled : menuData.pickupEnabled,
+                    dineInEnabled: settingsData.dineInEnabled !== undefined ? settingsData.dineInEnabled : menuData.dineInEnabled,
+
+                    businessAddress: menuData.businessAddress || null,
                     businessType: menuData.businessType || 'restaurant',
                     dineInModel: menuData.dineInModel || 'post-paid',
-                    dineInOnlinePaymentEnabled: settingsData.dineInOnlinePaymentEnabled !== false,
-                    dineInPayAtCounterEnabled: settingsData.dineInPayAtCounterEnabled !== false,
-                    onlinePaymentEnabled: onlinePaymentEnabled,
-                    codEnabled: codEnabled,
+
+                    // Detailed Payment Settings
+                    deliveryOnlinePaymentEnabled,
+                    deliveryCodEnabled,
+                    pickupOnlinePaymentEnabled,
+                    pickupPodEnabled,
+                    dineInOnlinePaymentEnabled,
+                    dineInPayAtCounterEnabled,
+
                     isOpen: menuData.isOpen === true, // Restaurant open/closed status
                     // Add-on Charges
                     gstEnabled: settingsData.gstEnabled,
@@ -1434,6 +1453,14 @@ const OrderPageInternal = () => {
             dineInModel: restaurantData.dineInModel,
             loyaltyPoints, expiryTimestamp,
             menu: restaurantData.menu, // Save the full menu for availability check
+            // Detailed Payment Settings
+            deliveryOnlinePaymentEnabled: restaurantData.deliveryOnlinePaymentEnabled,
+            deliveryCodEnabled: restaurantData.deliveryCodEnabled,
+            pickupOnlinePaymentEnabled: restaurantData.pickupOnlinePaymentEnabled,
+            pickupPodEnabled: restaurantData.pickupPodEnabled,
+            dineInOnlinePaymentEnabled: restaurantData.dineInOnlinePaymentEnabled,
+            dineInPayAtCounterEnabled: restaurantData.dineInPayAtCounterEnabled,
+
             // Add-on Charges
             gstEnabled: restaurantData.gstEnabled,
             gstRate: restaurantData.gstRate,

@@ -148,6 +148,8 @@ export async function GET(req) {
                 deliveryFreeThreshold: fallback('deliveryFreeThreshold', 500),
                 deliveryRadius: fallback('deliveryRadius', 5),
                 deliveryEnabled: fallback('deliveryEnabled', true),
+                pickupEnabled: fallback('pickupEnabled', true),
+                dineInEnabled: fallback('dineInEnabled', true),
             };
 
             // Fetch active coupons from subcollection
@@ -339,6 +341,15 @@ export async function PATCH(req) {
         // Dine-In Settings (Not moved to delivery-settings yet)
         if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
         if (updates.dineInModel !== undefined) businessUpdateData.dineInModel = updates.dineInModel;
+
+        // Pickup Settings
+        if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
+
+        // Payment Method Settings (Specific per Order Type)
+        if (updates.pickupOnlinePaymentEnabled !== undefined) businessUpdateData.pickupOnlinePaymentEnabled = updates.pickupOnlinePaymentEnabled;
+        if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
+        if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
+        if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
 
         // Handle delivery settings update here IF provided (Legacy support or single-save screens)
         // If frontend sends delivery params to THIS endpoint, we should forward them to sub-collection
