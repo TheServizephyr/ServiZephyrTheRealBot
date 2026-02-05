@@ -871,63 +871,7 @@ const OrderPageInternal = () => {
 
     // ... Lines 902 to 1188 skipped (assume unchanged unless context forces reload) ...
 
-    useEffect(() => {
-        const verifySession = async () => {
-            const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
-            if (isStreetVendorPage && !tableIdFromUrl && !phone && !token && !ref && !activeOrderId) {
-                setIsTokenValid(true);
-                return;
-            }
 
-            if (tableIdFromUrl || activeOrderId) {
-                setIsTokenValid(true);
-                return;
-            }
-
-            // GUEST IDENTITY FLOW (New)
-            if (ref && token) {
-                try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ref, token }),
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    // Success - Cookie is set by backend
-                    setIsTokenValid(true);
-
-                    // Optional: Clean URL?
-                    // const newUrl = new URL(window.location.href);
-                    // newUrl.searchParams.delete('ref');
-                    // newUrl.searchParams.delete('token');
-                    // window.history.replaceState({}, '', newUrl); // Might break refresh if persistent cookie not trusted blindly? user said store in memory.
-
-                } catch (err) {
-                    setTokenError(err.message);
-                }
-                return;
-            }
-
-            // LEGACY FLOW
-            if (phone && token) {
-                try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token }),
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    setIsTokenValid(true);
-                } catch (err) {
-                    setTokenError(err.message);
-                }
-                return;
-            }
-            setTokenError("No valid session information found. Please start a new session.");
-        };
-
-        if (!loading && restaurantData.businessType) {
-            verifySession();
-        }
-    }, [restaurantId, tableIdFromUrl, phone, token, ref, activeOrderId, restaurantData.businessType, loading]);
 
     // ... DineIn Setup (Lines 1224-1379 ignored) ...
     // Note: Can't ignore effectively in replace block without matching content.
@@ -984,6 +928,65 @@ const OrderPageInternal = () => {
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
     const [isEditingModal, setIsEditingModal] = useState(false);
+
+    useEffect(() => {
+        const verifySession = async () => {
+            // FIX: Ensure restaurantData is available
+            if (!restaurantData || !restaurantData.businessType) return;
+
+            const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
+            if (isStreetVendorPage && !tableIdFromUrl && !phone && !token && !ref && !activeOrderId) {
+                setIsTokenValid(true);
+                return;
+            }
+
+            if (tableIdFromUrl || activeOrderId) {
+                setIsTokenValid(true);
+                return;
+            }
+
+            // GUEST IDENTITY FLOW (New)
+            if (ref && token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ref, token }),
+                    });
+
+                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+
+                    setTokenError(null);
+                    setIsTokenValid(true);
+                } catch (err) {
+                    setTokenError(err.message);
+                }
+                return;
+            }
+
+            // LEGACY FLOW
+            if (phone && token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token }),
+                    });
+                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    setTokenError(null);
+                    setIsTokenValid(true);
+                } catch (err) {
+                    setTokenError(err.message);
+                }
+                return;
+            }
+            console.log(`[OrderPage] No valid session info found. Check failed.`);
+
+            setTokenError("No valid session information found. Please start a new session.");
+        };
+
+        if (!loading && restaurantData.businessType) {
+            verifySession();
+        }
+    }, [restaurantId, tableIdFromUrl, phone, token, ref, activeOrderId, restaurantData.businessType, loading]);
 
 
 
@@ -1232,39 +1235,7 @@ const OrderPageInternal = () => {
     }, [restaurantId, phone, fetchKey]); // Added fetchKey to force re-fetch on mount
 
 
-    useEffect(() => {
-        const verifySession = async () => {
-            const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
-            if (isStreetVendorPage && !tableIdFromUrl && !phone && !token && !activeOrderId) {
-                setIsTokenValid(true);
-                return;
-            }
 
-            if (tableIdFromUrl || activeOrderId) {
-                setIsTokenValid(true);
-                return;
-            }
-
-            if (phone && token) {
-                try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token }),
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    setIsTokenValid(true);
-                } catch (err) {
-                    setTokenError(err.message);
-                }
-                return;
-            }
-            setTokenError("No valid session information found. Please start a new session.");
-        };
-
-        if (!loading && restaurantData.businessType) {
-            verifySession();
-        }
-    }, [restaurantId, tableIdFromUrl, phone, token, activeOrderId, restaurantData.businessType, loading]);
 
     useEffect(() => {
         const handleDineInSetup = async () => {
@@ -1637,29 +1608,32 @@ const OrderPageInternal = () => {
 
     const handleCheckout = () => {
         const params = new URLSearchParams();
-        if (restaurantId) params.append('restaurantId', restaurantId);
+        if (restaurantId) params.set('restaurantId', restaurantId);
 
         // Pass GUEST Identity
-        if (ref) params.append('ref', ref);
+        if (ref) params.set('ref', ref);
         // Pass Phone (Legacy - fallback)
-        if (phone && !ref) params.append('phone', phone);
+        if (phone && !ref) params.set('phone', phone);
 
-        if (token) params.append('token', token);
-        if (tableIdFromUrl) params.append('table', tableIdFromUrl);
+        if (token) params.set('token', token);
+        if (tableIdFromUrl) params.set('table', tableIdFromUrl);
 
         // Use tabIdFromUrl (from Add More button) if present, otherwise use activeTabInfo.id
         if (deliveryType === 'dine-in') {
             const tabId = tabIdFromUrl || activeTabInfo.id;
             if (tabId) {
-                params.append('tabId', tabId);
+                params.set('tabId', tabId);
             }
         }
         // ✅ Keep liveOrder for Track button (works for ALL business types)
         // - For street vendors: Shows LATEST order, track page has tabs for all orders
         // - For restaurants: Can be used for add-on orders
         if (liveOrder && liveOrder.restaurantId === restaurantId) {
-            params.append('activeOrderId', liveOrder.orderId);
-            params.append('token', liveOrder.trackingToken);
+            params.set('activeOrderId', liveOrder.orderId);
+            // Overwrite/Ensure the token matches the active order if present, or just use it.
+            // Using 'set' avoids duplicates.
+            const activeToken = liveOrder.trackingToken || token;
+            if (activeToken) params.set('token', activeToken);
         }
 
         const url = `/cart?${params.toString()}`;

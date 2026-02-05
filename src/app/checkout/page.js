@@ -143,8 +143,45 @@ const CheckoutPageInternal = () => {
     const [detailsConfirmed, setDetailsConfirmed] = useState(false);
     const [activeOrderId, setActiveOrderId] = useState(searchParams.get('activeOrderId'));
 
-    // ... (Bundling & Payment state unchanged) ...
-    // ... Skipping to useEffect ...
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+    const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState('full'); // 'full' or 'split'
+    const [paymentGateway, setPaymentGateway] = useState('razorpay'); // 'razorpay', 'phonepe'
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    const [orderState, setOrderState] = useState(ORDER_STATE.IDLE);
+    const [orderError, setOrderError] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [idempotencyKey, setIdempotencyKey] = useState('');
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+
+    const [vendorCharges, setVendorCharges] = useState({
+        gstEnabled: false, gstRate: 5, gstMinAmount: 0,
+        convenienceFeeEnabled: false, convenienceFeeRate: 2.5, convenienceFeePaidBy: 'customer', convenienceFeeLabel: 'Payment Fee',
+        packagingChargeEnabled: false, packagingChargeAmount: 0
+    });
+
+    const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null);
+    const [isDineInModalOpen, setDineInModalOpen] = useState(false);
+
+
+
+    // Initialize Idempotency Key (Persist across reloads)
+    useEffect(() => {
+        try {
+            const storedKey = localStorage.getItem('current_order_key');
+            if (storedKey) {
+                setIdempotencyKey(storedKey);
+            } else {
+                const newKey = uuidv4();
+                localStorage.setItem('current_order_key', newKey);
+                setIdempotencyKey(newKey);
+            }
+        } catch (e) {
+            // Fallback for private mode or storage errors
+            const newKey = uuidv4();
+            setIdempotencyKey(newKey);
+        }
+    }, []);
 
     useEffect(() => {
         console.log("[Checkout Page] Component mounting. isUserLoading:", isUserLoading);
@@ -174,6 +211,7 @@ const CheckoutPageInternal = () => {
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
                 try {
+                    console.log(`[Checkout Page] Verifying Session. Ref: ${ref ? 'Yes' : 'No'}, Phone: ${phoneFromUrl ? 'Yes' : 'No'}`);
                     // Normalize verification payload
                     const verifyPayload = ref ? { ref, token } : { phone: phoneFromUrl, token };
                     const res = await fetch('/api/auth/verify-token', {
@@ -182,9 +220,15 @@ const CheckoutPageInternal = () => {
                         body: JSON.stringify(verifyPayload)
                     });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+
                     setIsTokenValid(true);
+                    setTokenError(null); // Clear any previous errors
+                    console.log("[Checkout Page] Session Verified Successfully.");
                 } catch (err) {
-                    setTokenError(err.message); setLoading(false); return;
+                    console.error("[Checkout Page] Session Verification Failed:", err);
+                    setTokenError(err.message);
+                    setLoading(false);
+                    return;
                 }
             }
             else {
@@ -301,7 +345,7 @@ const CheckoutPageInternal = () => {
                 }
 
                 if (deliveryType === 'delivery' && !activeOrderId) {
-                    setDetailsConfirmed(false);
+                    // setDetailsConfirmed(false); // FIXED: Removed to prevent resetting Step 2 -> Step 1 on re-renders
                 }
             } catch (err) {
                 setError('Failed to load checkout details. Please try again.');
@@ -319,8 +363,13 @@ const CheckoutPageInternal = () => {
 
 
     // ... (Bundling logic unchanged) ...
-    // ... const deliveryType ...
-    // ... const diningPreference ...
+
+    const deliveryType = useMemo(() => {
+        if (tableId) return 'dine-in';
+        return cartData?.deliveryType || 'delivery';
+    }, [tableId, cartData]);
+
+    const diningPreference = cartData?.diningPreference || 'dine-in';
 
     const handleAddNewAddress = () => {
         const params = new URLSearchParams(searchParams.toString());
@@ -469,6 +518,15 @@ const CheckoutPageInternal = () => {
         };
     }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, bundlingOrderDetails, selectedAddress]);
 
+    const fullOrderDetailsForSplit = useMemo(() => ({
+        restaurantId,
+        grandTotal,
+        items: cart,
+        tableId,
+        tabId,
+        activeOrderId
+    }), [restaurantId, grandTotal, cart, tableId, tabId, activeOrderId]);
+
     const handleAddMoreToTab = () => {
         const params = new URLSearchParams({
             restaurantId,
@@ -501,15 +559,17 @@ const CheckoutPageInternal = () => {
 
         const orderData = {
             idempotencyKey,
-            name: orderName,
-            phone: orderPhone,
+            name: orderName || selectedAddress?.name || '',
+            phone: orderPhone || selectedAddress?.phone || '',
             restaurantId,
             items: cart,
             notes: cartData.notes,
             coupon: appliedCoupons.find(c => !c.customerId) || null,
             loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: effectivePaymentMethod,
-            deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
-            businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
+            deliveryType: deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
+            businessType: cartData.businessType || 'restaurant',
+            tableId: (deliveryType === 'dine-in') ? (tableId || cartData.tableId) : null,
+            dineInTabId: (deliveryType === 'dine-in') ? (tabId || cartData.dineInTabId) : null,
             pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress,
             // Pass Guest Identity
             guestRef: ref || null, // Pass the obfuscated ref if available
@@ -782,10 +842,12 @@ const CheckoutPageInternal = () => {
                         }
 
                         // FIXED: Use central router for all flows
+                        // FIXED: Use central router for all flows
                         const phoneParam = phoneFromUrl ? `&phone=${phoneFromUrl}` : '';
+                        const refParam = ref ? `&ref=${ref}` : ''; // Checked ref scope
                         const trackingUrl = (orderData.deliveryType === 'dine-in' && !!tableId)
-                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${phoneParam}`
-                            : `/track/${data.firestore_order_id}?token=${data.token}${phoneParam}`;
+                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${phoneParam}${refParam}`
+                            : `/track/${data.firestore_order_id}?token=${data.token}${phoneParam}${refParam}`;
                         router.replace(trackingUrl);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
@@ -820,7 +882,7 @@ const CheckoutPageInternal = () => {
 
                     // ✅ Route to NEW order (not old activeOrderId!)
                     const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
-                    const redirectUrl = `/track/${trackingPath}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                    const redirectUrl = `/track/${trackingPath}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`;
 
                     // SAVE ACTIVE ORDER FOR TRACKING BUTTON (ARRAY SUPPORT)
                     if (typeof window !== 'undefined') {
@@ -870,7 +932,7 @@ const CheckoutPageInternal = () => {
                 } else {
                     // Direct routing based on business type
                     const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
-                    router.replace(`/track/${trackingPath}/${data.firestore_order_id}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
+                    router.replace(`/track/${trackingPath}/${data.firestore_order_id}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`);
                 }
             }
         } catch (err) {
@@ -930,11 +992,7 @@ const CheckoutPageInternal = () => {
         }
     }
 
-    const fullOrderDetailsForSplit = {
-        grandTotal,
-        firestore_order_id: activeOrderId || `temp_${Date.now()}`,
-        restaurantId
-    };
+
 
     const renderPaymentOptions = () => {
         if (isSplitBillActive) {
@@ -1439,7 +1497,7 @@ const CheckoutPageInternal = () => {
                                     selectedPaymentMethod === 'counter' ? (
                                         <Button
                                             onClick={handlePayAtCounter}
-                                            disabled={isProcessingPayment || (!activeOrderId && (!orderName.trim() || (selectedPaymentMethod === 'counter' && !orderPhone.trim())))}
+                                            disabled={isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : (!orderName.trim() || (selectedPaymentMethod === 'counter' && !orderPhone.trim()))))}
                                             className="w-full h-14 text-lg"
                                         >
                                             {isProcessingPayment ? <Loader2 className="animate-spin" /> : 'Place Order'}
@@ -1454,7 +1512,7 @@ const CheckoutPageInternal = () => {
                                                         setIsSplitBillActive(true);
                                                     }
                                                 }}
-                                                disabled={isProcessingPayment || (!activeOrderId && !orderName.trim())}
+                                                disabled={isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : !orderName.trim()))}
                                                 className="w-full h-14 text-lg"
                                             >
                                                 {isProcessingPayment ? <Loader2 className="animate-spin" /> :

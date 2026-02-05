@@ -26,16 +26,16 @@ export async function GET(req) {
         const firestore = await getFirestore();
         const userRef = firestore.collection('users').doc(uid);
         const docSnap = await userRef.get();
-        
+
         if (!docSnap.exists) {
-             console.warn(`[API][user/addresses] User document not found for UID: ${uid}.`);
-             return NextResponse.json({ addresses: [] }, { status: 200 });
+            console.warn(`[API][user/addresses] User document not found for UID: ${uid}.`);
+            return NextResponse.json({ addresses: [] }, { status: 200 });
         }
-        
+
         console.log(`[API][user/addresses] User document found for UID: ${uid}.`);
         const userData = docSnap.data();
         const addresses = userData.addresses || [];
-        
+
         console.log(`[API][user/addresses] Found ${addresses.length} addresses for user.`);
         return NextResponse.json({ addresses }, { status: 200 });
     } catch (error) {
@@ -49,33 +49,64 @@ export async function GET(req) {
 export async function POST(req) {
     console.log("[API][user/addresses] POST request received.");
     try {
-        const { address, phone } = await req.json(); // Expect phone number from the client
+        const { address, phone, ref, guestId: explicitGuestId } = await req.json(); // Expect phone number from the client
+
+        // Retrieve Guest ID from Cookie
+        const cookieStore = require('next/headers').cookies();
+        const sessionCookie = cookieStore.get('auth_guest_session');
+        let guestId = sessionCookie?.value || explicitGuestId;
+
+        // Also support de-obfuscation if ref is passed
+        /* 
+           Note: If we imported deobfuscateGuestId here, we could use ref directly. 
+           For now, we rely on the secure httpOnly cookie set by verify-token.
+        */
 
         if (!address || !address.id || !address.full || typeof address.latitude !== 'number' || typeof address.longitude !== 'number') {
             console.error("[API][user/addresses] POST validation failed: Invalid address data provided.", address);
             return NextResponse.json({ message: 'Invalid address data. A full address and location coordinates are required.' }, { status: 400 });
         }
-        
+
         if (!phone) {
-             return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
+            return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
         }
 
         const firestore = await getFirestore();
         let targetRef;
-        const normalizedPhone = phone.slice(-10);
 
-        const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
+        // 1. Check for Guest Profile First
+        if (guestId) {
+            console.log(`[API][user/addresses] Guest Session Detected: ${guestId}`);
+            targetRef = firestore.collection('guest_profiles').doc(guestId);
 
-        if (!userQuery.empty) {
-            targetRef = userQuery.docs[0].ref;
-            console.log(`[API][user/addresses] Found existing verified user for phone ${normalizedPhone}. Saving to UID: ${targetRef.id}.`);
-        } else {
-            targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-            console.log(`[API][user/addresses] No verified user found. Saving to 'unclaimed_profiles' for phone: ${normalizedPhone}.`);
+            // Verify existence
+            const guestSnap = await targetRef.get();
+            if (!guestSnap.exists) {
+                console.warn(`[API][user/addresses] Guest profile ${guestId} not found, falling back to phone lookup.`);
+                targetRef = null;
+            } else {
+                console.log(`[API][user/addresses] Saving to Guest Profile: ${guestId}`);
+            }
+        }
+
+        // 2. Fallback to Phone/User Lookup if no Guest ID or Guest ID invalid
+        if (!targetRef) {
+            const normalizedPhone = phone.slice(-10);
+            const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
+
+            if (!userQuery.empty) {
+                targetRef = userQuery.docs[0].ref;
+                console.log(`[API][user/addresses] Found existing verified user for phone ${normalizedPhone}. Saving to UID: ${targetRef.id}.`);
+            } else {
+                targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+                console.log(`[API][user/addresses] No verified user found. Saving to 'unclaimed_profiles' for phone: ${normalizedPhone}.`);
+            }
         }
 
         await targetRef.set({
-            addresses: FieldValue.arrayUnion(address)
+            addresses: FieldValue.arrayUnion(address),
+            // Update phone on profile if missing
+            phone: phone
         }, { merge: true });
 
         console.log(`[API][user/addresses] Address added successfully to document: ${targetRef.path}.`);
@@ -101,7 +132,7 @@ export async function DELETE(req) {
         }
 
         let targetRef;
-        
+
         // Scenario 1: Request is from a WhatsApp user, identified by phone number
         if (phone) {
             const normalizedPhone = phone.slice(-10);
@@ -115,7 +146,7 @@ export async function DELETE(req) {
                 targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
                 console.log(`[API][user/addresses] No verified user, checking unclaimed profile for phone: ${normalizedPhone}`);
             }
-        } 
+        }
         // Scenario 2: Request is from a logged-in user, identified by ID token
         else {
             const uid = await getUserIdFromToken(req);
@@ -128,21 +159,21 @@ export async function DELETE(req) {
 
         const docSnap = await targetRef.get();
         if (!docSnap.exists) {
-             console.warn(`[API][user/addresses] DELETE failed: User document not found at path: ${targetRef.path}.`);
+            console.warn(`[API][user/addresses] DELETE failed: User document not found at path: ${targetRef.path}.`);
             return NextResponse.json({ message: 'User profile not found.' }, { status: 404 });
         }
-        
+
         const userData = docSnap.data();
         const currentAddresses = userData.addresses || [];
-        
+
         const addressExists = currentAddresses.some(addr => addr.id === addressId);
         if (!addressExists) {
-             console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in profile for document: ${targetRef.path}.`);
+            console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in profile for document: ${targetRef.path}.`);
             return NextResponse.json({ message: 'Address not found in user profile.' }, { status: 404 });
         }
 
         const updatedAddresses = currentAddresses.filter(addr => addr.id !== addressId);
-        
+
         console.log(`[API][user/addresses] Attempting to remove address ID ${addressId} for document ${targetRef.path}.`);
         await targetRef.update({
             addresses: updatedAddresses

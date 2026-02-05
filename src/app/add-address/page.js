@@ -14,9 +14,9 @@ import { Textarea } from '@/components/ui/textarea';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
-const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
+const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
     ssr: false,
-    loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
+    loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>
 });
 
 const TokenVerificationLock = ({ message }) => (
@@ -33,7 +33,7 @@ const AddAddressPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const geocodeTimeoutRef = useRef(null);
-    
+
     const { user, isUserLoading } = useUser();
 
     // Security State
@@ -49,7 +49,7 @@ const AddAddressPageInternal = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    
+
     const [recipientName, setRecipientName] = useState('');
     const [recipientPhone, setRecipientPhone] = useState('');
     const [fullAddress, setFullAddress] = useState('');
@@ -68,14 +68,14 @@ const AddAddressPageInternal = () => {
             }
 
             const tokenToUse = token && token.trim() !== '' ? token : null;
-            
+
             if (tokenToUse) {
                 if (!phone) {
                     setTokenError("A phone number is required with the session token.");
                     setLoading(false);
                     return;
                 }
-                 try {
+                try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone: phone, token: tokenToUse }),
@@ -89,23 +89,23 @@ const AddAddressPageInternal = () => {
                     setLoading(false);
                     return;
                 }
-            } 
+            }
             else if (!isUserLoading) {
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
                 return;
             }
-             
+
             if (!isUserLoading) {
                 setIsTokenValid(true);
             }
         };
-        
+
         if (!isUserLoading) {
-           verifyToken();
+            verifyToken();
         }
     }, [tableId, phone, token, user, isUserLoading]);
-    
+
     const reverseGeocode = useCallback(async (coords) => {
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
         geocodeTimeoutRef.current = setTimeout(async () => {
@@ -115,12 +115,12 @@ const AddAddressPageInternal = () => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
                 setAddressDetails({
-                    street: data.street || '', 
+                    street: data.street || '',
                     city: data.city || data.town || data.village || '',
-                    pincode: data.pincode || '', 
-                    state: data.state || '', 
+                    pincode: data.pincode || '',
+                    state: data.state || '',
                     country: data.country || 'IN',
-                    latitude: coords.lat, 
+                    latitude: coords.lat,
                     longitude: coords.lng
                 });
                 setFullAddress(data.formatted_address || '');
@@ -150,42 +150,63 @@ const AddAddressPageInternal = () => {
         );
     }, [reverseGeocode]);
 
+    // Separate effect for initial data prefill to prevent overwriting user input
     useEffect(() => {
+        let isMounted = true;
         const prefillData = async () => {
+            // 1. Prefer Phone from URL (Guest/WhatsApp Link)
             const phoneToUse = phone || user?.phoneNumber;
-            
+
             if (phoneToUse) {
-                setRecipientPhone(phoneToUse);
-                 try {
-                    const res = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToUse }) });
-                    if (res.ok) {
+                setRecipientPhone(prev => prev || phoneToUse); // Only set if empty
+                try {
+                    const res = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneToUse })
+                    });
+                    if (res.ok && isMounted) {
                         const customerData = await res.json();
-                        setRecipientName(customerData.name || '');
+                        setRecipientName(prev => prev || customerData.name || '');
                     }
                 } catch (e) {
                     console.warn("Could not prefill name from customer lookup:", e);
                 }
-            } 
-            if (user && !recipientName) {
-                setRecipientName(user.displayName || '');
+            }
+
+            // 2. Fallback to User Display Name
+            if (user && isMounted) {
+                setRecipientName(prev => {
+                    // Don't overwrite if already set (e.g. from lookup)
+                    if (prev) return prev;
+                    return user.displayName || '';
+                });
             }
         };
-        
+
         if (isTokenValid) {
             prefillData();
+        }
+
+        return () => { isMounted = false; };
+    }, [isTokenValid, user, phone]); // Removed addressDetails dependencies
+
+    // Effect for Geolocation (Separated)
+    useEffect(() => {
+        if (isTokenValid) {
             if (useCurrent && !addressDetails) {
                 getCurrentGeolocation();
             } else if (!addressDetails) {
-                reverseGeocode(mapCenter);
+                reverseGeocode(mapCenter); // Initial reverse geocode for center
             }
         }
-    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode, addressDetails, recipientName]);
+    }, [isTokenValid, useCurrent, getCurrentGeolocation, reverseGeocode]); // Removed addressDetails to prevent loops
 
 
     const handleConfirmLocation = async () => {
         if (!addressDetails || !recipientName.trim() || !recipientPhone.trim() || !fullAddress.trim()) {
-             setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, and the complete address." });
-             return;
+            setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, and the complete address." });
+            return;
         }
         if (!/^\d{10}$/.test(recipientPhone.trim())) {
             setInfoDialog({ isOpen: true, title: "Error", message: "Please enter a valid 10-digit phone number." });
@@ -193,25 +214,25 @@ const AddAddressPageInternal = () => {
         }
 
         setIsSaving(true);
-        
+
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
-        
+
         const addressToSave = {
-            id: `addr_${Date.now()}`, 
-            label: finalLabel, 
-            name: recipientName.trim(), 
+            id: `addr_${Date.now()}`,
+            label: finalLabel,
+            name: recipientName.trim(),
             phone: recipientPhone.trim(),
-            street: addressDetails.street, 
-            landmark: landmark.trim(), 
-            city: addressDetails.city, 
+            street: addressDetails.street,
+            landmark: landmark.trim(),
+            city: addressDetails.city,
             state: addressDetails.state,
-            pincode: addressDetails.pincode, 
-            country: addressDetails.country, 
+            pincode: addressDetails.pincode,
+            country: addressDetails.country,
             full: fullAddress.trim(),
-            latitude: parseFloat(addressDetails.latitude), 
+            latitude: parseFloat(addressDetails.latitude),
             longitude: parseFloat(addressDetails.longitude),
         };
-        
+
         localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
 
         try {
@@ -220,6 +241,9 @@ const AddAddressPageInternal = () => {
             const apiPayload = {
                 address: addressToSave,
                 phone: sessionIdentifierPhone,
+                // Pass Guest Identifiers for V2 Flow
+                ref: searchParams.get('ref'),
+                token: token
             };
 
             const headers = { 'Content-Type': 'application/json' };
@@ -238,7 +262,7 @@ const AddAddressPageInternal = () => {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to save address.');
             }
-            
+
             router.push(returnUrl);
 
         } catch (err) {
@@ -247,13 +271,13 @@ const AddAddressPageInternal = () => {
             setIsSaving(false);
         }
     };
-    
+
     if (tokenError) {
         return <TokenVerificationLock message={tokenError} />;
     }
-    
+
     if (!isTokenValid) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
 
 
@@ -261,47 +285,47 @@ const AddAddressPageInternal = () => {
         <div className="h-screen w-screen flex flex-col bg-background text-foreground">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
-                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft/></Button>
-                 <h1 className="text-xl font-bold">Add Address Details</h1>
+                <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft /></Button>
+                <h1 className="text-xl font-bold">Add Address Details</h1>
             </header>
 
             <div className="flex-grow flex flex-col md:flex-row">
                 <div className="md:w-1/2 h-64 md:h-full flex-shrink-0 relative">
-                     <GoogleMap center={mapCenter} onIdle={handleMapIdle} />
+                    <GoogleMap center={mapCenter} onIdle={handleMapIdle} />
                 </div>
-                
+
                 <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
                     <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-foreground hover:bg-muted" onClick={getCurrentGeolocation} disabled={loading && error.includes('Fetching')}>
-                       {(loading && error.includes('Fetching')) ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
-                   </Button>
-                     {loading && !addressDetails ? (
-                         <div className="flex items-center justify-center gap-3 p-4">
-                             <Loader2 className="animate-spin text-primary"/>
-                             <span className="text-muted-foreground">{error || 'Fetching address details...'}</span>
-                         </div>
-                     ) : error && !addressDetails ? (
-                         <div className="text-destructive text-center font-semibold p-4 bg-destructive/10 rounded-lg flex items-center justify-center gap-2">
-                             <AlertTriangle size={16}/> {error}
-                         </div>
-                     ) : addressDetails ? (
-                         <motion.div initial={{opacity:0}} animate={{opacity:1}} className="space-y-4">
+                        {(loading && error.includes('Fetching')) ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
+                    </Button>
+                    {loading && !addressDetails ? (
+                        <div className="flex items-center justify-center gap-3 p-4">
+                            <Loader2 className="animate-spin text-primary" />
+                            <span className="text-muted-foreground">{error || 'Fetching address details...'}</span>
+                        </div>
+                    ) : error && !addressDetails ? (
+                        <div className="text-destructive text-center font-semibold p-4 bg-destructive/10 rounded-lg flex items-center justify-center gap-2">
+                            <AlertTriangle size={16} /> {error}
+                        </div>
+                    ) : addressDetails ? (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
                             <div>
                                 <Label htmlFor="fullAddress">Complete Address *</Label>
-                                 <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} placeholder="e.g. House No. 42, Shivam Vihar, Near Post Office" required rows={3} className="mt-1" />
+                                <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} placeholder="e.g. House No. 42, Shivam Vihar, Near Post Office" required rows={3} className="mt-1" />
                                 <p className="text-xs text-muted-foreground mt-1">Drag the map pin to get the address, then edit it here if needed.</p>
                             </div>
-                             <div><Label htmlFor="landmark">Landmark (Optional)</Label><Input id="landmark" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder="e.g., Near Post Office" /></div>
-                             <div className="grid grid-cols-2 gap-4">
+                            <div><Label htmlFor="landmark">Landmark (Optional)</Label><Input id="landmark" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder="e.g., Near Post Office" /></div>
+                            <div className="grid grid-cols-2 gap-4">
                                 <div><Label htmlFor="recipientName">Contact Person *</Label><Input id="recipientName" value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Your Name" required /></div>
                                 <div><Label htmlFor="recipientPhone">Contact Number *</Label><Input id="recipientPhone" type="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} placeholder="10-digit number" required /></div>
                             </div>
                             <div>
                                 <Label>Save address as</Label>
-                                 <div className="flex items-start flex-wrap gap-2 mt-2">
-                                     <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2"/> Home</Button>
-                                     <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2"/> Work</Button>
-                                     <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
-                                     <AnimatePresence>
+                                <div className="flex items-start flex-wrap gap-2 mt-2">
+                                    <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2" /> Home</Button>
+                                    <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2" /> Work</Button>
+                                    <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2" /> Other</Button>
+                                    <AnimatePresence>
                                         {addressLabel === 'Other' && (
                                             <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 'auto', opacity: 1 }} exit={{ width: 0, opacity: 0 }} className="overflow-hidden">
                                                 <Input type="text" value={customAddressLabel} onChange={e => setCustomAddressLabel(e.target.value)} placeholder="Custom Label (e.g., Gym)" className="h-9" />
@@ -312,11 +336,11 @@ const AddAddressPageInternal = () => {
                             </div>
                             <div className="p-4 border-t border-border mt-4">
                                 <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
-                                    {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2"/>} {isSaving ? 'Saving...' : 'Save Address & Continue'}
+                                    {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
                                 </Button>
                             </div>
-                         </motion.div>
-                     ) : null}
+                        </motion.div>
+                    ) : null}
                 </div>
             </div>
         </div>
@@ -324,8 +348,8 @@ const AddAddressPageInternal = () => {
 };
 
 const AddAddressPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>}>
-       <AddAddressPageInternal/>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
+        <AddAddressPageInternal />
     </Suspense>
 );
 

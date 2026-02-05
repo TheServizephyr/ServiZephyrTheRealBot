@@ -181,6 +181,7 @@ const CartPageInternal = () => {
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
+    const ref = searchParams.get('ref'); // CAPTURE REF (Guest ID)
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
 
@@ -260,17 +261,27 @@ const CartPageInternal = () => {
                 console.log(`[Cart Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : activeOrderId ? 'Add-on Order' : 'Anonymous Pre-order'}`);
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
-                console.log("[Cart Page] Phone and token found in URL. Verifying with API...");
+                console.log("[Cart Page] Verifying WhatsApp Session (Phone/Ref + Token)...");
                 try {
+                    // Ref support assumes phone might be ref if using shared logic or separate params
+                    const verifyPayload = { phone, token }; // Cart currently only reads phone/token params.
+
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token }),
+                        body: JSON.stringify(verifyPayload),
                     });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    console.log("[Cart Page] API verification successful. Token is valid.");
+
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        console.error(`[Cart Page] Token verification FAILED. Status: ${res.status}`, errData);
+                        throw new Error(errData.message || "Session validation failed.");
+                    }
+
+                    console.log("[Cart Page] Token verification SUCCESS! Access granted.");
                     setIsTokenValid(true);
+                    setTokenError(null);
                 } catch (err) {
-                    console.error("[Cart Page] Token verification failed:", err.message);
+                    console.error("[Cart Page] Token verification ERROR:", err);
                     setTokenError(err.message);
                     setLoadingPage(false);
                 }
@@ -652,6 +663,7 @@ const CartPageInternal = () => {
     const handleGoBack = () => {
         const params = new URLSearchParams();
         if (restaurantId) params.append('restaurantId', restaurantId);
+        if (ref) params.append('ref', ref); // Pass Ref back
         if (phone) params.append('phone', phone);
         if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);

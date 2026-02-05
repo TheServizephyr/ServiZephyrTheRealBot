@@ -339,16 +339,16 @@ export async function POST(request) {
 
                 console.log(`  > Processing Status: ${status} for WAMID: ${messageId}`);
 
-                // Shadow Logging for Debugging (Fire & Forget)
-                const debugRef = firestore.collection('_debug_whatsapp_statuses').doc(messageId + "_" + status);
-                debugRef.set({
-                    wamid: messageId,
-                    status: status,
-                    recipientId: recipientId,
-                    customerPhone: customerPhone,
-                    timestamp: FieldValue.serverTimestamp(),
-                    raw: JSON.stringify(statusUpdate)
-                }).catch(e => console.error("Debug log failed", e));
+                // Shadow Logging for Debugging (Disabled for Production)
+                // const debugRef = firestore.collection('_debug_whatsapp_statuses').doc(messageId + "_" + status);
+                // debugRef.set({
+                //     wamid: messageId,
+                //     status: status,
+                //     recipientId: recipientId,
+                //     customerPhone: customerPhone,
+                //     timestamp: FieldValue.serverTimestamp(),
+                //     raw: JSON.stringify(statusUpdate)
+                // }).catch(e => console.error("Debug log failed", e));
 
                 if (business) {
                     // Update status with Retry Logic

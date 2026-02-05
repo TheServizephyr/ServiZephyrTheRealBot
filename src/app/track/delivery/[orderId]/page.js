@@ -302,9 +302,12 @@ function OrderTrackingContent() {
                 const token = searchParams.get('token');
                 const phone = searchParams.get('phone');
                 let targetUrl = `/order/${restaurantId}`;
-                const params = new URLSearchParams();
+                if (params.toString()) targetUrl += `?${params.toString()}`;
+
+                const ref = searchParams.get('ref'); // CAPTURE REF
                 if (token) params.set('token', token);
                 if (phone) params.set('phone', phone);
+                if (ref) params.set('ref', ref); // ADD REF
                 // Important: Don't pass activeOrderId if we are just going back, OR pass it if we want to keep one active. 
                 // Given the new "Multi-Order" flow, we might NOT want to lock the menu to this order.
                 // But for safety, let's keep the params clean.
@@ -469,11 +472,11 @@ function OrderTrackingContent() {
                     <Button
                         onClick={() => {
                             if (orderData?.restaurant?.id) {
-                                const params = new URLSearchParams();
-                                const token = searchParams.get('token');
                                 const phone = searchParams.get('phone');
+                                const ref = searchParams.get('ref');
                                 if (token) params.set('token', token);
                                 if (phone) params.set('phone', phone);
+                                if (ref) params.set('ref', ref);
                                 router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
                             }
                         }}
@@ -500,11 +503,11 @@ function OrderTrackingContent() {
                     <Button
                         onClick={() => {
                             if (orderData?.restaurant?.id) {
-                                const params = new URLSearchParams();
-                                const token = searchParams.get('token');
                                 const phone = searchParams.get('phone');
+                                const ref = searchParams.get('ref');
                                 if (token) params.set('token', token);
                                 if (phone) params.set('phone', phone);
+                                if (ref) params.set('ref', ref);
                                 router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
                             }
                         }}
@@ -539,8 +542,10 @@ function OrderTrackingContent() {
                                             const phone = searchParams.get('phone');
                                             let targetUrl = `/order/${orderData.restaurant.id}`;
                                             const params = new URLSearchParams();
+                                            const ref = searchParams.get('ref'); // CAPTURE REF
                                             if (token) params.set('token', token);
                                             if (phone) params.set('phone', phone);
+                                            if (ref) params.set('ref', ref); // ADD REF
                                             // FIXED: Pass activeOrderId to preserve bundled session state
                                             if (currentOrderId) params.set('activeOrderId', currentOrderId);
 
