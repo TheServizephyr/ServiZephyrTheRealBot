@@ -198,7 +198,10 @@ const CartPageInternal = () => {
     const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
     const [loadingPage, setLoadingPage] = useState(true);
 
-    const activeOrderId = searchParams.get('activeOrderId') || searchParams.get('bundlingRef');
+    // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+    // const activeOrderId = searchParams.get('activeOrderId') || searchParams.get('bundlingRef');
+    const activeOrderId = null; // Bundling disabled
+    // ========== END BUNDLING FEATURE ==========
     const [liveOrder, setLiveOrder] = useState(null);
 
     const [outOfStockItems, setOutOfStockItems] = useState([]);
@@ -217,6 +220,8 @@ const CartPageInternal = () => {
             setLiveOrder({ orderId: activeOrderId, trackingToken: token });
         }
 
+        // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+        /*
         // NEW: Fetch active order details for Bundling Logic
         if (activeOrderId) {
             console.log("[Cart Page] Fetching active order details for bundling check:", activeOrderId);
@@ -230,6 +235,8 @@ const CartPageInternal = () => {
                 })
                 .catch(err => console.error("[Cart Page] Failed to fetch active order:", err));
         }
+        */
+        // ========== END BUNDLING FEATURE ==========
     }, [activeOrderId, token, restaurantId]);
 
     useEffect(() => {
@@ -589,6 +596,8 @@ const CartPageInternal = () => {
 
         const params = new URLSearchParams(searchParams.toString());
 
+        // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+        /*
         // SMART BUNDLING: For delivery, we DO NOT pass activeOrderId (avoids legacy merge).
         // Instead, we pass 'bundlingRef' so Checkout can validate 10-min rule.
         if (deliveryType === 'delivery' && params.get('activeOrderId')) {
@@ -596,6 +605,8 @@ const CartPageInternal = () => {
             params.delete('activeOrderId');
             params.append('bundlingRef', aId);
         }
+        */
+        // ========== END BUNDLING FEATURE ==========
 
         let checkoutUrl = `/checkout?${params.toString()}`;
 
@@ -669,6 +680,8 @@ const CartPageInternal = () => {
         }
     };
 
+    // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+    /*
     // SMART BUNDLING LOGIC (10-Minute Rule)
     const isBundleEligible = useMemo(() => {
         if (!activeOrderDetails || !activeOrderDetails.createdAt) return false;
@@ -690,6 +703,9 @@ const CartPageInternal = () => {
 
         return diffMinutes <= 10 && isStatusEligible;
     }, [activeOrderDetails]);
+    */
+    const isBundleEligible = false; // Bundling disabled
+    // ========== END BUNDLING FEATURE ==========
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
@@ -732,11 +748,11 @@ const CartPageInternal = () => {
     const finalDeliveryCharge = useMemo(() => {
         if (deliveryType === 'pickup' || deliveryType === 'dine-in' || !cartData || deliveryType === 'street-vendor-pre-order') return 0;
 
-        // Smart Bundling: If eligible, waive delivery fee
-        if (isBundleEligible && cartData.deliveryCharge > 0) return 0;
+        // ========== BUNDLING FEATURE DISABLED ==========
+        // if (isBundleEligible && cartData.deliveryCharge > 0) return 0;
 
         return isDeliveryFree ? 0 : (cartData.deliveryCharge || 0);
-    }, [isDeliveryFree, cartData, deliveryType, isBundleEligible]);
+    }, [isDeliveryFree, cartData, deliveryType]); // Removed isBundleEligible from deps
 
     const { cgst, sgst, grandTotal } = useMemo(() => {
         // Removed hardcoded 0 tax for street vendors. Now respects cartData.gstEnabled.

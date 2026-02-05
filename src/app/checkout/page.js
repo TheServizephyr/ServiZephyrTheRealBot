@@ -138,8 +138,12 @@ const CheckoutPageInternal = () => {
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     const [detailsConfirmed, setDetailsConfirmed] = useState(false);
     const [activeOrderId, setActiveOrderId] = useState(searchParams.get('activeOrderId'));
-    const [bundlingRef] = useState(searchParams.get('bundlingRef')); // NEW: Reference for bundling validation
-    const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null); // NEW: Details for bundling check
+    // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+    // const [bundlingRef] = useState(searchParams.get('bundlingRef')); // NEW: Reference for bundling validation
+    // const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null); // NEW: Details for bundling check
+    const bundlingRef = null; // Bundling disabled
+    const bundlingOrderDetails = null;
+    // ========== END BUNDLING FEATURE ==========
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState(null);
     const [paymentGateway, setPaymentGateway] = useState('razorpay');
@@ -402,6 +406,8 @@ const CheckoutPageInternal = () => {
         }
     }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed, activeOrderId]);
 
+    // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+    /*
     // SMART BUNDLING: Fetch details for bundlingRef
     useEffect(() => {
         if (bundlingRef) {
@@ -417,6 +423,8 @@ const CheckoutPageInternal = () => {
                 .catch(err => console.error("Failed to fetch bundling order:", err));
         }
     }, [bundlingRef]);
+    */
+    // ========== END BUNDLING FEATURE ==========
 
     const deliveryType = useMemo(() => cartData?.deliveryType || 'delivery', [cartData]);
     const diningPreference = useMemo(() => cartData?.diningPreference || null, [cartData]);
@@ -448,6 +456,8 @@ const CheckoutPageInternal = () => {
         // (End of appliedCoupons loop)
 
 
+        // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+        /*
         // SMART BUNDLING CHECK (Checkout Phase)
         let isSmartBundlingEligible = false;
         if (bundlingOrderDetails && bundlingOrderDetails.createdAt && selectedAddress) {
@@ -464,15 +474,6 @@ const CheckoutPageInternal = () => {
             const isStatusEligible = !['out_for_delivery', 'delivered', 'cancelled', 'rejected'].includes(status);
 
             // 3. Check Address (CRITICAL: Must match)
-            // We compare IDs if available, otherwise check strictly.
-            // bundlingOrderDetails.customerAddress might be just a string or object.
-            // selectedAddress is the object from userAddresses.
-            // Simplest check: If selectedAddress.id matches active order's address ID (if we stored it).
-            // If not, we might need fuzzy match. For now, strict on ID is safer if available, else maybe skip strict address check IF user flow guarantees it?
-            // No, user can change address. We MUST check.
-            // Let's check if selectedAddress.id matches. (Assuming we store addressId on order, which we might not).
-            // Fallback: Compare generated string representation "line1, city" vs "line1, city".
-
             let addressMatch = false;
 
             // 1. Strict ID Match
@@ -523,18 +524,17 @@ const CheckoutPageInternal = () => {
                     addressMatch = true;
                 }
             }
-            // Logic: If user selects the SAME address object from the list, IDs match.
-            // If user adds new address, ID won't match (and rightfully so, might be different).
-
-            // Relaxed Logic for User Experience: If the user selects an address that LOOKS the same?
-            // For safety against abuse: Strict Match is better. 'Same Saved Address'
 
             if (diffMinutes <= 10 && isStatusEligible && addressMatch) {
                 isSmartBundlingEligible = true;
             }
         }
+        */
+        const isSmartBundlingEligible = false; // Bundling disabled
+        // ========== END BUNDLING FEATURE ==========
 
-        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree || activeOrderId || isSmartBundlingEligible) ? 0 : (cartData.deliveryCharge || 0);
+        // ========== BUNDLING FEATURE: Removed isSmartBundlingEligible from condition ==========
+        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree || activeOrderId) ? 0 : (cartData.deliveryCharge || 0);
         const tip = (isStreetVendor || deliveryType !== 'delivery' || activeOrderId) ? 0 : (cartData.tipAmount || 0);
         const taxableAmount = currentSubtotal - couponDiscountValue;
 

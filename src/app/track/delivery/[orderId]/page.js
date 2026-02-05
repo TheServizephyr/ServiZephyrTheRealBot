@@ -204,10 +204,34 @@ function OrderTrackingContent() {
     const mapRef = useRef(null);
     const [isMapExpanded, setIsMapExpanded] = useState(false);
 
+    // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+    // TODO: Re-enable after MVP launch - See bundling_feature_complete_guide.md
+    /*
     // SMART BUNDLING STATE
     const [isBundlingEligible, setIsBundlingEligible] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState(null);
+    */
+    const isBundlingEligible = false; // Bundling disabled
+    const timeRemaining = null;
+    // ========== END BUNDLING FEATURE ==========
     const [deliverySettings, setDeliverySettings] = useState(null); // To check if fees are enabled
+
+    // Celebration/Rejection State Logic
+    const currentOrderComplete = orderData?.order?.status === 'delivered';
+    const currentOrderCancelled = orderData?.order?.status === 'rejected' ||
+        orderData?.order?.status === 'cancelled';
+
+    // Removed: activeOrders is empty for delivered orders, so this check fails
+
+    // Removed: not needed, check current order directly
+
+    // Removed: activeOrders is empty for cancelled orders too
+
+    // Show celebration when current order is delivered
+    const showFullScreenCelebration = currentOrderComplete;
+
+    // Show rejection when current order is cancelled/rejected
+    const showFullScreenCancellation = currentOrderCancelled;
 
     // 1. Fetch ALL active orders for this user (for Tabs)
     useEffect(() => {
@@ -346,6 +370,8 @@ function OrderTrackingContent() {
         }
     }, [orderData?.restaurant?.id]);
 
+    // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
+    /*
     // BUNDLING TIMER
     useEffect(() => {
         if (!orderData?.order?.createdAt) return;
@@ -369,6 +395,8 @@ function OrderTrackingContent() {
         const interval = setInterval(checkTime, 1000);
         return () => clearInterval(interval);
     }, [orderData?.order?.createdAt]);
+    */
+    // ========== END BUNDLING FEATURE ==========
 
 
     // Tab Switch Handler
@@ -428,419 +456,480 @@ function OrderTrackingContent() {
             {/* TABS SECTION */}
             <OrderTabs activeOrders={activeOrders} currentOrderId={currentOrderId} onSwitch={handleSwitchOrder} />
 
-            <div className={`flex-1 overflow-y-auto overflow-x-hidden w-full ${isMapExpanded ? 'overflow-hidden' : ''}`}>
-
-                {/* HEADER & STATUS CARD */}
-                <div className="px-5 pt-6 pb-4 z-20">
-                    <motion.div
-                        key={currentOrderId} // Animate on switch active
-                        initial={{ y: -20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        className="bg-white/90 backdrop-blur-sm shadow-sm rounded-2xl p-4 border border-gray-100"
-                    >
-                        <div className="flex justify-between items-start mb-3">
-                            <div>
-                                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{currentOrderId?.slice(0, 8) || '...'}</p>
-                                <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Button variant="ghost" size="sm" onClick={() => {
-                                    if (orderData?.restaurant?.id) {
-                                        const token = searchParams.get('token');
-                                        const phone = searchParams.get('phone');
-                                        let targetUrl = `/order/${orderData.restaurant.id}`;
-                                        const params = new URLSearchParams();
-                                        if (token) params.set('token', token);
-                                        if (phone) params.set('phone', phone);
-                                        // FIXED: Pass activeOrderId to preserve bundled session state
-                                        if (currentOrderId) params.set('activeOrderId', currentOrderId);
-
-                                        if (params.toString()) targetUrl += `?${params.toString()}`;
-
-                                        router.push(targetUrl);
-                                    } else {
-                                        router.back();
-                                    }
-                                }} className="text-gray-500 hover:bg-gray-50 h-8 w-8 p-0 rounded-full">
-                                    <ArrowLeft size={18} />
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-gray-50">
-                                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* DYNAMIC STATUS BAR */}
-                        {(() => {
-                            const status = orderData?.order?.status || 'pending';
-                            let statusText = "Order In Progress";
-                            let statusColor = "bg-gray-100 text-gray-600";
-                            let icon = <Loader2 size={16} className="animate-spin" />;
-
-                            // Determine if it's a delivery order to adjust 'ready' status text
-                            const isDelivery = orderData.deliveryBoy ||
-                                (orderData.order.deliveryMode === 'delivery') ||
-                                (orderData.order.type === 'delivery');
-
-                            // Custom Status Logic
-                            switch (status) {
-                                case 'pending':
-                                case 'placed':
-                                case 'paid':
-                                    statusText = "Order Placed";
-                                    statusColor = "bg-blue-50 text-blue-700";
-                                    icon = <CheckCircle size={18} />;
-                                    break;
-
-                                case 'confirmed':
-                                case 'accepted':
-                                    statusText = "Order Confirmed";
-                                    statusColor = "bg-green-50 text-green-700";
-                                    icon = <Check size={18} />;
-                                    break;
-
-                                case 'preparing':
-                                case 'cooking':
-                                    statusText = "Preparing Your Food";
-                                    statusColor = "bg-orange-50 text-orange-700";
-                                    icon = <CookingPot size={18} className="animate-pulse" />;
-                                    break;
-
-                                case 'dispatched':
-                                case 'reached_restaurant':
-                                case 'rider_assigned':
-                                    // User requested explicit "Rider Assigned" for these states
-                                    statusText = "Rider Assigned";
-                                    statusColor = "bg-indigo-50 text-indigo-700"; // Distinct color
-                                    icon = <Bike size={18} />;
-                                    break;
-
-                                case 'ready':
-                                case 'ready_for_pickup':
-                                    if (isDelivery) {
-                                        // Delivery: Food is ready, waiting for rider pickup -> Show "Rider Assigned" (or "Food Ready")
-                                        // User preferred "Rider Assigned"
-                                        statusText = "Rider Assigned";
-                                        statusColor = "bg-indigo-50 text-indigo-700 text-sm";
-                                        icon = <Bike size={18} />;
-                                    } else {
-                                        // Pickup: Customer picks up
-                                        statusText = "Ready for Pickup";
-                                        statusColor = "bg-blue-100 text-blue-800";
-                                        icon = <PackageCheck size={18} />;
-                                    }
-                                    break;
-
-                                case 'picked_up':
-                                case 'out_for_delivery':
-                                case 'on_the_way':
-                                    statusText = "Out for Delivery";
-                                    statusColor = "bg-green-100 text-green-800";
-                                    icon = <Bike size={18} className="animate-bounce" />;
-                                    break;
-
-                                case 'reached':
-                                case 'rider_arrived':
-                                    statusText = "Rider Reached";
-                                    statusColor = "bg-teal-50 text-teal-700";
-                                    icon = <MapPin size={18} />;
-                                    break;
-
-                                case 'delivered':
-                                case 'picked_up_by_customer':
-                                    statusText = "Food Delivered";
-                                    statusColor = "bg-green-600 text-white shadow-green-200";
-                                    icon = <PackageCheck size={18} />;
-                                    break;
-
-                                case 'cancelled':
-                                case 'rejected':
-                                case 'failed_delivery':
-                                    statusText = "Order Cancelled";
-                                    statusColor = "bg-red-50 text-red-700";
-                                    icon = <XCircle size={18} />;
-                                    break;
-
-                                default:
-                                    // Fallback for unknown states
-                                    statusText = "Order In Progress";
-                                    statusColor = "bg-gray-50 text-gray-500";
-                                    icon = <RefreshCw size={16} className="animate-spin opacity-50" />;
+            {/* CELEBRATION SCREEN - All Orders Delivered */}
+            {showFullScreenCelebration && (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-green-50 to-emerald-50">
+                    <CheckCircle size={80} className="text-green-500 mb-6 animate-bounce" />
+                    <h2 className="text-4xl font-bold text-gray-900 mb-2">
+                        Order Delivered!
+                    </h2>
+                    <p className="mt-2 text-gray-600 max-w-md">
+                        Thank you for your order. Enjoy your meal!
+                    </p>
+                    <Button
+                        onClick={() => {
+                            if (orderData?.restaurant?.id) {
+                                const params = new URLSearchParams();
+                                const token = searchParams.get('token');
+                                const phone = searchParams.get('phone');
+                                if (token) params.set('token', token);
+                                if (phone) params.set('phone', phone);
+                                router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
                             }
-
-                            return (
-                                <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${statusColor} font-bold shadow-sm transition-colors duration-300`}>
-                                    <div className="shrink-0">{icon}</div>
-                                    <span className="text-sm tracking-wide truncate">{statusText}</span>
-                                </div>
-                            );
-                        })()}
-                    </motion.div>
+                        }}
+                        className="mt-8 bg-green-600 text-white hover:bg-green-700 px-8 py-3 text-lg font-semibold rounded-xl shadow-lg"
+                    >
+                        Order Again
+                    </Button>
                 </div>
+            )}
 
-                {/* SMART BUNDLING BANNER */}
-                {deliverySettings?.deliveryCodEnabled !== false && ( // Simple check, or check explicit delivery toggle
-                    <div className="px-5 mb-4">
-                        {isBundlingEligible ? (
-                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
-                                <div>
-                                    <p className="text-green-800 font-bold text-sm">Free Delivery on Add-ons!</p>
-                                    <p className="text-green-600 text-xs mt-0.5">
-                                        Order within <span className="font-mono font-bold bg-green-200 px-1 rounded">{Math.floor(timeRemaining / 60)}:{(Math.floor(timeRemaining % 60)).toString().padStart(2, '0')}</span> to bundle.
-                                    </p>
-                                </div>
-                                <Button size="sm" onClick={() => {
-                                    const params = new URLSearchParams();
-                                    if (sessionToken) params.set('token', sessionToken);
-                                    if (sessionToken) params.set('token', sessionToken);
-                                    // Use param phone OR fallback to order phone to keep session valid
-                                    const phoneToUse = userPhone || orderData?.order?.phone || orderData?.order?.customerPhone;
-                                    if (phoneToUse) params.set('phone', phoneToUse);
-                                    params.set('activeOrderId', currentOrderId);
-                                    router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
-                                }} className="bg-green-600 hover:bg-green-700 text-white rounded-lg h-9 text-xs font-bold">
-                                    + Add Items
-                                </Button>
-                            </div>
-                        ) : (
-                            // Only show "Window Closed" if it was recently closed? Or persistent? 
-                            // User requirement: "persistent banner... indicating standard shipping applies."
-                            // We should show it if Status is still active (not delivered)
-                            !isFinalState(orderData?.order?.status) && (
-                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-3 opacity-80">
-                                    <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                                        <PackageCheck size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-gray-700 font-bold text-xs">Bundling Window Closed</p>
-                                        <p className="text-gray-500 text-[10px]">Standard delivery fees apply to new orders.</p>
-                                    </div>
-                                </div>
-                            )
-                        )}
-                    </div>
-                )}
+            {/* REJECTION SCREEN - All Orders Cancelled */}
+            {showFullScreenCancellation && (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-red-50 to-pink-50">
+                    <XCircle size={80} className="text-red-500 mb-6" />
+                    <h2 className="text-4xl font-bold text-gray-900 mb-2">
+                        Order Cancelled
+                    </h2>
+                    <p className="mt-2 text-gray-600 max-w-md">
+                        We're sorry, your order could not be processed.
+                    </p>
+                    <p className="mt-4 text-sm font-semibold bg-red-100 text-red-700 p-3 rounded-md max-w-md">
+                        Reason: {orderData?.order?.rejectionReason || orderData?.order?.cancellationReason || 'Not specified'}
+                    </p>
+                    <Button
+                        onClick={() => {
+                            if (orderData?.restaurant?.id) {
+                                const params = new URLSearchParams();
+                                const token = searchParams.get('token');
+                                const phone = searchParams.get('phone');
+                                if (token) params.set('token', token);
+                                if (phone) params.set('phone', phone);
+                                router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
+                            }
+                        }}
+                        className="mt-8 bg-gray-900 text-white hover:bg-black px-8 py-3 text-lg font-semibold rounded-xl shadow-lg"
+                    >
+                        Try Again
+                    </Button>
+                </div>
+            )}
 
-                {/* MAP SECTION - BOXED */}
-                <div
-                    className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-[100dvh] z-50' : 'h-[50vh] px-4 py-1'}`}
-                >
-                    <div className={`relative w-full h-full overflow-hidden shadow-2xl border-4 border-white ring-1 ring-gray-200 ${isMapExpanded ? '' : 'rounded-3xl'}`}>
+            {/* NORMAL TRACK PAGE - Only show when NOT celebrating or cancelled */}
+            {!showFullScreenCelebration && !showFullScreenCancellation && (
+                <div className={`flex-1 overflow-y-auto overflow-x-hidden w-full ${isMapExpanded ? 'overflow-hidden' : ''}`}>
 
-                        {/* LIVE BADGE */}
-                        {!isMapExpanded && (
-                            <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 pointer-events-none border border-white/50">
-                                <span className="relative flex h-2.5 w-2.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                                </span>
-                                <span className="text-xs font-bold text-gray-700">Live Tracking</span>
-                            </div>
-                        )}
-
-                        {/* MAP CONTAINER - Pointer events disabled when collapsed to allow page scroll */}
-                        <div className={`w-full h-full ${!isMapExpanded ? 'pointer-events-none' : ''}`}>
-                            <LiveTrackingMap {...mapLocations} mapRef={mapRef} isInteractive={isMapExpanded} />
-                        </div>
-
-                        {/* EXPAND / COLLAPSE BUTTON - pointer-events-auto needed explicitly since parent might propagate none? No, siblings are fine, but good practice */}
-                        <Button
-                            onClick={() => setIsMapExpanded(!isMapExpanded)}
-                            className="absolute bottom-4 right-4 z-10 bg-white text-gray-800 shadow-xl rounded-full p-3 h-12 w-12 hover:bg-gray-50 border border-gray-100 pointer-events-auto"
+                    {/* HEADER & STATUS CARD */}
+                    <div className="px-5 pt-6 pb-4 z-20">
+                        <motion.div
+                            key={currentOrderId} // Animate on switch active
+                            initial={{ y: -20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            className="bg-white/90 backdrop-blur-sm shadow-sm rounded-2xl p-4 border border-gray-100"
                         >
-                            {isMapExpanded ? <X size={24} /> : <Maximize size={24} />}
-                        </Button>
-
-                        {!isMapExpanded && (
-                            <div className="absolute bottom-20 right-4 z-10 pointer-events-auto">
-                                <Button
-                                    onClick={handleRecenter}
-                                    size="sm"
-                                    className="rounded-full shadow-xl bg-white text-gray-800 hover:bg-gray-50 h-12 w-12 p-0 border border-gray-100"
-                                >
-                                    <Navigation size={22} />
-                                </Button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* DETAILS SECTION - Scrolls with the page */}
-                {!isMapExpanded && (
-                    <div className="w-full px-4 pb-32 pt-2">
-
-                        {/* RIDER OFFLINE WARNING */}
-                        {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
-                            <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl mb-4 flex items-start gap-3 text-sm">
-                                <span className="text-xl">⚠️</span>
+                            <div className="flex justify-between items-start mb-3">
                                 <div>
-                                    <p className="font-bold">Signal Lost</p>
-                                    <p className="text-xs opacity-80 mt-0.5">Rider's location isn't updating. Don't worry, they are moving!</p>
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{currentOrderId?.slice(0, 8) || '...'}</p>
+                                    <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
                                 </div>
-                            </div>
-                        )}
+                                <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="sm" onClick={() => {
+                                        if (orderData?.restaurant?.id) {
+                                            const token = searchParams.get('token');
+                                            const phone = searchParams.get('phone');
+                                            let targetUrl = `/order/${orderData.restaurant.id}`;
+                                            const params = new URLSearchParams();
+                                            if (token) params.set('token', token);
+                                            if (phone) params.set('phone', phone);
+                                            // FIXED: Pass activeOrderId to preserve bundled session state
+                                            if (currentOrderId) params.set('activeOrderId', currentOrderId);
 
-                        {/* RIDER CARD */}
-                        {orderData.deliveryBoy && (
-                            <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-4 mb-6 flex items-center gap-4">
-                                <img
-                                    src={orderData.deliveryBoy.photoUrl || 'https://cdn-icons-png.flaticon.com/512/10664/10664883.png'}
-                                    alt={orderData.deliveryBoy.name}
-                                    className="w-14 h-14 rounded-full object-cover border-2 border-gray-100"
-                                ></img>
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="font-bold text-gray-900 truncate">{orderData.deliveryBoy.name}</h3>
-                                    <p className="text-xs text-blue-600 font-bold">Delivery Partner</p>
-                                </div>
-                                <a href={`tel:${orderData.deliveryBoy.phone}`} className="no-underline">
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white rounded-full px-4 h-9 shadow-green-200 shadow-lg">
-                                        <Phone size={14} className="mr-2" /> Call
+                                            if (params.toString()) targetUrl += `?${params.toString()}`;
+
+                                            router.push(targetUrl);
+                                        } else {
+                                            router.back();
+                                        }
+                                    }} className="text-gray-500 hover:bg-gray-50 h-8 w-8 p-0 rounded-full">
+                                        <ArrowLeft size={18} />
                                     </Button>
-                                </a>
-                            </div>
-                        )}
-
-                        {/* ORDER SUMMARY */}
-                        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
-                            <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-50">
-                                <div>
-                                    <h3 className="font-bold text-gray-800 text-sm">Bill Summary</h3>
-                                    {orderData.order.createdAt && (
-                                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">
-                                            {(() => {
-                                                try {
-                                                    const d = new Date(orderData.order.createdAt._seconds
-                                                        ? orderData.order.createdAt._seconds * 1000
-                                                        : orderData.order.createdAt);
-                                                    return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-                                                } catch (e) { return ''; }
-                                            })()}
-                                        </p>
-                                    )}
+                                    <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-gray-50">
+                                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                                    </Button>
                                 </div>
-                                {/* PAYMENT STATUS BADGE */}
-                                {(() => {
-                                    const paymentStatus = (orderData.order.paymentStatus || '').toLowerCase();
-                                    const isPaidOnline = paymentStatus === 'paid' || paymentStatus === 'success';
+                            </div>
 
-                                    return !isPaidOnline ? (
-                                        <div className="flex items-center gap-1.5 bg-yellow-50 px-2.5 py-1 rounded-lg border border-yellow-100">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
-                                            <span className="text-[10px] text-yellow-700 font-extrabold uppercase tracking-wide">Pay on Delivery</span>
+                            {/* DYNAMIC STATUS BAR */}
+                            {(() => {
+                                const status = orderData?.order?.status || 'pending';
+                                let statusText = "Order In Progress";
+                                let statusColor = "bg-gray-100 text-gray-600";
+                                let icon = <Loader2 size={16} className="animate-spin" />;
+
+                                // Determine if it's a delivery order to adjust 'ready' status text
+                                const isDelivery = orderData.deliveryBoy ||
+                                    (orderData.order.deliveryMode === 'delivery') ||
+                                    (orderData.order.type === 'delivery');
+
+                                // Custom Status Logic
+                                switch (status) {
+                                    case 'pending':
+                                    case 'placed':
+                                    case 'paid':
+                                        statusText = "Order Placed";
+                                        statusColor = "bg-blue-50 text-blue-700";
+                                        icon = <CheckCircle size={18} />;
+                                        break;
+
+                                    case 'confirmed':
+                                    case 'accepted':
+                                        statusText = "Order Confirmed";
+                                        statusColor = "bg-green-50 text-green-700";
+                                        icon = <Check size={18} />;
+                                        break;
+
+                                    case 'preparing':
+                                    case 'cooking':
+                                        statusText = "Preparing Your Food";
+                                        statusColor = "bg-orange-50 text-orange-700";
+                                        icon = <CookingPot size={18} className="animate-pulse" />;
+                                        break;
+
+                                    case 'dispatched':
+                                    case 'reached_restaurant':
+                                    case 'rider_assigned':
+                                        // User requested explicit "Rider Assigned" for these states
+                                        statusText = "Rider Assigned";
+                                        statusColor = "bg-indigo-50 text-indigo-700"; // Distinct color
+                                        icon = <Bike size={18} />;
+                                        break;
+
+                                    case 'ready':
+                                    case 'ready_for_pickup':
+                                        if (isDelivery) {
+                                            // Delivery: Food is ready, waiting for rider pickup -> Show "Rider Assigned" (or "Food Ready")
+                                            // User preferred "Rider Assigned"
+                                            statusText = "Rider Assigned";
+                                            statusColor = "bg-indigo-50 text-indigo-700 text-sm";
+                                            icon = <Bike size={18} />;
+                                        } else {
+                                            // Pickup: Customer picks up
+                                            statusText = "Ready for Pickup";
+                                            statusColor = "bg-blue-100 text-blue-800";
+                                            icon = <PackageCheck size={18} />;
+                                        }
+                                        break;
+
+                                    case 'picked_up':
+                                    case 'out_for_delivery':
+                                    case 'on_the_way':
+                                        statusText = "Out for Delivery";
+                                        statusColor = "bg-green-100 text-green-800";
+                                        icon = <Bike size={18} className="animate-bounce" />;
+                                        break;
+
+                                    case 'reached':
+                                    case 'rider_arrived':
+                                        statusText = "Rider Reached";
+                                        statusColor = "bg-teal-50 text-teal-700";
+                                        icon = <MapPin size={18} />;
+                                        break;
+
+                                    case 'delivered':
+                                    case 'picked_up_by_customer':
+                                        statusText = "Food Delivered";
+                                        statusColor = "bg-green-600 text-white shadow-green-200";
+                                        icon = <PackageCheck size={18} />;
+                                        break;
+
+                                    case 'cancelled':
+                                    case 'rejected':
+                                    case 'failed_delivery':
+                                        statusText = "Order Cancelled";
+                                        statusColor = "bg-red-50 text-red-700";
+                                        icon = <XCircle size={18} />;
+                                        break;
+
+                                    default:
+                                        // Fallback for unknown states
+                                        statusText = "Order In Progress";
+                                        statusColor = "bg-gray-50 text-gray-500";
+                                        icon = <RefreshCw size={16} className="animate-spin opacity-50" />;
+                                }
+
+                                return (
+                                    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${statusColor} font-bold shadow-sm transition-colors duration-300`}>
+                                        <div className="shrink-0">{icon}</div>
+                                        <span className="text-sm tracking-wide truncate">{statusText}</span>
+                                    </div>
+                                );
+                            })()}
+                        </motion.div>
+                    </div>
+
+                    {/* ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ========== */}
+                    {/* SMART BUNDLING BANNER */}
+                    {false && deliverySettings?.deliveryCodEnabled !== false && ( // Bundling disabled
+                        <div className="px-5 mb-4">
+                            {isBundlingEligible ? (
+                                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 shadow-sm flex items-center justify-between">
+                                    <div>
+                                        <p className="text-green-800 font-bold text-sm">Free Delivery on Add-ons!</p>
+                                        <p className="text-green-600 text-xs mt-0.5">
+                                            Order within <span className="font-mono font-bold bg-green-200 px-1 rounded">{Math.floor(timeRemaining / 60)}:{(Math.floor(timeRemaining % 60)).toString().padStart(2, '0')}</span> to bundle.
+                                        </p>
+                                    </div>
+                                    <Button size="sm" onClick={() => {
+                                        const params = new URLSearchParams();
+                                        if (sessionToken) params.set('token', sessionToken);
+                                        if (sessionToken) params.set('token', sessionToken);
+                                        // Use param phone OR fallback to order phone to keep session valid
+                                        const phoneToUse = userPhone || orderData?.order?.phone || orderData?.order?.customerPhone;
+                                        if (phoneToUse) params.set('phone', phoneToUse);
+                                        params.set('activeOrderId', currentOrderId);
+                                        router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
+                                    }} className="bg-green-600 hover:bg-green-700 text-white rounded-lg h-9 text-xs font-bold">
+                                        + Add Items
+                                    </Button>
+                                </div>
+                            ) : (
+                                // Only show "Window Closed" if it was recently closed? Or persistent? 
+                                // User requirement: "persistent banner... indicating standard shipping applies."
+                                // We should show it if Status is still active (not delivered)
+                                !isFinalState(orderData?.order?.status) && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-3 opacity-80">
+                                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                                            <PackageCheck size={16} />
                                         </div>
-                                    ) : (
-                                        <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-lg border border-green-100">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                                            <span className="text-[10px] text-green-700 font-extrabold uppercase tracking-wide">Paid Online</span>
+                                        <div>
+                                            <p className="text-gray-700 font-bold text-xs">Bundling Window Closed</p>
+                                            <p className="text-gray-500 text-[10px]">Standard delivery fees apply to new orders.</p>
                                         </div>
-                                    );
-                                })()}
+                                    </div>
+                                )
+                            )}
+                        </div>
+                    )}
+
+                    {/* MAP SECTION - BOXED */}
+                    <div
+                        className={`relative w-full transition-all duration-300 ease-in-out ${isMapExpanded ? 'fixed inset-0 h-[100dvh] z-50' : 'h-[50vh] px-4 py-1'}`}
+                    >
+                        <div className={`relative w-full h-full overflow-hidden shadow-2xl border-4 border-white ring-1 ring-gray-200 ${isMapExpanded ? '' : 'rounded-3xl'}`}>
+
+                            {/* LIVE BADGE */}
+                            {!isMapExpanded && (
+                                <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 pointer-events-none border border-white/50">
+                                    <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                                    </span>
+                                    <span className="text-xs font-bold text-gray-700">Live Tracking</span>
+                                </div>
+                            )}
+
+                            {/* MAP CONTAINER - Pointer events disabled when collapsed to allow page scroll */}
+                            <div className={`w-full h-full ${!isMapExpanded ? 'pointer-events-none' : ''}`}>
+                                <LiveTrackingMap {...mapLocations} mapRef={mapRef} isInteractive={isMapExpanded} />
                             </div>
 
-                            <div className="space-y-3">
-                                {orderData.order.items?.map((item, i) => {
-                                    let unitPrice = Number(item.price) || Number(item.itemPrice) || 0;
-                                    const quantity = Number(item.quantity) || 1;
-                                    if (unitPrice === 0) {
-                                        const totalField = Number(item.totalPrice) || Number(item.total) || 0;
-                                        if (totalField > 0) unitPrice = totalField / quantity;
-                                    }
-                                    const totalItemPrice = unitPrice * quantity;
+                            {/* EXPAND / COLLAPSE BUTTON - pointer-events-auto needed explicitly since parent might propagate none? No, siblings are fine, but good practice */}
+                            <Button
+                                onClick={() => setIsMapExpanded(!isMapExpanded)}
+                                className="absolute bottom-4 right-4 z-10 bg-white text-gray-800 shadow-xl rounded-full p-3 h-12 w-12 hover:bg-gray-50 border border-gray-100 pointer-events-auto"
+                            >
+                                {isMapExpanded ? <X size={24} /> : <Maximize size={24} />}
+                            </Button>
 
-                                    return (
-                                        <div key={i} className="flex justify-between text-sm text-gray-600">
-                                            <div className="flex items-start gap-2">
-                                                <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[20px] text-center">{quantity}x</span>
-                                                <span className="font-medium">{item.name}</span>
-                                            </div>
-                                            <span className="font-bold text-gray-800">₹{totalItemPrice}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Detailed Cost Breakdown */}
-                            <div className="border-t border-dashed border-gray-200 mt-4 pt-3 space-y-2">
-                                {(() => {
-                                    const subtotal = Number(orderData.order.subtotal) || 0;
-                                    const total = Number(orderData.order.totalAmount);
-                                    let delivery = Number(orderData.order.deliveryCharge) || 0;
-                                    const tax = (Number(orderData.order.cgst) || 0) + (Number(orderData.order.sgst) || 0);
-                                    const packing = Number(orderData.order.packagingCharge) || 0;
-                                    const platform = Number(orderData.order.convenienceFee) || 0;
-                                    const discount = Number(orderData.order.discount) || 0;
-
-                                    // Fallback: If extra charges exist but aren't labeled, attribute to Delivery
-                                    const calculatedExtras = total - subtotal;
-                                    if (delivery === 0 && tax === 0 && packing === 0 && platform === 0 && calculatedExtras > 0) {
-                                        delivery = calculatedExtras;
-                                    }
-
-                                    return (
-                                        <>
-                                            <div className="flex justify-between text-xs text-gray-500">
-                                                <span>Item Total</span>
-                                                <span>₹{subtotal}</span>
-                                            </div>
-                                            {delivery > 0 && (
-                                                <div className="flex justify-between text-xs text-gray-500">
-                                                    <span>Delivery Fee</span>
-                                                    <span>₹{delivery}</span>
-                                                </div>
-                                            )}
-                                            {tax > 0 && (
-                                                <div className="flex justify-between text-xs text-gray-500">
-                                                    <span>Taxes (GST)</span>
-                                                    <span>₹{tax}</span>
-                                                </div>
-                                            )}
-                                            {packing > 0 && (
-                                                <div className="flex justify-between text-xs text-gray-500">
-                                                    <span>Packaging/Restaurant Charges</span>
-                                                    <span>₹{packing}</span>
-                                                </div>
-                                            )}
-                                            {platform > 0 && (
-                                                <div className="flex justify-between text-xs text-gray-500">
-                                                    <span>Platform Fee</span>
-                                                    <span>₹{platform}</span>
-                                                </div>
-                                            )}
-                                            {discount > 0 && (
-                                                <div className="flex justify-between text-xs text-green-600 font-medium">
-                                                    <span>Discount</span>
-                                                    <span>-₹{discount}</span>
-                                                </div>
-                                            )}
-                                        </>
-                                    );
-                                })()}
-                            </div>
-
-                            <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between items-center">
-                                <span className="text-gray-700 text-sm font-bold">Total Bill</span>
-                                <span className="text-xl font-black text-gray-900">₹{orderData.order.totalAmount}</span>
-                            </div>
+                            {!isMapExpanded && (
+                                <div className="absolute bottom-20 right-4 z-10 pointer-events-auto">
+                                    <Button
+                                        onClick={handleRecenter}
+                                        size="sm"
+                                        className="rounded-full shadow-xl bg-white text-gray-800 hover:bg-gray-50 h-12 w-12 p-0 border border-gray-100"
+                                    >
+                                        <Navigation size={22} />
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     </div>
-                )}
-            </div>
+
+                    {/* DETAILS SECTION - Scrolls with the page */}
+                    {!isMapExpanded && (
+                        <div className="w-full px-4 pb-32 pt-2">
+
+                            {/* RIDER OFFLINE WARNING */}
+                            {orderData.deliveryBoy && orderData.deliveryBoy.isOnline === false && (
+                                <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl mb-4 flex items-start gap-3 text-sm">
+                                    <span className="text-xl">⚠️</span>
+                                    <div>
+                                        <p className="font-bold">Signal Lost</p>
+                                        <p className="text-xs opacity-80 mt-0.5">Rider's location isn't updating. Don't worry, they are moving!</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* RIDER CARD */}
+                            {orderData.deliveryBoy && (
+                                <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-4 mb-6 flex items-center gap-4">
+                                    <img
+                                        src={orderData.deliveryBoy.photoUrl || 'https://cdn-icons-png.flaticon.com/512/10664/10664883.png'}
+                                        alt={orderData.deliveryBoy.name}
+                                        className="w-14 h-14 rounded-full object-cover border-2 border-gray-100"
+                                    ></img>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-bold text-gray-900 truncate">{orderData.deliveryBoy.name}</h3>
+                                        <p className="text-xs text-blue-600 font-bold">Delivery Partner</p>
+                                    </div>
+                                    <a href={`tel:${orderData.deliveryBoy.phone}`} className="no-underline">
+                                        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white rounded-full px-4 h-9 shadow-green-200 shadow-lg">
+                                            <Phone size={14} className="mr-2" /> Call
+                                        </Button>
+                                    </a>
+                                </div>
+                            )}
+
+                            {/* ORDER SUMMARY */}
+                            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
+                                <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-50">
+                                    <div>
+                                        <h3 className="font-bold text-gray-800 text-sm">Bill Summary</h3>
+                                        {orderData.order.createdAt && (
+                                            <p className="text-[10px] text-gray-400 font-medium mt-0.5">
+                                                {(() => {
+                                                    try {
+                                                        const d = new Date(orderData.order.createdAt._seconds
+                                                            ? orderData.order.createdAt._seconds * 1000
+                                                            : orderData.order.createdAt);
+                                                        return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                                                    } catch (e) { return ''; }
+                                                })()}
+                                            </p>
+                                        )}
+                                    </div>
+                                    {/* PAYMENT STATUS BADGE */}
+                                    {(() => {
+                                        const paymentStatus = (orderData.order.paymentStatus || '').toLowerCase();
+                                        const isPaidOnline = paymentStatus === 'paid' || paymentStatus === 'success';
+
+                                        return !isPaidOnline ? (
+                                            <div className="flex items-center gap-1.5 bg-yellow-50 px-2.5 py-1 rounded-lg border border-yellow-100">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                                                <span className="text-[10px] text-yellow-700 font-extrabold uppercase tracking-wide">Pay on Delivery</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-lg border border-green-100">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                                                <span className="text-[10px] text-green-700 font-extrabold uppercase tracking-wide">Paid Online</span>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+
+                                <div className="space-y-3">
+                                    {orderData.order.items?.map((item, i) => {
+                                        let unitPrice = Number(item.price) || Number(item.itemPrice) || 0;
+                                        const quantity = Number(item.quantity) || 1;
+                                        if (unitPrice === 0) {
+                                            const totalField = Number(item.totalPrice) || Number(item.total) || 0;
+                                            if (totalField > 0) unitPrice = totalField / quantity;
+                                        }
+                                        const totalItemPrice = unitPrice * quantity;
+
+                                        return (
+                                            <div key={i} className="flex justify-between text-sm text-gray-600">
+                                                <div className="flex items-start gap-2">
+                                                    <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[20px] text-center">{quantity}x</span>
+                                                    <span className="font-medium">{item.name}</span>
+                                                </div>
+                                                <span className="font-bold text-gray-800">₹{totalItemPrice}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Detailed Cost Breakdown */}
+                                <div className="border-t border-dashed border-gray-200 mt-4 pt-3 space-y-2">
+                                    {(() => {
+                                        const subtotal = Number(orderData.order.subtotal) || 0;
+                                        const total = Number(orderData.order.totalAmount);
+                                        let delivery = Number(orderData.order.deliveryCharge) || 0;
+                                        const tax = (Number(orderData.order.cgst) || 0) + (Number(orderData.order.sgst) || 0);
+                                        const packing = Number(orderData.order.packagingCharge) || 0;
+                                        const platform = Number(orderData.order.convenienceFee) || 0;
+                                        const discount = Number(orderData.order.discount) || 0;
+
+                                        // Fallback: If extra charges exist but aren't labeled, attribute to Delivery
+                                        const calculatedExtras = total - subtotal;
+                                        if (delivery === 0 && tax === 0 && packing === 0 && platform === 0 && calculatedExtras > 0) {
+                                            delivery = calculatedExtras;
+                                        }
+
+                                        return (
+                                            <>
+                                                <div className="flex justify-between text-xs text-gray-500">
+                                                    <span>Item Total</span>
+                                                    <span>₹{subtotal}</span>
+                                                </div>
+                                                {delivery > 0 && (
+                                                    <div className="flex justify-between text-xs text-gray-500">
+                                                        <span>Delivery Fee</span>
+                                                        <span>₹{delivery}</span>
+                                                    </div>
+                                                )}
+                                                {tax > 0 && (
+                                                    <div className="flex justify-between text-xs text-gray-500">
+                                                        <span>Taxes (GST)</span>
+                                                        <span>₹{tax}</span>
+                                                    </div>
+                                                )}
+                                                {packing > 0 && (
+                                                    <div className="flex justify-between text-xs text-gray-500">
+                                                        <span>Packaging/Restaurant Charges</span>
+                                                        <span>₹{packing}</span>
+                                                    </div>
+                                                )}
+                                                {platform > 0 && (
+                                                    <div className="flex justify-between text-xs text-gray-500">
+                                                        <span>Platform Fee</span>
+                                                        <span>₹{platform}</span>
+                                                    </div>
+                                                )}
+                                                {discount > 0 && (
+                                                    <div className="flex justify-between text-xs text-green-600 font-medium">
+                                                        <span>Discount</span>
+                                                        <span>-₹{discount}</span>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+
+                                <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between items-center">
+                                    <span className="text-gray-700 text-sm font-bold">Total Bill</span>
+                                    <span className="text-xl font-black text-gray-900">₹{orderData.order.totalAmount}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* FOOTER ACTION - Only visible if map is NOT expanded */}
-            {
-                !isMapExpanded && (
-                    <div className="p-4 bg-white border-t border-gray-100 sticky bottom-0 z-30 pb-safe">
-                        <a href={`tel:${orderData.restaurant.phone}`} className="block w-full">
-                            <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
-                                <Phone size={18} />
-                                Call Restaurant
-                            </Button>
-                        </a>
-                    </div>
-                )
-            }
-        </div >
-    );
+            {!isMapExpanded && (
+                <div className="p-4 bg-white border-t border-gray-100 sticky bottom-0 z-30 pb-safe">
+                    <a href={`tel:${orderData.restaurant.phone}`} className="block w-full">
+                        <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
+                            <Phone size={18} />
+                            Call Restaurant
+                        </Button>
+                    </a>
+                </div>
+            )}
+        </div>
+    )
 }
 
 export default function OrderTrackingPage() {

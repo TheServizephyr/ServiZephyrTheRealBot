@@ -1063,6 +1063,67 @@ const OrderPageInternal = () => {
         setIsEditingModal(false);
     };
 
+    // Force re-fetch on every page mount by using a timestamp key
+    const [fetchKey, setFetchKey] = useState(Date.now());
+    const intervalRef = useRef(null);
+
+    // Auto-refresh: Immediate fetch on tab return + 2-min interval while visible
+    useEffect(() => {
+        const TWO_MINUTES = 2 * 60 * 1000;
+
+        const startInterval = () => {
+            // Clear any existing interval first
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+
+            // Start 2-minute interval
+            intervalRef.current = setInterval(() => {
+                if (!document.hidden) {
+                    console.log('[Order Page] 2-min auto-refresh (tab visible)');
+                    setFetchKey(Date.now());
+                }
+            }, TWO_MINUTES);
+            console.log('[Order Page] Auto-refresh interval started');
+        };
+
+        const stopInterval = () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+                console.log('[Order Page] Auto-refresh interval stopped');
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                // Tab became visible
+                console.log('[Order Page] Tab visible - fetching fresh data immediately');
+                setFetchKey(Date.now());
+                startInterval(); // Start interval for future refreshes
+            } else {
+                // Tab became hidden
+                console.log('[Order Page] Tab hidden - stopping auto-refresh');
+                stopInterval(); // Stop interval to save resources
+            }
+        };
+
+        // Initial setup
+        setFetchKey(Date.now()); // Initial fetch on mount
+        if (!document.hidden) {
+            startInterval(); // Start interval if tab is visible
+        }
+
+        // Listen for visibility changes
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Cleanup on unmount
+        return () => {
+            stopInterval();
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
     useEffect(() => {
         const fetchInitialData = async () => {
             if (!restaurantId || restaurantId === 'undefined') {
@@ -1123,7 +1184,7 @@ const OrderPageInternal = () => {
         };
 
         fetchInitialData();
-    }, [restaurantId, phone]);
+    }, [restaurantId, phone, fetchKey]); // Added fetchKey to force re-fetch on mount
 
 
     useEffect(() => {
