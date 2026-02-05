@@ -938,26 +938,7 @@ const OrderPageInternal = () => {
 
     // Let's scroll down to handleCheckout.
 
-    const handleCheckout = () => {
-        const params = new URLSearchParams();
-        if (restaurantId) params.append('restaurantId', restaurantId);
 
-        // Pass GUEST Identity (New)
-        if (ref) params.append('ref', ref);
-
-        // Pass Phone (Legacy - Only if ref not present?)
-        if (phone && !ref) params.append('phone', phone);
-
-        if (token) params.append('token', token);
-        if (tableIdFromUrl) params.append('table', tableIdFromUrl);
-
-        // ... rest of handleCheckout ...
-
-        // Since I cannot modify "rest of handleCheckout" easily without seeing it.
-        // I will assume I need to replace the start of handleCheckout.
-
-        router.push(`/checkout?${params.toString()}`);
-    };
 
 
 
@@ -1657,7 +1638,12 @@ const OrderPageInternal = () => {
     const handleCheckout = () => {
         const params = new URLSearchParams();
         if (restaurantId) params.append('restaurantId', restaurantId);
-        if (phone) params.append('phone', phone);
+
+        // Pass GUEST Identity
+        if (ref) params.append('ref', ref);
+        // Pass Phone (Legacy - fallback)
+        if (phone && !ref) params.append('phone', phone);
+
         if (token) params.append('token', token);
         if (tableIdFromUrl) params.append('table', tableIdFromUrl);
 
