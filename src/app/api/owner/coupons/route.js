@@ -265,7 +265,7 @@ export async function DELETE(req) {
         const couponSnap = await couponRef.get();
 
         let couponData = {};
-        if (couponSnap.exists()) {
+        if (couponSnap.exists) {
             couponData = couponSnap.data();
         }
 
