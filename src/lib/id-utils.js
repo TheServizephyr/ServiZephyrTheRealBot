@@ -23,7 +23,9 @@ export function generateDisplayId(prefix, timestamp) {
     const dd = String(date.getDate()).padStart(2, '0');
     const HH = String(date.getHours()).padStart(2, '0');
     const mm = String(date.getMinutes()).padStart(2, '0');
-    const ss = String(date.getSeconds()).padStart(2, '0');
 
-    return `${prefix}${yy}${MM}${dd}${HH}${mm}${ss}`;
+    // Add two random digits for uniqueness as per user request
+    const rr = Math.floor(10 + Math.random() * 90).toString();
+
+    return `${prefix}${yy}${MM}${dd}${HH}${mm}${rr}`;
 }

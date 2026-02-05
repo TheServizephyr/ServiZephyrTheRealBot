@@ -22,22 +22,11 @@ function generateDisplayId(prefix, timestamp) {
     const dd = String(date.getDate()).padStart(2, '0');
     const HH = String(date.getHours()).padStart(2, '0');
     const mm = String(date.getMinutes()).padStart(2, '0');
-    const ss = String(date.getSeconds()).padStart(2, '0');
 
-    // Add validation to ensure valid date
-    if (isNaN(date.getTime())) {
-        // Fallback to now if invalid
-        const now = new Date();
-        const yy = String(now.getFullYear()).slice(-2);
-        const MM = String(now.getMonth() + 1).padStart(2, '0');
-        const dd = String(now.getDate()).padStart(2, '0');
-        const HH = String(now.getHours()).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        const ss = String(now.getSeconds()).padStart(2, '0');
-        return `${prefix}${yy}${MM}${dd}${HH}${mm}${ss}`;
-    }
+    // Pattern: YYMMDDHHmm + 2 random digits
+    const rr = Math.floor(10 + Math.random() * 90).toString();
 
-    return `${prefix}${yy}${MM}${dd}${HH}${mm}${ss}`;
+    return `${prefix}${yy}${MM}${dd}${HH}${mm}${rr}`;
 }
 
 export async function GET(req) {
@@ -53,11 +42,9 @@ export async function GET(req) {
 
         usersSnap.forEach(doc => {
             const data = doc.data();
-            if (!data.customerId) { // Only update if missing
-                const newId = generateDisplayId('CS_', data.createdAt || data.created_at);
-                userUpdates.push(doc.ref.update({ customerId: newId }));
-                writeStats.users++;
-            }
+            const newId = generateDisplayId('CS_', data.createdAt || data.created_at);
+            userUpdates.push(doc.ref.update({ customerId: newId }));
+            writeStats.users++;
         });
 
         await Promise.all(userUpdates);
@@ -70,11 +57,9 @@ export async function GET(req) {
 
         restSnap.forEach(doc => {
             const data = doc.data();
-            if (!data.merchantId) {
-                const newId = generateDisplayId('RS_', data.createdAt || data.created_at);
-                restUpdates.push(doc.ref.update({ merchantId: newId }));
-                writeStats.restaurants++;
-            }
+            const newId = generateDisplayId('RS_', data.createdAt || data.created_at);
+            restUpdates.push(doc.ref.update({ merchantId: newId }));
+            writeStats.restaurants++;
         });
 
         await Promise.all(restUpdates);
@@ -86,11 +71,9 @@ export async function GET(req) {
 
         shopSnap.forEach(doc => {
             const data = doc.data();
-            if (!data.merchantId) {
-                const newId = generateDisplayId('RS_', data.createdAt || data.created_at);
-                shopUpdates.push(doc.ref.update({ merchantId: newId }));
-                writeStats.shops++;
-            }
+            const newId = generateDisplayId('RS_', data.createdAt || data.created_at);
+            shopUpdates.push(doc.ref.update({ merchantId: newId }));
+            writeStats.shops++;
         });
 
         await Promise.all(shopUpdates);
@@ -102,11 +85,9 @@ export async function GET(req) {
 
         vendorSnap.forEach(doc => {
             const data = doc.data();
-            if (!data.merchantId) {
-                const newId = generateDisplayId('RS_', data.createdAt || data.created_at);
-                vendorUpdates.push(doc.ref.update({ merchantId: newId }));
-                writeStats.vendors++;
-            }
+            const newId = generateDisplayId('RS_', data.createdAt || data.created_at);
+            vendorUpdates.push(doc.ref.update({ merchantId: newId }));
+            writeStats.vendors++;
         });
 
         await Promise.all(vendorUpdates);
