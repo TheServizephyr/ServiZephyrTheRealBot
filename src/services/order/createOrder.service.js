@@ -23,6 +23,8 @@ import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 // V1 Fallback for online payments (not tested in V2)
 import { createOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
+import { deobfuscateGuestId } from '@/lib/guest-utils';
+
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
 import { findBusinessById } from '@/services/business/businessService';
@@ -136,6 +138,8 @@ export async function createOrderV2(req) {
             diningPreference = null,
             idempotencyKey,
             existingOrderId, // Add-on flow
+            guestRef,       // ✅ NEW: Guest Identity Ref
+            guestToken      // ✅ NEW: Guest Identity Token (Session Check)
         } = body;
 
         // ✅ CRITICAL: Street vendors DON'T support add-ons!
@@ -269,9 +273,35 @@ export async function createOrderV2(req) {
         // STEP 5: BRANCH BY PAYMENT TYPE
         // ========================================
 
-        // Normalize phone
-        const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
-        const userId = normalizedPhone || `anon_${nanoid(10)}`;
+        // --- GUEST IDENTITY RESOLUTION ---
+        let validGuestId = null;
+        let securePhone = null;
+
+        if (guestRef) {
+            console.log(`[createOrderV2] Resolving Guest Identity from ref: ${guestRef}`);
+            validGuestId = deobfuscateGuestId(guestRef);
+            if (validGuestId) {
+                const guestDoc = await firestore.collection('guest_profiles').doc(validGuestId).get();
+                if (guestDoc.exists) {
+                    securePhone = guestDoc.data().phone;
+                    console.log(`[createOrderV2] ✅ Resolved Guest ID: ${validGuestId} linked to phone: ***${securePhone.slice(-4)}`);
+                } else {
+                    console.warn(`[createOrderV2] Guest profile ${validGuestId} not found.`);
+                }
+            } else {
+                console.warn(`[createOrderV2] Failed to deobfuscate guestRef: ${guestRef}`);
+            }
+        }
+
+        // Normalize phone or use secure phone
+        const requestPhoneNormalized = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
+        const normalizedPhone = securePhone || requestPhoneNormalized;
+
+        // Priority: Guest ID > Phone > Anon
+        const userId = validGuestId || normalizedPhone || `anon_${nanoid(10)}`;
+
+        console.log(`[createOrderV2] Final UserID: ${userId}, Linked Phone: ${normalizedPhone || 'None'}`);
+
 
         // Customer location (for delivery)
         const customerLocation = (deliveryType === 'delivery' && address && typeof address.latitude === 'number')
@@ -307,15 +337,15 @@ export async function createOrderV2(req) {
                     console.log(`[createOrderV2] ✅ Reusing existing order token: ${trackingToken}`);
                 } else {
                     console.warn(`[createOrderV2] Existing order ${finalExistingOrderId} not found! Generating new token.`);
-                    trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+                    trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || `order_${Date.now()}`, !!validGuestId);
                 }
             } catch (err) {
                 console.error(`[createOrderV2] Failed to fetch existing order token:`, err);
-                trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+                trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || `order_${Date.now()}`, !!validGuestId);
             }
         } else {
             // New order - generate fresh token
-            trackingToken = await generateSecureToken(firestore, normalizedPhone || `order_${Date.now()}`);
+            trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || `order_${Date.now()}`, !!validGuestId);
         }
 
         // ========================================
@@ -653,15 +683,22 @@ export async function createOrderV2(req) {
 /**
  * Generate secure tracking token (same as V1)
  */
-async function generateSecureToken(firestore, identifier) {
+async function generateSecureToken(firestore, identifier, isGuest = false) {
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h validity
 
-    await firestore.collection('auth_tokens').doc(token).set({
-        phone: identifier,
+    const tokenData = {
         expiresAt: expiry,
         type: 'tracking'
-    });
+    };
+
+    if (isGuest) {
+        tokenData.guestId = identifier;
+    } else {
+        tokenData.phone = identifier;
+    }
+
+    await firestore.collection('auth_tokens').doc(token).set(tokenData);
 
     return token;
 }

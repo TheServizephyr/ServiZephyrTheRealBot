@@ -7,18 +7,27 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { recalculateTabTotals, validateTabToken } from '@/lib/dinein-utils';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
+import { deobfuscateGuestId } from '@/lib/guest-utils';
 
-
-const generateSecureToken = async (firestore, customerPhone) => {
-    console.log(`[API /order/create] generateSecureToken for phone: ${customerPhone}`);
+const generateSecureToken = async (firestore, identifier) => {
+    console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
-    await authTokenRef.set({
-        phone: customerPhone,
+
+    // Determine if identifier is GuestID or Phone
+    const data = {
         expiresAt: expiry,
         type: 'tracking'
-    });
+    };
+
+    if (identifier.startsWith('g_')) {
+        data.guestId = identifier;
+    } else {
+        data.phone = identifier;
+    }
+
+    await authTokenRef.set(data);
     console.log(`[API /order/create] Token generated: ${token}`);
     return token;
 };
@@ -66,10 +75,42 @@ export async function createOrderV1(req) {
             packagingCharge = 0,
             existingOrderId, // <-- NEW: For adding items to an existing order
             ordered_by = 'customer', // 'customer' | 'waiter_<name>' - who placed the order
-            ordered_by_name = null // Waiter's name if applicable
+            ordered_by_name = null, // Waiter's name if applicable
+            guestRef = null, // NEW: Guest Identity Ref
+            guestToken = null // NEW: Guest Token
         } = body;
 
+        let validGuestId = null;
+        let securePhone = null;
+
+        // RESOLVE GUEST IDENTITY
+        if (guestRef) {
+            console.log(`[API /order/create] Resolving Guest Identity from ref: ${guestRef}`);
+            validGuestId = deobfuscateGuestId(guestRef);
+            if (validGuestId) {
+                const guestProfile = await firestore.collection('guest_profiles').doc(validGuestId).get();
+                if (guestProfile.exists) {
+                    const profileData = guestProfile.data();
+                    securePhone = profileData.phone;
+                    console.log(`[API /order/create] Resolved GuestID: ${validGuestId}, Phone (Private): ${securePhone ? '***' : 'Not Found'}`);
+
+                    // If name is missing in request but exists in profile, use it
+                    if (!name && profileData.name) name = profileData.name;
+                } else {
+                    console.warn(`[API /order/create] Guest Profile not found for ID: ${validGuestId}`);
+                }
+            } else {
+                console.warn(`[API /order/create] Failed to deobfuscate guestRef`);
+            }
+        }
+
+        // Use resolved secure phone if request phone is missing
+        if (!phone && securePhone) {
+            phone = securePhone;
+        }
+
         // --- IDEMPOTENCY KEY VALIDATION (CRITICAL) ---
+
         const { idempotencyKey } = body;
 
         // Validate idempotency key
@@ -726,7 +767,7 @@ export async function createOrderV1(req) {
 
         // --- Regular Delivery/Pickup/StreetVendor Flow ---
         console.log("[API /order/create] Handling regular delivery/pickup/street-vendor flow.");
-        let userId = normalizedPhone || `anon_${nanoid(10)}`;
+        let userId = validGuestId || normalizedPhone || `anon_${nanoid(10)}`;
         let isNewUser = true;
 
         if (normalizedPhone) {
@@ -903,7 +944,7 @@ export async function createOrderV1(req) {
             console.log(`[API /order/create] Handling Online Payment for standard order. Gateway: ${paymentMethod}`);
 
             const firestoreOrderId = firestore.collection('orders').doc().id;
-            const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
+            const trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || firestoreOrderId);
 
             // Generate order token for street vendors (same as COD flow)
             let dineInToken = null;
@@ -1074,8 +1115,9 @@ export async function createOrderV1(req) {
             batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
         }
 
+
         const newOrderRef = firestore.collection('orders').doc();
-        const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
+        const trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || newOrderRef.id);
         console.log(`[API /order/create] Creating final order document with ID ${newOrderRef.id}`);
 
         let dineInToken = null;

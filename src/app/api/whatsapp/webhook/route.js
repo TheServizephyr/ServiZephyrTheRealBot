@@ -6,6 +6,7 @@ import { sendWhatsAppMessage, downloadWhatsAppMedia } from '@/lib/whatsapp';
 import { sendOrderStatusUpdateToCustomer, sendNewOrderToOwner } from '@/lib/notifications';
 import axios from 'axios';
 import { nanoid } from 'nanoid';
+import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -54,17 +55,17 @@ async function getBusiness(firestore, botPhoneNumberId) {
     return null;
 }
 
-const generateSecureToken = async (firestore, customerPhone) => {
-    console.log(`[Webhook WA] generateSecureToken: Generating for phone: ${customerPhone}`);
+const generateSecureToken = async (firestore, guestId) => {
+    console.log(`[Webhook WA] generateSecureToken: Generating for guestId: ${guestId}`);
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
-        phone: customerPhone,
+        guestId: guestId, // Store Guest ID instead of Phone
         expiresAt: expiry,
         type: 'tracking'
     });
-    console.log("[Webhook WA] generateSecureToken: Token generated.");
+    console.log("[Webhook WA] generateSecureToken: Token generated linked to Guest ID.");
     return token;
 };
 
@@ -182,9 +183,19 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
         switch (type) {
             case 'order': {
                 const businessId = payloadParts.join('_');
-                const token = await generateSecureToken(firestore, customerPhone);
-                const link = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}&token=${token}`;
-                await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order (valid for 24 hours):\n\n${link}`, botPhoneNumberId);
+                // 1. Get or Create Guest Profile (handles migration)
+                const { guestId } = await getOrCreateGuestProfile(firestore, customerPhone);
+
+                // 2. Generate Token linked to Guest ID
+                const token = await generateSecureToken(firestore, guestId);
+
+                // 3. Obfuscate Guest ID for URL
+                const publicRef = obfuscateGuestId(guestId);
+
+                // 4. Generate Link with Guest Ref
+                const link = `https://servizephyr.com/order/${businessId}?ref=${publicRef}&token=${token}`;
+
+                await sendWhatsAppMessage(fromNumber, `Here is your personal secure link to place an order (valid for 24 hours):\n\n${link}`, botPhoneNumberId);
                 break;
             }
             case 'track': {

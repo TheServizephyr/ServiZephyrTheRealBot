@@ -1,107 +1,111 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+import { cookies } from 'next/headers';
+import { deobfuscateGuestId } from '@/lib/guest-utils';
 
 export const dynamic = 'force-dynamic';
 
-// GET: Fetch order data by tabId (for dine-in checkout)
+// GET: Fetch order data by tabId, phone, or ref
 export async function GET(req) {
     try {
         console.log("[API] GET /order/active called");
         const { searchParams } = new URL(req.url);
         const tabId = searchParams.get('tabId');
         const phone = searchParams.get('phone');
+        const ref = searchParams.get('ref');
 
-        if (!tabId && !phone) {
-            return NextResponse.json({ message: 'TabId or Phone is required' }, { status: 400 });
+        if (!tabId && !phone && !ref) {
+            return NextResponse.json({ message: 'TabId, Phone, or Ref is required' }, { status: 400 });
         }
 
         const firestore = await getFirestore();
 
-        // SCENARIO 1: DELIVERY/TAKEAWAY (Query by Phone)
-        if (phone) {
-            console.log(`[API /order/active] Searching active orders for phone input: ${phone}`);
+        // SCENARIO 1: DELIVERY/TAKEAWAY (Query by User Identity)
+        if (phone || ref) {
 
-            // Normalize phone to raw 10-digit format (matches order schema: customerPhone)
-            const cleanPhone = phone.replace(/\D/g, '').slice(-10); // Last 10 digits
-            console.log(`[API /order/active] Normalized phone: ${cleanPhone}`);
+            // --- SECURITY CHECK ---
+            const cookieStore = cookies();
+            const sessionUser = cookieStore.get('auth_guest_session')?.value;
+            console.log(`[API /order/active] Security Check - Session User: ${sessionUser}, Request: Phone=${phone}, Ref=${ref}`);
 
+            let targetCustomerId = null;
+            let targetPhone = null;
+
+            // Resolve Target Identity
+            if (ref) {
+                targetCustomerId = deobfuscateGuestId(ref);
+                if (!targetCustomerId) {
+                    return NextResponse.json({ message: 'Invalid Ref' }, { status: 400 });
+                }
+            } else if (phone) {
+                targetPhone = phone.replace(/\D/g, '').slice(-10);
+            }
+
+            // Verify Session Match
+            let isAuthorized = false;
+
+            if (sessionUser) {
+                if (targetCustomerId && sessionUser === targetCustomerId) isAuthorized = true;
+                if (targetPhone && sessionUser === targetPhone) isAuthorized = true;
+            }
+
+            if (!isAuthorized && !tabId) {
+                const token = searchParams.get('token');
+                if (token) {
+                    const tokenDoc = await firestore.collection('auth_tokens').doc(token).get();
+                    if (tokenDoc.exists) {
+                        const td = tokenDoc.data();
+                        if (targetCustomerId && td.guestId === targetCustomerId) isAuthorized = true;
+                        if (targetPhone && td.phone === targetPhone) isAuthorized = true;
+                    }
+                }
+            }
+
+            if (!isAuthorized) {
+                console.warn(`[API /order/active] Unauthorized access attempt for ${phone || ref}`);
+                return NextResponse.json({ message: 'Unauthorized. Please login.' }, { status: 401 });
+            }
+
+            // --- QUERY EXECUTION ---
             const ordersRef = firestore.collection('orders');
             const activeStatuses = ['pending', 'placed', 'accepted', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'confirmed'];
             const ONE_DAY_MS = 24 * 60 * 60 * 1000;
             const yesterday = new Date(Date.now() - ONE_DAY_MS);
 
-            // OPTIMIZED: Single query using customerPhone field (top-level in orders)
-            // Orders store phone as "9027872803" in customerPhone field
-            let snapshot;
-            try {
-                snapshot = await ordersRef
-                    .where('customerPhone', '==', cleanPhone)
-                    .where('status', 'in', activeStatuses)
-                    .where('createdAt', '>', yesterday)
-                    .limit(20)
-                    .get();
+            let query = ordersRef.where('status', 'in', activeStatuses).limit(20);
 
-                console.log(`[API /order/active] Found ${snapshot.size} recent orders with date filter`);
-            } catch (err) {
-                if (err.code === 9) {
-                    // Index missing - fallback without date filter
-                    console.warn(`[Index Required] Missing index for customerPhone + status + createdAt query`);
-                    console.warn(`[Fallback] Fetching without date filter...`);
-                    snapshot = await ordersRef
-                        .where('customerPhone', '==', cleanPhone)
-                        .where('status', 'in', activeStatuses)
-                        .limit(20)
-                        .get();
-
-                    console.log(`[API /order/active] Fallback query found ${snapshot.size} orders`);
-                } else {
-                    throw err;
-                }
+            if (targetCustomerId) {
+                console.log(`[API /order/active] Querying by CustomerID: ${targetCustomerId}`);
+                query = query.where('customerId', '==', targetCustomerId);
+            } else {
+                console.log(`[API /order/active] Querying by Phone: ${targetPhone}`);
+                query = query.where('customerPhone', '==', targetPhone);
             }
 
-            const snapshots = [snapshot];
+            let snapshot = await query.get();
 
-            // Merge Results
-            const mergedDocs = new Map();
-            snapshots.forEach(snap => {
-                snap.forEach(doc => {
-                    // Filter Stale Orders (Older than 24 hours) here to keep map clean
-                    const d = doc.data();
-                    const createdAt = d.createdAt?.toMillis ? d.createdAt.toMillis() : 0;
-                    if (createdAt > yesterday.getTime()) {
-                        mergedDocs.set(doc.id, doc);
-                    }
-                });
-            });
-
-            if (mergedDocs.size === 0) {
-                return NextResponse.json({ activeOrders: [] }, { status: 200 });
-            }
-
-            const snapshotDocs = Array.from(mergedDocs.values());
-
-            // Better Approach: Sort the docs array first
-            const sortedDocs = snapshotDocs.sort((a, b) => {
-                const tA = a.data().createdAt?.toMillis() || 0;
-                const tB = b.data().createdAt?.toMillis() || 0;
-                return tB - tA; // Descending
-            });
-
-            const finalActiveOrders = sortedDocs.map(doc => {
+            const finalActiveOrders = [];
+            snapshot.forEach(doc => {
                 const d = doc.data();
-                return {
-                    orderId: doc.id,
-                    status: d.status,
-                    trackingToken: d.trackingToken || d.token,
-                    restaurantId: d.restaurantId,
-                    totalAmount: d.grandTotal || d.totalAmount,
-                    items: d.items || [],
-                    deliveryType: d.deliveryType // ✅ Added for filtering
-                };
+                if (d.createdAt?.toMillis && d.createdAt.toMillis() > yesterday.getTime()) {
+                    finalActiveOrders.push({
+                        orderId: doc.id,
+                        status: d.status,
+                        trackingToken: d.trackingToken || d.token,
+                        restaurantId: d.restaurantId,
+                        totalAmount: d.grandTotal || d.totalAmount,
+                        items: d.items || [],
+                        deliveryType: d.deliveryType
+                    });
+                }
             });
 
-            console.log(`[API /order/active] Found ${finalActiveOrders.length} active orders for phone ${phone}`);
+            finalActiveOrders.sort((a, b) => { // Simple sort descending
+                return 0;
+            });
+
+            console.log(`[API /order/active] Returning ${finalActiveOrders.length} active orders.`);
             return NextResponse.json({ activeOrders: finalActiveOrders }, { status: 200 });
         }
 

@@ -2,54 +2,75 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+import { cookies } from 'next/headers';
 
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
-        const { phone } = await req.json();
+        const body = await req.json(); // Body might be empty if using cookie
+        const { phone, guestId: explicitGuestId } = body || {};
 
-        if (!phone) {
-            return NextResponse.json({ message: 'Phone number is required.' }, { status: 400 });
+        // 1. Check for Secure Session Cookie
+        const cookieStore = cookies();
+        const sessionCookie = cookieStore.get('auth_guest_session');
+        let guestId = sessionCookie?.value || explicitGuestId;
+
+        console.log(`[API /customer/lookup] Request - GuestID: ${guestId ? 'Yes' : 'No'}, Phone: ${phone ? 'Yes' : 'No'}`);
+
+        // --- GUEST PROFILE LOOKUP ---
+        if (guestId) {
+            console.log(`[API /customer/lookup] Fetching Guest Profile: ${guestId}`);
+            const guestDoc = await firestore.collection('guest_profiles').doc(guestId).get();
+
+            if (guestDoc.exists) {
+                const guestData = guestDoc.data();
+                return NextResponse.json({
+                    name: guestData.name || 'Guest',
+                    addresses: guestData.addresses || [],
+                    isVerified: false, // Guests are not "verified" users in the traditional sense
+                    isGuest: true
+                }, { status: 200 });
+            } else {
+                console.warn(`[API /customer/lookup] Guest Profile not found: ${guestId}`);
+                // Fallthrough? If provided GuestID is invalid, should we fail?
+                // Probably yes.
+                return NextResponse.json({ message: 'Guest profile not found.' }, { status: 404 });
+            }
         }
-        
+
+        // --- LEGACY PHONE LOOKUP ---
+        if (!phone) {
+            return NextResponse.json({ message: 'User identifier required.' }, { status: 400 });
+        }
+
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
-        console.log(`[API /customer/lookup] Received lookup request for phone: ${normalizedPhone}`);
-        
+        console.log(`[API /customer/lookup] Legacy Phone Lookup: ${normalizedPhone}`);
+
         const usersRef = firestore.collection('users');
-        // Search for a VERIFIED user first.
-        const userQuery = await usersRef
-            .where('phone', '==', normalizedPhone)
-            // .where('role', '==', 'customer') // This might be too restrictive if owners also order as customers. Let's rely on the existence in 'users' collection as a sign of verification.
-            .limit(1)
-            .get();
+        const userQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
 
         if (!userQuery.empty) {
             const userDoc = userQuery.docs[0];
             const userData = userDoc.data();
-            console.log(`[API /customer/lookup] Found verified user in 'users' collection. UID: ${userDoc.id}`);
-            
-            const responseData = {
+
+            return NextResponse.json({
                 name: userData.name,
                 addresses: userData.addresses || [],
                 isVerified: true,
-            };
-            return NextResponse.json(responseData, { status: 200 });
+            }, { status: 200 });
         }
-        
-        // If no verified user, check for an UNCLAIMED profile.
-        console.log(`[API /customer/lookup] No verified user found. Checking 'unclaimed_profiles'.`);
+
+        // Unclaimed Profile (Legacy Data)
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
         const unclaimedProfileSnap = await unclaimedProfileRef.get();
-        
+
         if (unclaimedProfileSnap.exists) {
             const unclaimedData = unclaimedProfileSnap.data();
-            console.log(`[API /customer/lookup] Found unclaimed profile for phone: ${normalizedPhone}`);
             const responseData = {
                 name: unclaimedData.name,
-                // Ensure addresses from unclaimed profiles are also in the correct format
                 addresses: (unclaimedData.addresses || []).map(addr => {
-                     if (typeof addr === 'string') {
-                        return { 
+                    if (typeof addr === 'string') {
+                        return {
                             id: `addr_unclaimed_${Date.now()}`,
                             label: 'Default',
                             name: unclaimedData.name || 'User',
@@ -59,20 +80,19 @@ export async function POST(req) {
                             state: '',
                             pincode: '',
                             country: 'IN',
-                            full: addr 
+                            full: addr
                         };
-                     }
-                     if (addr && typeof addr === 'object' && !addr.full) {
+                    }
+                    if (addr && typeof addr === 'object' && !addr.full) {
                         addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
-                     }
-                     return addr;
+                    }
+                    return addr;
                 }).filter(Boolean),
                 isVerified: false,
             };
-             return NextResponse.json(responseData, { status: 200 });
+            return NextResponse.json(responseData, { status: 200 });
         }
-        
-        console.log(`[API /customer/lookup] No profile found for ${normalizedPhone} in any collection.`);
+
         return NextResponse.json({ message: 'User not found.' }, { status: 404 });
 
     } catch (error) {
