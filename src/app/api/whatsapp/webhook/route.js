@@ -71,6 +71,25 @@ const generateSecureToken = async (firestore, guestId) => {
 
 
 const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId) => {
+    console.log(`[Webhook WA] Preparing to send welcome message to ${customerPhoneWithCode}`);
+
+    // ✅ DEDUPLICATION: Prevent sending welcome message if already sent recently
+    const firestore = await getFirestore();
+    const customerPhone = customerPhoneWithCode.startsWith('91') ? customerPhoneWithCode.substring(2) : customerPhoneWithCode;
+    const conversationRef = business.ref.collection('conversations').doc(customerPhone);
+    const conversationSnap = await conversationRef.get();
+
+    if (conversationSnap.exists) {
+        const lastWelcomeSent = conversationSnap.data().lastWelcomeSent;
+        if (lastWelcomeSent) {
+            const timeSinceLastWelcome = Date.now() - lastWelcomeSent.toMillis();
+            if (timeSinceLastWelcome < 60000) { // Less than 60 seconds
+                console.log(`[Webhook WA] ⚠️ Skipping welcome message - already sent ${Math.floor(timeSinceLastWelcome / 1000)}s ago`);
+                return;
+            }
+        }
+    }
+
     console.log(`[Webhook WA] Sending interactive welcome message to ${customerPhoneWithCode}`);
 
     const payload = {
@@ -91,6 +110,9 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
     };
 
     await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+
+    // ✅ Update timestamp to prevent duplicates
+    await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
 }
 
 
@@ -229,7 +251,21 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             }
             case 'help': {
                 await conversationRef.set({ state: 'direct_chat' }, { merge: true });
-                await sendWhatsAppMessage(fromNumber, `You are now connected directly with a representative from ${business.data.name}. You can ask your questions here.\n\nWhen your query is resolved, the restaurant will end the chat.`, botPhoneNumberId);
+                const helpMessage = {
+                    type: "interactive",
+                    interactive: {
+                        type: "button",
+                        body: {
+                            text: `You are now connected directly with ${business.data.name}.\n\nAsk your questions here, and the restaurant will respond.`
+                        },
+                        action: {
+                            buttons: [
+                                { type: "reply", reply: { id: `action_end_chat`, title: "End This Chat" } }
+                            ]
+                        }
+                    }
+                };
+                await sendWhatsAppMessage(fromNumber, helpMessage, botPhoneNumberId);
                 break;
             }
             case 'end': {
@@ -486,6 +522,26 @@ export async function POST(request) {
                         console.error(`[Webhook WA] Failed to update message with media:`, err);
                         await messageRef.update({ status: 'media_failed' });
                     }
+                }
+
+                // ✅ FIX: Send auto-reply with "End Chat" button when customer sends TEXT in direct chat
+                if (message.type === 'text') {
+                    console.log(`[Webhook WA] Sending End Chat button to customer in direct_chat mode.`);
+                    const endChatReply = {
+                        type: "interactive",
+                        interactive: {
+                            type: "button",
+                            body: {
+                                text: `Your message has been sent to ${business.data.name}.\n\n_If you want to place an order, please end this chat first._`
+                            },
+                            action: {
+                                buttons: [
+                                    { type: "reply", reply: { id: "action_end_chat", title: "End Chat & Order" } }
+                                ]
+                            }
+                        }
+                    };
+                    await sendWhatsAppMessage(fromNumber, endChatReply, botPhoneNumberId);
                 }
 
                 console.log(`[Webhook WA] ${messageType} processing complete for ${fromPhoneNumber}.`);

@@ -120,11 +120,12 @@ export async function POST(req) {
                 type: 'interactive',
                 interactive: {
                     type: 'button',
-                    body: { text: text },
+                    body: {
+                        text: `${text}\n\n_If you want to place an order, please end this chat first._`
+                    },
                     action: {
                         buttons: [
-                            { type: "reply", reply: { id: "action_end_chat", title: "End This Chat" } },
-                            { type: "reply", reply: { id: "action_report_admin", title: "Report to Admin" } }
+                            { type: "reply", reply: { id: "action_end_chat", title: "End Chat & Order" } }
                         ]
                     }
                 }
