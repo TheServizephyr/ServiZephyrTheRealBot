@@ -142,6 +142,9 @@ export async function createOrderV2(req) {
             guestToken      // ✅ NEW: Guest Identity Token (Session Check)
         } = body;
 
+        // ✅ SANITIZATION: Only allow diningPreference for dine-in orders
+        const sanitizedDiningPreference = (deliveryType === 'dine-in') ? diningPreference : null;
+
         // ✅ CRITICAL: Street vendors DON'T support add-ons!
         // Force new order creation by ignoring existingOrderId
         const finalExistingOrderId = (businessType === 'street-vendor') ? null : existingOrderId;
@@ -375,7 +378,7 @@ export async function createOrderV2(req) {
                 cgst: cgst || 0,
                 sgst: sgst || 0,
                 deliveryCharge: deliveryCharge || 0,
-                diningPreference: diningPreference,
+                diningPreference: sanitizedDiningPreference,
                 packagingCharge: packagingCharge || 0,
                 totalAmount: grandTotal,
                 status: 'awaiting_payment', // SAME as V1
@@ -538,7 +541,7 @@ export async function createOrderV2(req) {
             cgst: cgst || 0,
             sgst: sgst || 0,
             deliveryCharge: deliveryCharge || 0,
-            diningPreference: diningPreference,
+            diningPreference: sanitizedDiningPreference,
             packagingCharge: packagingCharge || 0,
             totalAmount: grandTotal,
             status: 'pending', // SAME status as V1

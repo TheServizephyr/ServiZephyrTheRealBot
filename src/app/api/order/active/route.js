@@ -88,7 +88,10 @@ export async function GET(req) {
             const finalActiveOrders = [];
             snapshot.forEach(doc => {
                 const d = doc.data();
-                if (d.createdAt?.toMillis && d.createdAt.toMillis() > yesterday.getTime()) {
+                const createdTime = d.orderDate || d.createdAt; // Support both
+
+                // Allow order if created within last 24h OR if no date (legacy support/safety)
+                if (!createdTime || (createdTime.toMillis && createdTime.toMillis() > yesterday.getTime())) {
                     finalActiveOrders.push({
                         orderId: doc.id,
                         status: d.status,
@@ -96,13 +99,12 @@ export async function GET(req) {
                         restaurantId: d.restaurantId,
                         totalAmount: d.grandTotal || d.totalAmount,
                         items: d.items || [],
-                        deliveryType: d.deliveryType
+                        deliveryType: d.deliveryType,
+                        // Return dates for sorting
+                        orderDate: d.orderDate,
+                        createdAt: d.createdAt
                     });
                 }
-            });
-
-            finalActiveOrders.sort((a, b) => { // Simple sort descending
-                return 0;
             });
 
             console.log(`[API /order/active] Returning ${finalActiveOrders.length} active orders.`);

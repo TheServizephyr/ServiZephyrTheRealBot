@@ -717,7 +717,22 @@ const OrderPageInternal = () => {
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
-    const ref = searchParams.get('ref'); // NEW: Guest Ref
+
+    // ✅ FIX: Persist Ref to LocalStorage to survive reloads/navigation
+    const refParam = searchParams.get('ref');
+    const [ref, setRef] = useState(refParam);
+
+    useEffect(() => {
+        if (refParam) {
+            localStorage.setItem('guest_ref', refParam);
+            setRef(refParam);
+        } else {
+            // Try to recover from local storage
+            const storedRef = localStorage.getItem('guest_ref');
+            if (storedRef) setRef(storedRef);
+        }
+    }, [refParam]);
+
     const tableIdFromUrl = searchParams.get('table');
     const tabIdFromUrl = searchParams.get('tabId');
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -1774,14 +1789,22 @@ const OrderPageInternal = () => {
         const orderDeliveryType = liveOrder.deliveryType || 'delivery';
 
         if (orderDeliveryType === 'dine-in') {
-            return `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`;
+            let url = `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`;
+            if (ref) url += `&ref=${ref}`;
+            return url;
         }
 
         const trackingPath = (restaurantData.businessType === 'street-vendor' || orderDeliveryType === 'street-vendor-pre-order')
             ? `/track/pre-order/${liveOrder.orderId}`
-            : `/track/${liveOrder.orderId}`;
+            : `/track/delivery/${liveOrder.orderId}`; // ✅ Explicitly use /delivery/ path
 
-        return `${trackingPath}?token=${liveOrder.trackingToken}${phone ? `&phone=${phone}` : ''}`;
+        let url = `${trackingPath}?token=${liveOrder.trackingToken}`;
+        if (ref) url += `&ref=${ref}`;
+        if (phone) url += `&phone=${phone}`;
+        // Also send activeOrderId just in case for back navigation
+        url += `&activeOrderId=${liveOrder.orderId}`;
+
+        return url;
     };
 
     const trackingUrl = getTrackingUrl();

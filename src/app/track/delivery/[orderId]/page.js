@@ -197,6 +197,11 @@ function OrderTrackingContent() {
     const [currentOrderId, setCurrentOrderId] = useState(paramOrderId);
     const [activeOrders, setActiveOrders] = useState([]); // List of all active orders for this user
 
+    // Handler to switch between active orders via tabs
+    const handleSwitchOrder = (id) => {
+        setCurrentOrderId(id);
+    };
+
     // ... existing state ...
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -237,12 +242,17 @@ function OrderTrackingContent() {
     useEffect(() => {
         // Derive phone from URL param OR fetched order data
         const phoneToUse = userPhone || orderData?.order?.customerPhone || orderData?.order?.phone;
+        const refParam = searchParams.get('ref');
 
-        if (!phoneToUse) return;
+        if (!phoneToUse && !refParam) return;
 
         const fetchActiveOrders = async () => {
             try {
-                const res = await fetch(`/api/order/active?phone=${phoneToUse}`);
+                let url = `/api/order/active?`;
+                if (phoneToUse) url += `phone=${phoneToUse}&`;
+                if (refParam) url += `ref=${refParam}`;
+
+                const res = await fetch(url);
                 if (res.ok) {
                     const data = await res.json();
                     // Filter valid delivery orders or active ones
@@ -250,10 +260,23 @@ function OrderTrackingContent() {
                         // Ensure we get an array, and prioritize the current order
                         let orders = Array.isArray(data.activeOrders) ? data.activeOrders : [data.activeOrders];
 
-                        // FILTER: Only show DELIVERY orders on this page (exclude dine-in/pickup if separated)
-                        orders = orders.filter(o => o.deliveryType === 'delivery');
+                        // FILTER DISABLED: Showing all active orders (supports mixed data scenarios)
+                        // orders = orders.filter(o => o.deliveryType === 'delivery');
 
                         // If API returns single object inside activeOrders key (unlikely but safe)
+                        // Sort Chronologically (Oldest = Order 1)
+                        orders.sort((a, b) => {
+                            const getDateVal = (o) => {
+                                const d = o.orderDate || o.createdAt;
+                                if (!d) return 0;
+                                if (d.seconds) return d.seconds; // Timestamp
+                                if (d._seconds) return d._seconds; // Serialized
+                                if (typeof d === 'string') return new Date(d).getTime();
+                                return 0;
+                            };
+                            return getDateVal(a) - getDateVal(b);
+                        });
+
                         setActiveOrders(orders);
                     }
                 }
@@ -402,16 +425,7 @@ function OrderTrackingContent() {
     // ========== END BUNDLING FEATURE ==========
 
 
-    // Tab Switch Handler
-    const handleSwitchOrder = (newId) => {
-        setCurrentOrderId(newId);
-        // Update URL visually so refresh keeps user on correct tab
-        // Using window.history.replaceState to avoid full reload
-        const newUrl = new URL(window.location.href);
-        // Note: Next.js router might contend with this, but strictly for UI switching within the page, state is enough.
-        // If we want deep linking, we'd need router.replace but that might re-trigger initial props.
-        // For now, state-based switching is smoothest.
-    };
+
 
     // Auto-update Param if changed externally
     useEffect(() => {
@@ -671,6 +685,8 @@ function OrderTrackingContent() {
                             })()}
                         </motion.div>
                     </div>
+
+
 
                     {/* ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ========== */}
                     {/* SMART BUNDLING BANNER */}

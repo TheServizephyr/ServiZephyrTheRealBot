@@ -1326,10 +1326,11 @@ export default function LiveOrdersPage() {
                                                 {order.deliveryType === 'pickup' && (
                                                     <div title="Pickup Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12} /> Pickup</div>
                                                 )}
-                                                {order.diningPreference === 'takeaway' && (
+                                                {order.diningPreference === 'takeaway' && order.deliveryType !== 'delivery' && order.deliveryType !== 'pickup' && (
                                                     <div title="Takeaway Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 w-fit"><PackageCheck size={12} /> Takeaway</div>
                                                 )}
-                                                {order.diningPreference === 'dine-in' && (
+                                                {/* ✅ FIX: Only show Dine-In tag if deliveryType is explicitly dine-in */}
+                                                {(order.deliveryType === 'dine-in' || (order.diningPreference === 'dine-in' && order.deliveryType !== 'delivery' && order.deliveryType !== 'pickup')) && (
                                                     <div title="Dine-In Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12} /> Dine-In</div>
                                                 )}
                                             </div>

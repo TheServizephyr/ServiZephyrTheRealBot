@@ -80,6 +80,12 @@ export async function createOrderV1(req) {
             guestToken = null // NEW: Guest Token
         } = body;
 
+        // ✅ SANITIZATION: Only allow diningPreference for dine-in orders
+        // This prevents data inconsistency (e.g. Delivery order with "dine-in" preference)
+        if (deliveryType !== 'dine-in') {
+            diningPreference = null;
+        }
+
         let validGuestId = null;
         let securePhone = null;
 
