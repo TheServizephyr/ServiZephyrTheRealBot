@@ -41,7 +41,7 @@ export default function CompleteProfile() {
     { id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store, enabled: true },
     { id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart, enabled: false },
     { id: 'rider', label: 'Rider', icon: Bike, enabled: true },
-    { id: 'admin', label: 'Admin', icon: Shield, enabled: false }
+    { id: 'admin', label: 'Admin', icon: Shield, enabled: true }
   ];
 
   const handleRoleClick = (roleConfig) => {
@@ -157,8 +157,8 @@ export default function CompleteProfile() {
       return;
     }
 
-    if (role === 'admin' && secretKey !== "servizephyr_admin_key") {
-      setError('Invalid Admin Secret Key.');
+    if (role === 'admin' && secretKey.trim() !== "admin123") {
+      setError('Invalid Admin Secret Key. Try: admin123');
       setLoading(false);
       return;
     }
