@@ -38,7 +38,7 @@ export default function ProfilePage() {
     const [editedName, setEditedName] = useState('');
     const [editedPhone, setEditedPhone] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    
+
     useEffect(() => {
         const fetchProfileData = async () => {
             if (authUser) {
@@ -63,7 +63,7 @@ export default function ProfilePage() {
                         phone: authUser.phoneNumber,
                         profilePicture: authUser.photoURL
                     });
-                     setEditedName(authUser.displayName || '');
+                    setEditedName(authUser.displayName || '');
                     setEditedPhone(authUser.phoneNumber || '');
                 }
             }
@@ -79,7 +79,7 @@ export default function ProfilePage() {
         localStorage.clear();
         router.push('/');
     };
-    
+
     const handleSaveProfile = async () => {
         if (!editedName || !editedPhone) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Name and phone cannot be empty.' });
@@ -94,11 +94,11 @@ export default function ProfilePage() {
                 body: JSON.stringify({ name: editedName, phone: editedPhone }),
             });
 
-             if (!response.ok) {
+            if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.message || "Failed to update profile.");
             }
-            
+
             const updatedData = await response.json();
             setProfileData(updatedData); // Re-sync state with the backend response
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Profile updated successfully!' });
@@ -108,7 +108,7 @@ export default function ProfilePage() {
             setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
         }
     };
-    
+
     const handleCancelEdit = () => {
         setIsEditing(false);
         setEditedName(profileData?.name || '');
@@ -124,108 +124,113 @@ export default function ProfilePage() {
         )
     }
 
-  return (
-    <>
-     <InfoDialog
-        isOpen={infoDialog.isOpen}
-        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-        title={infoDialog.title}
-        message={infoDialog.message}
-    />
-    <div className="p-4 md:p-6 space-y-6">
-        <header className="flex justify-between items-center">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">My Profile</h1>
-                <p className="text-muted-foreground mt-1">Manage your orders, addresses, and settings.</p>
-            </div>
-             {isEditing ? (
-                 <div className="flex gap-2">
-                    <Button variant="secondary" onClick={handleCancelEdit}>
-                        <XCircle size={16} className="mr-2"/> Cancel
-                    </Button>
-                    <Button onClick={handleSaveProfile} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                        <Save size={16} className="mr-2"/> Save
-                    </Button>
-                </div>
-            ) : (
-                <Button variant="outline" onClick={() => setIsEditing(true)}>
-                    <Edit size={16} className="mr-2"/> Edit Profile
-                </Button>
-            )}
-        </header>
-
-        <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-        >
-            <Card className="p-6">
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <Avatar className="h-20 w-20 border-4 border-primary/20">
-                        <AvatarImage src={profileData?.profilePicture || authUser?.photoURL || ''} alt={profileData?.name || 'User'} />
-                        <AvatarFallback className="text-2xl bg-muted">{profileData?.name?.charAt(0) || 'U'}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-grow w-full">
-                         {isEditing ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <Label htmlFor="name">Full Name</Label>
-                                    <Input id="name" value={editedName} onChange={e => setEditedName(e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label htmlFor="phone">Phone Number</Label>
-                                    <Input id="phone" value={editedPhone} onChange={e => setEditedPhone(e.target.value)} />
-                                </div>
-                            </div>
-                        ) : (
-                             <div>
-                                <h2 className="text-2xl font-bold">{profileData?.name || 'Hello, User!'}</h2>
-                                <p className="text-muted-foreground">{profileData?.email || authUser?.email}</p>
-                                <p className="text-muted-foreground">{profileData?.phone || 'No phone number'}</p>
-                            </div>
-                        )}
+    return (
+        <>
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            <div className="p-4 md:p-6 space-y-6">
+                <header className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">My Profile</h1>
+                        <p className="text-muted-foreground mt-1">Manage your orders, addresses, and settings.</p>
                     </div>
-                </div>
-            </Card>
-        </motion.div>
+                    {isEditing ? (
+                        <div className="flex gap-2">
+                            <Button variant="secondary" onClick={handleCancelEdit}>
+                                <XCircle size={16} className="mr-2" /> Cancel
+                            </Button>
+                            <Button onClick={handleSaveProfile} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                                <Save size={16} className="mr-2" /> Save
+                            </Button>
+                        </div>
+                    ) : (
+                        <Button variant="outline" onClick={() => setIsEditing(true)}>
+                            <Edit size={16} className="mr-2" /> Edit Profile
+                        </Button>
+                    )}
+                </header>
 
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="space-y-3"
-        >
-            <ProfileOption 
-                icon={<ShoppingBag size={20}/>}
-                title="My Orders"
-                description="View your past and current orders"
-                onClick={() => router.push('/customer-dashboard/orders')}
-            />
-             <ProfileOption 
-                icon={<MapPin size={20}/>}
-                title="My Addresses"
-                description="Manage your saved delivery locations"
-                onClick={() => router.push('/customer-dashboard/addresses')}
-            />
-             <ProfileOption 
-                icon={<Settings size={20}/>}
-                title="Account Settings"
-                description="Update your notification preferences"
-                onClick={() => router.push('/customer-dashboard/settings')}
-            />
-        </motion.div>
-        
-         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="mt-8"
-        >
-             <Button onClick={handleLogout} variant="destructive" className="w-full md:w-auto">
-                <LogOut className="mr-2 h-4 w-4"/> Logout
-            </Button>
-        </motion.div>
-    </div>
-    </>
-  );
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                >
+                    <Card className="p-6">
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                            <Avatar className="h-20 w-20 border-4 border-primary/20">
+                                <AvatarImage src={profileData?.profilePicture || authUser?.photoURL || ''} alt={profileData?.name || 'User'} />
+                                <AvatarFallback className="text-2xl bg-muted">{profileData?.name?.charAt(0) || 'U'}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-grow w-full">
+                                {isEditing ? (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <Label htmlFor="name">Full Name</Label>
+                                            <Input id="name" value={editedName} onChange={e => setEditedName(e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="phone">Phone Number</Label>
+                                            <Input id="phone" value={editedPhone} onChange={e => setEditedPhone(e.target.value)} />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <h2 className="text-2xl font-bold">{profileData?.name || 'Hello, User!'}</h2>
+                                        {(profileData?.customerId || authUser?.customerId) && (
+                                            <p className="text-sm font-mono text-primary font-semibold tracking-wide mb-1">
+                                                ID: {profileData?.customerId || authUser?.customerId}
+                                            </p>
+                                        )}
+                                        <p className="text-muted-foreground">{profileData?.email || authUser?.email}</p>
+                                        <p className="text-muted-foreground">{profileData?.phone || 'No phone number'}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </Card>
+                </motion.div>
+
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.1 }}
+                    className="space-y-3"
+                >
+                    <ProfileOption
+                        icon={<ShoppingBag size={20} />}
+                        title="My Orders"
+                        description="View your past and current orders"
+                        onClick={() => router.push('/customer-dashboard/orders')}
+                    />
+                    <ProfileOption
+                        icon={<MapPin size={20} />}
+                        title="My Addresses"
+                        description="Manage your saved delivery locations"
+                        onClick={() => router.push('/customer-dashboard/addresses')}
+                    />
+                    <ProfileOption
+                        icon={<Settings size={20} />}
+                        title="Account Settings"
+                        description="Update your notification preferences"
+                        onClick={() => router.push('/customer-dashboard/settings')}
+                    />
+                </motion.div>
+
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                    className="mt-8"
+                >
+                    <Button onClick={handleLogout} variant="destructive" className="w-full md:w-auto">
+                        <LogOut className="mr-2 h-4 w-4" /> Logout
+                    </Button>
+                </motion.div>
+            </div>
+        </>
+    );
 }

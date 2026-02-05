@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { generateDisplayId } from '@/lib/id-utils';
 
 
 export async function POST(req) {
@@ -120,6 +121,14 @@ export async function POST(req) {
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
         }
 
+        // Generate timestamp for ID creation (Sync)
+        const nowForId = new Date();
+
+        // 1. Add Customer ID to User Profile
+        if (!mergedUserData.customerId) {
+            mergedUserData.customerId = generateDisplayId('CS_', nowForId);
+        }
+
         mergedUserData.createdAt = FieldValue.serverTimestamp();
         batch.set(masterUserRef, mergedUserData, { merge: true });
         console.log(`[PROFILE COMPLETION] Master user profile for UID ${uid} added to batch in 'users' collection.`);
@@ -154,6 +163,7 @@ export async function POST(req) {
             const finalBusinessData = {
                 ...businessData,
                 ownerId: uid, // CRITICAL: Owner's user ID for RBAC and team management
+                merchantId: generateDisplayId('RS_', nowForId), // ✅ NEW: Merchant ID
                 createdAt: FieldValue.serverTimestamp(),
                 // CRITICAL FIX: Set approval status so security restrictions work!
                 approvalStatus: 'pending', // New accounts need admin approval

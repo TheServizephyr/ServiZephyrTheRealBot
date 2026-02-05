@@ -617,6 +617,19 @@ function SettingsPageContent() {
 
                     <div className="space-y-6">
                         <div>
+                            <Label htmlFor="merchantId" className="flex items-center gap-2"><KeyRound size={14} /> Merchant ID</Label>
+                            <div className="mt-1 w-full p-2 border rounded-md bg-muted border-border font-mono text-sm flex items-center justify-between">
+                                <span>{user.merchantId || '-'}</span>
+                                {user.merchantId && (
+                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => navigator.clipboard.writeText(user.merchantId)}>
+                                        <div className="sr-only">Copy</div>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                                    </Button>
+                                )}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">Unique identifier for your restaurant.</p>
+                        </div>
+                        <div>
                             <Label htmlFor="ownerName" className="flex items-center gap-2"><User size={14} /> Owner Name</Label>
                             <input id="ownerName" value={editedUser.name} onChange={e => setEditedUser({ ...editedUser, name: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
