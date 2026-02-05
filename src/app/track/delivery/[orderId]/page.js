@@ -517,8 +517,11 @@ function OrderTrackingContent() {
                     <Button
                         onClick={() => {
                             if (orderData?.restaurant?.id) {
+                                const params = new URLSearchParams();
                                 const phone = searchParams.get('phone');
                                 const ref = searchParams.get('ref');
+                                const token = searchParams.get('token');
+
                                 if (token) params.set('token', token);
                                 if (phone) params.set('phone', phone);
                                 if (ref) params.set('ref', ref);
@@ -546,7 +549,7 @@ function OrderTrackingContent() {
                         >
                             <div className="flex justify-between items-start mb-3">
                                 <div>
-                                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{currentOrderId?.slice(0, 8) || '...'}</p>
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderData?.order?.customerOrderId || currentOrderId?.slice(0, 8) || '...'}</p>
                                     <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
                                 </div>
                                 <div className="flex items-center gap-2">

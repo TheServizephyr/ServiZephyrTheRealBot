@@ -72,7 +72,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 {finalCustomerDetails.phone && <p><strong>Phone:</strong> {finalCustomerDetails.phone}</p>}
                 {finalCustomerDetails.address && <p><strong>Address:</strong> {finalCustomerDetails.address}</p>}
                 <p><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')} - {new Date().toLocaleTimeString('en-IN')}</p>
-                {order.id && <p><strong>Order ID:</strong> #{order.id.substring(0, 8)}</p>}
+                {order.id && <p><strong>Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 
             <table className="w-full text-xs mb-2">

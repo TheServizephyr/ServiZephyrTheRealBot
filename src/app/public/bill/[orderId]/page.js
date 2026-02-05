@@ -108,7 +108,7 @@ export default function PublicBillPage() {
                         <h1 className="text-2xl font-bold">{restaurant?.name}</h1>
                         <p className="opacity-90 text-sm mt-1">{restaurant?.address}</p>
                         <div className="mt-4 inline-block bg-white/20 backdrop-blur-md px-4 py-1 rounded-full text-xs font-medium border border-white/20">
-                            Order #{order.id.slice(-6).toUpperCase()}
+                            Order #{order.customerOrderId || order.id.slice(-6).toUpperCase()}
                         </div>
                     </div>
                 </div>

@@ -100,9 +100,10 @@ export async function GET(req) {
                         totalAmount: d.grandTotal || d.totalAmount,
                         items: d.items || [],
                         deliveryType: d.deliveryType,
-                        // Return dates for sorting
+                        // Return dates for sorting & display
                         orderDate: d.orderDate,
-                        createdAt: d.createdAt
+                        createdAt: d.createdAt,
+                        customerOrderId: d.customerOrderId // ✅ Added for UI display
                     });
                 }
             });

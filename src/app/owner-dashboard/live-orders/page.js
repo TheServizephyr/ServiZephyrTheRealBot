@@ -1311,7 +1311,7 @@ export default function LiveOrdersPage() {
                                             )}
                                         </td>
                                         <td className="p-4 align-top">
-                                            <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
+                                            <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.customerOrderId || order.id}</div>
                                             <div
                                                 onClick={() => handleDetailClick(order.id, order.customerId)}
                                                 className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
