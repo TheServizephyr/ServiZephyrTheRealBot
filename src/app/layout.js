@@ -4,6 +4,7 @@ import LayoutWrapper from '@/components/LayoutWrapper';
 import PWARecoveryHandler from '@/components/PWARecoveryHandler';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import RedirectHandler from '@/components/RedirectHandler';
+import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import Script from 'next/script';
 
@@ -163,6 +164,7 @@ export default function RootLayout({ children }) {
           <LayoutWrapper>
             {children}
           </LayoutWrapper>
+          <Toaster />
         </FirebaseClientProvider>
       </body>
     </html>

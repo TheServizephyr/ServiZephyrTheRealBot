@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getStorage } from 'firebase-admin/storage';
 import { sendWhatsAppMessage, markWhatsAppMessageAsRead } from '@/lib/whatsapp';
 
 async function verifyOwnerAndGetBusinessRef(req) {
@@ -94,7 +95,7 @@ export async function GET(req) {
 // Send a new message from the owner
 export async function POST(req) {
     try {
-        const { conversationId, text, imageUrl, videoUrl, documentUrl, audioUrl, fileName } = await req.json();
+        const { conversationId, text, imageUrl, videoUrl, documentUrl, audioUrl, fileName, storagePath } = await req.json();
 
         if (!conversationId || (!text && !imageUrl && !videoUrl && !documentUrl && !audioUrl)) {
             return NextResponse.json({ message: 'Conversation ID and at least one content parameter (text, imageUrl, videoUrl, documentUrl, audioUrl) are required.' }, { status: 400 });
@@ -108,46 +109,71 @@ export async function POST(req) {
             throw { message: 'WhatsApp bot is not connected for this business.', status: 400 };
         }
 
+        // ✅ HANDLE PERMANENT FILE ACCESS
+        // If storagePath is provided, make the file public and use the permanent URL
+        let permanentMediaUrl = null;
+        if (storagePath) {
+            try {
+                // Determine which URL param was sent
+                const originalUrl = imageUrl || videoUrl || documentUrl || audioUrl;
+                if (originalUrl) {
+                    // FIX: Use project ID properly
+                    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'studio-6552995429-8bffe';
+                    const bucketName = `${projectId}.firebasestorage.app`;
+                    const bucket = getStorage().bucket(bucketName);
+                    const file = bucket.file(storagePath);
+
+                    await file.makePublic();
+
+                    // Construct permanent public URL
+                    permanentMediaUrl = `https://storage.googleapis.com/${bucketName}/${storagePath}`;
+                    console.log(`[Messages API] File made public: ${permanentMediaUrl}`);
+                }
+            } catch (error) {
+                console.error("[Messages API] Failed to make file public:", error);
+                // Fallback to original URL (signed) if makePublic fail
+            }
+        }
+
         const customerPhoneWithCode = '91' + conversationId;
 
         let messagePayload;
         let firestoreMessageData;
         let lastMessagePreview;
 
+        // Use permanent URL if available, otherwise original
+        const effectiveImageUrl = (permanentMediaUrl && imageUrl) ? permanentMediaUrl : imageUrl;
+        const effectiveVideoUrl = (permanentMediaUrl && videoUrl) ? permanentMediaUrl : videoUrl;
+        const effectiveDocumentUrl = (permanentMediaUrl && documentUrl) ? permanentMediaUrl : documentUrl;
+        const effectiveAudioUrl = (permanentMediaUrl && audioUrl) ? permanentMediaUrl : audioUrl;
+
+
         // ✅ HANDLE DIFFERENT MEDIA TYPES
         if (text) {
+            // Replaced button with footer text as per new requirement
+            const messageBody = `${text}\n\n_To end this chat and order, type "end chat"_`;
             messagePayload = {
-                type: 'interactive',
-                interactive: {
-                    type: 'button',
-                    body: {
-                        text: `${text}\n\n_If you want to place an order, please end this chat first._`
-                    },
-                    action: {
-                        buttons: [
-                            { type: "reply", reply: { id: "action_end_chat", title: "End Chat & Order" } }
-                        ]
-                    }
-                }
+                type: 'text',
+                text: { body: messageBody }
             };
-            firestoreMessageData = { type: 'text', text: text };
+            firestoreMessageData = { type: 'text', text: text }; // Store original text in Firestore
             lastMessagePreview = text;
-        } else if (imageUrl) {
+        } else if (effectiveImageUrl) {
             console.warn("[API WARNING] Buttons cannot be sent with media messages. Sending image only.");
-            messagePayload = { type: 'image', image: { link: imageUrl } };
-            firestoreMessageData = { type: 'image', mediaUrl: imageUrl, text: 'Image' };
+            messagePayload = { type: 'image', image: { link: effectiveImageUrl } };
+            firestoreMessageData = { type: 'image', mediaUrl: effectiveImageUrl, text: 'Image' };
             lastMessagePreview = '📷 Image';
-        } else if (videoUrl) {
-            messagePayload = { type: 'video', video: { link: videoUrl } };
-            firestoreMessageData = { type: 'video', mediaUrl: videoUrl, text: 'Video', fileName: fileName || 'video' };
+        } else if (effectiveVideoUrl) {
+            messagePayload = { type: 'video', video: { link: effectiveVideoUrl } };
+            firestoreMessageData = { type: 'video', mediaUrl: effectiveVideoUrl, text: 'Video', fileName: fileName || 'video' };
             lastMessagePreview = '🎥 Video';
-        } else if (documentUrl) {
-            messagePayload = { type: 'document', document: { link: documentUrl, filename: fileName || 'document' } };
-            firestoreMessageData = { type: 'document', mediaUrl: documentUrl, text: 'Document', fileName: fileName || 'document' };
+        } else if (effectiveDocumentUrl) {
+            messagePayload = { type: 'document', document: { link: effectiveDocumentUrl, filename: fileName || 'document' } };
+            firestoreMessageData = { type: 'document', mediaUrl: effectiveDocumentUrl, text: 'Document', fileName: fileName || 'document' };
             lastMessagePreview = `📄 ${fileName || 'Document'}`;
-        } else if (audioUrl) {
-            messagePayload = { type: 'audio', audio: { link: audioUrl } };
-            firestoreMessageData = { type: 'audio', mediaUrl: audioUrl, text: 'Audio', fileName: fileName || 'audio' };
+        } else if (effectiveAudioUrl) {
+            messagePayload = { type: 'audio', audio: { link: effectiveAudioUrl } };
+            firestoreMessageData = { type: 'audio', mediaUrl: effectiveAudioUrl, text: 'Audio', fileName: fileName || 'audio' };
             lastMessagePreview = '🎵 Audio';
         }
 

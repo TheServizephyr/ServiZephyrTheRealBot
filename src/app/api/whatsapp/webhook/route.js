@@ -436,6 +436,40 @@ export async function POST(request) {
             const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
             if (message.type === 'text') {
+                const textBody = message.text.body.trim().toLowerCase();
+
+                // ✅ 1. Handle "End Chat" Command
+                if (textBody === 'end chat' || textBody === '"end chat"') {
+                    console.log(`[Webhook WA] 'End Chat' command received from ${fromPhoneNumber}`);
+
+                    const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
+
+                    // Reset State
+                    await conversationRef.set({ state: 'menu' }, { merge: true });
+
+                    // 1. Send "Chat Ended" Confirmation
+                    await sendWhatsAppMessage(fromNumber, `Chat has ended.`, botPhoneNumberId);
+
+                    // 2. Save System Message to Firestore
+                    const messageRef = conversationRef.collection('messages').doc(message.id);
+                    await messageRef.set({
+                        id: message.id,
+                        sender: 'system', // Special sender type
+                        timestamp: FieldValue.serverTimestamp(),
+                        time: new Date().toISOString(),
+                        status: 'read', // Auto-read system messages
+                        type: 'system',
+                        text: 'Chat ended by customer',
+                        isSystem: true
+                    });
+
+                    // 3. Trigger Welcome Menu
+                    await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
+
+                    return NextResponse.json({ message: 'Chat ended successfully' }, { status: 200 });
+                }
+
+                // ✅ 2. Handle Dine-In Logic
                 const isDineInHandled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
                 if (isDineInHandled) {
                     console.log(`[Webhook WA] Message handled by Dine-in flow. Skipping further processing.`);
@@ -524,25 +558,8 @@ export async function POST(request) {
                     }
                 }
 
-                // ✅ FIX: Send auto-reply with "End Chat" button when customer sends TEXT in direct chat
-                if (message.type === 'text') {
-                    console.log(`[Webhook WA] Sending End Chat button to customer in direct_chat mode.`);
-                    const endChatReply = {
-                        type: "interactive",
-                        interactive: {
-                            type: "button",
-                            body: {
-                                text: `Your message has been sent to ${business.data.name}.\n\n_If you want to place an order, please end this chat first._`
-                            },
-                            action: {
-                                buttons: [
-                                    { type: "reply", reply: { id: "action_end_chat", title: "End Chat & Order" } }
-                                ]
-                            }
-                        }
-                    };
-                    await sendWhatsAppMessage(fromNumber, endChatReply, botPhoneNumberId);
-                }
+                // ✅ FIX: Removed auto-reply with button. Footer text is now handled in owner send API.
+                // if (message.type === 'text') { ... }
 
                 console.log(`[Webhook WA] ${messageType} processing complete for ${fromPhoneNumber}.`);
                 return NextResponse.json({ message: 'Forwarded to owner' }, { status: 200 });

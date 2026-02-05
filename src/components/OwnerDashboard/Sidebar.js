@@ -228,6 +228,45 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const settingsItems = isRolePending ? [] : allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
 
 
+  // Fetch WhatsApp Unread Count
+  const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
+
+  useEffect(() => {
+    // Only fetch if user is owner or has access to whatsapp
+    if (!auth.currentUser) return;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+        const idToken = await user.getIdToken();
+
+        let url = new URL('/api/owner/whatsapp-direct/conversations', window.location.origin);
+        // Only fetch metadata/summary to save bandwidth if possible, for now using existing endpoint 
+        // In real app, create a dedicated lightweight /stats endpoint
+        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
+
+        const res = await fetch(url.toString(), {
+          headers: { 'Authorization': `Bearer ${idToken}` }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const total = (data.conversations || []).reduce((acc, curr) => acc + (curr.unreadCount || 0), 0);
+          setWhatsappUnreadCount(total);
+        }
+      } catch (error) {
+        console.error("Failed to fetch WhatsApp unread count:", error);
+      }
+    };
+
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 60000); // Poll every 60s
+    return () => clearInterval(interval);
+  }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+
   return (
     <>
       <div className={`flex items-center shrink-0 border-b border-border justify-between ${isCollapsed ? 'h-[65px] justify-center' : 'h-[65px] px-6'}`}>
@@ -248,7 +287,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
           {menuItems.map((item) => (
             <div key={item.name} onClick={handleLinkClick}>
               <SidebarLink
-                item={item}
+                item={{
+                  ...item,
+                  badge: item.featureId === 'whatsapp-direct' ? whatsappUnreadCount : 0
+                }}
                 isCollapsed={isCollapsed}
                 isDisabled={getIsDisabled(item.featureId)}
                 disabledIcon={Lock}

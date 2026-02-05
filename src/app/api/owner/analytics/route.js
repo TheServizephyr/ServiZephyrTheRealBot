@@ -110,137 +110,136 @@ export async function GET(req) {
         else if (businessType === 'shop') businessCollectionName = 'shops';
         else if (businessType === 'street-vendor') businessCollectionName = 'street_vendors';
 
-        const [currentOrdersSnap, prevOrdersSnap, allMenuSnap, allCustomersSnap, rejectedOrdersSnap] = await Promise.all([
-            ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '!=', 'rejected').get(),
-            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
+        // OPTIMIZED QUERY: Fetch ALL orders for the period, filter in memory
+        const [currentPeriodOrdersSnap, prevPeriodOrdersSnap, allMenuSnap, allCustomersSnap] = await Promise.all([
+            ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).get(),
+            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).get(),
             firestore.collection(businessCollectionName).doc(restaurantId).collection('menu').get(),
             firestore.collection(businessCollectionName).doc(restaurantId).collection('customers').get(),
-            ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '==', 'rejected').get(),
         ]);
 
+        // ---- METRICS CALCULATION ----
         let currentSales = 0, currentOrdersCount = 0, salesByDay = {}, cashRevenue = 0, onlineRevenue = 0;
-        const paymentMethodCounts = { Online: 0, COD: 0 };
-        const hourlyOrders = Array(24).fill(0); // Track orders by hour
-        const prepTimes = []; // Track preparation times
-        const customerOrderDates = {}; // Track customer order history
+        const paymentMethodCounts = { Online: 0, Cash: 0 }; // Simplified groups: Online vs Cash
+        const hourlyOrders = Array(24).fill(0);
+        const prepTimes = [];
+        const customerOrderDates = {};
 
-        currentOrdersSnap.forEach(doc => {
+        // Rejection Metrics
+        let totalRejections = 0;
+        let missedRevenue = 0;
+        const missedItems = {};
+        const rejectionReasons = {};
+
+        // Helper: Check for "Lost" orders (Rejected, Cancelled, Failed)
+        const isLostOrder = (status) => ['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant'].includes(status);
+
+        currentPeriodOrdersSnap.forEach(doc => {
             const data = doc.data();
-            currentSales += data.totalAmount || 0;
-            currentOrdersCount++;
+            const status = data.status || 'pending';
 
-            const dayKey = format(data.orderDate.toDate(), 'dd/MM');
-            salesByDay[dayKey] = (salesByDay[dayKey] || 0) + data.totalAmount;
+            // 1. REJECTION METRICS (Lost Orders)
+            if (isLostOrder(status)) {
+                totalRejections++;
+                const reason = data.rejectionReason || data.cancellationReason || 'Other';
+                rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
 
-            // Track hourly distribution (convert UTC to IST)
-            const utcDate = data.orderDate.toDate();
-            const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000)); // Add 5.5 hours for IST
-            const hour = istDate.getHours();
-            hourlyOrders[hour]++;
+                if (data.totalAmount) missedRevenue += data.totalAmount;
 
-            // Track cash vs online revenue
-            // Handle both array and object formats for paymentDetails
-            let isOnlinePayment = false;
-
-            if (Array.isArray(data.paymentDetails)) {
-                // New format: array of payment objects
-                isOnlinePayment = data.paymentDetails.some(p =>
-                    (p.method === 'razorpay' || p.method === 'phonepe') &&
-                    (p.status === 'completed' || p.status === 'success' || p.status === 'paid')
-                );
-            } else if (data.paymentDetails?.method) {
-                // Old format: single payment object
-                isOnlinePayment = (data.paymentDetails.method === 'razorpay' || data.paymentDetails.method === 'phonepe');
-            }
-
-            // Also check paymentMethod field (fallback)
-            if (!isOnlinePayment && data.paymentMethod) {
-                isOnlinePayment = (data.paymentMethod === 'razorpay' || data.paymentMethod === 'phonepe');
-            }
-
-            if (isOnlinePayment) {
-                paymentMethodCounts.Online++;
-                onlineRevenue += data.totalAmount || 0;
-            } else {
-                paymentMethodCounts.COD++;
-                cashRevenue += data.totalAmount || 0;
-            }
-
-            // Track prep time if available
-            if (data.readyAt && data.orderDate) {
-                const prepTime = (data.readyAt.toDate() - data.orderDate.toDate()) / (1000 * 60); // minutes
-                if (prepTime > 0 && prepTime < 120) { // Filter out anomalies
-                    prepTimes.push(prepTime);
+                if (reason === 'out_of_stock' && data.items) {
+                    data.items.forEach(item => {
+                        const itemName = item.name.split(' (')[0];
+                        if (!missedItems[itemName]) {
+                            missedItems[itemName] = { count: 0, revenue: 0 };
+                        }
+                        missedItems[itemName].count++;
+                        missedItems[itemName].revenue += (item.price * item.quantity) || 0;
+                    });
                 }
             }
+            // 2. SUCCESSFUL ORDERS (Revenue, Counts)
+            // Explicitly exclude lost orders from Revenue calculation
+            else {
+                currentOrdersCount++;
+                currentSales += data.totalAmount || 0;
 
-            // Track customer order history for loyalty
-            if (data.phone) {
-                if (!customerOrderDates[data.phone]) {
-                    customerOrderDates[data.phone] = [];
+                const dayKey = format(data.orderDate.toDate(), 'dd/MM');
+                salesByDay[dayKey] = (salesByDay[dayKey] || 0) + data.totalAmount;
+
+                // Hourly Distribution
+                const utcDate = data.orderDate.toDate();
+                const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+                const hour = istDate.getHours();
+                hourlyOrders[hour]++;
+
+                // Payment Analysis
+                let isOnlinePayment = false;
+                if (Array.isArray(data.paymentDetails)) {
+                    isOnlinePayment = data.paymentDetails.some(p =>
+                        (p.method === 'razorpay' || p.method === 'phonepe') &&
+                        (p.status === 'completed' || p.status === 'success' || p.status === 'paid')
+                    );
+                } else if (data.paymentDetails?.method) {
+                    isOnlinePayment = (data.paymentDetails.method === 'razorpay' || data.paymentDetails.method === 'phonepe');
                 }
-                customerOrderDates[data.phone].push(data.orderDate.toDate());
+
+                // Fallback check
+                if (!isOnlinePayment && data.paymentMethod) {
+                    isOnlinePayment = (data.paymentMethod === 'razorpay' || data.paymentMethod === 'phonepe' || data.paymentMethod === 'online');
+                }
+
+                // Also check raw 'paymentStatus' for valid confirmation
+                if (data.paymentStatus === 'paid') isOnlinePayment = true;
+
+
+                if (isOnlinePayment) {
+                    paymentMethodCounts.Online++;
+                    onlineRevenue += data.totalAmount || 0;
+                } else {
+                    paymentMethodCounts.Cash++;
+                    cashRevenue += data.totalAmount || 0;
+                }
+
+                // Prep Times
+                if (data.readyAt && data.orderDate) {
+                    const prepTime = (data.readyAt.toDate() - data.orderDate.toDate()) / (1000 * 60);
+                    if (prepTime > 0 && prepTime < 120) prepTimes.push(prepTime);
+                }
+
+                // Customer Loyalty
+                if (data.phone) {
+                    if (!customerOrderDates[data.phone]) customerOrderDates[data.phone] = [];
+                    customerOrderDates[data.phone].push(data.orderDate.toDate());
+                }
             }
         });
 
-        const salesTrend = Object.entries(salesByDay).map(([day, sales]) => ({ day, sales }));
-        const paymentMethods = Object.entries(paymentMethodCounts).map(([name, value]) => ({ name, value }));
-
-
+        // Previous Period Comparison (Approximate: Revenue only for now)
         let prevSales = 0;
-        prevOrdersSnap.forEach(doc => { prevSales += doc.data().totalAmount || 0; });
+        let prevOrdersCount = 0;
+        prevPeriodOrdersSnap.forEach(doc => {
+            const d = doc.data();
+            if (!isLostOrder(d.status)) { // Filter prev period too!
+                prevSales += d.totalAmount || 0;
+                prevOrdersCount++;
+            }
+        });
 
         const calcChange = (current, previous) => {
             if (previous === 0) return current > 0 ? 100 : 0;
             return ((current - previous) / previous) * 100;
         };
 
-        // Calculate missed revenue from rejections
-        let missedRevenue = 0;
-        const missedItems = {};
-        const totalRejections = rejectedOrdersSnap.size;
-        const rejectionReasons = {};
-
-        rejectedOrdersSnap.forEach(doc => {
-            const data = doc.data();
-            const reason = data.rejectionReason || 'Other';
-            rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
-
-            // Track missed revenue
-            if (data.totalAmount) {
-                missedRevenue += data.totalAmount;
-            }
-
-            // Track which items were out of stock
-            if (reason === 'out_of_stock' && data.items) {
-                data.items.forEach(item => {
-                    const itemName = item.name.split(' (')[0];
-                    if (!missedItems[itemName]) {
-                        missedItems[itemName] = { count: 0, revenue: 0 };
-                    }
-                    missedItems[itemName].count++;
-                    missedItems[itemName].revenue += (item.price * item.quantity) || 0;
-                });
-            }
-        });
-
+        const salesTrend = Object.entries(salesByDay).map(([day, sales]) => ({ day, sales }));
+        const paymentMethodsData = Object.entries(paymentMethodCounts).map(([name, value]) => ({ name, value })); // For Pie Chart
         const rejectionReasonsData = Object.entries(rejectionReasons).map(([name, value]) => ({ name, value }));
         const missedItemsData = Object.entries(missedItems)
             .map(([name, data]) => ({ name, ...data }))
             .sort((a, b) => b.revenue - a.revenue)
-            .slice(0, 5); // Top 5 missed items
+            .slice(0, 5);
 
-
-        // Calculate average prep time
-        const avgPrepTime = prepTimes.length > 0
-            ? prepTimes.reduce((a, b) => a + b, 0) / prepTimes.length
-            : 0;
-
-        // Calculate peak hours
-        const peakHours = hourlyOrders
-            .map((count, hour) => ({ hour, count }))
-            .filter(h => h.count > 0)
-            .sort((a, b) => b.count - a.count);
+        const avgPrepTime = prepTimes.length > 0 ? prepTimes.reduce((a, b) => a + b, 0) / prepTimes.length : 0;
+        const peakHours = hourlyOrders.map((count, hour) => ({ hour, count })).filter(h => h.count > 0).sort((a, b) => b.count - a.count);
 
         const salesData = {
             kpis: {
@@ -250,29 +249,34 @@ export async function GET(req) {
                 cashRevenue,
                 onlineRevenue,
                 revenueChange: calcChange(currentSales, prevSales),
-                ordersChange: calcChange(currentOrdersCount, prevOrdersSnap.size),
-                avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0),
-                totalRejections,
+                ordersChange: calcChange(currentOrdersCount, prevOrdersCount),
+                avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersCount > 0 ? prevSales / prevOrdersCount : 0),
+                totalRejections, // Now includes cancelled
                 missedRevenue,
                 avgPrepTime: Math.round(avgPrepTime),
             },
             salesTrend,
-            paymentMethods: paymentMethods,
+            paymentMethods: paymentMethodsData,
             rejectionReasons: rejectionReasonsData,
             peakHours,
             missedOpportunities: missedItemsData,
         };
 
+        // ... REMAINING LOGIC FOR MENU AND CUSTOMERS (unchanged largely, just menu mapping) ...
         const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const itemSales = {};
-        currentOrdersSnap.forEach(doc => {
-            (doc.data().items || []).forEach(item => {
-                const baseName = item.name.split(' (')[0];
-                if (!itemSales[baseName]) itemSales[baseName] = 0;
-                itemSales[baseName] += item.quantity || 0;
-            });
-        });
 
+        // Count items ONLY from successful orders
+        currentPeriodOrdersSnap.forEach(doc => {
+            const data = doc.data();
+            if (!isLostOrder(data.status)) {
+                (data.items || []).forEach(item => {
+                    const baseName = item.name.split(' (')[0];
+                    if (!itemSales[baseName]) itemSales[baseName] = 0;
+                    itemSales[baseName] += item.quantity || 0;
+                });
+            }
+        });
 
         const menuPerformance = menuItems.map(item => {
             const unitsSold = itemSales[item.name] || 0;
@@ -288,19 +292,17 @@ export async function GET(req) {
             };
         });
 
-        // Enhanced customer analytics
+        // ... REMAINING LOGIC FOR CUSTOMERS ...
         const allCustomers = allCustomersSnap.docs.map(doc => ({ phone: doc.id, ...doc.data() }));
         const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
         const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
 
-        // Calculate new vs returning for current period
         const uniqueCustomersThisPeriod = new Set(Object.keys(customerOrderDates));
         const returningThisPeriod = Array.from(uniqueCustomersThisPeriod).filter(phone => {
             const customer = allCustomers.find(c => c.phone === phone);
             return customer && customer.joinedAt && customer.joinedAt.toDate() < startDate;
         });
 
-        // Top loyal customers
         const topLoyalCustomers = allCustomers
             .filter(c => (c.totalOrders || 0) > 0)
             .sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0))
@@ -321,19 +323,16 @@ export async function GET(req) {
             topLoyalCustomers,
         };
 
-        // Generate AI insights
+        // ... AI INSIGHTS ...
         const aiInsights = [];
 
-        // Insight 1: Missed revenue alert
         if (missedRevenue > 0 && missedItemsData.length > 0) {
             const topMissed = missedItemsData[0];
             aiInsights.push({
                 type: 'warning',
-                message: `Boss, aaj aapne ₹${Math.round(missedRevenue)} ka nuksan kiya kyunki '${topMissed.name}' ${topMissed.count} baar out of stock tha. Kal zyada stock le aana!`
+                message: `Boss, aaj aapne ₹${Math.round(missedRevenue)} ka nuksan kiya kyunki '${topMissed.name}' cancel hua. Stock check karo!`
             });
         }
-
-        // Insight 2: Peak hour preparation
         if (peakHours.length > 0) {
             const peak = peakHours[0];
             const peakTime = peak.hour >= 12 ? `${peak.hour > 12 ? peak.hour - 12 : peak.hour} PM` : `${peak.hour} AM`;
@@ -342,8 +341,6 @@ export async function GET(req) {
                 message: `Aapka sabse busy time ${peakTime} hai (${peak.count} orders). Uss time se pehle ready raho!`
             });
         }
-
-        // Insight 3: AOV improvement
         const aov = currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0;
         if (aov > 0 && aov < 100) {
             aiInsights.push({
@@ -351,8 +348,6 @@ export async function GET(req) {
                 message: `Average order value ₹${Math.round(aov)} hai. Combo offers dalo toh zyada paisa banega!`
             });
         }
-
-        // Insight 4: Customer loyalty
         if (customerStats.repeatRate > 50) {
             aiInsights.push({
                 type: 'success',

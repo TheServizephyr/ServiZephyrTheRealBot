@@ -64,7 +64,7 @@ const SalesOverview = ({ data, loading }) => {
                 {change !== undefined && !isRejection && (
                     <div className={`flex items-center text-xs mt-1 ${changeColor}`}>
                         <ChangeIcon size={12} className="mr-1" />
-                        {Math.abs(change).toFixed(1)}% vs last period
+                        {Math.abs(change).toFixed(2)}% vs last period
                     </div>
                 )}
                 {isRejection && <div className="text-xs mt-1 text-muted-foreground">in selected period</div>}
@@ -97,12 +97,73 @@ const SalesOverview = ({ data, loading }) => {
         </div>
     );
 
+    const PaymentModeChart = () => {
+        const COLORS = ['#3b82f6', '#22c55e', '#eab308', '#f97316'];
+
+        if (loading) {
+            return (
+                <div className="bg-card border border-border p-5 rounded-xl h-[350px] animate-pulse">
+                    <div className="h-6 bg-muted w-3/4 mb-4"></div>
+                    <div className="flex items-center justify-center h-full">
+                        <div className="w-48 h-48 bg-muted rounded-full"></div>
+                    </div>
+                </div>
+            )
+        }
+
+        if (!data?.paymentMethods || data.paymentMethods.length === 0) {
+            return (
+                <div className="bg-card border border-border p-5 rounded-xl h-[350px] flex flex-col items-center justify-center">
+                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Payment Modes</h3>
+                    <p className="text-muted-foreground text-sm">No payment data available.</p>
+                </div>
+            )
+        }
+
+        return (
+            <div className="bg-card border border-border p-5 rounded-xl h-[350px]">
+                <h3 className="text-lg font-semibold mb-4 text-card-foreground">Payment Modes</h3>
+                <ResponsiveContainer width="100%" height="90%">
+                    <PieChart>
+                        <Pie
+                            data={data?.paymentMethods}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={"60%"}
+                            outerRadius={"80%"}
+                            paddingAngle={5}
+                            dataKey="value"
+                            nameKey="name"
+                            stroke="hsl(var(--card))"
+                            strokeWidth={2}
+                        >
+                            {data.paymentMethods.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </Pie>
+                        <Tooltip
+                            contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px',
+                                color: 'hsl(var(--popover-foreground))'
+                            }}
+                            itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            formatter={(value) => formatCurrency(value)}
+                        />
+                        <Legend iconType="circle" layout="vertical" align="right" verticalAlign="middle" formatter={(value) => <span className="text-muted-foreground text-sm">{value}</span>} />
+                    </PieChart>
+                </ResponsiveContainer>
+            </div>
+        );
+    }
+
     const RejectionReasonChart = () => {
         const COLORS = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6'];
 
         if (loading) {
             return (
-                <div className="bg-card border border-border p-5 rounded-xl h-[300px] animate-pulse">
+                <div className="bg-card border border-border p-5 rounded-xl h-[350px] animate-pulse">
                     <div className="h-6 bg-muted w-3/4 mb-4"></div>
                     <div className="flex items-center justify-center h-full">
                         <div className="w-48 h-48 bg-muted rounded-full"></div>
@@ -113,7 +174,7 @@ const SalesOverview = ({ data, loading }) => {
 
         if (!data?.rejectionReasons || data.rejectionReasons.length === 0) {
             return (
-                <div className="bg-card border border-border p-5 rounded-xl h-[300px] flex flex-col items-center justify-center">
+                <div className="bg-card border border-border p-5 rounded-xl h-[350px] flex flex-col items-center justify-center">
                     <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Rejection Reasons</h3>
                     <p className="text-muted-foreground text-sm">No rejections in this period. Great job!</p>
                 </div>
@@ -121,16 +182,35 @@ const SalesOverview = ({ data, loading }) => {
         }
 
         return (
-            <div className="bg-card border border-border p-5 rounded-xl h-[300px]">
+            <div className="bg-card border border-border p-5 rounded-xl h-[350px]">
                 <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Rejection Reasons</h3>
                 <ResponsiveContainer width="100%" height="90%">
                     <PieChart>
-                        <Pie data={data?.rejectionReasons} cx="50%" cy="50%" labelLine={false} outerRadius={80} fill="#8884d8" dataKey="value" nameKey="name">
+                        <Pie
+                            data={data?.rejectionReasons}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            outerRadius={"80%"}
+                            fill="#8884d8"
+                            dataKey="value"
+                            nameKey="name"
+                            stroke="hsl(var(--card))"
+                            strokeWidth={2}
+                        >
                             {data.rejectionReasons.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                         </Pie>
-                        <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
+                        <Tooltip
+                            contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px',
+                                color: 'hsl(var(--popover-foreground))'
+                            }}
+                            itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                        />
                         <Legend iconType="circle" layout="vertical" align="right" verticalAlign="middle" formatter={(value) => <span className="text-muted-foreground text-sm">{value}</span>} />
                     </PieChart>
                 </ResponsiveContainer>
@@ -173,13 +253,16 @@ const SalesOverview = ({ data, loading }) => {
                 <KpiCard title="New Customers" value={data?.kpis?.newCustomers || 0} change={data?.kpis?.customersChange || 0} icon={UserPlus} modalTitle="New Customer Details" modalType="customers" loading={loading} />
                 <KpiCard title="Total Rejections" value={data?.kpis?.totalRejections || 0} icon={Ban} isRejection={true} loading={loading} />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                    <SalesTrendChart />
-                </div>
-                <div className="lg:col-span-1">
-                    <RejectionReasonChart />
-                </div>
+
+            {/* Sales Trend - Full Width */}
+            <div className="w-full">
+                <SalesTrendChart />
+            </div>
+
+            {/* Pie Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <PaymentModeChart />
+                <RejectionReasonChart />
             </div>
         </div>
     );
@@ -509,8 +592,8 @@ function AnalyticsPageContent() {
                             key={key}
                             onClick={() => setActiveTab(key)}
                             className={`py-4 px-2 md:px-1 border-b-2 text-sm font-medium whitespace-nowrap ${activeTab === key
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-gray-500'
+                                ? 'border-primary text-primary'
+                                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-gray-500'
                                 }`}
                         >
                             {label}

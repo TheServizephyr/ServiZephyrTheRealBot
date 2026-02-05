@@ -122,6 +122,7 @@ export async function POST(req) {
             publicUrl: readUrl,
             mediaType: mediaType,
             fileName: uniqueFileName,
+            storagePath: filePath,
             finalMimeType: baseMimeType // Tell frontend exactly what content-type to use
         }, { status: 200 });
 
