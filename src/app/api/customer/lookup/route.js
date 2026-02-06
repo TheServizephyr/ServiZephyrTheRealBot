@@ -1,25 +1,62 @@
 
 
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, verifyIdToken } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
 import { getOrCreateGuestProfile, deobfuscateGuestId } from '@/lib/guest-utils';
 
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
-        const body = await req.json(); // Body might be empty if using cookie
+        const body = await req.json();
         const { phone, guestId: explicitGuestId, ref, token } = body || {};
 
+        // CRITICAL: UID-FIRST PRIORITY
+        // Check if user is logged in via Authorization header
+        const authHeader = req.headers.get('authorization');
+        let loggedInUid = null;
+
+        if (authHeader?.startsWith('Bearer ')) {
+            try {
+                const idToken = authHeader.split('Bearer ')[1];
+                const decodedToken = await verifyIdToken(idToken);
+                loggedInUid = decodedToken.uid;
+                console.log(`[API /customer/lookup] ✅ Logged-in user detected: ${loggedInUid}`);
+            } catch (e) {
+                console.warn(`[API /customer/lookup] Invalid auth token:`, e.message);
+            }
+        }
+
+        // If user is logged in, fetch from users collection (ignore ref/guest)
+        if (loggedInUid) {
+            console.log(`[API /customer/lookup] Fetching from users collection: ${loggedInUid}`);
+            const userDoc = await firestore.collection('users').doc(loggedInUid).get();
+
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                return NextResponse.json({
+                    name: userData.name || 'User',
+                    phone: userData.phone || '',
+                    addresses: userData.addresses || [],
+                    isVerified: true,
+                    isGuest: false
+                }, { status: 200 });
+            } else {
+                console.warn(`[API /customer/lookup] User doc not found: ${loggedInUid}`);
+                return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+            }
+        }
+
+        // --- GUEST FLOW (only if not logged in) ---
         // 1. Check for Secure Session Cookie
         const cookieStore = cookies();
         const sessionCookie = cookieStore.get('auth_guest_session');
         let guestId = sessionCookie?.value || explicitGuestId;
 
-        // 2. If ref provided, deobfuscate to get guestId
+        // 2. If ref provided, deobfuscate to get userId (could be guest ID or UID)
         if (ref && !guestId) {
             guestId = deobfuscateGuestId(ref);
-            console.log(`[API /customer/lookup] Deobfuscated ref to guestId: ${guestId}`);
+            console.log(`[API /customer/lookup] Deobfuscated ref to userId: ${guestId}`);
         }
 
         console.log(`[API /customer/lookup] Request - GuestID: ${guestId ? 'Yes' : 'No'}, Phone: ${phone ? 'Yes' : 'No'}, Ref: ${ref ? 'Yes' : 'No'}`);

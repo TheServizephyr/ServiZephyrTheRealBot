@@ -190,7 +190,8 @@ const CheckoutPageInternal = () => {
 
             const isDineIn = !!tableId;
             const isLoggedInUser = !!user;
-            const isWhatsAppSession = (!!phoneFromUrl && !!token) || (!!ref && !!token); // Updated Logic
+            // SIMPLIFIED: Ref presence is sufficient - no token validation needed
+            const isWhatsAppSession = !!ref;
 
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
 
@@ -206,32 +207,10 @@ const CheckoutPageInternal = () => {
 
             console.log(`[Checkout Page] Checks: isDineIn=${isDineIn}, WS=${isWhatsAppSession}, Ref=${!!ref}`);
 
-            if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
+            if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder || isWhatsAppSession) {
                 console.log("[Checkout Page] Session validated (Direct).");
                 setIsTokenValid(true);
-            } else if (isWhatsAppSession) {
-                try {
-                    console.log(`[Checkout Page] Verifying Session. Ref: ${ref ? 'Yes' : 'No'}, Phone: ${phoneFromUrl ? 'Yes' : 'No'}`);
-                    // Normalize verification payload
-                    const verifyPayload = ref ? { ref, token } : { phone: phoneFromUrl, token };
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(verifyPayload)
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-
-                    setIsTokenValid(true);
-                    setTokenError(null); // Clear any previous errors
-                    console.log("[Checkout Page] Session Verified Successfully.");
-                } catch (err) {
-                    console.error("[Checkout Page] Session Verification Failed:", err);
-                    setTokenError(err.message);
-                    setLoading(false);
-                    return;
-                }
-            }
-            else {
+            } else {
                 if (!isUserLoading) {
                     setTokenError("No session information found."); setLoading(false); return;
                 }
@@ -292,12 +271,26 @@ const CheckoutPageInternal = () => {
                 setOrderName(customerNameFromStorage || user?.displayName || savedCart.tab_name || '');
 
                 // LOOKUP USER DETAILS (Supports Cookie-based lookup for GuestID)
-                if (phoneToLookup || (ref && isTokenValid)) {
-                    // If we have phone, pass it. If not, pass empty body and let API verify cookie.
-                    const lookupPayload = phoneToLookup ? { phone: phoneToLookup } : {};
+                // LOOKUP USER DETAILS (Uid-first via API)
+                if (phoneToLookup || ref || user) {
+                    const lookupPayload = {};
+                    if (phoneToLookup) lookupPayload.phone = phoneToLookup;
+                    if (ref) lookupPayload.ref = ref;
+
+                    const headers = { 'Content-Type': 'application/json' };
+                    // Add Auth header if user is logged in
+                    if (user) {
+                        try {
+                            const idToken = await user.getIdToken();
+                            headers['Authorization'] = `Bearer ${idToken}`;
+                        } catch (e) {
+                            console.warn("Failed to get ID token for lookup:", e);
+                        }
+                    }
+
                     const lookupRes = await fetch('/api/customer/lookup', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify(lookupPayload)
                     });
 
@@ -306,11 +299,13 @@ const CheckoutPageInternal = () => {
                         setOrderName(prev => prev || data.name || ''); // Fill name from profile if not set
                         if (deliveryType === 'delivery') {
                             setUserAddresses(data.addresses || []);
-                            setSelectedAddress(prev => prev || data.addresses?.[0] || null);
+                            // Auto-select first address if available
+                            if (data.addresses?.length > 0 && !selectedAddress) {
+                                setSelectedAddress(data.addresses[0]);
+                            }
                         }
-                    } else if (lookupRes.status === 404 && ref) {
-                        // Guest Profile might be new/empty, that's fine.
-                        console.log("Guest profile not found or empty.");
+                    } else if (lookupRes.status === 404) {
+                        console.log("Customer profile not found (might be new).");
                     }
                 }
 

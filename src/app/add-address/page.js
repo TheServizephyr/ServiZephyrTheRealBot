@@ -130,11 +130,23 @@ const AddAddressPageInternal = () => {
         const prefillData = async () => {
             try {
                 // CRITICAL: Support both ref-based (new) and phone-based (legacy) flows
+                // prioritizing logged-in user via Auth header
+
+                const headers = { 'Content-Type': 'application/json' };
+                if (user) {
+                    try {
+                        const idToken = await user.getIdToken();
+                        headers['Authorization'] = `Bearer ${idToken}`;
+                    } catch (e) {
+                        console.warn("Error getting ID token:", e);
+                    }
+                }
+
                 if (ref && token) {
                     // New flow: Use ref to lookup customer
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({ ref, token })
                     });
                     if (res.ok && isMounted) {
@@ -151,7 +163,7 @@ const AddAddressPageInternal = () => {
                     setRecipientPhone(prev => prev || phoneToUse);
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({ phone: phoneToUse })
                     });
                     if (res.ok && isMounted) {
