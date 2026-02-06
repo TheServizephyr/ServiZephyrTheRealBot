@@ -215,19 +215,15 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 const { userId } = profileResult;
                 console.log(`[Webhook WA] ✅ Profile Result - userId: ${userId}, isGuest: ${profileResult.isGuest}, isNew: ${profileResult.isNew}`);
 
-                // 2. Generate Token linked to User ID
-                const token = await generateSecureToken(firestore, userId);
-                console.log(`[Webhook WA] ✅ Token Generated: ${token} → linked to userId: ${userId}`);
-
-                // 3. Obfuscate User ID for URL
+                // 2. Obfuscate User ID for URL (no token needed - ref provides security)
                 const publicRef = obfuscateGuestId(userId);
                 console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
 
-                // 4. Generate Link with Guest Ref
-                const link = `https://servizephyr.com/order/${businessId}?ref=${publicRef}&token=${token}`;
+                // 3. Generate Link with only ref (no token)
+                const link = `https://servizephyr.com/order/${businessId}?ref=${publicRef}`;
 
                 const collectionName = business.ref.parent.id;
-                await sendSystemMessage(fromNumber, `Here is your personal secure link to place an order (valid for 24 hours):\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
+                await sendSystemMessage(fromNumber, `Here is your personal secure link to place an order:\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
                 break;
             }
             case 'track': {

@@ -62,52 +62,21 @@ const AddAddressPageInternal = () => {
     const useCurrent = searchParams.get('useCurrent') === 'true';
 
     useEffect(() => {
-        const verifyToken = async () => {
-            if (tableId || user) {
+        const verifySession = async () => {
+            // SIMPLIFIED: Trust tableId, user login, or ref presence
+            if (tableId || user || ref) {
                 setIsTokenValid(true);
-                return;
-            }
-
-            const tokenToUse = token && token.trim() !== '' ? token : null;
-
-            if (tokenToUse) {
-                // CRITICAL: Support both ref-based and phone-based sessions
-                if (!phone && !ref) {
-                    setTokenError("A phone number or session ref is required with the session token.");
-                    setLoading(false);
-                    return;
-                }
-                try {
-                    // Support both ref and phone for verify-token
-                    const verifyPayload = ref ? { ref, token: tokenToUse } : { phone, token: tokenToUse };
-
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(verifyPayload),
-                    });
-                    if (!res.ok) {
-                        const errData = await res.json();
-                        throw new Error(errData.message || "Session validation failed.");
-                    }
-                } catch (err) {
-                    setTokenError(err.message);
-                    setLoading(false);
-                    return;
-                }
-            }
-            else if (!isUserLoading) {
-                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
-                setLoading(false);
                 return;
             }
 
             if (!isUserLoading) {
-                setIsTokenValid(true);
+                setTokenError("No valid session. Please start order from WhatsApp or log in.");
+                setLoading(false);
             }
         };
 
         if (!isUserLoading) {
-            verifyToken();
+            verifySession();
         }
     }, [tableId, phone, token, user, isUserLoading]);
 

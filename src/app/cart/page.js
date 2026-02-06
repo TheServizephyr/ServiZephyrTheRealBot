@@ -247,8 +247,8 @@ const CartPageInternal = () => {
 
             const isDineIn = !!tableId;
             const isLoggedInUser = !!user;
-            // CRITICAL: Support both new ref-based tokens and legacy phone-based tokens
-            const isWhatsAppSession = (!!phone && !!token) || (!!ref && !!token);
+            // SIMPLIFIED: Ref presence is sufficient - no token validation needed
+            const isWhatsAppSession = !!ref;
 
             let isAnonymousPreOrder = false;
             try {
@@ -258,37 +258,13 @@ const CartPageInternal = () => {
                 // Ignore parsing errors, isAnonymousPreOrder will remain false
             }
 
-            if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId) {
-                console.log(`[Cart Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : activeOrderId ? 'Add-on Order' : 'Anonymous Pre-order'}`);
+            if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId || isWhatsAppSession) {
+                const reason = isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : activeOrderId ? 'Add-on Order' : isWhatsAppSession ? 'WhatsApp (ref)' : 'Anonymous Pre-order';
+                console.log(`[Cart Page] ✅ Session valid. Reason: ${reason}`);
                 setIsTokenValid(true);
-            } else if (isWhatsAppSession) {
-                console.log("[Cart Page] Verifying WhatsApp Session (Phone/Ref + Token)...");
-                try {
-                    // Support both ref-based and phone-based tokens
-                    const verifyPayload = ref ? { ref, token } : { phone, token };
-
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(verifyPayload),
-                    });
-
-                    if (!res.ok) {
-                        const errData = await res.json();
-                        console.error(`[Cart Page] Token verification FAILED. Status: ${res.status}`, errData);
-                        throw new Error(errData.message || "Session validation failed.");
-                    }
-
-                    console.log("[Cart Page] Token verification SUCCESS! Access granted.");
-                    setIsTokenValid(true);
-                    setTokenError(null);
-                } catch (err) {
-                    console.error("[Cart Page] Token verification ERROR:", err);
-                    setTokenError(err.message);
-                    setLoadingPage(false);
-                }
             } else if (!isUserLoading) {
-                console.log("[Cart Page] No session info found and user is not loading. Setting error.");
-                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
+                console.log("[Cart Page] ❌ No session info found.");
+                setTokenError("No valid session. Please start order from WhatsApp or log in.");
                 setLoadingPage(false);
             }
 
