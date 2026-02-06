@@ -303,6 +303,30 @@ export async function createOrderV2(req) {
             console.log(`[createOrderV2] ⚠️ Anonymous order: ${userId}`);
         }
 
+        // ✅ AUTO-POPULATE CUSTOMER NAME
+        // If name is missing or "Guest", try to get it from profile (if identified)
+        let finalCustomerName = name || 'Guest';
+        if ((!name || name === 'Guest') && userId && !isGuest) {
+            try {
+                // Fetch user document to get real name
+                const userDoc = await firestore.collection('users').doc(userId).get();
+                if (userDoc.exists) {
+                    const uData = userDoc.data();
+                    if (uData.name) {
+                        finalCustomerName = uData.name;
+                        console.log(`[createOrderV2] ✅ Auto-populated customer name from profile: ${finalCustomerName}`);
+                    }
+                }
+            } catch (err) {
+                console.warn(`[createOrderV2] Failed to fetch user profile for name:`, err);
+            }
+        }
+        // Also check if address has a name property if specifically provided
+        if ((!finalCustomerName || finalCustomerName === 'Guest') && address && address.name) {
+            finalCustomerName = address.name;
+            console.log(`[createOrderV2] ✅ Auto-populated customer name from address: ${finalCustomerName}`);
+        }
+
 
         // Customer location (for delivery)
         const customerLocation = (deliveryType === 'delivery' && address && typeof address.latitude === 'number')
@@ -360,7 +384,7 @@ export async function createOrderV2(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
             const orderData = {
-                customerName: name || 'Guest',
+                customerName: finalCustomerName,
                 customerId: userId,
                 userId: userId,  // ✅ NEW: Unified userId field
                 customerAddress: address?.full || null,
@@ -522,7 +546,7 @@ export async function createOrderV2(req) {
 
         // Build order data (SAME structure as V1)
         const orderData = {
-            customerName: (deliveryType === 'dine-in' ? (body.tab_name || body.customerName || 'Guest') : (name || 'Guest')),
+            customerName: (deliveryType === 'dine-in' ? (body.tab_name || body.customerName || 'Guest') : finalCustomerName),
             customerId: userId,
             userId: userId,  // ✅ NEW: Unified userId field for queries
             customerAddress: address?.full || null,
