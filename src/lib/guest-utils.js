@@ -48,18 +48,13 @@ export const deobfuscateGuestId = (publicRef) => {
         const saltedId = Buffer.from(encoded, 'base64').toString('utf-8');
 
         // 3. Remove noise (every 4th char was noise)
-        // Logic: The obfuscation inserted a char after every 3 chars of ORIGINAL.
-        // So in the salted string, indices 3, 7, 11... are noise.
-        // (0-indexed: 0,1,2 [3=noise], 4,5,6 [7=noise])
+        // Obfuscation logic: Adds noise AFTER every 3 chars of original ID
+        // Example: "ABC" → "ABCn" (n=noise), "ABCDEF" → "ABCnDEFn"
+        // So in salted string: positions 3, 7, 11, 15... (0-indexed) are noise
 
         let guestId = "";
         for (let i = 0; i < saltedId.length; i++) {
-            // If (i + 1) is divisible by 4, it's a noise character *in the salted string*
-            // Wait, let's trace:
-            // Orig: A B C D E F
-            // Salted: A B C [N] D E F [N]
-            // Indices: 0 1 2  3  4 5 6  7
-            // Yes, indices 3, 7, 11 are noise.
+            // Skip every 4th character (indices 3, 7, 11, 15... which is (i+1) % 4 === 0)
             if ((i + 1) % 4 !== 0) {
                 guestId += saltedId[i];
             }

@@ -41,6 +41,7 @@ const AddAddressPageInternal = () => {
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
+    const ref = searchParams.get('ref'); // CAPTURE REF for guest sessions
     const tableId = searchParams.get('table');
 
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 });
@@ -70,15 +71,19 @@ const AddAddressPageInternal = () => {
             const tokenToUse = token && token.trim() !== '' ? token : null;
 
             if (tokenToUse) {
-                if (!phone) {
-                    setTokenError("A phone number is required with the session token.");
+                // CRITICAL: Support both ref-based and phone-based sessions
+                if (!phone && !ref) {
+                    setTokenError("A phone number or session ref is required with the session token.");
                     setLoading(false);
                     return;
                 }
                 try {
+                    // Support both ref and phone for verify-token
+                    const verifyPayload = ref ? { ref, token: tokenToUse } : { phone, token: tokenToUse };
+
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phone, token: tokenToUse }),
+                        body: JSON.stringify(verifyPayload),
                     });
                     if (!res.ok) {
                         const errData = await res.json();
@@ -154,12 +159,27 @@ const AddAddressPageInternal = () => {
     useEffect(() => {
         let isMounted = true;
         const prefillData = async () => {
-            // 1. Prefer Phone from URL (Guest/WhatsApp Link)
-            const phoneToUse = phone || user?.phoneNumber;
+            try {
+                // CRITICAL: Support both ref-based (new) and phone-based (legacy) flows
+                if (ref && token) {
+                    // New flow: Use ref to lookup customer
+                    const res = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ref, token })
+                    });
+                    if (res.ok && isMounted) {
+                        const customerData = await res.json();
+                        setRecipientPhone(prev => prev || customerData.phone || '');
+                        setRecipientName(prev => prev || customerData.name || '');
+                        return; // Exit early
+                    }
+                }
 
-            if (phoneToUse) {
-                setRecipientPhone(prev => prev || phoneToUse); // Only set if empty
-                try {
+                // Legacy flow: Use phone param or logged-in user phone
+                const phoneToUse = phone || user?.phoneNumber;
+                if (phoneToUse) {
+                    setRecipientPhone(prev => prev || phoneToUse);
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -169,18 +189,14 @@ const AddAddressPageInternal = () => {
                         const customerData = await res.json();
                         setRecipientName(prev => prev || customerData.name || '');
                     }
-                } catch (e) {
-                    console.warn("Could not prefill name from customer lookup:", e);
                 }
-            }
 
-            // 2. Fallback to User Display Name
-            if (user && isMounted) {
-                setRecipientName(prev => {
-                    // Don't overwrite if already set (e.g. from lookup)
-                    if (prev) return prev;
-                    return user.displayName || '';
-                });
+                // Fallback to User Display Name
+                if (user && isMounted) {
+                    setRecipientName(prev => prev || user.displayName || '');
+                }
+            } catch (e) {
+                console.warn("Could not prefill customer data:", e);
             }
         };
 
@@ -189,7 +205,7 @@ const AddAddressPageInternal = () => {
         }
 
         return () => { isMounted = false; };
-    }, [isTokenValid, user, phone]); // Removed addressDetails dependencies
+    }, [isTokenValid, user, phone, ref, token]); // Removed addressDetails dependencies
 
     // Effect for Geolocation (Separated)
     useEffect(() => {

@@ -208,14 +208,20 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
         switch (type) {
             case 'order': {
                 const businessId = payloadParts.join('_');
+                console.log(`[Webhook WA] 🔍 ORDER ACTION - BusinessId: ${businessId}, Phone: ${customerPhone}`);
+
                 // 1. Get User ID (UID for logged-in, guest ID for non-logged-in)
-                const { userId } = await getOrCreateGuestProfile(firestore, customerPhone);
+                const profileResult = await getOrCreateGuestProfile(firestore, customerPhone);
+                const { userId } = profileResult;
+                console.log(`[Webhook WA] ✅ Profile Result - userId: ${userId}, isGuest: ${profileResult.isGuest}, isNew: ${profileResult.isNew}`);
 
                 // 2. Generate Token linked to User ID
                 const token = await generateSecureToken(firestore, userId);
+                console.log(`[Webhook WA] ✅ Token Generated: ${token} → linked to userId: ${userId}`);
 
                 // 3. Obfuscate User ID for URL
                 const publicRef = obfuscateGuestId(userId);
+                console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
 
                 // 4. Generate Link with Guest Ref
                 const link = `https://servizephyr.com/order/${businessId}?ref=${publicRef}&token=${token}`;

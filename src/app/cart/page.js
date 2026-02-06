@@ -247,7 +247,8 @@ const CartPageInternal = () => {
 
             const isDineIn = !!tableId;
             const isLoggedInUser = !!user;
-            const isWhatsAppSession = !!phone && !!token;
+            // CRITICAL: Support both new ref-based tokens and legacy phone-based tokens
+            const isWhatsAppSession = (!!phone && !!token) || (!!ref && !!token);
 
             let isAnonymousPreOrder = false;
             try {
@@ -263,8 +264,8 @@ const CartPageInternal = () => {
             } else if (isWhatsAppSession) {
                 console.log("[Cart Page] Verifying WhatsApp Session (Phone/Ref + Token)...");
                 try {
-                    // Ref support assumes phone might be ref if using shared logic or separate params
-                    const verifyPayload = { phone, token }; // Cart currently only reads phone/token params.
+                    // Support both ref-based and phone-based tokens
+                    const verifyPayload = ref ? { ref, token } : { phone, token };
 
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },

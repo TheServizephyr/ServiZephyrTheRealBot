@@ -50,8 +50,10 @@ export async function POST(req) {
             }
 
             // Verify Token belongs to this Guest
-            if (tokenData.guestId !== guestId) {
-                console.warn(`[API verify-token] Guest ID mismatch. Token: ${tokenData.guestId}, Ref: ${guestId}`);
+            // CRITICAL: Support both new userId field and legacy guestId field
+            const tokenUserId = tokenData.userId || tokenData.guestId;
+            if (tokenUserId !== guestId) {
+                console.warn(`[API verify-token] Guest ID mismatch. Token: ${tokenUserId}, Ref: ${guestId}`);
                 return NextResponse.json({ message: 'Invalid session link.' }, { status: 403 });
             }
 
@@ -73,9 +75,12 @@ export async function POST(req) {
             }, { status: 200 });
         }
 
-        // --- LEGACY PHONE FLOW (Backward Compatibility) ---
+        // --- LEGACY PHONE FLOW & NEW USERID FLOW (Backward Compatibility) ---
         if (tokenData.type === 'whatsapp' || tokenData.type === 'tracking') {
-            if (tokenData.phone && (!phone || tokenData.phone !== phone)) {
+            // Support both new userId field and legacy phone field
+            const tokenPhone = tokenData.phone;
+
+            if (tokenPhone && (!phone || tokenPhone !== phone)) {
                 console.warn(`[API verify-token] Phone mismatch for legacy token.`);
                 return NextResponse.json({ message: 'Invalid session.' }, { status: 403 });
             }

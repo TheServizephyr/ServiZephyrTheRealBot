@@ -3,20 +3,26 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
-import { getOrCreateGuestProfile } from '@/lib/guest-utils';
+import { getOrCreateGuestProfile, deobfuscateGuestId } from '@/lib/guest-utils';
 
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
         const body = await req.json(); // Body might be empty if using cookie
-        const { phone, guestId: explicitGuestId } = body || {};
+        const { phone, guestId: explicitGuestId, ref, token } = body || {};
 
         // 1. Check for Secure Session Cookie
         const cookieStore = cookies();
         const sessionCookie = cookieStore.get('auth_guest_session');
         let guestId = sessionCookie?.value || explicitGuestId;
 
-        console.log(`[API /customer/lookup] Request - GuestID: ${guestId ? 'Yes' : 'No'}, Phone: ${phone ? 'Yes' : 'No'}`);
+        // 2. If ref provided, deobfuscate to get guestId
+        if (ref && !guestId) {
+            guestId = deobfuscateGuestId(ref);
+            console.log(`[API /customer/lookup] Deobfuscated ref to guestId: ${guestId}`);
+        }
+
+        console.log(`[API /customer/lookup] Request - GuestID: ${guestId ? 'Yes' : 'No'}, Phone: ${phone ? 'Yes' : 'No'}, Ref: ${ref ? 'Yes' : 'No'}`);
 
         // --- GUEST PROFILE LOOKUP ---
         if (guestId) {
@@ -27,14 +33,13 @@ export async function POST(req) {
                 const guestData = guestDoc.data();
                 return NextResponse.json({
                     name: guestData.name || 'Guest',
+                    phone: guestData.phone || '',
                     addresses: guestData.addresses || [],
-                    isVerified: false, // Guests are not "verified" users in the traditional sense
+                    isVerified: false,
                     isGuest: true
                 }, { status: 200 });
             } else {
                 console.warn(`[API /customer/lookup] Guest Profile not found: ${guestId}`);
-                // Fallthrough? If provided GuestID is invalid, should we fail?
-                // Probably yes.
                 return NextResponse.json({ message: 'Guest profile not found.' }, { status: 404 });
             }
         }

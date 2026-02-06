@@ -37,7 +37,7 @@ export default function CompleteProfile() {
 
   const roles = [
     { id: 'street-vendor', label: 'Street Vendor', icon: Map, enabled: true },
-    { id: 'customer', label: 'Customer', icon: User, enabled: false },
+    { id: 'customer', label: 'Customer', icon: User, enabled: true },
     { id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store, enabled: true },
     { id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart, enabled: false },
     { id: 'rider', label: 'Rider', icon: Bike, enabled: true },
