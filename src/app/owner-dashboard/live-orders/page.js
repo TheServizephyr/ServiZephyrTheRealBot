@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, getDocs, limit, doc, getDoc } from 'firebase/firestore';
@@ -299,11 +299,20 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantC
 };
 
 
-const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
+const AssignRiderModal = ({ isOpen, onClose, onAssign, initialSelectedOrders, riders, allOrders }) => {
     const [selectedRiderId, setSelectedRiderId] = useState(null);
     const [selectedOrderIds, setSelectedOrderIds] = useState([]);
     const [markAsActive, setMarkAsActive] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Filter relevant orders: status 'preparing' and deliveryType 'delivery'
+    // Also include currently selected orders even if status changed (edge case)
+    const assignableOrders = useMemo(() => {
+        return allOrders.filter(o =>
+            (o.status === 'preparing' || o.status === 'ready_for_pickup' || initialSelectedOrders.some(iso => iso.id === o.id)) &&
+            o.deliveryType === 'delivery'
+        );
+    }, [allOrders, initialSelectedOrders]);
 
     const selectedRider = useMemo(() => riders.find(r => r.id === selectedRiderId), [selectedRiderId, riders]);
     const isSelectedRiderInactive = selectedRider?.status === 'Inactive';
@@ -314,10 +323,10 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
             setSelectedRiderId(null);
             setMarkAsActive(false);
             setIsSubmitting(false);
-            // Pre-select the order(s) the modal was opened for
-            setSelectedOrderIds(orders.map(o => o.id));
+            // Pre-select the orders passed initially
+            setSelectedOrderIds(initialSelectedOrders.map(o => o.id));
         }
-    }, [isOpen, orders]);
+    }, [isOpen, initialSelectedOrders]);
 
     const handleOrderSelection = (orderId) => {
         setSelectedOrderIds(prev =>
@@ -342,27 +351,37 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
+            <DialogContent className="bg-background border-border text-foreground max-h-[90vh] flex flex-col">
                 <DialogHeader>
-                    <DialogTitle>Assign Rider for Order(s)</DialogTitle>
-                    <DialogDescription>Select orders to batch and a rider to dispatch them.</DialogDescription>
+                    <DialogTitle>Assign Rider</DialogTitle>
+                    <DialogDescription>Batch orders and assign a rider.</DialogDescription>
                 </DialogHeader>
 
-                <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                <div className="py-4 space-y-4 flex-1 overflow-y-auto min-h-0">
                     <div>
-                        <Label>Select Orders to Assign:</Label>
-                        <div className="mt-2 space-y-2 p-2 bg-muted/50 rounded-lg">
-                            {orders.map(order => (
-                                <div key={order.id} className="flex items-center gap-3 p-2 bg-background rounded-md">
-                                    <Checkbox id={`order-${order.id}`} checked={selectedOrderIds.includes(order.id)} onCheckedChange={() => handleOrderSelection(order.id)} />
-                                    <Label htmlFor={`order-${order.id}`} className="cursor-pointer w-full">
-                                        <div className="flex justify-between">
-                                            <span className="font-semibold">{order.id.substring(0, 8)}...</span>
-                                            <span className="text-xs text-muted-foreground">{order.customer}</span>
+                        <Label>Select Orders to Assign ({selectedOrderIds.length} selected):</Label>
+                        <div className="mt-2 space-y-2 p-2 bg-muted/50 rounded-lg max-h-48 overflow-y-auto">
+                            {assignableOrders.length > 0 ? assignableOrders.map(order => (
+                                <div key={order.id} className="flex items-center gap-3 p-2 bg-background rounded-md border border-border/50">
+                                    <Checkbox
+                                        id={`order-${order.id}`}
+                                        checked={selectedOrderIds.includes(order.id)}
+                                        onCheckedChange={() => handleOrderSelection(order.id)}
+                                    />
+                                    <Label htmlFor={`order-${order.id}`} className="cursor-pointer w-full flex flex-col">
+                                        <div className="flex justify-between items-center w-full">
+                                            <span className="font-bold">#{order.customerOrderId || order.id.substring(0, 5)}</span>
+                                            <span className="text-xs font-mono bg-muted px-1 rounded">₹{Math.round(order.totalAmount)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                            <span>{order.customer}</span>
+                                            <span>{order.customerAddress ? order.customerAddress.substring(0, 15) + '...' : 'No Address'}</span>
                                         </div>
                                     </Label>
                                 </div>
-                            ))}
+                            )) : (
+                                <p className="text-sm text-center text-muted-foreground p-4">No eligible orders found.</p>
+                            )}
                         </div>
                     </div>
                     <div>
@@ -383,58 +402,33 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
                                         <p className="font-bold text-foreground">{rider.name}</p>
                                         <p className="text-sm text-muted-foreground">{rider.phone}</p>
                                     </div>
-                                    {rider.status === 'Inactive' && <span className="text-xs font-semibold px-2 py-1 bg-red-500/10 text-red-500 rounded-full">Inactive</span>}
-                                    {rider.status === 'On Delivery' && <span className="text-xs font-semibold px-2 py-1 bg-blue-500/10 text-blue-500 rounded-full">On Delivery</span>}
+                                    <div className="flex items-center gap-2">
+                                        {rider.status === 'Inactive' && <span className="text-xs font-semibold px-2 py-1 bg-red-500/10 text-red-500 rounded-full">Inactive</span>}
+                                        {rider.status === 'On Delivery' && <span className="text-xs font-semibold px-2 py-1 bg-blue-500/10 text-blue-500 rounded-full">Busy</span>}
+                                    </div>
                                 </div>
                             )) : (
-                                <p className="text-center text-muted-foreground py-4">No riders found. Please add riders in the 'Delivery' section.</p>
+                                <p className="text-center text-muted-foreground py-4">No riders found. Please add riders.</p>
                             )}
                         </div>
                     </div>
                 </div>
 
-                {isSelectedRiderInactive && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex items-center justify-between"
-                    >
-                        <div className="flex flex-col">
-                            <Label htmlFor="mark-active" className="font-semibold text-destructive">This rider is currently inactive.</Label>
-                            <span className="text-xs text-destructive/80">Toggle on to make them available and assign the order.</span>
+                <div className="space-y-4">
+                    {isSelectedRiderInactive && (
+                        <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-lg flex items-center justify-between">
+                            <Label htmlFor="mark-active" className="text-sm font-semibold text-destructive">Rider Inactive. Mark Active?</Label>
+                            <Switch id="mark-active" checked={markAsActive} onCheckedChange={setMarkAsActive} />
                         </div>
-                        <Switch
-                            id="mark-active"
-                            checked={markAsActive}
-                            onCheckedChange={setMarkAsActive}
-                            aria-label="Mark as Active & Assign"
-                        />
-                    </motion.div>
-                )}
+                    )}
+                    {isSelectedRiderBusy && (
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-lg text-sm text-yellow-600">
+                            ⚠️ Rider is currently busy on another delivery.
+                        </div>
+                    )}
+                </div>
 
-                {isSelectedRiderBusy && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-lg"
-                    >
-                        <div className="flex items-start gap-3">
-                            <div className="bg-yellow-500/20 p-2 rounded-full">
-                                <svg className="w-5 h-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                            </div>
-                            <div className="flex-1">
-                                <Label className="font-semibold text-yellow-700">⚠️ Rider Currently Busy</Label>
-                                <p className="text-sm text-yellow-600/90 mt-1">
-                                    This rider is already on delivery and cannot be assigned new orders.
-                                    Please wait for them to complete their current delivery or choose another rider.
-                                </p>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-                <DialogFooter>
+                <DialogFooter className="mt-4">
                     <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
                     <Button
                         onClick={handleAssign}
@@ -616,7 +610,7 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-2xl bg-card border-border text-card-foreground">
                 <DialogHeader>
-                    <DialogTitle>Order Details #{order.id.substring(0, 8)}</DialogTitle>
+                    <DialogTitle>Order Details #{order.id?.substring(0, 8) || 'Unknown'}</DialogTitle>
                     <DialogDescription>
                         Full details for the order placed on {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'PPpp')}
                     </DialogDescription>
@@ -689,6 +683,156 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
     );
 };
 
+const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelected }) => {
+    const isPaidOnline = (order.paymentMethod === 'razorpay' || order.paymentMethod === 'phonepe' || order.paymentMethod === 'online') && order.paymentStatus === 'paid';
+    const isCOD = !isPaidOnline;
+
+    // Show checkbox only for 'preparing' delivery orders
+    const showCheckbox = order.status === 'preparing' && order.deliveryType === 'delivery';
+
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className={cn(
+                "bg-card border-2 rounded-xl p-5 flex flex-col gap-4 shadow-lg hover:shadow-2xl transition-all duration-300 relative overflow-hidden hover:-translate-y-1",
+                isSelected ? "border-primary ring-2 ring-primary shadow-primary/20" : "border-border/60"
+            )}
+        >
+            {/* Batch Selection Checkbox */}
+            {showCheckbox && (
+                <div className="absolute top-4 right-4 z-10">
+                    <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => onSelect(order.id)}
+                        className="w-5 h-5 border-2 border-foreground/50 data-[state=checked]:border-primary bg-background"
+                    />
+                </div>
+            )}
+
+            {/* Header */}
+            <div className="flex justify-between items-start pr-8">
+                <div>
+                    <div className="font-extrabold text-lg tracking-tight">#{order.customerOrderId || order.id.substring(0, 8)}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 font-medium">
+                        {formatSafeRelativeTime(order.orderDate)}
+                    </div>
+                </div>
+                <div className={cn(
+                    "px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border tracking-wide",
+                    order.deliveryType === 'delivery' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                        order.deliveryType === 'pickup' ? "bg-purple-500/10 text-purple-500 border-purple-500/20" :
+                            "bg-cyan-500/10 text-cyan-500 border-cyan-500/20"
+                )}>
+                    {order.deliveryType === 'delivery' ? 'Delivery' : order.deliveryType === 'pickup' ? 'Pickup' : 'Dine-In'}
+                </div>
+            </div>
+
+            {/* Payment Status Badges */}
+            <div className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border w-fit",
+                isPaidOnline ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-orange-500/10 text-orange-500 border-orange-500/20"
+            )}>
+                {isPaidOnline ? (
+                    <><Check size={12} className="stroke-[3]" /> PAID ONLINE</>
+                ) : (
+                    <><Wallet size={12} className="stroke-[3]" /> PAY ON DELIVERY (COD)</>
+                )}
+            </div>
+
+            {/* Info Sections */}
+            <div className="bg-muted/30 p-3 rounded-xl border border-border/50 space-y-2.5">
+                <div className="flex gap-2.5 items-start">
+                    <User size={14} className="text-primary mt-0.5 shrink-0" />
+                    <div>
+                        <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Customer</span>
+                        <div
+                            className="text-sm font-medium leading-tight hover:text-primary cursor-pointer hover:underline decoration-dashed underline-offset-2"
+                            onClick={() => onDetailClick(order.id, order.customerId)}
+                        >
+                            {order.customer || 'Guest'} <span className="text-muted-foreground">• {order.customerPhone}</span>
+                        </div>
+                    </div>
+                </div>
+                {order.customerAddress && (
+                    <div className="flex gap-2.5 items-start">
+                        <MapPin size={14} className="text-primary mt-0.5 shrink-0" />
+                        <div>
+                            <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Delivery Address</span>
+                            <div className="text-sm font-medium leading-tight line-clamp-2" title={order.customerAddress}>
+                                {order.customerAddress}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Special Note */}
+            {order.notes && (
+                <div className="bg-yellow-500/5 border-l-4 border-yellow-500 p-3 text-xs italic text-yellow-600/90 font-medium rounded-r-lg">
+                    "{order.notes}"
+                </div>
+            )}
+
+            {/* Items List (Preview) */}
+            <div className="space-y-1.5 py-1">
+                {(order.items || []).slice(0, 3).map((item, idx) => {
+                    // Safe Price parsing
+                    const price = parseFloat(item.price) || 0;
+                    const qty = parseInt(item.quantity) || 1;
+                    const lineTotal = price * qty;
+
+                    return (
+                        <div key={idx} className="flex justify-between items-start text-sm">
+                            <span className="text-foreground/90 leading-tight">
+                                <span className="font-extrabold text-primary mr-2">{qty}x</span>
+                                {item.name}
+                            </span>
+                            <span className="font-semibold text-muted-foreground">₹{lineTotal}</span>
+                        </div>
+                    )
+                })}
+                {(order.items || []).length > 3 && (
+                    <div className="text-xs text-primary font-bold pt-1 cursor-pointer hover:underline" onClick={() => onDetailClick(order.id, order.customerId)}>
+                        +{(order.items || []).length - 3} more items...
+                    </div>
+                )}
+            </div>
+
+            {/* Bill Summary */}
+            <div className="border-t border-border pt-4 mt-auto flex justify-between items-end">
+                <div>
+                    <span className={cn(
+                        "block text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                        isCOD ? "text-orange-500" : "text-muted-foreground"
+                    )}>
+                        {isCOD ? "Collect Cash" : "Total Amount"}
+                    </span>
+                    <span className="text-2xl font-black tracking-tight">₹{Math.round(order.totalAmount || 0)}</span>
+                </div>
+                <div className={cn(
+                    "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground",
+                    statusConfig[order.status]?.color?.split(' ')[1] // Extract text color class if possible, or fallback
+                )}>
+                    {order.status.replace('_', ' ')}
+                </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-2">
+                <ActionButton
+                    {...actionButtonProps}
+                    order={order}
+                    status={order.status}
+                    className="w-full" // Pass class for full width
+                />
+            </div>
+        </motion.div>
+    );
+};
 
 // Main Board Component
 export default function LiveOrdersPage() {
@@ -708,6 +852,19 @@ export default function LiveOrdersPage() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [userRole, setUserRole] = useState(null);
+    const [viewMode, setViewMode] = useState('grid'); // 'list' or 'grid'
+
+    // Detect mobile and force grid view
+    useEffect(() => {
+        const checkMobile = () => {
+            if (window.innerWidth < 768) {
+                setViewMode('grid');
+            }
+        };
+        checkMobile(); // Check on mount
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
     // Print Modal State
     const [printModalData, setPrintModalData] = useState({ isOpen: false, order: null });
@@ -1192,8 +1349,9 @@ export default function LiveOrdersPage() {
                     isOpen={assignModalData.isOpen}
                     onClose={() => setAssignModalData({ isOpen: false, orders: [] })}
                     onAssign={handleAssignRider}
-                    orders={assignModalData.orders}
+                    initialSelectedOrders={assignModalData.orders}
                     riders={riders}
+                    allOrders={orders}
                 />
             )}
 
@@ -1240,6 +1398,30 @@ export default function LiveOrdersPage() {
                         <RefreshCw size={16} className={cn(loading && "animate-spin")} />
                         <span className="ml-2 hidden sm:inline">{loading ? 'Loading...' : 'Refresh'}</span>
                     </Button>
+
+                    {/* View Toggle (Hidden on mobile as it's card-only) */}
+                    <div className="hidden md:flex items-center bg-muted rounded-md border border-border p-1 gap-1">
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={cn(
+                                "p-1.5 rounded-sm transition-all",
+                                viewMode === 'grid' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                            )}
+                            title="Grid View"
+                        >
+                            <LayoutGrid size={16} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={cn(
+                                "p-1.5 rounded-sm transition-all",
+                                viewMode === 'list' ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                            )}
+                            title="List View"
+                        >
+                            <List size={16} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1260,161 +1442,200 @@ export default function LiveOrdersPage() {
                     className="bg-primary/10 border border-primary/30 rounded-lg p-3 flex items-center justify-between mb-4"
                 >
                     <p className="font-semibold text-primary">{selectedOrders.length} order(s) selected for batching.</p>
+                    <p className="font-semibold text-primary">{selectedOrders.length} order(s) selected for batching.</p>
                     <Button size="sm" onClick={handleAssignSelected}>
-                        <Bike size={16} className="mr-2" /> Assign Selected to Rider
+                        <Bike size={16} className="mr-2" /> Assign Selected
                     </Button>
                 </motion.div>
             )}
 
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead>
-                            <tr className="bg-muted/30">
-                                <th className="p-4 w-12 text-left text-sm font-semibold text-muted-foreground"></th>
-                                <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden md:table-cell">Items</th>
-                                <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
-                                <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                            <AnimatePresence>
-                                {loading && filteredAndSortedOrders.length === 0 ? (
-                                    Array.from({ length: 5 }).map((_, i) => (
-                                        <tr key={i} className="animate-pulse">
-                                            <td className="p-4 w-12"></td>
-                                            <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
-                                            <td className="p-4 hidden md:table-cell"><div className="h-5 bg-muted rounded w-3/4"></div></td>
-                                            <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
-                                            <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
-                                            <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
-                                        </tr>
-                                    ))
-                                ) : (filteredAndSortedOrders.map(order => (
-                                    <motion.tr
-                                        key={order.id}
-                                        layout
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0, x: -50 }}
-                                        transition={{ duration: 0.3 }}
-                                        className="hover:bg-muted/50"
-                                    >
-                                        <td className="p-4 w-12 align-top">
-                                            {order.status === 'preparing' && order.deliveryType !== 'pickup' && order.deliveryType !== 'dine-in' && (
-                                                <Checkbox
-                                                    checked={selectedOrders.includes(order.id)}
-                                                    onCheckedChange={() => handleSelectOrder(order.id)}
-                                                    aria-label={`Select order ${order.id}`}
-                                                />
-                                            )}
-                                        </td>
-                                        <td className="p-4 align-top">
-                                            <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.customerOrderId || order.id}</div>
-                                            <div
-                                                onClick={() => handleDetailClick(order.id, order.customerId)}
-                                                className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
-                                                title="View Customer & Order Details"
-                                            >
-                                                {order.customer}
-                                            </div>
-                                            <div className="mt-1 flex items-center gap-2">
-                                                {order.deliveryType === 'delivery' && (
-                                                    <div title="Delivery Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12} /> Delivery</div>
+            {viewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-20">
+                    <AnimatePresence>
+                        {loading && filteredAndSortedOrders.length === 0 ? (
+                            Array.from({ length: 6 }).map((_, i) => (
+                                <div key={i} className="bg-card border rounded-xl h-[400px] animate-pulse" />
+                            ))
+                        ) : filteredAndSortedOrders.length === 0 ? (
+                            <div className="col-span-full text-center p-16 text-muted-foreground bg-card border border-border rounded-xl border-dashed">
+                                <p className="text-lg font-semibold">No orders found.</p>
+                                <p>Try adjusting your filters or search term.</p>
+                            </div>
+                        ) : (
+                            filteredAndSortedOrders.map(order => (
+                                <OrderCard
+                                    key={order.id}
+                                    order={order}
+                                    isSelected={selectedOrders.includes(order.id)}
+                                    onSelect={handleSelectOrder}
+                                    onDetailClick={handleDetailClick}
+                                    actionButtonProps={{
+                                        isUpdating: updatingOrderId === order.id,
+                                        onNext: (newStatus) => handleUpdateStatus(order.id, newStatus),
+                                        onRevert: (newStatus) => handleUpdateStatus(order.id, newStatus),
+                                        onRejectClick: (order) => setRejectionModalData({ isOpen: true, order: order }),
+                                        onPrintClick: () => setPrintModalData({ isOpen: true, order: order }),
+                                        onAssignClick: (orders) => setAssignModalData({ isOpen: true, orders }),
+                                        employeeOfOwnerId,
+                                        impersonatedOwnerId,
+                                        userRole
+                                    }}
+                                />
+                            ))
+                        )}
+                    </AnimatePresence>
+                </div>
+            ) : (
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="bg-muted/30">
+                                    <th className="p-4 w-12 text-left text-sm font-semibold text-muted-foreground"></th>
+                                    <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
+                                    <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden md:table-cell">Items</th>
+                                    <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
+                                    <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
+                                    <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                <AnimatePresence>
+                                    {loading && filteredAndSortedOrders.length === 0 ? (
+                                        Array.from({ length: 5 }).map((_, i) => (
+                                            <tr key={i} className="animate-pulse">
+                                                <td className="p-4 w-12"></td>
+                                                <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
+                                                <td className="p-4 hidden md:table-cell"><div className="h-5 bg-muted rounded w-3/4"></div></td>
+                                                <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
+                                                <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
+                                                <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
+                                            </tr>
+                                        ))
+                                    ) : (filteredAndSortedOrders.map(order => (
+                                        <motion.tr
+                                            key={order.id}
+                                            layout
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0, x: -50 }}
+                                            transition={{ duration: 0.3 }}
+                                            className="hover:bg-muted/50"
+                                        >
+                                            <td className="p-4 w-12 align-top">
+                                                {order.status === 'preparing' && order.deliveryType !== 'pickup' && order.deliveryType !== 'dine-in' && (
+                                                    <Checkbox
+                                                        checked={selectedOrders.includes(order.id)}
+                                                        onCheckedChange={() => handleSelectOrder(order.id)}
+                                                        aria-label={`Select order ${order.id}`}
+                                                    />
                                                 )}
-                                                {order.deliveryType === 'pickup' && (
-                                                    <div title="Pickup Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12} /> Pickup</div>
-                                                )}
-                                                {order.diningPreference === 'takeaway' && order.deliveryType !== 'delivery' && order.deliveryType !== 'pickup' && (
-                                                    <div title="Takeaway Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 w-fit"><PackageCheck size={12} /> Takeaway</div>
-                                                )}
-                                                {/* ✅ FIX: Only show Dine-In tag if deliveryType is explicitly dine-in */}
-                                                {(order.deliveryType === 'dine-in' || (order.diningPreference === 'dine-in' && order.deliveryType !== 'delivery' && order.deliveryType !== 'pickup')) && (
-                                                    <div title="Dine-In Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12} /> Dine-In</div>
-                                                )}
-                                            </div>
-                                        </td>
-
-                                        <td className="p-4 align-top hidden md:table-cell">
-                                            {(order.items || []).slice(0, 2).map((item, index) => (
-                                                <div key={index} className="text-xs text-muted-foreground flex items-center gap-2">
-                                                    <span>{item.quantity}x {item.name}</span>
-                                                    {item.addedAt && (() => {
-                                                        const addedDate = safeToDate(item.addedAt?.seconds ? new Date(item.addedAt.seconds * 1000) : item.addedAt);
-                                                        return addedDate ? (
-                                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] font-semibold">
-                                                                🆕 Added {format(addedDate, 'hh:mm a')}
-                                                            </span>
-                                                        ) : null;
-                                                    })()}
+                                            </td>
+                                            <td className="p-4 align-top">
+                                                <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.customerOrderId || order.id}</div>
+                                                <div
+                                                    onClick={() => handleDetailClick(order.id, order.customerId)}
+                                                    className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
+                                                    title="View Customer & Order Details"
+                                                >
+                                                    {order.customer}
                                                 </div>
-                                            ))}
-                                            {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and {(order.items || []).length - 2} more</div>}
-                                        </td>
-                                        <td className="p-4 text-sm text-muted-foreground align-top">
-                                            {formatSafeDate(order.orderDate?.seconds ? new Date(order.orderDate.seconds * 1000) : order.orderDate, 'Invalid Date')}
-                                        </td>
-                                        <td className="p-4 align-top">
-                                            <Popover>
-                                                <PopoverTrigger asChild>
-                                                    <button className={cn('flex items-center gap-2 text-xs font-semibold rounded-full border px-3 py-1 w-fit capitalize transition-transform hover:scale-105', statusConfig[order.status]?.color)}>
-                                                        {order.status.replace('_', ' ')}
-                                                    </button>
-                                                </PopoverTrigger>
-                                                <PopoverContent className="w-80">
-                                                    <div className="grid gap-4">
-                                                        <div className="space-y-2">
-                                                            <h4 className="font-medium leading-none flex items-center gap-2"><History size={16} /> Status History</h4>
-                                                            <div className="text-sm text-muted-foreground space-y-2">
-                                                                {(order.statusHistory || []).length > 0 ? (
-                                                                    [...order.statusHistory].reverse().map((h, i) => (
-                                                                        <div key={i} className="flex items-center gap-2">
-                                                                            <ClockIcon size={12} />
-                                                                            <span className="font-semibold capitalize">{h.status}:</span>
-                                                                            <span>{format(new Date(h.timestamp?.seconds ? h.timestamp.seconds * 1000 : h.timestamp), 'hh:mm:ss a')}</span>
-                                                                        </div>
-                                                                    ))
-                                                                ) : (
-                                                                    <p>No history available.</p>
-                                                                )}
+                                                <div className="mt-1 flex items-center gap-2">
+                                                    {order.deliveryType === 'delivery' && (
+                                                        <div title="Delivery Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12} /> Delivery</div>
+                                                    )}
+                                                    {order.deliveryType === 'pickup' && (
+                                                        <div title="Pickup Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12} /> Pickup</div>
+                                                    )}
+                                                    {order.diningPreference === 'takeaway' && order.deliveryType !== 'delivery' && order.deliveryType !== 'pickup' && (
+                                                        <div title="Takeaway Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 w-fit"><PackageCheck size={12} /> Takeaway</div>
+                                                    )}
+                                                    {/* ✅ FIX: Only show Dine-In tag if deliveryType is explicitly dine-in */}
+                                                    {(order.deliveryType === 'dine-in' || (order.diningPreference === 'dine-in' && order.deliveryType !== 'delivery' && order.deliveryType !== 'pickup')) && (
+                                                        <div title="Dine-In Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12} /> Dine-In</div>
+                                                    )}
+                                                </div>
+                                            </td>
+
+                                            <td className="p-4 align-top hidden md:table-cell">
+                                                {(order.items || []).slice(0, 2).map((item, index) => (
+                                                    <div key={index} className="text-xs text-muted-foreground flex items-center gap-2">
+                                                        <span>{item.quantity}x {item.name}</span>
+                                                        {item.addedAt && (() => {
+                                                            const addedDate = safeToDate(item.addedAt?.seconds ? new Date(item.addedAt.seconds * 1000) : item.addedAt);
+                                                            return addedDate ? (
+                                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] font-semibold">
+                                                                    🆕 Added {format(addedDate, 'hh:mm a')}
+                                                                </span>
+                                                            ) : null;
+                                                        })()}
+                                                    </div>
+                                                ))}
+                                                {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and {(order.items || []).length - 2} more</div>}
+                                            </td>
+                                            <td className="p-4 text-sm text-muted-foreground align-top">
+                                                {formatSafeDate(order.orderDate?.seconds ? new Date(order.orderDate.seconds * 1000) : order.orderDate, 'Invalid Date')}
+                                            </td>
+                                            <td className="p-4 align-top">
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button className={cn('flex items-center gap-2 text-xs font-semibold rounded-full border px-3 py-1 w-fit capitalize transition-transform hover:scale-105', statusConfig[order.status]?.color)}>
+                                                            {order.status.replace('_', ' ')}
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-80">
+                                                        <div className="grid gap-4">
+                                                            <div className="space-y-2">
+                                                                <h4 className="font-medium leading-none flex items-center gap-2"><History size={16} /> Status History</h4>
+                                                                <div className="text-sm text-muted-foreground space-y-2">
+                                                                    {(order.statusHistory || []).length > 0 ? (
+                                                                        [...order.statusHistory].reverse().map((h, i) => (
+                                                                            <div key={i} className="flex items-center gap-2">
+                                                                                <ClockIcon size={12} />
+                                                                                <span className="font-semibold capitalize">{h.status}:</span>
+                                                                                <span>{format(new Date(h.timestamp?.seconds ? h.timestamp.seconds * 1000 : h.timestamp), 'hh:mm:ss a')}</span>
+                                                                            </div>
+                                                                        ))
+                                                                    ) : (
+                                                                        <p>No history available.</p>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                </PopoverContent>
-                                            </Popover>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </td>
+                                            <td className="p-4 w-auto md:w-[320px] align-top">
+                                                <ActionButton
+                                                    order={order}
+                                                    status={order.status}
+                                                    isUpdating={updatingOrderId === order.id}
+                                                    onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
+                                                    onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
+                                                    onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
+                                                    onPrintClick={() => setPrintModalData({ isOpen: true, order: order })}
+                                                    onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
+                                                    employeeOfOwnerId={employeeOfOwnerId}
+                                                    impersonatedOwnerId={impersonatedOwnerId}
+                                                    userRole={userRole}
+                                                />
+                                            </td>
+                                        </motion.tr>
+                                    )))}
+                                </AnimatePresence>
+                                {!loading && filteredAndSortedOrders.length === 0 && (
+                                    <tr>
+                                        <td colSpan="7" className="text-center p-16 text-muted-foreground">
+                                            <p className="text-lg font-semibold">No orders found.</p>
+                                            <p>Try adjusting your filters or search term.</p>
                                         </td>
-                                        <td className="p-4 w-auto md:w-[320px] align-top">
-                                            <ActionButton
-                                                order={order}
-                                                status={order.status}
-                                                isUpdating={updatingOrderId === order.id}
-                                                onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
-                                                onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
-                                                onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
-                                                onPrintClick={() => setPrintModalData({ isOpen: true, order: order })}
-                                                onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
-                                                employeeOfOwnerId={employeeOfOwnerId}
-                                                impersonatedOwnerId={impersonatedOwnerId}
-                                                userRole={userRole}
-                                            />
-                                        </td>
-                                    </motion.tr>
-                                )))}
-                            </AnimatePresence>
-                            {!loading && filteredAndSortedOrders.length === 0 && (
-                                <tr>
-                                    <td colSpan="7" className="text-center p-16 text-muted-foreground">
-                                        <p className="text-lg font-semibold">No orders found.</p>
-                                        <p>Try adjusting your filters or search term.</p>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
