@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson, XCircle, ShoppingBag, Laptop, BookOpen, ToyBrick } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -787,6 +788,7 @@ export default function MenuPage() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const { toast } = useToast();
     const [priceChangeDialog, setPriceChangeDialog] = useState({
         isOpen: false,
         oldPrice: 0,
@@ -874,7 +876,11 @@ export default function MenuPage() {
         const performSave = async () => {
             try {
                 const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
-                setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
+                toast({
+                    title: "Success",
+                    description: data.message,
+                    variant: "default",
+                });
                 await fetchMenu();
                 return true;
             } catch (error) {
@@ -922,7 +928,11 @@ export default function MenuPage() {
     const handleBulkSave = async (items) => {
         try {
             const data = await handleApiCall('/api/owner/menu-bulk', 'POST', { items });
-            setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
+            toast({
+                title: "Success",
+                description: data.message,
+                variant: "default",
+            });
             await fetchMenu();
         } catch (error) {
             console.error("Error saving bulk items:", error);
@@ -948,7 +958,11 @@ export default function MenuPage() {
         if (window.confirm(`Are you sure you want to delete this item?`)) {
             try {
                 await handleApiCall('/api/owner/menu', 'DELETE', { itemId });
-                setInfoDialog({ isOpen: true, title: 'Success', message: 'Item deleted successfully!' });
+                toast({
+                    title: "Success",
+                    description: "Item deleted successfully!",
+                    variant: "default",
+                });
                 await fetchMenu();
             } catch (error) {
                 console.error("Error deleting item:", error);
@@ -981,7 +995,11 @@ export default function MenuPage() {
         if (window.confirm(`Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`)) {
             try {
                 await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'delete' });
-                setInfoDialog({ isOpen: true, title: 'Success', message: `${selectedItems.length} items deleted successfully!` });
+                toast({
+                    title: "Success",
+                    description: `${selectedItems.length} items deleted successfully!`,
+                    variant: "default",
+                });
                 setSelectedItems([]);
                 await fetchMenu();
             } catch (error) {
@@ -995,7 +1013,11 @@ export default function MenuPage() {
         if (window.confirm(`Are you sure you want to mark ${selectedItems.length} items as out of stock?`)) {
             try {
                 await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'outOfStock' });
-                setInfoDialog({ isOpen: true, title: 'Success', message: `${selectedItems.length} items marked as out of stock!` });
+                toast({
+                    title: "Success",
+                    description: `${selectedItems.length} items marked as out of stock!`,
+                    variant: "default",
+                });
                 setSelectedItems([]);
                 await fetchMenu();
             } catch (error) {
