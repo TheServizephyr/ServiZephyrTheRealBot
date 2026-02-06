@@ -25,6 +25,9 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import ThemeColorUpdater from '@/components/ThemeColorUpdater';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+
+import AddressSelectionList from '@/components/AddressSelectionList';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
 
 
@@ -740,6 +743,67 @@ const OrderPageInternal = () => {
     const activeOrderId = searchParams.get('activeOrderId');
     const activeOrderToken = searchParams.get('token');
     const [liveOrder, setLiveOrder] = useState(null);
+
+    // ADDRESS SELECTION STATE
+    const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
+    const [userAddresses, setUserAddresses] = useState([]);
+    const [addressLoading, setAddressLoading] = useState(false);
+
+    // FETCH ADDRESSES FOR DRAWER
+    useEffect(() => {
+        const loadAddresses = async () => {
+            if (isAddressSelectorOpen && customerLocation?.id) {
+                // Only fetch if we are opening it and have basic profile info
+                // Actually, we need to fetch if we have phone/ref
+                // Simplification: Fetch on Open if needed, or rely on passed data 
+            }
+        }
+    }, [isAddressSelectorOpen]);
+
+    const handleOpenAddressDrawer = async () => {
+        setIsAddressSelectorOpen(true);
+        setAddressLoading(true);
+
+        try {
+            // Re-use logic to resolve user/guest
+            const savedName = localStorage.getItem('customerName');
+            const lookupPayload = {};
+            if (phone) lookupPayload.phone = phone;
+            if (ref) lookupPayload.ref = ref;
+            // Also supports logged in user via header automatically if auth token available (handled in fetchWithRetry or similar if using useUser)
+            // But here we are in OrderPageInternal, maybe use 'auth.currentUser'
+
+            // Simpler: Call lookup just like checkout
+            const headers = { 'Content-Type': 'application/json' };
+            if (auth.currentUser) {
+                headers['Authorization'] = `Bearer ${await auth.currentUser.getIdToken()}`;
+            }
+
+            if (Object.keys(lookupPayload).length > 0 || auth.currentUser) {
+                const res = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(lookupPayload)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setUserAddresses(data.addresses || []);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load addresses", e);
+        } finally {
+            setAddressLoading(false);
+        }
+    };
+
+    const handleSelectNewAddress = (addr) => {
+        // Update Local State
+        setCustomerLocation(addr);
+        // Persist
+        localStorage.setItem('customerLocation', JSON.stringify(addr));
+        setIsAddressSelectorOpen(false);
+    };
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
@@ -1653,7 +1717,7 @@ const OrderPageInternal = () => {
             if (activeToken) params.set('token', activeToken);
         }
 
-        const url = `/cart?${params.toString()}`;
+        const url = `/checkout?${params.toString()}`; // CHANGED: Skip cart, go directly to unified checkout
         router.push(url);
     };
 
@@ -1820,6 +1884,64 @@ const OrderPageInternal = () => {
                 <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
                 <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
 
+                {/* ADDRESS SELECTION DRAWER */}
+                <AnimatePresence>
+                    {isAddressSelectorOpen && (
+                        <>
+                            <motion.div
+                                className="fixed inset-0 bg-black/50 z-[60]"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setIsAddressSelectorOpen(false)}
+                            />
+                            <motion.div
+                                className="fixed top-0 right-0 h-full w-full sm:w-[400px] bg-background z-[70] shadow-2xl flex flex-col"
+                                initial={{ x: '100%' }}
+                                animate={{ x: 0 }}
+                                exit={{ x: '100%' }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            >
+                                <div className="p-4 border-b flex items-center justify-between">
+                                    <h2 className="font-bold text-lg">Select Address</h2>
+                                    <Button variant="ghost" size="icon" onClick={() => setIsAddressSelectorOpen(false)}>
+                                        <X />
+                                    </Button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4">
+                                    <AddressSelectionList
+                                        addresses={userAddresses}
+                                        selectedAddressId={customerLocation?.id}
+                                        onSelect={handleSelectNewAddress}
+                                        loading={addressLoading}
+                                        onUseCurrentLocation={() => {
+                                            // Navigate to Add Address with useCurrent flag
+                                            const search = window.location.search || '';
+                                            const separator = search ? '&' : '?';
+                                            router.push(`/add-address${search}${separator}useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                        }}
+                                        onAddNewAddress={() => {
+                                            router.push(`/add-address?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                        }}
+                                        onDelete={async (id) => {
+                                            // Handle delete simply by reloading list logic
+                                            // Ideally, implement delete API call here
+                                            if (confirm('Are you sure you want to delete this address?')) {
+                                                setAddressLoading(true);
+                                                try {
+                                                    await fetch(`/api/user/addresses?id=${id}`, { method: 'DELETE' });
+                                                    // Refresh
+                                                    handleOpenAddressDrawer();
+                                                } catch (e) { console.error(e) } finally { setAddressLoading(false); }
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>
+
                 <header>
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
                 </header>
@@ -1913,9 +2035,13 @@ const OrderPageInternal = () => {
                                             <MapPin className="text-primary flex-shrink-0" size={20} />
                                             <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
                                         </div>
-                                        <Link href={`/location?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}&phone=${phone || ''}&token=${token || ''}&ref=${ref || ''}`}>
-                                            <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
-                                        </Link>
+                                        <Button
+                                            variant="link"
+                                            className="text-primary p-0 h-auto font-semibold flex-shrink-0"
+                                            onClick={handleOpenAddressDrawer}
+                                        >
+                                            Change
+                                        </Button>
                                     </>
                                 ) : deliveryType === 'pickup' ? (
                                     <div className="flex items-center gap-3 overflow-hidden">

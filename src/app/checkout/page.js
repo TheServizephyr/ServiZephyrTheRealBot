@@ -2,16 +2,21 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, Ticket, Minus, Plus, Edit2 } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
+import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/firebase';
+
+import SplitBillInterface from '@/components/SplitBillInterface';
+import CustomizationDrawer from '@/components/CustomizationDrawer';
+import AddressSelectionList from '@/components/AddressSelectionList';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,82 +41,13 @@ const TokenVerificationLock = ({ message }) => (
     </div>
 );
 
-const SplitBillInterface = ({ totalAmount, onBack, orderDetails, onPlaceOrder }) => {
-    const [splitCount, setSplitCount] = useState(2);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const router = useRouter();
 
-    const handleGenerateSplitLinks = async () => {
-        console.log("[SplitBillInterface] Generating split links...");
-        if (splitCount < 2) {
-            setError("Must split between at least 2 people.");
-            return;
-        }
-        setLoading(true);
-        setError('');
-
-        try {
-            // ALWAYS call onPlaceOrder to add items (works for both new and existing orders)
-            console.log("[SplitBillInterface] Calling onPlaceOrder to add items...");
-            const orderResult = await onPlaceOrder('split_bill');
-            if (!orderResult || !orderResult.firestore_order_id) {
-                throw new Error("Failed to process order for split payment.");
-            }
-            const baseOrderId = orderResult.firestore_order_id;
-            console.log(`[SplitBillInterface] Order processed with ID: ${baseOrderId}`);
-
-            const payload = {
-                grandTotal: orderDetails.grandTotal,
-                splitCount,
-                baseOrderId: baseOrderId,
-                restaurantId: orderDetails.restaurantId,
-                // Pass pending items if this is an add-on order
-                pendingItems: orderResult.pendingItems || [],
-                pendingSubtotal: orderResult.pendingSubtotal || 0,
-                pendingCgst: orderResult.pendingCgst || 0,
-                pendingSgst: orderResult.pendingSgst || 0,
-            };
-            console.log("[SplitBillInterface] Calling /api/payment/create-order with payload:", payload);
-
-            const res = await fetch('/api/payment/create-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to create split payment session.');
-
-            console.log(`[SplitBillInterface] Split session created with ID: ${data.splitId}. Redirecting...`);
-            router.push(`/split-pay/${data.splitId}`);
-
-        } catch (err) {
-            console.error("[SplitBillInterface] Error creating split session:", err);
-            setError(err.message);
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="space-y-4">
-            <Button onClick={onBack} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Payment Options</Button>
-            <h3 className="text-lg font-bold">Split Equally</h3>
-            <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-                <Label htmlFor="split-count">Split bill between how many people?</Label>
-                <input id="split-count" type="number" min="2" value={splitCount} onChange={e => setSplitCount(parseInt(e.target.value))} className="w-24 p-2 rounded-md bg-input border border-border" />
-            </div>
-            <Button onClick={handleGenerateSplitLinks} disabled={loading || splitCount < 2} className="w-full h-12 text-lg">
-                {loading ? <Loader2 className="animate-spin" /> : 'Create Split Session'}
-            </Button>
-            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-        </div>
-    );
-};
 
 
 
 const CheckoutPageInternal = () => {
     const router = useRouter();
+    const { toast } = useToast();
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser();
     const restaurantId = searchParams.get('restaurantId');
@@ -140,7 +76,8 @@ const CheckoutPageInternal = () => {
 
     const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
-    const [detailsConfirmed, setDetailsConfirmed] = useState(false);
+    // const [detailsConfirmed, setDetailsConfirmed] = useState(false); // REMOVED: Two-step flow
+    const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false); // NEW: Bottom drawer
     const [activeOrderId, setActiveOrderId] = useState(searchParams.get('activeOrderId'));
 
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
@@ -163,6 +100,105 @@ const CheckoutPageInternal = () => {
     const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null);
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
 
+    // NEW: Pro Checkout UI States
+    const [cookingInstructions, setCookingInstructions] = useState('');
+    const [selectedTipAmount, setSelectedTipAmount] = useState(0);
+    const [customTipAmount, setCustomTipAmount] = useState('');
+    const [showCustomTipInput, setShowCustomTipInput] = useState(false);
+    const [isBillSummaryExpanded, setIsBillSummaryExpanded] = useState(false); // Collapsed by default
+    const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false); // Top slide-in drawer for addresses
+    const [isCouponDrawerOpen, setIsCouponDrawerOpen] = useState(false); // NEW: Bottom slide-in drawer for coupons
+
+    const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+    const [editingItemIndex, setEditingItemIndex] = useState(null);
+
+    const handleEditItem = (index) => {
+        setEditingItemIndex(index);
+        setIsEditDrawerOpen(true);
+    };
+
+    const handleUpdateItem = (updatedItem) => {
+        if (editingItemIndex === null) return;
+
+        const newCart = [...cart];
+        newCart[editingItemIndex] = updatedItem;
+        setCart(newCart);
+
+        // Persist
+        const savedData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+        savedData.cart = newCart;
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(savedData));
+        setCartData(savedData);
+
+        setIsEditDrawerOpen(false);
+        setEditingItemIndex(null);
+        toast({ title: "Item Updated", description: "Your changes have been saved." });
+    };
+
+
+
+
+    const updateItemQuantity = (index, delta) => {
+        const newCart = [...cart];
+        const item = { ...newCart[index] }; // Clone item
+        const newQuantity = (item.quantity || 1) + delta;
+
+        if (newQuantity < 1) {
+            // Remove item if quantity drops below 1
+            newCart.splice(index, 1);
+        } else {
+            item.quantity = newQuantity;
+            // Recalculate totalPrice if unit price is available
+            if (item.price) {
+                item.totalPrice = item.price * newQuantity;
+            } else if (item.totalPrice) {
+                // Fallback: If only totalPrice exists and price is missing (edge case), derive price
+                const unitPrice = item.totalPrice / (item.quantity - delta);
+                item.totalPrice = unitPrice * newQuantity;
+            }
+            newCart[index] = item;
+        }
+
+        if (newCart.length === 0) {
+            setCart([]);
+            const savedData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+            savedData.cart = [];
+            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(savedData));
+            setCartData(savedData);
+
+            // Redirect to Order Page
+            toast({ title: "Cart Empty", description: "Redirecting to menu..." });
+            router.replace(`/order/${restaurantId}?${searchParams.toString()}`);
+            return;
+        }
+
+        setCart(newCart);
+        // Persist to LocalStorage
+        const savedData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+        savedData.cart = newCart;
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(savedData));
+        setCartData(savedData); // Trigger re-calc
+    };
+
+    const handleAddNewAddress = () => {
+        const params = new URLSearchParams(searchParams.toString());
+        const currentParamsString = params.toString();
+        router.push(`/add-address?${currentParamsString}&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
+    };
+
+    const handleUseCurrentLocation = () => {
+        const calculateParams = () => {
+            const params = {};
+            searchParams.forEach((value, key) => {
+                params[key] = value;
+            });
+            return params;
+        };
+        const currentParams = calculateParams();
+        const currentParamsString = new URLSearchParams(currentParams).toString();
+        // Direct navigation to Add Address with Geolocation flag, bypassing redundant Location page
+        router.push(`/add-address?${currentParamsString}&useCurrent=true&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
+    };
 
 
     // Initialize Idempotency Key (Persist across reloads)
@@ -186,7 +222,13 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         console.log("[Checkout Page] Component mounting. isUserLoading:", isUserLoading);
         const verifyAndFetch = async () => {
-            setLoading(true);
+            // OPTIMISTIC LOADING: If we already have some cart data, don't show full spinner
+            const potentialCachedCart = localStorage.getItem(`cart_${restaurantId}`);
+            if (!cartData && !potentialCachedCart) {
+                setLoading(true);
+            } else {
+                console.log("[Checkout Page] Optimistic Load: Skipping full spinner as data exists");
+            }
 
             const isDineIn = !!tableId;
             const isLoggedInUser = !!user;
@@ -216,15 +258,7 @@ const CheckoutPageInternal = () => {
                 }
             }
 
-            if (activeOrderId && deliveryType !== 'delivery') {
-                setDetailsConfirmed(true);
-            } else if (deliveryType === 'street-vendor-pre-order') {
-                setDetailsConfirmed(true);
-            } else if (deliveryType === 'delivery') {
-                setDetailsConfirmed(false);
-            } else {
-                setDetailsConfirmed(true);
-            }
+            // REMOVED: detailsConfirmed logic - unified checkout shows all sections at once
 
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
@@ -414,18 +448,13 @@ const CheckoutPageInternal = () => {
 
     const diningPreference = cartData?.diningPreference || 'dine-in';
 
-    const handleAddNewAddress = () => {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set('returnUrl', window.location.href);
-        // Ensure Ref is preserved strings
-        router.push(`/add-address?${params.toString()}`);
-    };
+
 
     // ... (Price calculation unchanged) ...
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount } = useMemo(() => {
         // ... (Same logic as before) ...
         // Re-implementing logic to ensure no regression as I replaced a huge chunk
-        const currentSubtotal = cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0);
+        const currentSubtotal = cart.reduce((sum, item) => sum + (item.totalPrice || (item.price || 0) * (item.quantity || 1)), 0);
         if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
@@ -523,7 +552,13 @@ const CheckoutPageInternal = () => {
 
         // ========== BUNDLING FEATURE: Removed isSmartBundlingEligible from condition ==========
         const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree || activeOrderId) ? 0 : (cartData.deliveryCharge || 0);
-        const tip = (isStreetVendor || deliveryType !== 'delivery' || activeOrderId) ? 0 : (cartData.tipAmount || 0);
+
+        // Calculate Tip from State
+        let currentTip = selectedTipAmount;
+        if (showCustomTipInput) {
+            currentTip = parseFloat(customTipAmount) || 0;
+        }
+        const tip = (isStreetVendor || deliveryType !== 'delivery') ? 0 : currentTip;
         const taxableAmount = currentSubtotal - couponDiscountValue;
 
         let cgstAmount = 0;
@@ -557,9 +592,10 @@ const CheckoutPageInternal = () => {
             convenienceFee: calculatedConvenienceFee,
             grandTotal: finalGrandTotal,
             packagingCharge,
-            isSmartBundlingEligible
+            isSmartBundlingEligible,
+            tipAmount: tip
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, bundlingOrderDetails, selectedAddress]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, bundlingOrderDetails, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput]);
 
     const fullOrderDetailsForSplit = useMemo(() => ({
         restaurantId,
@@ -1245,350 +1281,599 @@ const CheckoutPageInternal = () => {
                             router.push(`/cart?${params.toString()}`);
                         }} className="h-10 w-10"><ArrowLeft /></Button>
                         <div>
-                            <p className="text-xs text-muted-foreground">{cameToPay ? 'Final Step' : detailsConfirmed ? (activeOrderId ? 'Add to Order' : 'Step 2 of 2') : 'Step 1 of 2'}</p>
-                            <h1 className="text-xl font-bold">{cameToPay ? 'Pay Your Bill' : detailsConfirmed ? 'Choose Payment Method' : 'Confirm Your Details'}</h1>
+                            <p className="text-xs text-muted-foreground">{cameToPay ? 'Final Step' : activeOrderId ? 'Add to Order' : 'Step 1 of 1'}</p>
+                            <h1 className="text-xl font-bold">{cameToPay ? 'Pay Your Bill' : 'Review Order'}</h1>
                         </div>
                     </div>
                 </header>
 
-                <main className="flex-grow p-4 container mx-auto">
+                <main className="flex-grow p-4 container mx-auto w-full md:max-w-3xl lg:max-w-4xl" style={{ paddingBottom: '120px' }}>
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mb-4">{error}</p>}
 
-                        {!detailsConfirmed && renderDetailsForm()}
-
-                        {detailsConfirmed && (
-                            <>
-                                {/* BILL SUMMARY WITH BREAKDOWN */}
-                                <div className="bg-card p-4 rounded-lg border border-border mb-6">
-                                    <h3 className="font-bold text-lg mb-4">Bill Summary</h3>
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-sm">
-                                            <span>Subtotal</span>
-                                            <span>₹{subtotal.toFixed(2)}</span>
-                                        </div>
-                                        {/* DELIVERY CHARGE ROW */}
-                                        {((finalDeliveryCharge > 0) || (deliveryType === 'delivery' && activeOrderId) || isSmartBundlingEligible) && (
-                                            <div className="flex justify-between text-sm">
-                                                <span>Delivery Fee</span>
-                                                <span className={finalDeliveryCharge === 0 ? "text-green-600 font-bold" : ""}>
-                                                    {finalDeliveryCharge === 0 ? "FREE (Bundled)" : `₹${finalDeliveryCharge.toFixed(2)}`}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {/* RIDER TIP ROW */}
-                                        {cartData?.tipAmount > 0 && (
-                                            <div className="flex justify-between text-sm text-green-600">
-                                                <span>Rider Tip</span>
-                                                <span className="font-medium">+ ₹{cartData.tipAmount.toFixed(2)}</span>
-                                            </div>
-                                        )}
-                                        {cgst > 0 && (
-                                            <>
-                                                <div className="flex justify-between text-sm">
-                                                    <span>CGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
-                                                    <span>₹{cgst.toFixed(2)}</span>
-                                                </div>
-                                                <div className="flex justify-between text-sm">
-                                                    <span>SGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
-                                                    <span>₹{sgst.toFixed(2)}</span>
-                                                </div>
-                                            </>
-                                        )}
-
-                                        {packagingCharge > 0 && (
-                                            <div className="flex justify-between text-sm text-primary">
-                                                <span>Packaging Charges</span>
-                                                <span>₹{packagingCharge.toFixed(2)}</span>
-                                            </div>
-                                        )}
-                                        <div className="border-t border-dashed pt-2 mt-2" />
-                                        <div className="flex justify-between text-sm">
-                                            <span>Order Total</span>
-                                            <span className="font-semibold">₹{(subtotal + finalDeliveryCharge + cgst + sgst + packagingCharge).toFixed(2)}</span>
-                                        </div>
-                                        {convenienceFee > 0 && (
-                                            <>
-                                                <div className="flex justify-between text-sm text-orange-600">
-                                                    <span>{vendorCharges?.convenienceFeeLabel || 'Payment Processing Fee'} ({vendorCharges?.convenienceFeeRate || 2.5}%)</span>
-                                                    <span>₹{convenienceFee.toFixed(2)}</span>
-                                                </div>
-                                            </>
-                                        )}
-                                        <div className="border-t border-border pt-2 mt-2" />
-                                        <div className="flex justify-between text-xl font-bold">
-                                            <span>You Pay</span>
-                                            <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
-                                        </div>
+                        {/* ADDRESS SECTION */}
+                        {deliveryType === 'delivery' && (
+                            <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <MapPin className="h-4 w-4 text-primary" />
+                                    <h3 className="font-bold text-sm uppercase text-muted-foreground">Delivering To</h3>
+                                </div>
+                                {selectedAddress ? (
+                                    <div className="bg-muted/30 p-3 rounded-md">
+                                        <p className="font-semibold text-sm">{selectedAddress.name}{selectedAddress.label && <span className="font-normal text-muted-foreground"> ({selectedAddress.label})</span>}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{selectedAddress.full}</p>
+                                        <p className="text-xs text-muted-foreground">Ph: {selectedAddress.phone}</p>
+                                        <Button
+                                            variant="link"
+                                            size="sm"
+                                            className="p-0 h-auto mt-2 text-primary"
+                                            onClick={() => {
+                                                setIsAddressSelectorOpen(true);
+                                            }}
+                                        >
+                                            Change Address
+                                        </Button>
                                     </div>
-                                </div>
-
-                                {/* INLINE PAYMENT METHOD SELECTION */}
-                                <div className="bg-card p-4 rounded-lg border border-border mb-6">
-                                    <h3 className="font-bold text-lg mb-3">💳 Select Payment Method</h3>
-                                    <div className="space-y-3">
-                                        {/* Pay at Counter Option */}
-                                        {codEnabled && (
-                                            <div
-                                                onClick={() => {
-                                                    setSelectedPaymentMethod('counter');
-                                                    setSelectedOnlinePaymentType(null);
-                                                }}
-                                                className={cn(
-                                                    "p-4 rounded-lg border-2 cursor-pointer transition-all",
-                                                    selectedPaymentMethod === 'counter'
-                                                        ? "border-primary bg-primary/5"
-                                                        : "border-border hover:border-primary/50"
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={cn(
-                                                        "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                                                        selectedPaymentMethod === 'counter' ? "border-primary" : "border-border"
-                                                    )}>
-                                                        {selectedPaymentMethod === 'counter' && (
-                                                            <div className="w-3 h-3 rounded-full bg-primary" />
-                                                        )}
-                                                    </div>
-                                                    <IndianRupee size={24} className="text-primary" />
-                                                    <div className="flex-1">
-                                                        <p className="font-bold">
-                                                            {deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') ? 'Pay at Counter' : 'Pay on Delivery'}
-                                                        </p>
-                                                        <p className="text-xs text-muted-foreground">Cash or UPI at the counter</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Pay Online Option */}
-                                        {onlinePaymentEnabled && (
-                                            <div
-                                                onClick={() => setSelectedPaymentMethod('online')}
-                                                className={cn(
-                                                    "p-4 rounded-lg border-2 cursor-pointer transition-all",
-                                                    selectedPaymentMethod === 'online'
-                                                        ? "border-primary bg-primary/5"
-                                                        : "border-border hover:border-primary/50"
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <div className={cn(
-                                                        "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                                                        selectedPaymentMethod === 'online' ? "border-primary" : "border-border"
-                                                    )}>
-                                                        {selectedPaymentMethod === 'online' && (
-                                                            <div className="w-3 h-3 rounded-full bg-primary" />
-                                                        )}
-                                                    </div>
-                                                    <Landmark size={24} className="text-primary" />
-                                                    <div className="flex-1">
-                                                        <p className="font-bold">Pay Online</p>
-                                                        <p className="text-xs text-muted-foreground">UPI, Cards, Netbanking</p>
-                                                    </div>
-                                                </div>
-
-                                                {/* Convenience Fee Warning */}
-                                                {selectedPaymentMethod === 'online' && convenienceFee > 0 && (
-                                                    <div className="ml-11 mt-2 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded text-xs text-orange-700 dark:text-orange-400">
-                                                        ⚠️ +₹{convenienceFee.toFixed(2)} {vendorCharges?.convenienceFeeLabel?.toLowerCase() || 'payment processing fee'} will be added
-                                                    </div>
-                                                )}
-
-                                                {/* Online Payment Sub-options */}
-                                                {selectedPaymentMethod === 'online' && (
-                                                    <div className="ml-11 mt-3 space-y-2 pl-3 border-l-2 border-primary/30">
-                                                        <div
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedOnlinePaymentType('full');
-                                                            }}
-                                                            className={cn(
-                                                                "p-3 rounded border cursor-pointer",
-                                                                selectedOnlinePaymentType === 'full'
-                                                                    ? "border-primary bg-background"
-                                                                    : "border-border/50 hover:border-primary/50"
-                                                            )}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                <div className={cn(
-                                                                    "w-4 h-4 rounded-full border flex items-center justify-center",
-                                                                    selectedOnlinePaymentType === 'full' ? "border-primary" : "border-border"
-                                                                )}>
-                                                                    {selectedOnlinePaymentType === 'full' && (
-                                                                        <div className="w-2 h-2 rounded-full bg-primary" />
-                                                                    )}
-                                                                </div>
-                                                                <Wallet size={16} />
-                                                                <span className="text-sm font-medium">Pay Full Bill</span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Payment Gateway Selection - Razorpay and PhonePe */}
-                                                        {selectedOnlinePaymentType === 'full' && (
-                                                            <div className="mt-2 p-3 bg-muted/50 rounded border border-border/50">
-                                                                <p className="text-xs text-muted-foreground mb-2">Select Payment Gateway:</p>
-                                                                <div className="flex gap-2">
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setPaymentGateway('razorpay');
-                                                                        }}
-                                                                        className={cn(
-                                                                            "flex-1 px-3 py-2 text-sm font-medium rounded border transition-all",
-                                                                            paymentGateway === 'razorpay'
-                                                                                ? "bg-primary text-primary-foreground border-primary"
-                                                                                : "bg-background border-border hover:border-primary/50"
-                                                                        )}
-                                                                    >
-                                                                        Razorpay
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setPaymentGateway('phonepe');
-                                                                        }}
-                                                                        className={cn(
-                                                                            "flex-1 px-3 py-2 text-sm font-medium rounded border transition-all",
-                                                                            paymentGateway === 'phonepe'
-                                                                                ? "bg-[#5f259f] text-white border-[#5f259f]"
-                                                                                : "bg-background border-border hover:border-[#5f259f]/50"
-                                                                        )}
-                                                                    >
-                                                                        PhonePe
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-
-                                                        <div
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedOnlinePaymentType('split');
-                                                            }}
-                                                            className={cn(
-                                                                "p-3 rounded border cursor-pointer",
-                                                                selectedOnlinePaymentType === 'split'
-                                                                    ? "border-primary bg-background"
-                                                                    : "border-border/50 hover:border-primary/50"
-                                                            )}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                <div className={cn(
-                                                                    "w-4 h-4 rounded-full border flex items-center justify-center",
-                                                                    selectedOnlinePaymentType === 'split' ? "border-primary" : "border-border"
-                                                                )}>
-                                                                    {selectedOnlinePaymentType === 'split' && (
-                                                                        <div className="w-2 h-2 rounded-full bg-primary" />
-                                                                    )}
-                                                                </div>
-                                                                <Split size={16} />
-                                                                <span className="text-sm font-medium">Split with Friends</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
+                                ) : (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground mb-2">No address selected</p>
+                                        <Button
+                                            variant="outline"
+                                            className="w-full"
+                                            onClick={handleAddNewAddress}
+                                        >
+                                            <PlusCircle className="mr-2 h-4 w-4" /> Add Address
+                                        </Button>
                                     </div>
-                                </div>
+                                )}
+                            </div>
+                        )}
 
-                                {/* Refund & Cancellation Policy */}
-                                <div className="mt-4 p-4 border border-yellow-500/30 rounded-lg bg-yellow-500/5">
-                                    <p className="text-xs font-semibold text-yellow-400 mb-2">⚠️ Refund & Cancellation Policy</p>
-                                    <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
-                                        <li><span className="font-semibold">Vendor Discretion:</span> Refunds are processed at the vendor's sole discretion based on the cancellation reason.</li>
-                                        <li><span className="font-semibold">Fake/Fraudulent Orders:</span> Orders placed with wrong details, duplicate orders, or customer-initiated cancellations may not be eligible for refund.</li>
-                                        <li><span className="font-semibold">Processing Time:</span> Approved refunds take 5-7 business days to reflect in your account.</li>
-                                        <li><span className="font-semibold">ServiZephyr's Role:</span> We facilitate the transaction but do not interfere in refund decisions. Please contact the vendor directly for refund concerns.</li>
-                                    </ul>
+                        {/* CART ITEMS SECTION */}
+                        <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <i className="fas fa-shopping-basket text-primary"></i>
+                                    <h3 className="font-bold text-sm uppercase text-muted-foreground">Your Items</h3>
                                 </div>
+                                <a
+                                    href={`/order/${restaurantId}?${searchParams.toString()}`}
+                                    className="text-xs text-primary font-semibold flex items-center gap-1"
+                                >
+                                    <PlusCircle className="h-3 w-3" /> Add more
+                                </a>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="space-y-4">
+                                    {cart.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center text-sm bg-muted/10 p-2 rounded-lg">
+                                            <div className="flex flex-col gap-1">
+                                                <span className="font-medium text-foreground">{item.name} {item.variant ? `(${item.variant})` : ''}</span>
+                                                {item.addons && item.addons.length > 0 && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {item.addons.map(a => a.name).join(', ')}
+                                                    </span>
+                                                )}
+                                                <span className="font-bold">₹{(item.totalPrice || (item.price || 0) * item.quantity).toFixed(2)}</span>
+                                            </div>
 
-                                {/* CUSTOMER DETAILS - Show ONLY for dine-in and pre-order flows */}
-                                {/* Delivery flow collects details in address form, so we skip this */}
-                                {selectedPaymentMethod && !activeOrderId &&
-                                    (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') && (
-                                        <div className="bg-card p-4 rounded-lg border border-border mb-6">
-                                            <h3 className="font-bold text-lg mb-3">📝 Your Details</h3>
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <Label htmlFor="customer-name" className="flex items-center gap-2">
-                                                        <User size={16} /> Name *
-                                                    </Label>
-                                                    <Input
-                                                        id="customer-name"
-                                                        value={orderName}
-                                                        onChange={(e) => setOrderName(e.target.value)}
-                                                        placeholder="Enter your name"
-                                                        disabled={loading}
-                                                        required
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label htmlFor="customer-phone" className="flex items-center gap-2">
-                                                        <Phone size={16} /> Phone Number {selectedPaymentMethod === 'counter' ? '*' : '(Optional)'}
-                                                    </Label>
-                                                    <Input
-                                                        id="customer-phone"
-                                                        value={orderPhone}
-                                                        onChange={(e) => setOrderPhone(e.target.value)}
-                                                        placeholder="10-digit mobile number"
-                                                        disabled={loading || !!phoneFromUrl}
-                                                        required={selectedPaymentMethod === 'counter'}
-                                                    />
+                                            <div className="flex items-center gap-2">
+                                                {/* Edit Button */}
+                                                {(item.portions?.length > 1 || item.addOnGroups?.length > 0) && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleEditItem(idx);
+                                                        }}
+                                                        className="p-1 rounded-md text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
+                                                    >
+                                                        <Edit2 className="h-4 w-4" />
+                                                    </button>
+                                                )}
+
+                                                {/* Quantity Adjuster */}
+                                                <div className="flex items-center gap-3 bg-background border border-border rounded-lg px-2 py-1 shadow-sm h-8">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            updateItemQuantity(idx, -1);
+                                                        }}
+                                                        className="text-muted-foreground hover:text-destructive transition-colors"
+                                                    >
+                                                        <Minus className="h-4 w-4" />
+                                                    </button>
+                                                    <span className="font-bold w-4 text-center">{item.quantity}</span>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            updateItemQuantity(idx, 1);
+                                                        }}
+                                                        className="text-muted-foreground hover:text-green-600 transition-colors"
+                                                    >
+                                                        <Plus className="h-4 w-4" />
+                                                    </button>
                                                 </div>
                                             </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {/* Cooking Instructions */}
+                                <textarea
+                                    className="w-full mt-3 border border-border rounded-xl px-3 py-2 text-sm bg-muted/30 outline-none focus:border-primary transition-colors"
+                                    placeholder="Cooking instructions (e.g. extra spicy, no onions)"
+                                    rows="2"
+                                    value={cookingInstructions}
+                                    onChange={(e) => setCookingInstructions(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        {/* COUPONS SECTION */}
+                        <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm cursor-pointer hover:border-primary/50 transition-colors"
+                            onClick={() => setIsCouponDrawerOpen(true)}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <i className="fas fa-percentage text-blue-600 text-lg"></i>
+                                    <span className="font-bold text-sm text-blue-600">Use Coupons / View Offers</span>
+                                </div>
+                                <i className="fas fa-chevron-right text-muted-foreground text-xs"></i>
+                            </div>
+                        </div>
+
+                        {/* TIP SELECTION GRID */}
+                        <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
+                            <div className="section-title flex items-center gap-2 mb-3">
+                                <i className="fas fa-heart text-primary"></i>
+                                <h3 className="font-bold text-sm uppercase text-muted-foreground">Tip your delivery hero</h3>
+                            </div>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[10, 20, 30].map(amount => (
+                                    <button
+                                        key={amount}
+                                        onClick={() => {
+                                            // Toggle tip: if already selected, remove it
+                                            if (selectedTipAmount === amount && !showCustomTipInput) {
+                                                setSelectedTipAmount(0);
+                                            } else {
+                                                setSelectedTipAmount(amount);
+                                                setShowCustomTipInput(false);
+                                            }
+                                        }}
+                                        className={`border rounded-lg py-2 text-sm font-semibold transition-all ${selectedTipAmount === amount && !showCustomTipInput
+                                            ? 'border-primary bg-green-50 text-primary'
+                                            : 'border-border bg-white text-muted-foreground hover:border-primary/50'
+                                            }`}
+                                    >
+                                        ₹{amount}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => {
+                                        // Toggle custom tip input
+                                        if (showCustomTipInput) {
+                                            setShowCustomTipInput(false);
+                                            setSelectedTipAmount(0);
+                                            setCustomTipAmount('');
+                                        } else {
+                                            setShowCustomTipInput(true);
+                                            setSelectedTipAmount(0);
+                                        }
+                                    }}
+                                    className={`border rounded-lg py-2 text-sm font-semibold transition-all ${showCustomTipInput
+                                        ? 'border-primary bg-green-50 text-primary'
+                                        : 'border-border bg-white text-muted-foreground hover:border-primary/50'
+                                        }`}
+                                >
+                                    Custom
+                                </button>
+                            </div>
+                            {showCustomTipInput && (
+                                <input
+                                    type="number"
+                                    placeholder="Enter custom tip amount"
+                                    className="w-full mt-3 border border-primary rounded-lg px-3 py-2 text-sm outline-none"
+                                    value={customTipAmount}
+                                    onChange={(e) => {
+                                        setCustomTipAmount(e.target.value);
+                                        setSelectedTipAmount(parseFloat(e.target.value) || 0);
+                                    }}
+                                />
+                            )}
+                        </div>
+
+                        {/* BILL SUMMARY - COLLAPSIBLE */}
+                        <div className="bg-card p-4 rounded-lg border border-border mb-6">
+                            {/* Clickable Header */}
+                            <div
+                                className="flex items-center justify-between cursor-pointer"
+                                onClick={() => setIsBillSummaryExpanded(!isBillSummaryExpanded)}
+                            >
+                                <h3 className="font-bold text-lg">Bill Summary</h3>
+                                <i className={`fas fa-chevron-${isBillSummaryExpanded ? 'up' : 'down'} text-muted-foreground text-sm`}></i>
+                            </div>
+
+                            {/* Collapsed View - Show only "You Pay" */}
+                            {!isBillSummaryExpanded && (
+                                <div className="flex justify-between text-xl font-bold mt-3">
+                                    <span>You Pay</span>
+                                    <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
+                                </div>
+                            )}
+
+                            {/* Expanded View - Show full breakdown */}
+                            {isBillSummaryExpanded && (
+                                <div className="space-y-2 mt-4">
+                                    <div className="flex justify-between text-sm">
+                                        <span>Subtotal</span>
+                                        <span>₹{subtotal.toFixed(2)}</span>
+                                    </div>
+                                    {/* DELIVERY CHARGE ROW */}
+                                    {((finalDeliveryCharge > 0) || (deliveryType === 'delivery' && activeOrderId) || isSmartBundlingEligible) && (
+                                        <div className="flex justify-between text-sm">
+                                            <span>Delivery Fee</span>
+                                            <span className={finalDeliveryCharge === 0 ? "text-green-600 font-bold" : ""}>
+                                                {finalDeliveryCharge === 0 ? "FREE (Bundled)" : `₹${finalDeliveryCharge.toFixed(2)}`}
+                                            </span>
                                         </div>
                                     )}
+                                    {/* RIDER TIP ROW - from tip selection grid */}
+                                    {selectedTipAmount > 0 && (
+                                        <div className="flex justify-between text-sm text-green-600">
+                                            <span>Delivery Tip</span>
+                                            <span className="font-medium">+ ₹{selectedTipAmount.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    {cgst > 0 && (
+                                        <>
+                                            <div className="flex justify-between text-sm">
+                                                <span>CGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
+                                                <span>₹{cgst.toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span>SGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
+                                                <span>₹{sgst.toFixed(2)}</span>
+                                            </div>
+                                        </>
+                                    )}
 
-                                {/* PLACE ORDER BUTTON */}
-                                {selectedPaymentMethod && (
-                                    selectedPaymentMethod === 'counter' ? (
-                                        <Button
-                                            onClick={handlePayAtCounter}
-                                            disabled={isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : (!orderName.trim() || (selectedPaymentMethod === 'counter' && !orderPhone.trim()))))}
-                                            className="w-full h-14 text-lg"
-                                        >
-                                            {isProcessingPayment ? <Loader2 className="animate-spin" /> : 'Place Order'}
-                                        </Button>
-                                    ) : (
-                                        selectedOnlinePaymentType && (
-                                            <Button
-                                                onClick={() => {
-                                                    if (selectedOnlinePaymentType === 'full') {
-                                                        placeOrder('online');
-                                                    } else if (selectedOnlinePaymentType === 'split') {
-                                                        setIsSplitBillActive(true);
-                                                    }
-                                                }}
-                                                disabled={isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : !orderName.trim()))}
-                                                className="w-full h-14 text-lg"
-                                            >
-                                                {isProcessingPayment ? <Loader2 className="animate-spin" /> :
-                                                    selectedOnlinePaymentType === 'full' ? 'Proceed to Pay' : 'Create Split Session'
-                                                }
-                                            </Button>
-                                        )
-                                    )
-                                )}
-
-                                {/* SPLIT BILL INTERFACE (if active) */}
-                                {isSplitBillActive && (
-                                    <div className="mt-6">
-                                        <SplitBillInterface
-                                            totalAmount={grandTotal}
-                                            onBack={() => setIsSplitBillActive(false)}
-                                            orderDetails={fullOrderDetailsForSplit}
-                                            onPlaceOrder={placeOrder}
-                                        />
+                                    {packagingCharge > 0 && (
+                                        <div className="flex justify-between text-sm text-primary">
+                                            <span>Packaging Charges</span>
+                                            <span>₹{packagingCharge.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    <div className="border-t border-dashed pt-2 mt-2" />
+                                    <div className="flex justify-between text-sm">
+                                        <span>Order Total</span>
+                                        <span className="font-semibold">₹{(subtotal + finalDeliveryCharge + cgst + sgst + packagingCharge + tipAmount).toFixed(2)}</span>
                                     </div>
-                                )}
-                            </>
+                                    {convenienceFee > 0 && (
+                                        <>
+                                            <div className="flex justify-between text-sm text-orange-600">
+                                                <span>{vendorCharges?.convenienceFeeLabel || 'Payment Processing Fee'} ({vendorCharges?.convenienceFeeRate || 2.5}%)</span>
+                                                <span>₹{convenienceFee.toFixed(2)}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                    <div className="border-t border-border pt-2 mt-2" />
+                                    <div className="flex justify-between text-xl font-bold">
+                                        <span>You Pay</span>
+                                        <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* SPLIT BILL INTERFACE (if active) */}
+                        {isSplitBillActive && (
+                            <div className="mt-6">
+                                <SplitBillInterface
+                                    totalAmount={grandTotal}
+                                    onBack={() => setIsSplitBillActive(false)}
+                                    orderDetails={fullOrderDetailsForSplit}
+                                    onPlaceOrder={placeOrder}
+                                />
+                            </div>
                         )}
                     </motion.div>
                 </main>
-            </div>
+
+                {/* STICKY FOOTER BAR */}
+                <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-lg w-full md:max-w-3xl lg:max-w-4xl mx-auto">
+                    <div className="px-4 py-3 flex items-center justify-between gap-3">
+                        {/* Left: Total + Payment Method Trigger */}
+                        <div
+                            className="flex-1 cursor-pointer"
+                            onClick={() => setIsPaymentDrawerOpen(true)}
+                        >
+                            <p className="text-xs font-bold text-primary mb-1">Total ₹{grandTotal.toFixed(2)}</p>
+                            <div className="flex items-center gap-2 text-sm font-bold">
+                                <i className={`fas ${selectedPaymentMethod === 'counter' ? 'fa-money-bill-wave' : 'fa-university'} text-primary`}></i>
+                                <span>{selectedPaymentMethod === 'counter' ? 'Cash on Delivery' : selectedPaymentMethod === 'online' ? 'Pay Online / UPI' : 'Select Payment'}</span>
+                                <i className="fas fa-chevron-up text-muted-foreground text-xs"></i>
+                            </div>
+                        </div>
+
+                        {/* Right: Place Order Button */}
+                        <button
+                            onClick={() => {
+                                if (selectedPaymentMethod === 'counter') {
+                                    handlePayAtCounter();
+                                } else if (selectedPaymentMethod === 'online') {
+                                    placeOrder('online');
+                                }
+                            }}
+                            disabled={!selectedPaymentMethod || isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : !orderName.trim()))}
+                            className="bg-primary text-white px-6 py-3 rounded-xl font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isProcessingPayment ? 'Processing...' : 'Place Order'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* BOTTOM DRAWER - Payment Method Selection */}
+                {isPaymentDrawerOpen && (
+                    <>
+                        {/* Overlay */}
+                        <div
+                            className="fixed inset-0 bg-black/50 z-[60] animate-in fade-in duration-300"
+                            onClick={() => setIsPaymentDrawerOpen(false)}
+                        />
+
+                        {/* Drawer Content */}
+                        <div
+                            className="fixed bottom-0 left-0 right-0 bg-card rounded-t-3xl z-[70] animate-in slide-in-from-bottom duration-300 w-full md:max-w-3xl lg:max-w-4xl mx-auto"
+                            style={{ maxHeight: '80vh', overflowY: 'auto' }}
+                        >
+                            <div className="p-6">
+                                {/* Handle */}
+                                <div className="w-10 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-5" />
+
+                                <h2 className="text-lg font-bold mb-4">Payment Method</h2>
+
+                                {/* Cash on Delivery Option */}
+                                {codEnabled && (
+                                    <div
+                                        onClick={() => {
+                                            setSelectedPaymentMethod('counter');
+                                            setSelectedOnlinePaymentType(null);
+                                            setTimeout(() => setIsPaymentDrawerOpen(false), 300);
+                                        }}
+                                        className={`flex items-center gap-4 p-4 border-2 rounded-2xl mb-3 cursor-pointer transition-all ${selectedPaymentMethod === 'counter'
+                                            ? 'border-primary bg-green-50'
+                                            : 'border-border hover:border-primary/50'
+                                            }`}
+                                    >
+                                        <i className="fas fa-money-bill-wave text-primary text-2xl"></i>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-sm">Cash on Delivery</p>
+                                            <p className="text-xs text-muted-foreground">Pay at your doorstep</p>
+                                        </div>
+                                        {selectedPaymentMethod === 'counter' && (
+                                            <i className="fas fa-check-circle text-primary text-xl"></i>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Pay Online Option */}
+                                {onlinePaymentEnabled && (
+                                    <div
+                                        onClick={() => {
+                                            setSelectedPaymentMethod('online');
+                                            setSelectedOnlinePaymentType('full');
+                                            setTimeout(() => setIsPaymentDrawerOpen(false), 300);
+                                        }}
+                                        className={`flex items-center gap-4 p-4 border-2 rounded-2xl cursor-pointer transition-all ${selectedPaymentMethod === 'online'
+                                            ? 'border-primary bg-green-50'
+                                            : 'border-border hover:border-primary/50'
+                                            }`}
+                                    >
+                                        <i className="fas fa-university text-blue-600 text-2xl"></i>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-sm">Pay Online / UPI</p>
+                                            <p className="text-xs text-muted-foreground">PhonePe, GPay, Cards</p>
+                                        </div>
+                                        {selectedPaymentMethod === 'online' && (
+                                            <i className="fas fa-check-circle text-primary text-xl"></i>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Convenience Fee Warning for Online Payment */}
+                                {selectedPaymentMethod === 'online' && convenienceFee > 0 && (
+                                    <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
+                                        ⚠️ +₹{convenienceFee.toFixed(2)} payment processing fee will be added
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+                {/* ADDRESS SELECTOR DRAWER - TOP SLIDE IN */}
+                <AnimatePresence>
+                    {isAddressSelectorOpen && (
+                        <motion.div
+                            initial={{ y: '-100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '-100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            drag="y"
+                            dragConstraints={{ top: -500, bottom: 0 }}
+                            dragElastic={{ top: 0.2, bottom: 0.1 }}
+                            onDragEnd={(e, { offset, velocity }) => {
+                                if (offset.y < -100 || velocity.y < -200) {
+                                    setIsAddressSelectorOpen(false);
+                                }
+                            }}
+                            className="fixed inset-0 z-[100] bg-background flex flex-col"
+                            style={{ touchAction: 'none' }}
+                        >
+                            {/* Header */}
+                            <div className="p-4 border-b border-border flex items-center gap-4 bg-background z-10 shadow-sm">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setIsAddressSelectorOpen(false)}
+                                >
+                                    <ArrowLeft className="h-5 w-5" />
+                                </Button>
+                                <h2 className="text-lg font-bold">Select a Location</h2>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-y-auto p-4 bg-muted/10">
+                                <div className="max-w-3xl mx-auto space-y-4">
+                                    {/* Address Selection List Component */}
+                                    <AddressSelectionList
+                                        addresses={userAddresses}
+                                        selectedAddressId={selectedAddress?.id}
+                                        onSelect={(addr) => {
+                                            setSelectedAddress(addr);
+                                            setIsAddressSelectorOpen(false);
+                                        }}
+                                        onUseCurrentLocation={handleUseCurrentLocation}
+                                        onAddNewAddress={handleAddNewAddress}
+                                    // Checkout drawer typically doesn't allow deleting, but we can enable it if desired. 
+                                    // The original code didn't have delete buttons in the checkout drawer, only in location page.
+                                    // We will omit onDelete here to match previous behavior (or keeping it clean).
+                                    />
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* COUPON SELECTOR DRAWER - BOTTOM SLIDE IN */}
+                <AnimatePresence>
+                    {isCouponDrawerOpen && (
+                        <>
+                            {/* Backdrop */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setIsCouponDrawerOpen(false)}
+                                className="fixed inset-0 bg-black/60 z-[100]"
+                            />
+                            {/* Drawer */}
+                            <motion.div
+                                initial={{ y: '100%' }}
+                                animate={{ y: 0 }}
+                                exit={{ y: '100%' }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                                drag="y"
+                                dragConstraints={{ top: 0, bottom: 500 }}
+                                dragElastic={{ top: 0.1, bottom: 0.5 }}
+                                onDragEnd={(e, { offset, velocity }) => {
+                                    if (offset.y > 100 || velocity.y > 200) {
+                                        setIsCouponDrawerOpen(false);
+                                    }
+                                }}
+                                className="fixed bottom-0 left-0 right-0 z-[101] bg-background rounded-t-3xl border-t border-border shadow-xl h-[85vh] flex flex-col w-full md:max-w-3xl lg:max-w-4xl mx-auto"
+                                style={{ touchAction: 'none' }}
+                            >
+                                {/* Drag Handle & Close */}
+                                <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30 rounded-t-3xl">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-primary/10 p-2 rounded-full">
+                                            <i className="fas fa-percentage text-primary text-xl"></i>
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-bold">Apply Coupon</h2>
+                                            <p className="text-xs text-muted-foreground">Save more on your order!</p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-full bg-muted hover:bg-muted/80"
+                                        onClick={() => setIsCouponDrawerOpen(false)}
+                                    >
+                                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                                    </Button>
+                                </div>
+
+                                {/* Content */}
+                                <div className="flex-1 overflow-y-auto p-4 bg-muted/5">
+                                    <div className="max-w-md mx-auto space-y-4">
+                                        {/* Input Field */}
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Enter coupon code"
+                                                className="flex-1 px-4 py-3 rounded-xl border border-border bg-card text-sm font-semibold uppercase tracking-wider focus:outline-none focus:border-primary"
+                                            />
+                                            <Button className="font-bold">APPLY</Button>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 my-4">
+                                            <div className="h-px bg-border flex-1"></div>
+                                            <span className="text-xs text-muted-foreground font-medium uppercase tracking-widest">Available Coupons</span>
+                                            <div className="h-px bg-border flex-1"></div>
+                                        </div>
+
+                                        {/* Coupon List */}
+                                        <div className="space-y-3">
+                                            {/* Data-driven Coupon List */}
+                                            {cartData.availableCoupons && cartData.availableCoupons.length > 0 ? (
+                                                cartData.availableCoupons.map((coupon, idx) => (
+                                                    <div key={idx} className="bg-card border border-dashed border-primary/40 rounded-xl p-4 relative overflow-hidden group hover:border-primary transition-colors">
+                                                        <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted/5 rounded-full border-r border-dashed border-primary/40 group-hover:border-primary transition-colors"></div>
+                                                        <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted/5 rounded-full border-l border-dashed border-primary/40 group-hover:border-primary transition-colors"></div>
+
+                                                        <div className="flex justify-between items-start ml-2 mr-2">
+                                                            <div>
+                                                                <div className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-1 rounded w-fit mb-2 flex items-center gap-1">
+                                                                    <Ticket size={12} />
+                                                                    {coupon.code}
+                                                                </div>
+                                                                <p className="font-bold text-sm">{coupon.description || `Get ${coupon.value}${coupon.type === 'percentage' ? '%' : ' OFF'}`}</p>
+                                                                <p className="text-xs text-muted-foreground mt-1">Min order: ₹{coupon.minOrder}</p>
+                                                            </div>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="text-primary border-primary hover:bg-primary hover:text-white font-bold h-8"
+                                                                onClick={() => {
+                                                                    setAppliedCoupons([coupon]);
+                                                                    setIsCouponDrawerOpen(false);
+                                                                    toast({ title: "Coupon Applied!", description: `${coupon.code} applied successfully.` });
+                                                                }}
+                                                            >
+                                                                APPLY
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="text-center py-12 px-6 opacity-80">
+                                                    <div className="bg-muted/50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                        <Ticket className="h-8 w-8 text-muted-foreground" />
+                                                    </div>
+                                                    <p className="font-semibold text-muted-foreground">No offers available for you right now</p>
+                                                    <p className="text-xs text-muted-foreground mt-1">Keep an eye out for exciting deals!</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>
+
+                {/* EDIT VARIANT DRAWER */}
+                {isEditDrawerOpen && editingItemIndex !== null && cart[editingItemIndex] && (
+                    <CustomizationDrawer
+                        item={cart[editingItemIndex]}
+                        isOpen={isEditDrawerOpen}
+                        onClose={() => setIsEditDrawerOpen(false)}
+                        onConfirm={handleUpdateItem}
+                        actionLabel="Update Item"
+                    />
+                )}
+            </div >
         </>
     );
 };
