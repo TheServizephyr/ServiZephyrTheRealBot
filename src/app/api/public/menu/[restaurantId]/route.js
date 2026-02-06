@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req, { params }) {
     const { restaurantId } = params;
     const { searchParams } = new URL(req.url);
