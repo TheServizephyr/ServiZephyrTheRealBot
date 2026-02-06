@@ -15,6 +15,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
+import { useToast } from '@/components/ui/use-toast';
 import imageCompression from 'browser-image-compression';
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -107,6 +108,7 @@ const SectionCard = ({ title, description, children, footer }) => (
 );
 
 const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
+    const { toast } = useToast();
     const [confirmationText, setConfirmationText] = useState("");
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const isDeleteDisabled = confirmationText !== "DELETE";
@@ -119,7 +121,10 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                 // Assuming simple delete for now based on original file, or adding re-auth if needed.
                 // Original file had simple delete:
                 await user.delete();
-                setInfoDialog({ isOpen: true, title: 'Success', message: 'Account deleted successfully.' });
+                toast({
+                    title: "Success",
+                    description: "Account deleted successfully.",
+                });
                 setTimeout(() => window.location.href = "/", 2000);
             }
         } catch (error) {
@@ -257,6 +262,7 @@ function SettingsPageContent() {
     const bannerInputRef = React.useRef(null);
     const [uploadingBanner, setUploadingBanner] = useState(false); // New state for banner upload
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const { toast } = useToast();
     // ... (Params hooks same) ...
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -508,7 +514,11 @@ function SettingsPageContent() {
             if (section === 'media') setIsEditingMedia(false);
             if (section === 'payment') setIsEditingPayment(false);
             if (section === 'gst') setIsEditingGst(false);
-            setInfoDialog({ isOpen: true, title: 'Success', message: 'Updated Successfully!' });
+            toast({
+                title: "Updated Successfully!",
+                description: "Your settings have been saved.",
+                className: "bg-green-500 text-white border-green-600",
+            });
 
         } catch (error) {
             console.error("Error saving data:", error);
@@ -539,7 +549,11 @@ function SettingsPageContent() {
 
             await updatePassword(currentUser, passwords.new);
 
-            setInfoDialog({ isOpen: true, title: 'Success', message: 'Password updated successfully!' });
+            toast({
+                title: "Success",
+                description: "Password updated successfully!",
+                className: "bg-green-500 text-white border-green-600",
+            });
             setPasswords({ current: '', new: '', confirm: '' });
 
         } catch (error) {
@@ -869,8 +883,11 @@ function SettingsPageContent() {
                                     <input
                                         id="gstPercentage"
                                         type="number"
-                                        value={editedUser.gstPercentage || 0}
-                                        onChange={(e) => setEditedUser({ ...editedUser, gstPercentage: parseFloat(e.target.value) || 0 })}
+                                        value={editedUser.gstPercentage ?? ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setEditedUser({ ...editedUser, gstPercentage: val === '' ? '' : parseFloat(val) })
+                                        }}
                                         disabled={!isEditingGst}
                                         min="0"
                                         max="100"

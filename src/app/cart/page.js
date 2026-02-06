@@ -1185,9 +1185,8 @@ const CartPageInternal = () => {
                                                 )}
 
                                                 {!isStreetVendor && tipAmount > 0 && !activeOrderId && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
-                                                {cgst > 0 && <div className="flex justify-between"><span>CGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
-                                                {cgst > 0 && <div className="flex justify-between"><span>CGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
-                                                {sgst > 0 && <div className="flex justify-between"><span>SGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
+                                                {cgst > 0 && <div className="flex justify-between"><span>CGST ({(cartData?.gstRate || 5) / 2}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
+                                                {sgst > 0 && <div className="flex justify-between"><span>SGST ({(cartData?.gstRate || 5) / 2}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
                                                 {diningPreference === 'takeaway' && packagingConfig.enabled && packagingConfig.amount > 0 && (
                                                     <div className="flex justify-between text-primary">
                                                         <span>Packaging Charges:</span>

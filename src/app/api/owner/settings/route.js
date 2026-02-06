@@ -431,6 +431,7 @@ export async function PATCH(req) {
             businessId: finalBusinessId,
             merchantId: finalBusinessData?.merchantId || '',
             customerId: finalUserData?.customerId || '',
+            gstPercentage: finalBusinessData?.gstPercentage || finalBusinessData?.gstRate || 0,
         };
 
         return NextResponse.json(responseData, { status: 200 });
