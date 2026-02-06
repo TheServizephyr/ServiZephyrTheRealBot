@@ -53,10 +53,16 @@ export async function POST(req) {
         const sessionCookie = cookieStore.get('auth_guest_session');
         let guestId = sessionCookie?.value || explicitGuestId;
 
-        // 2. If ref provided, deobfuscate to get userId (could be guest ID or UID)
-        if (ref && !guestId) {
-            guestId = deobfuscateGuestId(ref);
-            console.log(`[API /customer/lookup] Deobfuscated ref to userId: ${guestId}`);
+        // 2. If ref provided, deobfuscate it to get the intended userId (GuestID or UID)
+        // CRITICAL: URL Ref should take priority over stale cookies
+        let refId = null;
+        if (ref) {
+            refId = deobfuscateGuestId(ref);
+            if (refId) {
+                console.log(`[API /customer/lookup] Deobfuscated ref to userId: ${refId}`);
+                // If ref is present, use it as the primary ID (override stale cookie)
+                guestId = refId;
+            }
         }
 
         console.log(`[API /customer/lookup] Request - GuestID: ${guestId ? 'Yes' : 'No'}, Phone: ${phone ? 'Yes' : 'No'}, Ref: ${ref ? 'Yes' : 'No'}`);
@@ -76,7 +82,22 @@ export async function POST(req) {
                     isGuest: true
                 }, { status: 200 });
             } else {
-                console.warn(`[API /customer/lookup] Guest Profile not found: ${guestId}`);
+                console.warn(`[API /customer/lookup] Guest Profile not found: ${guestId}. Checking 'users' collection (Migration Fallback)...`);
+
+                // FALLBACK: Check if this ID is actually a UID (migrated user)
+                const userDoc = await firestore.collection('users').doc(guestId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    console.log(`[API /customer/lookup] ✅ Found migrated user profile via ref: ${guestId}`);
+                    return NextResponse.json({
+                        name: userData.name || 'User',
+                        phone: userData.phone || '',
+                        addresses: userData.addresses || [],
+                        isVerified: true,
+                        isGuest: false
+                    }, { status: 200 });
+                }
+
                 return NextResponse.json({ message: 'Guest profile not found.' }, { status: 404 });
             }
         }
