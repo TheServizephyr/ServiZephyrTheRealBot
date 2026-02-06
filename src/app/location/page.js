@@ -37,11 +37,11 @@ const SavedAddressCard = ({ address, onSelect, onDelete, isAuth }) => {
                 <p className="text-xs text-muted-foreground mt-2">Phone: {address.phone}</p>
             </div>
             {isAuth && (
-              <div className="flex-shrink-0">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(address.id); }}>
-                      <Trash2 size={16} />
-                  </Button>
-              </div>
+                <div className="flex-shrink-0">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(address.id); }}>
+                        <Trash2 size={16} />
+                    </Button>
+                </div>
             )}
         </motion.div>
     );
@@ -75,47 +75,78 @@ const SelectLocationInternal = () => {
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
     const tableId = searchParams.get('table');
+    const ref = searchParams.get('ref'); // CAPTURE REF for UID resolution
 
     const [addresses, setAddresses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    
+
     const [addressToDelete, setAddressToDelete] = useState(null);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const returnUrl = searchParams.get('returnUrl') || '/';
-    
+
     const fetchAddresses = useCallback(async () => {
         setLoading(true);
         setError('');
-        
-        try {
-            const phoneToUse = phone || user?.phoneNumber;
 
-            if (phoneToUse) {
+        try {
+            // WhatsApp links use ref parameter to identify user (UID or Guest ID)
+            // Prioritize ref over phone for address lookup
+            console.log('[Location Page] 🔍 Fetching addresses with:', { phone, ref, hasUser: !!user });
+
+            if (ref) {
+                // Use ref parameter (WhatsApp link flow)
+                const payload = { ref };
+                console.log('[Location Page] 📤 Sending to /api/customer/lookup with ref:', payload);
+
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phoneToUse }),
+                    body: JSON.stringify(payload),
                 });
 
                 if (res.ok) {
                     const data = await res.json();
+                    console.log('[Location Page] ✅ API Response:', data);
+                    console.log('[Location Page] 📍 Found addresses:', data.addresses?.length || 0);
                     setAddresses(data.addresses || []);
                 } else if (res.status !== 404) {
                     const errorData = await res.json();
+                    console.error('[Location Page] ❌ API Error:', errorData);
                     throw new Error(errorData.message || 'Failed to look up customer data.');
                 } else {
-                     setAddresses([]);
+                    console.warn('[Location Page] ⚠️ Customer not found (404)');
+                    setAddresses([]);
                 }
-            } else if (user) {
-                const idToken = await user.getIdToken();
-                const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
-                const data = await res.json();
-                setAddresses(data.addresses || []);
+            } else if (phone) {
+                // Fallback: Use phone parameter if no ref
+                const payload = { phone };
+                console.log('[Location Page] 📤 Sending to /api/customer/lookup with phone:', payload);
+
+                const res = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Location Page] ✅ API Response:', data);
+                    console.log('[Location Page] 📍 Found addresses:', data.addresses?.length || 0);
+                    setAddresses(data.addresses || []);
+                } else if (res.status !== 404) {
+                    const errorData = await res.json();
+                    console.error('[Location Page] ❌ API Error:', errorData);
+                    throw new Error(errorData.message || 'Failed to look up customer data.');
+                } else {
+                    console.warn('[Location Page] ⚠️ Customer not found (404)');
+                    setAddresses([]);
+                }
             } else {
+                // No ref or phone - can't fetch addresses
+                console.warn('[Location Page] ⚠️ No ref or phone parameter in URL');
                 setAddresses([]);
             }
         } catch (err) {
@@ -123,8 +154,8 @@ const SelectLocationInternal = () => {
         } finally {
             setLoading(false);
         }
-    }, [user, phone]);
-    
+    }, [phone, ref]);
+
     useEffect(() => {
         const verifyAndFetch = async () => {
             if (tableId || user) {
@@ -134,14 +165,14 @@ const SelectLocationInternal = () => {
             }
 
             const tokenToUse = token && token.trim() !== '' ? token : null;
-            
+
             if (tokenToUse) {
                 if (!phone) {
                     setTokenError("A phone number is required with the session token.");
                     setLoading(false);
                     return;
                 }
-                 try {
+                try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone: phone, token: tokenToUse }),
@@ -154,7 +185,7 @@ const SelectLocationInternal = () => {
                     setLoading(false);
                     return;
                 }
-            } 
+            }
             else if (!isUserLoading) {
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
@@ -168,7 +199,7 @@ const SelectLocationInternal = () => {
         };
 
         if (!isUserLoading) {
-           verifyAndFetch();
+            verifyAndFetch();
         }
     }, [user, isUserLoading, phone, token, tableId, fetchAddresses]);
 
@@ -195,7 +226,7 @@ const SelectLocationInternal = () => {
 
             const res = await fetch('/api/user/addresses', {
                 method: 'DELETE',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
                     ...(idToken && { 'Authorization': `Bearer ${idToken}` })
                 },
@@ -213,28 +244,28 @@ const SelectLocationInternal = () => {
             setAddressToDelete(null);
         }
     };
-    
+
     const handleAddNewAddress = () => {
         const params = new URLSearchParams(searchParams);
         params.set('returnUrl', returnUrl);
         router.push(`/add-address?${params.toString()}`);
     }
-    
+
     const handleUseCurrentLocation = () => {
         const params = new URLSearchParams(searchParams);
         params.set('returnUrl', returnUrl);
         params.set('useCurrent', 'true');
         router.push(`/add-address?${params.toString()}`);
     };
-    
+
     if (tokenError) {
         return <TokenVerificationLock message={tokenError} />;
     }
-    
+
     if (!isTokenValid) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <GoldenCoinSpinner/>
+                <GoldenCoinSpinner />
             </div>
         );
     }
@@ -255,20 +286,20 @@ const SelectLocationInternal = () => {
                 message="Are you sure you want to permanently delete this address?"
             />
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border p-4 flex items-center gap-4">
-                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft/></Button>
-                 <h1 className="text-xl font-bold">Select a Location</h1>
+                <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft /></Button>
+                <h1 className="text-xl font-bold">Select a Location</h1>
             </header>
 
             <main className="p-4 container mx-auto">
                 <div className="space-y-4">
-                     <button onClick={handleUseCurrentLocation} className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-muted transition-colors">
+                    <button onClick={handleUseCurrentLocation} className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-muted transition-colors">
                         <LocateFixed className="text-primary mr-4" />
                         <div>
                             <p className="font-semibold text-foreground">Use current location</p>
                             <p className="text-xs text-muted-foreground">Using GPS</p>
                         </div>
                     </button>
-                     <button onClick={handleAddNewAddress} className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-muted transition-colors">
+                    <button onClick={handleAddNewAddress} className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-muted transition-colors">
                         <Plus className="text-primary mr-4" />
                         <div>
                             <p className="font-semibold text-foreground">Add a new address</p>
@@ -286,9 +317,9 @@ const SelectLocationInternal = () => {
                     ) : addresses.length > 0 ? (
                         <div className="space-y-4">
                             {addresses.map(address => (
-                                <SavedAddressCard 
-                                    key={address.id} 
-                                    address={address} 
+                                <SavedAddressCard
+                                    key={address.id}
+                                    address={address}
                                     onSelect={handleSelectAddress}
                                     onDelete={promptDeleteAddress}
                                     isAuth={!!user || !!phone}
@@ -309,7 +340,7 @@ const SelectLocationInternal = () => {
 
 export default function SelectLocationPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
             <SelectLocationInternal />
         </Suspense>
     );

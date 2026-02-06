@@ -62,7 +62,8 @@ export const deobfuscateGuestId = (publicRef) => {
 
         return guestId;
     } catch (e) {
-        console.error("Failed to deobfuscate guest ID:", e);
+        console.error(`[GuestUtils] ❌ Failed to deobfuscate ref: ${publicRef}`);
+        console.error(`[GuestUtils] Error details:`, e.message);
         return null;
     }
 };

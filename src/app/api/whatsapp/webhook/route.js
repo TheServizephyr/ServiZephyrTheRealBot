@@ -256,6 +256,21 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 const { userId } = profileResult;
                 console.log(`[Webhook WA] ✅ Profile Result - userId: ${userId}, isGuest: ${profileResult.isGuest}, isNew: ${profileResult.isNew}`);
 
+                // 🔒 CRITICAL: Verify this is a customer profile, not a restaurant owner
+                if (!profileResult.isGuest) {
+                    // If UID (logged-in user), verify role is 'customer'
+                    const userDoc = await firestore.collection('users').doc(userId).get();
+                    if (userDoc.exists) {
+                        const userRole = userDoc.data().role;
+                        if (userRole !== 'customer') {
+                            console.error(`[Webhook WA] ❌ BLOCKED: User ${userId} has role='${userRole}', not 'customer'. Cannot send link.`);
+                            await sendSystemMessage(fromNumber, `Sorry, this phone number is registered as a business account. Please use a different number for ordering.`, botPhoneNumberId, business.id, business.data.name, collectionName);
+                            break;
+                        }
+                        console.log(`[Webhook WA] ✅ Role verified: customer`);
+                    }
+                }
+
                 // 2. Obfuscate User ID for URL (no token needed - ref provides security)
                 const publicRef = obfuscateGuestId(userId);
                 console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
