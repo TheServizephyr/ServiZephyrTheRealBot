@@ -29,11 +29,26 @@ export async function POST(req) {
         }
 
         const normalizedPhone = finalUserData.phone.slice(-10);
-        const batch = firestore.batch();
         const masterUserRef = firestore.collection('users').doc(uid);
 
-        // --- MIGRATE GUEST PROFILE TO UID ---
-        // If user had a guest profile (from WhatsApp/non-logged-in orders), migrate it
+        // CRITICAL: Create user document FIRST before migration
+        // Migration needs the user document to exist to update it
+        let mergedUserData = { ...finalUserData };
+        const nowForId = new Date();
+
+        // Add Customer ID to User Profile
+        if (!mergedUserData.customerId) {
+            mergedUserData.customerId = generateDisplayId('CS_', nowForId);
+        }
+
+        mergedUserData.createdAt = FieldValue.serverTimestamp();
+
+        // Create user document immediately (not in batch)
+        await masterUserRef.set(mergedUserData, { merge: true });
+        console.log(`[PROFILE COMPLETION] User document created for UID ${uid}`);
+
+        // --- NOW MIGRATE GUEST PROFILE TO UID ---
+        // User document exists, migration can update it
         console.log(`[PROFILE COMPLETION] Checking for guest profile migration for ${normalizedPhone}...`);
         const migrationResult = await migrateGuestToUser(firestore, uid, finalUserData.phone, finalUserData);
 
@@ -43,19 +58,8 @@ export async function POST(req) {
             console.log(`[PROFILE COMPLETION] No guest profile found to migrate.`);
         }
 
-        let mergedUserData = { ...finalUserData };
-
-        // Generate timestamp for ID creation (Sync)
-        const nowForId = new Date();
-
-        // 1. Add Customer ID to User Profile
-        if (!mergedUserData.customerId) {
-            mergedUserData.customerId = generateDisplayId('CS_', nowForId);
-        }
-
-        mergedUserData.createdAt = FieldValue.serverTimestamp();
-        batch.set(masterUserRef, mergedUserData, { merge: true });
-        console.log(`[PROFILE COMPLETION] Master user profile for UID ${uid} added to batch in 'users' collection.`);
+        // Now use batch for remaining operations
+        const batch = firestore.batch();
 
         if (finalUserData.role === 'rider') {
             const driverRef = firestore.collection('drivers').doc(uid);
