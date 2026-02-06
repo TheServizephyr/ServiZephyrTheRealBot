@@ -187,12 +187,15 @@ export const sendSystemMessage = async (phoneNumber, messageText, businessPhoneN
         const cleanPhone = phoneNumber.replace(/^\+?91/, ''); // Remove country code for conversation ID
 
         const messageData = {
+            id: wamid, // Use 'id' for consistency
             wamid: wamid,
+            sender: 'system', // Standardized sender
             type: 'system',
-            direction: 'outgoing',
-            body: fullMessage,
+            text: fullMessage, // Standardized content field
+            body: fullMessage, // Keep for backward compat if needed
             timestamp: FieldValue.serverTimestamp(),
-            status: 'sent'
+            status: 'sent',
+            isSystem: true
         };
 
         await firestore

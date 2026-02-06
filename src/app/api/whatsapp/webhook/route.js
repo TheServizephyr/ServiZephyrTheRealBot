@@ -92,12 +92,14 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
 
     console.log(`[Webhook WA] Sending interactive welcome message to ${customerPhoneWithCode}`);
 
+    const welcomeBody = `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`;
+
     const payload = {
         type: "interactive",
         interactive: {
             type: "button",
             body: {
-                text: `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`
+                text: welcomeBody
             },
             action: {
                 buttons: [
@@ -109,7 +111,23 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
         }
     };
 
-    await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+    const response = await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+
+    // ✅ PERSISTENCE: Save Welcome Message to Firestore
+    if (response && response.messages && response.messages[0]) {
+        const wamid = response.messages[0].id;
+        await conversationRef.collection('messages').doc(wamid).set({
+            id: wamid,
+            sender: 'system',
+            type: 'system',
+            text: welcomeBody, // Simplify for display
+            interactive_type: 'welcome_menu',
+            timestamp: FieldValue.serverTimestamp(),
+            status: 'sent',
+            isSystem: true
+        });
+        console.log(`[Webhook WA] Welcome message saved to Firestore: ${wamid}`);
+    }
 
     // ✅ Update timestamp to prevent duplicates
     await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
@@ -203,6 +221,29 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
     const conversationRef = business.ref.collection('conversations').doc(customerPhone);
 
     console.log(`[Webhook WA] Handling button action: '${type}' for customer ${customerPhone}`);
+
+    // ✅ PERSISTENCE: Save User Selection Logic
+    // We infer the text based on button type
+    let userSelectionText = '';
+    switch (type) {
+        case 'order': userSelectionText = 'Selected: \uD83C\uDF7D\uFE0F Order Food'; break;
+        case 'track': userSelectionText = 'Selected: \uD83D\uDCE6 Track Last Order'; break;
+        case 'help': userSelectionText = 'Selected: \u2753 Need Help?'; break;
+        case 'end': userSelectionText = 'Selected: \uD83D\uDED1 End Chat'; break;
+        case 'report': userSelectionText = 'Selected: Admin Support'; break;
+        default: userSelectionText = `Selected: ${type}`;
+    }
+
+    await conversationRef.collection('messages').add({
+        sender: 'customer', // It was a user action
+        type: 'system_event', // Different styling if needed, otherwise 'text'
+        text: userSelectionText, // Show what they clicked
+        id: `evt_${Date.now()}_${nanoid(6)}`, // Virtual ID
+        timestamp: FieldValue.serverTimestamp(),
+        status: 'read',
+        isSystem: true // Treat as system event for display
+    });
+
 
     try {
         switch (type) {

@@ -1,6 +1,7 @@
 
 
 import { sendWhatsAppMessage } from './whatsapp';
+import { getFirestore, FieldValue } from './firebase-admin';
 
 export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId, restaurantName }) => {
     console.log(`[Notification Lib] Preparing 'new_order' notification for owner ${ownerPhone}.`);
@@ -195,10 +196,58 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         components: components,
     };
 
+    // ... (previous code)
     try {
         console.log(`[Notification Lib] Sending status update to customer.`);
-        await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
+        const response = await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
         console.log(`[Notification Lib] Status update sent successfully.`);
+
+        // ✅ PERSISTENCE: Save Status Update to Firestore Chat
+        if (response && response.messages && response.messages[0]) {
+            try {
+                const firestore = await getFirestore();
+
+                // 1. Find Business Context (Restaurant vs Shop)
+                // We need to know WHICH collection and WHICH document ID to save to.
+                // Assuming we can lookup by botPhoneNumberId
+                const businessQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+                let businessDoc = !businessQuery.empty ? businessQuery.docs[0] : null;
+                let collectionName = 'restaurants';
+
+                if (!businessDoc) {
+                    const shopQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+                    businessDoc = !shopQuery.empty ? shopQuery.docs[0] : null;
+                    collectionName = 'shops';
+                }
+
+                if (businessDoc) {
+                    const wamid = response.messages[0].id;
+                    const cleanPhone = customerPhone; // from arg
+                    const summaryText = `Order Status: ${capitalizedStatus}`;
+
+                    await businessDoc.ref
+                        .collection('conversations')
+                        .doc(cleanPhone)
+                        .collection('messages')
+                        .doc(wamid) // Use WAMID as ID
+                        .set({
+                            id: wamid,
+                            sender: 'system',
+                            type: 'template',
+                            template_name: templateName,
+                            text: summaryText, // Readable summary for UI
+                            timestamp: FieldValue.serverTimestamp(),
+                            status: 'sent',
+                            isSystem: true
+                        });
+                    console.log(`[Notification Lib] Status update saved to history for ${cleanPhone}`);
+                }
+            } catch (dbError) {
+                console.error("[Notification Lib] Failed to save status update to history:", dbError);
+                // Non-blocking error
+            }
+        }
+
     } catch (e) {
         console.error("[Notification Lib] CRITICAL: Failed to send WhatsApp status update.", e);
         throw e; // Re-throw to let the caller know it failed

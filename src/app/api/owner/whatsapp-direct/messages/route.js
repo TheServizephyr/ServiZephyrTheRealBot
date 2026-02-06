@@ -150,8 +150,12 @@ export async function POST(req) {
 
         // ✅ HANDLE DIFFERENT MEDIA TYPES
         if (text) {
-            // Replaced button with footer text as per new requirement
-            const messageBody = `${text}\n\n_To end this chat and place an order, type 'end chat'_`;
+            // Revert: User found buttons too bulky.
+            // PRO TIP: WhatsApp formatting for "Fake Footer"
+            // We use a mono-space separator or just newlines + italics to make it look distinct.
+
+            const messageBody = `${text}\n\n━━━━━━━━━━━━━━━━\n_To end chat, type 'end chat'_`;
+
             messagePayload = {
                 type: 'text',
                 text: { body: messageBody }
