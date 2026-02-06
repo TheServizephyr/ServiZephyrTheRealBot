@@ -121,9 +121,9 @@ const MessageBubble = React.memo(({ message }) => {
         return (
             <div className="flex justify-end mb-1">
                 <div className="max-w-xs lg:max-w-md px-1 py-1 shadow-sm rounded-lg bg-[#fff5c4] dark:bg-yellow-900/20 text-black dark:text-yellow-200 rounded-tr-none border border-yellow-200/50">
-                    <p className="px-2 pt-1 pb-1 text-sm flex items-start gap-2">
-                        <span className="opacity-70 mt-0.5">ℹ️</span> <span>{message.text}</span>
-                    </p>
+                    <div className="px-2 pt-1 pb-1 text-sm flex items-start gap-2">
+                        <span className="opacity-70 mt-0.5 flex-shrink-0">ℹ️</span> <span className="break-words whitespace-pre-wrap">{message.text}</span>
+                    </div>
                     <div className="text-[10px] px-2 pb-1 flex items-center justify-end gap-1 text-black/60 dark:text-yellow-200/60">
                         <span>{format(timestamp, 'p')}</span>
                         <span>
