@@ -20,32 +20,53 @@ export async function GET(req, { params }) {
 
     try {
         // STEP 1: Fetch restaurant/vendor doc to get menuVersion
-        let businessData = null;
-        let businessRef = null;
-        let collectionName = '';
-        let menuVersion = 1; // Default version
-
+        // STEP 1: Smart Resolve - Fetch from ALL potential collections to handle duplicates/migrations
+        // We prioritize the one with the highest menuVersion (most recently updated)
         const collectionsToTry = ['restaurants', 'street_vendors', 'shops'];
-        for (const name of collectionsToTry) {
-            const docRef = firestore.collection(name).doc(restaurantId);
-            const docSnap = await docRef.get();
-            if (docSnap.exists) {
-                businessData = docSnap.data();
-                businessRef = docRef;
-                collectionName = name;
-                menuVersion = businessData.menuVersion || 1; // Get version or default to 1
-                break;
-            }
-        }
+        const results = await Promise.all(
+            collectionsToTry.map(async (name) => {
+                const docRef = firestore.collection(name).doc(restaurantId);
+                const docSnap = await docRef.get();
+                return { name, docSnap };
+            })
+        );
 
-        if (!businessData) {
-            console.log(`[Menu API] ❌ Business not found for ${restaurantId}`);
+        // Filter valid docs
+        const foundDocs = results
+            .filter(r => r.docSnap.exists)
+            .map(r => ({
+                collectionName: r.name,
+                businessRef: r.docSnap.ref,
+                businessData: r.docSnap.data(),
+                version: r.docSnap.data().menuVersion || 1
+            }));
+
+        if (foundDocs.length === 0) {
+            console.log(`[Menu API] ❌ Business not found for ${restaurantId} in any collection`);
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
+        // Sort by version descending (Highest version = Most recently updated = WINNER)
+        foundDocs.sort((a, b) => b.version - a.version);
+
+        // Pick the winner
+        const winner = foundDocs[0];
+        let businessData = winner.businessData;
+        let businessRef = winner.businessRef;
+        let collectionName = winner.collectionName;
+        let menuVersion = winner.version;
+
+        if (foundDocs.length > 1) {
+            console.warn(`[Menu API] ⚠️ DUPLICATE DATA DETECTED for ${restaurantId}`);
+            foundDocs.forEach(d => console.log(`   - Found in ${d.collectionName} (v${d.version})`));
+            console.log(`   ✅ Selected winner: ${collectionName} (v${menuVersion})`);
+        } else {
+            console.log(`[Menu API] ✅ Found active business in ${collectionName} (v${menuVersion})`);
+        }
+
         // STEP 2: Build version-based cache key
-        // PATCH: Added _patch2 to force cache refresh due to Delivery Fee Calculation fix (missing feeType/perKm)
-        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch2`;
+        // PATCH: Added _patch3 to force cache refresh due to Duplicate Collection Fix
+        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch3`;
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
         console.log(`%c[Menu API] 📊 CACHE DEBUG`, 'color: cyan; font-weight: bold');
@@ -61,6 +82,10 @@ export async function GET(req, { params }) {
             if (cachedData) {
                 console.log(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
                 console.log(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
+
+                // DEBUG: Force logs to show what we are serving
+                console.log(`[Menu API]    └─ Cached isOpen: ${cachedData.isOpen}`);
+
                 return NextResponse.json(cachedData, {
                     status: 200,
                     headers: {
@@ -79,7 +104,9 @@ export async function GET(req, { params }) {
         }
 
         // STEP 4: Cache miss - fetch from Firestore
-        console.log(`[Menu API] ✅ Found business: ${businessData.name} in ${collectionName}`);
+        console.log(`[Menu API] ✅ Found business: ${businessData.name}`);
+        console.log(`[Menu API] 📂 SOURCE COLLECTION: ${collectionName} (Critical Check)`);
+        console.log(`[Menu API] 🟢 isOpen status in DB: ${businessData.isOpen}`);
         console.log(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${restaurantId}/coupons`);
 
         // Fetch menu, coupons, AND delivery settings in parallel
@@ -209,6 +236,8 @@ export async function GET(req, { params }) {
             headers: {
                 'X-Cache': 'MISS',
                 'X-Menu-Version': menuVersion.toString(),
+                'X-Debug-Source-Collection': collectionName,
+                'X-Debug-DB-IsOpen': String(businessData.isOpen),
                 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                 'Pragma': 'no-cache',
                 'Expires': '0'
