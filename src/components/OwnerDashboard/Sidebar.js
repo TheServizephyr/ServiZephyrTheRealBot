@@ -28,7 +28,7 @@ import SidebarLink from "./SidebarLink";
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import Image from 'next/image';
 import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
@@ -230,6 +230,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
   // Fetch WhatsApp Unread Count
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
 
   useEffect(() => {
     // Only fetch if user is owner or has access to whatsapp
@@ -266,6 +267,53 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     return () => clearInterval(interval);
   }, [impersonatedOwnerId, employeeOfOwnerId]);
 
+  // Fetch Pending Orders Count (Real-time)
+  useEffect(() => {
+    // Skip if impersonating (too complex to handle multiple listeners properly without context)
+    // or if not owner
+    if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
+
+    let unsubscribe = () => { };
+
+    const setupListener = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        // 1. Get Restaurant ID
+        const restaurantsQuery = query(
+          collection(db, 'restaurants'),
+          where('ownerId', '==', user.uid),
+          limit(1)
+        );
+        const restaurantSnapshot = await getDocs(restaurantsQuery);
+
+        if (restaurantSnapshot.empty) return;
+        const restaurantId = restaurantSnapshot.docs[0].id;
+
+        // 2. Listen for Pending Orders
+        const ordersQuery = query(
+          collection(db, 'orders'),
+          where('restaurantId', '==', restaurantId),
+          where('status', '==', 'pending')
+        );
+
+        unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
+          setPendingOrdersCount(snapshot.size);
+        }, (error) => {
+          console.error("Error listening to pending orders:", error);
+        });
+
+      } catch (error) {
+        console.error("Error setting up pending orders listener:", error);
+      }
+    };
+
+    setupListener();
+
+    return () => unsubscribe();
+  }, [impersonatedOwnerId, employeeOfOwnerId]);
+
 
   return (
     <>
@@ -289,7 +337,11 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
               <SidebarLink
                 item={{
                   ...item,
-                  badge: item.featureId === 'whatsapp-direct' ? whatsappUnreadCount : 0
+                  badge: item.featureId === 'whatsapp-direct'
+                    ? whatsappUnreadCount
+                    : item.featureId === 'live-orders'
+                      ? pendingOrdersCount
+                      : 0
                 }}
                 isCollapsed={isCollapsed}
                 isDisabled={getIsDisabled(item.featureId)}
