@@ -28,7 +28,7 @@ import SidebarLink from "./SidebarLink";
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import Image from 'next/image';
 import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
