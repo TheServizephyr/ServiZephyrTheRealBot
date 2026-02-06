@@ -1134,12 +1134,13 @@ export default function LiveOrdersPage() {
             const lowercasedQuery = searchQuery.toLowerCase();
             sortableItems = sortableItems.filter(order => {
                 const matchesId = order.id.toLowerCase().includes(lowercasedQuery);
+                const matchesCustomerOrderId = (order.customerOrderId || '').toString().toLowerCase().includes(lowercasedQuery);
                 const matchesCustomerName = (order.customer || '').toLowerCase().includes(lowercasedQuery);
                 const matchesCustomerPhone = (order.customerPhone || '').includes(searchQuery);
                 const matchesCustomerAddress = (order.customerAddress || '').toLowerCase().includes(lowercasedQuery);
                 const matchesItems = (order.items || []).some(item => item.name.toLowerCase().includes(lowercasedQuery));
 
-                return matchesId || matchesCustomerName || matchesCustomerPhone || matchesCustomerAddress || matchesItems;
+                return matchesId || matchesCustomerOrderId || matchesCustomerName || matchesCustomerPhone || matchesCustomerAddress || matchesItems;
             });
         }
 

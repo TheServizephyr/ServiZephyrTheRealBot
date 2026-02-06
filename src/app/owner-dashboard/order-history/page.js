@@ -122,6 +122,7 @@ export default function OrderHistoryPage() {
         if (searchQuery) {
             const lowercased = searchQuery.toLowerCase();
             filtered = filtered.filter(order =>
+                (order.customerOrderId || '').toString().toLowerCase().includes(lowercased) ||
                 order.id.toLowerCase().includes(lowercased) ||
                 (order.customer || order.customerName || '').toLowerCase().includes(lowercased) ||
                 (order.customerPhone || '').includes(searchQuery)
