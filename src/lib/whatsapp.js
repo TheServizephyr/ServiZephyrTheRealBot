@@ -29,7 +29,7 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             text: { body: payload }
         };
         console.log(`[WhatsApp Lib] Payload is a simple text message.`);
-    } else if (['image', 'video', 'audio', 'document', 'interactive'].includes(payload.type)) {
+    } else if (['text', 'image', 'video', 'audio', 'document', 'interactive'].includes(payload.type)) {
         dataPayload = {
             messaging_product: 'whatsapp',
             to: phoneNumber,
