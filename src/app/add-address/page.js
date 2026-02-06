@@ -142,15 +142,16 @@ const AddAddressPageInternal = () => {
                     }
                 }
 
-                if (ref && token) {
-                    // New flow: Use ref to lookup customer
+                if (ref) {
+                    // New flow: Use ref to lookup customer (token not required)
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
                         headers: headers,
-                        body: JSON.stringify({ ref, token })
+                        body: JSON.stringify({ ref })
                     });
                     if (res.ok && isMounted) {
                         const customerData = await res.json();
+                        console.log('[Add Address] Customer data from ref:', customerData);
                         setRecipientPhone(prev => prev || customerData.phone || '');
                         setRecipientName(prev => prev || customerData.name || '');
                         return; // Exit early

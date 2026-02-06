@@ -1913,7 +1913,7 @@ const OrderPageInternal = () => {
                                             <MapPin className="text-primary flex-shrink-0" size={20} />
                                             <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
                                         </div>
-                                        <Link href={`/location?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}&phone=${phone || ''}&token=${token || ''}`}>
+                                        <Link href={`/location?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}&phone=${phone || ''}&token=${token || ''}&ref=${ref || ''}`}>
                                             <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
                                         </Link>
                                     </>

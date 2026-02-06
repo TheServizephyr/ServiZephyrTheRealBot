@@ -299,8 +299,30 @@ const CheckoutPageInternal = () => {
                         setOrderName(prev => prev || data.name || ''); // Fill name from profile if not set
                         if (deliveryType === 'delivery') {
                             setUserAddresses(data.addresses || []);
-                            // Auto-select first address if available
-                            if (data.addresses?.length > 0 && !selectedAddress) {
+
+                            // 🎯 PRIORITY: Check localStorage for saved address first
+                            const savedLocation = localStorage.getItem('customerLocation');
+                            if (savedLocation && data.addresses?.length > 0 && !selectedAddress) {
+                                try {
+                                    const parsedLocation = JSON.parse(savedLocation);
+                                    console.log('[Checkout] 📍 Checking saved address:', parsedLocation.label);
+
+                                    // Find matching address by ID
+                                    const matchingAddress = data.addresses.find(addr => addr.id === parsedLocation.id);
+                                    if (matchingAddress) {
+                                        console.log('[Checkout] ✅ Found & selecting saved address:', matchingAddress.label);
+                                        setSelectedAddress(matchingAddress);
+                                    } else {
+                                        console.warn('[Checkout] ⚠️ Saved address not found, selecting first');
+                                        setSelectedAddress(data.addresses[0]);
+                                    }
+                                } catch (e) {
+                                    console.error('[Checkout] Failed to parse saved address, selecting first');
+                                    setSelectedAddress(data.addresses[0]);
+                                }
+                            } else if (data.addresses?.length > 0 && !selectedAddress) {
+                                // No saved address, select first
+                                console.log('[Checkout] No saved address, selecting first');
                                 setSelectedAddress(data.addresses[0]);
                             }
                         }
@@ -356,6 +378,32 @@ const CheckoutPageInternal = () => {
         }
     }, [restaurantId, phoneFromUrl, token, ref, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed, activeOrderId, isTokenValid]); // Added isTokenValid to dep array for Ref flow
 
+    // 🎯 NEW: Load saved address from localStorage and pre-select it
+    useEffect(() => {
+        // Wait for userAddresses to load before trying to select
+        if (userAddresses.length === 0) return;
+
+        const savedLocation = localStorage.getItem('customerLocation');
+        if (savedLocation && !selectedAddress) {
+            try {
+                const parsedLocation = JSON.parse(savedLocation);
+                console.log('[Checkout] 📍 Restoring saved address from order page:', parsedLocation);
+                console.log('[Checkout] 📍 Matching against', userAddresses.length, 'loaded addresses');
+
+                // Find matching address in userAddresses by ID
+                const matchingAddress = userAddresses.find(addr => addr.id === parsedLocation.id);
+                if (matchingAddress) {
+                    console.log('[Checkout] ✅ Found matching address, selecting:', matchingAddress.label);
+                    setSelectedAddress(matchingAddress);
+                } else {
+                    console.warn('[Checkout] ⚠️ Saved address not found in user addresses, using saved version');
+                    setSelectedAddress(parsedLocation);
+                }
+            } catch (e) {
+                console.error('[Checkout] Failed to parse saved location:', e);
+            }
+        }
+    }, [userAddresses]); // Run when userAddresses loads
 
     // ... (Bundling logic unchanged) ...
 
@@ -1226,6 +1274,13 @@ const CheckoutPageInternal = () => {
                                                 <span className={finalDeliveryCharge === 0 ? "text-green-600 font-bold" : ""}>
                                                     {finalDeliveryCharge === 0 ? "FREE (Bundled)" : `₹${finalDeliveryCharge.toFixed(2)}`}
                                                 </span>
+                                            </div>
+                                        )}
+                                        {/* RIDER TIP ROW */}
+                                        {cartData?.tipAmount > 0 && (
+                                            <div className="flex justify-between text-sm text-green-600">
+                                                <span>Rider Tip</span>
+                                                <span className="font-medium">+ ₹{cartData.tipAmount.toFixed(2)}</span>
                                             </div>
                                         )}
                                         {cgst > 0 && (
