@@ -470,6 +470,7 @@ export async function PATCH(req) {
                     botPhoneNumberId: businessData.botPhoneNumberId,
                     customerName: orderData.customerName,
                     orderId: id,
+                    customerOrderId: orderData.customerOrderId, // ✅ Pass Customer-facing ID
                     restaurantName: businessData.name,
                     status: newStatus,
                     deliveryBoy: deliveryBoyData,

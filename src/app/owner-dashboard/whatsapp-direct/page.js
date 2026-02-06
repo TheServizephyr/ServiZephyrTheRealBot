@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut, Check, CheckCheck, Mic, Trash2, Edit2, Save, User, Calendar as CalendarIcon, DollarSign, ShoppingBag, MoreVertical, Gift, Ticket, Wand2 } from 'lucide-react';
+import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut, Check, CheckCheck, Mic, Trash2, Edit2, Save, User, Calendar as CalendarIcon, DollarSign, ShoppingBag, MoreVertical, Gift, Ticket, Wand2, Play, Pause, StopCircle } from 'lucide-react';
 import Image from 'next/image';
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
@@ -122,7 +122,7 @@ const MessageBubble = React.memo(({ message }) => {
             <div className="flex justify-end mb-1">
                 <div className="max-w-xs lg:max-w-md px-1 py-1 shadow-sm rounded-lg bg-[#fff5c4] dark:bg-yellow-900/20 text-black dark:text-yellow-200 rounded-tr-none border border-yellow-200/50">
                     <div className="px-2 pt-1 pb-1 text-sm flex items-start gap-2">
-                        <span className="opacity-70 mt-0.5 flex-shrink-0">ℹ️</span> <span className="break-words whitespace-pre-wrap">{message.text}</span>
+                        <span className="opacity-70 mt-0.5 flex-shrink-0">ℹ️</span> <span className="break-all whitespace-pre-wrap">{message.text}</span>
                     </div>
                     <div className="text-[10px] px-2 pb-1 flex items-center justify-end gap-1 text-black/60 dark:text-yellow-200/60">
                         <span>{format(timestamp, 'p')}</span>
@@ -475,6 +475,12 @@ function WhatsAppDirectPageContent() {
         return () => clearTimeout(timeoutId);
     }, [messages, activeConversation?.id, loadingMessages]);
 
+    const [audioBlob, setAudioBlob] = useState(null);
+    const [audioReviewUrl, setAudioReviewUrl] = useState(null);
+    const [isReviewing, setIsReviewing] = useState(false);
+    const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+    const audioPreviewRef = useRef(null);
+
     const startRecording = async () => {
         // Prevent recording if engine is not ready
         if (loadingAudioEngine) {
@@ -503,7 +509,6 @@ function WhatsAppDirectPageContent() {
             };
 
             const mediaRecorder = new OpusMediaRecorder(stream, { mimeType: 'audio/ogg' }, workerOptions);
-            const mimeType = 'audio/ogg';
 
             console.log("Initialized OpusMediaRecorder with Valid OGG/Opus (Sync Factory)");
 
@@ -512,13 +517,13 @@ function WhatsAppDirectPageContent() {
 
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
-                    // console.log(`[Recording] Chunk received: ${event.data.size} bytes`);
                     audioChunksRef.current.push(event.data);
                 }
             };
 
             mediaRecorder.start();
             setIsRecording(true);
+            setIsReviewing(false);
             setRecordingDuration(0);
 
             timerRef.current = setInterval(() => {
@@ -553,47 +558,82 @@ function WhatsAppDirectPageContent() {
         }
     };
 
-    const stopRecording = (shouldSend = true) => {
+    const stopRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
             const mimeType = mediaRecorderRef.current.mimeType; // Get actual used mime type
             mediaRecorderRef.current.stop();
             mediaRecorderRef.current.onstop = () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+                const blob = new Blob(audioChunksRef.current, { type: mimeType });
 
                 // Stop all tracks
                 mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
 
-                if (shouldSend) {
-                    // FORCE OGG STRATEGY:
-                    // Chrome records WebM/Opus. WhatsApp wants OGG/Opus.
-                    // Renaming .webm -> .ogg acts as a container masquerade that works for WhatsApp Voice Notes.
+                // Create Review State
+                setAudioBlob(blob);
+                const url = URL.createObjectURL(blob);
+                setAudioReviewUrl(url);
 
-                    let ext = 'ogg';
-                    let finalMime = 'audio/ogg';
-
-                    // Only use other formats if explicitly not webm/opus
-                    if (mimeType.includes('mp4') && !mimeType.includes('opus')) {
-                        ext = 'mp4';
-                        finalMime = mimeType;
-                    } else if (mimeType.includes('wav')) {
-                        ext = 'wav';
-                        finalMime = mimeType;
-                    }
-
-                    const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, { type: finalMime });
-                    handleFileUpload(audioFile);
-                }
-
-                // Cleanup
+                // Update UI State
                 setIsRecording(false);
-                setRecordingDuration(0);
+                setIsReviewing(true);
                 clearInterval(timerRef.current);
             };
         }
     };
 
+    const handleDiscardAudio = () => {
+        cancelRecording(); // Cleans up recorder if active
+        if (audioReviewUrl) URL.revokeObjectURL(audioReviewUrl);
+        setAudioBlob(null);
+        setAudioReviewUrl(null);
+        setIsReviewing(false);
+        setIsPlayingPreview(false);
+        setRecordingDuration(0);
+        clearInterval(timerRef.current);
+    };
+
+    const handleSendAudio = () => {
+        if (!audioBlob) return;
+
+        let ext = 'ogg';
+        let finalMime = 'audio/ogg';
+        const mimeType = audioBlob.type;
+
+        // Only use other formats if explicitly not webm/opus
+        if (mimeType.includes('mp4') && !mimeType.includes('opus')) {
+            ext = 'mp4';
+            finalMime = mimeType;
+        } else if (mimeType.includes('wav')) {
+            ext = 'wav';
+            finalMime = mimeType;
+        }
+
+        const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, { type: finalMime });
+        handleFileUpload(audioFile);
+
+        // Cleanup after send
+        handleDiscardAudio();
+    };
+
+    const togglePreviewPlay = () => {
+        if (audioPreviewRef.current) {
+            if (isPlayingPreview) {
+                audioPreviewRef.current.pause();
+            } else {
+                audioPreviewRef.current.play();
+            }
+            setIsPlayingPreview(!isPlayingPreview);
+        }
+    };
+
     const cancelRecording = () => {
-        stopRecording(false);
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+        setIsRecording(false);
+        clearInterval(timerRef.current);
+        // Don't save blob
     };
 
     const handleApiCall = useCallback(async (endpoint, method = 'GET', body = null) => {
@@ -1234,45 +1274,88 @@ function WhatsAppDirectPageContent() {
 
                         {/* Input Area */}
                         <footer className="p-3 bg-[#f0f2f5] dark:bg-zinc-900 z-10 flex items-end gap-2 shrink-0" onKeyDown={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-2 pb-2">
-                                <Button variant="ghost" size="icon" className="text-muted-foreground h-10 w-10 rounded-full hover:bg-muted transition-colors" onClick={() => fileInputRef.current?.click()}>
-                                    <Paperclip size={22} />
-                                </Button>
-                                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
-                            </div>
+                            {isReviewing ? (
+                                <div className="flex-grow bg-white dark:bg-zinc-800 rounded-2xl flex items-center px-4 py-2 shadow-sm border border-transparent animate-in slide-in-from-bottom-2 duration-200">
+                                    <button onClick={handleDiscardAudio} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors mr-2">
+                                        <Trash2 size={20} />
+                                    </button>
 
-                            <div className="flex-grow bg-white dark:bg-zinc-800 rounded-2xl flex items-center px-4 py-2 shadow-sm border border-transparent focus-within:border-primary/30 transition-all">
-                                <textarea
-                                    value={newMessage}
-                                    onChange={(e) => setNewMessage(e.target.value)}
-                                    placeholder="Type a message"
-                                    className="w-full bg-transparent border-none focus:outline-none resize-none max-h-32 min-h-[24px] py-1 text-base scrollbar-thin placeholder:text-muted-foreground/60"
-                                    rows={1}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleSendMessage(e);
-                                        }
-                                    }}
-                                />
-                            </div>
+                                    <div className="flex-grow flex items-center gap-3 justify-center">
+                                        <button onClick={togglePreviewPlay} className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
+                                            {isPlayingPreview ? <Pause size={24} className="fill-current" /> : <Play size={24} className="fill-current" />}
+                                        </button>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Voice Note</span>
+                                            <span className="text-sm font-semibold text-foreground">
+                                                {Math.floor(recordingDuration / 60)}:{String(recordingDuration % 60).padStart(2, '0')}
+                                            </span>
+                                        </div>
+                                        <audio ref={audioPreviewRef} src={audioReviewUrl} onEnded={() => setIsPlayingPreview(false)} className="hidden" />
+                                    </div>
+
+                                    <button onClick={handleSendAudio} className="p-2 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-full shadow-md transition-all hover:scale-105 active:scale-95 ml-2">
+                                        <Send size={20} className="ml-0.5" />
+                                    </button>
+                                </div>
+                            ) : isRecording ? (
+                                <div className="flex-grow bg-white dark:bg-zinc-800 rounded-2xl flex items-center px-4 py-2 shadow-sm border border-red-500/20 animate-in fade-in duration-200">
+                                    <button onClick={cancelRecording} className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-full transition-colors mr-auto">
+                                        <X size={24} />
+                                    </button>
+
+                                    <div className="flex items-center gap-2 mx-auto">
+                                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                                        <span className="font-mono text-lg font-medium text-red-500">
+                                            {Math.floor(recordingDuration / 60)}:{String(recordingDuration % 60).padStart(2, '0')}
+                                        </span>
+                                    </div>
+
+                                    <button onClick={stopRecording} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors ml-auto">
+                                        <StopCircle size={28} className="fill-current" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex items-center gap-2 pb-2">
+                                        <Button variant="ghost" size="icon" className="text-muted-foreground h-10 w-10 rounded-full hover:bg-muted transition-colors" onClick={() => fileInputRef.current?.click()}>
+                                            <Paperclip size={22} />
+                                        </Button>
+                                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                                    </div>
+
+                                    <div className="flex-grow bg-white dark:bg-zinc-800 rounded-2xl flex items-center px-4 py-2 shadow-sm border border-transparent focus-within:border-primary/30 transition-all">
+                                        <textarea
+                                            value={newMessage}
+                                            onChange={(e) => setNewMessage(e.target.value)}
+                                            placeholder="Type a message"
+                                            className="w-full bg-transparent border-none focus:outline-none resize-none max-h-32 min-h-[24px] py-1 text-base scrollbar-thin placeholder:text-muted-foreground/60"
+                                            rows={1}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    handleSendMessage(e);
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </>
+                            )}
 
                             <div className="pb-1">
-                                {newMessage.trim() ? (
-                                    <Button onClick={handleSendMessage} disabled={isSending} size="icon" className="h-10 w-10 rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white shadow-md transition-all hover:scale-105 active:scale-95">
-                                        <Send size={18} className={isSending ? 'opacity-0' : 'ml-0.5'} />
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        onClick={isRecording ? stopRecording : startRecording}
-                                        size="icon"
-                                        className={cn(
-                                            "h-10 w-10 rounded-full shadow-md transition-all hover:scale-105 active:scale-95",
-                                            isRecording ? "bg-red-500 hover:bg-red-600 animate-pulse text-white shadow-red-500/20" : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                        )}
-                                    >
-                                        <Mic size={20} />
-                                    </Button>
+                                {!isRecording && !isReviewing && (
+                                    newMessage.trim() ? (
+                                        <Button onClick={handleSendMessage} disabled={isSending} size="icon" className="h-10 w-10 rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white shadow-md transition-all hover:scale-105 active:scale-95">
+                                            <Send size={18} className={isSending ? 'opacity-0' : 'ml-0.5'} />
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            onClick={startRecording}
+                                            size="icon"
+                                            className="h-10 w-10 rounded-full shadow-md transition-all hover:scale-105 active:scale-95 bg-muted text-muted-foreground hover:bg-muted/80"
+                                        >
+                                            <Mic size={20} />
+                                        </Button>
+                                    )
                                 )}
                             </div>
                         </footer>

@@ -298,8 +298,9 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     const trackingPath = latestOrder.deliveryType === 'dine-in' ? 'dine-in/' : '';
                     const link = `https://servizephyr.com/track/${trackingPath}${orderId}?token=${token}`;
 
+                    const displayOrderId = latestOrder.customerOrderId ? `#${latestOrder.customerOrderId}` : `#${orderId.substring(0, 8)}`;
                     const collectionName = business.ref.parent.id;
-                    await sendSystemMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
+                    await sendSystemMessage(fromNumber, `Here is the tracking link for your latest order (${displayOrderId}):\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
                 }
                 break;
             }
