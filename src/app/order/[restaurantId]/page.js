@@ -964,41 +964,16 @@ const OrderPageInternal = () => {
                 return;
             }
 
-            // GUEST IDENTITY FLOW (New)
-            if (ref && token) {
-                try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ref, token }),
-                    });
-
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-
-                    setTokenError(null);
-                    setIsTokenValid(true);
-                } catch (err) {
-                    setTokenError(err.message);
-                }
+            // SIMPLIFIED SESSION CHECK (Matches Checkout/Cart flow)
+            // If we have a Ref, Token, or Phone, we consider the session "open" for browsing/ordering.
+            // Strict validation happens at the API level (Create Order).
+            if (ref || token || phone) {
+                setIsTokenValid(true);
+                setTokenError(null);
                 return;
             }
 
-            // LEGACY FLOW
-            if (phone && token) {
-                try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token }),
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    setTokenError(null);
-                    setIsTokenValid(true);
-                } catch (err) {
-                    setTokenError(err.message);
-                }
-                return;
-            }
             console.log(`[OrderPage] No valid session info found. Check failed.`);
-
             setTokenError("No valid session information found. Please start a new session.");
         };
 
