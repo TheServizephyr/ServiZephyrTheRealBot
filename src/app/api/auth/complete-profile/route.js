@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { generateDisplayId } from '@/lib/id-utils';
+import { migrateGuestToUser } from '@/lib/guest-utils';
 
 
 export async function POST(req) {
@@ -31,95 +32,18 @@ export async function POST(req) {
         const batch = firestore.batch();
         const masterUserRef = firestore.collection('users').doc(uid);
 
-        // --- MERGE UNCLAIMED PROFILE LOGIC ---
-        const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-        const unclaimedProfileSnap = await unclaimedProfileRef.get();
-        let mergedUserData = { ...finalUserData };
+        // --- MIGRATE GUEST PROFILE TO UID ---
+        // If user had a guest profile (from WhatsApp/non-logged-in orders), migrate it
+        console.log(`[PROFILE COMPLETION] Checking for guest profile migration for ${normalizedPhone}...`);
+        const migrationResult = await migrateGuestToUser(firestore, uid, finalUserData.phone, finalUserData);
 
-        if (unclaimedProfileSnap.exists) {
-            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} found. Merging data.`);
-            const unclaimedData = unclaimedProfileSnap.data();
-
-            const existingAddresses = finalUserData.addresses || [];
-            const unclaimedAddresses = (unclaimedData.addresses || []).map(addr => {
-                if (typeof addr === 'string') {
-                    return {
-                        id: `addr_${Date.now()}_${Math.random()}`,
-                        label: 'Default',
-                        name: unclaimedData.name,
-                        phone: unclaimedData.phone,
-                        alternatePhone: '',
-                        street: addr,
-                        city: '',
-                        state: '',
-                        pincode: '',
-                        country: 'IN',
-                        full: addr,
-                    };
-                }
-                if (addr && !addr.full) {
-                    addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
-                }
-                return addr;
-            }).filter(Boolean);
-
-            mergedUserData.addresses = [...existingAddresses, ...unclaimedAddresses];
-
-            if (unclaimedData.orderedFrom && Array.isArray(unclaimedData.orderedFrom)) {
-                for (const restaurantInfo of unclaimedData.orderedFrom) {
-                    if (restaurantInfo.restaurantId) {
-                        const restaurantId = restaurantInfo.restaurantId;
-                        const collectionPath = restaurantInfo.businessType === 'shop' ? 'shops' : 'restaurants';
-
-                        const oldCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(normalizedPhone);
-                        const newCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(uid);
-
-                        const oldCustomerSnap = await oldCustomerRef.get();
-
-                        let oldCustomerData = {};
-                        if (oldCustomerSnap.exists) {
-                            oldCustomerData = oldCustomerSnap.data();
-                            batch.delete(oldCustomerRef);
-                            console.log(`[PROFILE COMPLETION] Marked old customer record at ${oldCustomerRef.path} for deletion.`);
-                        }
-
-                        const newCustomerPayload = {
-                            ...oldCustomerData,
-                            name: finalUserData.name,
-                            email: finalUserData.email,
-                            status: 'verified',
-                            lastSeen: FieldValue.serverTimestamp()
-                        };
-
-                        batch.set(newCustomerRef, newCustomerPayload, { merge: true });
-                        console.log(`[PROFILE COMPLETION] Marked new/updated customer record at ${newCustomerRef.path} for creation.`);
-
-                        const userRestaurantLinkRef = masterUserRef.collection('joined_restaurants').doc(restaurantId);
-                        batch.set(userRestaurantLinkRef, {
-                            restaurantName: restaurantInfo.restaurantName,
-                            joinedAt: FieldValue.serverTimestamp(),
-                            totalSpend: oldCustomerData.totalSpend || 0,
-                            loyaltyPoints: oldCustomerData.loyaltyPoints || 0,
-                            lastOrderDate: oldCustomerData.lastOrderDate,
-                            totalOrders: oldCustomerData.totalOrders || 0,
-                        }, { merge: true });
-                    }
-                }
-            }
-
-            const unclaimedOrdersQuery = firestore.collection('orders').where('customerId', '==', normalizedPhone);
-            const unclaimedOrdersSnap = await unclaimedOrdersQuery.get();
-            if (!unclaimedOrdersSnap.empty) {
-                console.log(`[PROFILE COMPLETION] Found ${unclaimedOrdersSnap.size} orders to migrate for phone ${normalizedPhone}.`);
-                unclaimedOrdersSnap.forEach(orderDoc => {
-                    batch.update(orderDoc.ref, { customerId: uid });
-                    console.log(`[PROFILE COMPLETION] Marked order ${orderDoc.id} to be updated with new UID.`);
-                });
-            }
-
-            batch.delete(unclaimedProfileRef);
-            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
+        if (migrationResult.migrated) {
+            console.log(`[PROFILE COMPLETION] ✅ Guest profile migrated! GuestId: ${migrationResult.guestId}, Addresses: ${migrationResult.addressesMigrated}, Orders: ${migrationResult.ordersMigrated}, Restaurants: ${migrationResult.restaurantsMigrated}`);
+        } else {
+            console.log(`[PROFILE COMPLETION] No guest profile found to migrate.`);
         }
+
+        let mergedUserData = { ...finalUserData };
 
         // Generate timestamp for ID creation (Sync)
         const nowForId = new Date();

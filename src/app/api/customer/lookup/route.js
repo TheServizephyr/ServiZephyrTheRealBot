@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
+import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 
 export async function POST(req) {
     try {
@@ -44,53 +45,36 @@ export async function POST(req) {
         }
 
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
-        console.log(`[API /customer/lookup] Legacy Phone Lookup: ${normalizedPhone}`);
+        console.log(`[API /customer/lookup] Phone Lookup (UID-first): ${normalizedPhone}`);
 
-        const usersRef = firestore.collection('users');
-        const userQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
+        // CRITICAL: Use UID-first priority via getOrCreateGuestProfile
+        const profileResult = await getOrCreateGuestProfile(firestore, normalizedPhone);
+        const userId = profileResult.userId;
 
-        if (!userQuery.empty) {
-            const userDoc = userQuery.docs[0];
-            const userData = userDoc.data();
-
-            return NextResponse.json({
-                name: userData.name,
-                addresses: userData.addresses || [],
-                isVerified: true,
-            }, { status: 200 });
-        }
-
-        // Unclaimed Profile (Legacy Data)
-        const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-        const unclaimedProfileSnap = await unclaimedProfileRef.get();
-
-        if (unclaimedProfileSnap.exists) {
-            const unclaimedData = unclaimedProfileSnap.data();
-            const responseData = {
-                name: unclaimedData.name,
-                addresses: (unclaimedData.addresses || []).map(addr => {
-                    if (typeof addr === 'string') {
-                        return {
-                            id: `addr_unclaimed_${Date.now()}`,
-                            label: 'Default',
-                            name: unclaimedData.name || 'User',
-                            phone: unclaimedData.phone || '',
-                            street: addr,
-                            city: '',
-                            state: '',
-                            pincode: '',
-                            country: 'IN',
-                            full: addr
-                        };
-                    }
-                    if (addr && typeof addr === 'object' && !addr.full) {
-                        addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
-                    }
-                    return addr;
-                }).filter(Boolean),
-                isVerified: false,
-            };
-            return NextResponse.json(responseData, { status: 200 });
+        let userData;
+        if (profileResult.isGuest) {
+            // Guest profile
+            const guestDoc = await firestore.collection('guest_profiles').doc(userId).get();
+            if (guestDoc.exists) {
+                userData = guestDoc.data();
+                return NextResponse.json({
+                    name: userData.name || 'Guest',
+                    addresses: userData.addresses || [],
+                    isVerified: false,
+                    isGuest: true
+                }, { status: 200 });
+            }
+        } else {
+            // Logged-in user (UID)
+            const userDoc = await firestore.collection('users').doc(userId).get();
+            if (userDoc.exists) {
+                userData = userDoc.data();
+                return NextResponse.json({
+                    name: userData.name,
+                    addresses: userData.addresses || [],
+                    isVerified: true
+                }, { status: 200 });
+            }
         }
 
         return NextResponse.json({ message: 'User not found.' }, { status: 404 });

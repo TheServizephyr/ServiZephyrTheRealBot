@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
-import { deobfuscateGuestId } from '@/lib/guest-utils';
+import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +56,10 @@ export async function GET(req) {
                     const tokenDoc = await firestore.collection('auth_tokens').doc(token).get();
                     if (tokenDoc.exists) {
                         const td = tokenDoc.data();
+                        // Updated: tokens now store userId field
+                        if (targetCustomerId && td.userId === targetCustomerId) isAuthorized = true;
+                        if (targetPhone && td.userId === targetPhone) isAuthorized = true;
+                        // Backward compatibility with old tokens
                         if (targetCustomerId && td.guestId === targetCustomerId) isAuthorized = true;
                         if (targetPhone && td.phone === targetPhone) isAuthorized = true;
                     }
@@ -68,20 +72,34 @@ export async function GET(req) {
             }
 
             // --- QUERY EXECUTION ---
+            // CRITICAL: Use userId for queries (UID for logged-in, guest ID for guests)
             const ordersRef = firestore.collection('orders');
             const activeStatuses = ['pending', 'placed', 'accepted', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'confirmed'];
             const ONE_DAY_MS = 24 * 60 * 60 * 1000;
             const yesterday = new Date(Date.now() - ONE_DAY_MS);
 
-            let query = ordersRef.where('status', 'in', activeStatuses).limit(20);
+            let userId;
 
             if (targetCustomerId) {
-                console.log(`[API /order/active] Querying by CustomerID: ${targetCustomerId}`);
-                query = query.where('customerId', '==', targetCustomerId);
-            } else {
-                console.log(`[API /order/active] Querying by Phone: ${targetPhone}`);
-                query = query.where('customerPhone', '==', targetPhone);
+                // Guest ID ref provided - use directly
+                userId = targetCustomerId;
+                console.log(`[API /order/active] Using Guest ID: ${userId}`);
+            } else if (targetPhone) {
+                // Phone provided - check for UID first, then guest ID
+                const profileResult = await getOrCreateGuestProfile(firestore, targetPhone);
+                userId = profileResult.userId;  // UID or guest ID
+                console.log(`[API /order/active] Resolved userId: ${userId}, isGuest: ${profileResult.isGuest}`);
             }
+
+            if (!userId) {
+                return NextResponse.json({ message: 'Could not resolve user identity' }, { status: 400 });
+            }
+
+            // Query by userId field (UID-first priority)
+            let query = ordersRef
+                .where('userId', '==', userId)
+                .where('status', 'in', activeStatuses)
+                .limit(20);
 
             let snapshot = await query.get();
 

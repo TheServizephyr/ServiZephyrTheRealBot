@@ -1,6 +1,7 @@
 
 
 import axios from 'axios';
+import { getFirestore, FieldValue } from './firebase-admin.js';
 
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 
@@ -152,5 +153,62 @@ export const markWhatsAppMessageAsRead = async (messageId, businessPhoneNumberId
         console.error(`[WhatsApp Lib] Failed to mark message ${messageId} as read:`, error.message);
         // Don't throw here, just log failure. It's a non-critical UX feature.
         return false;
+    }
+};
+
+/**
+ * Sends a system-generated WhatsApp message with header, footer and stores it in Firestore.
+ * @param {string} phoneNumber The recipient's phone number (with country code, e.g., '919876543210').
+ * @param {string} messageText The message text to send.
+ * @param {string} businessPhoneNumberId The WhatsApp Business Phone Number ID.
+ * @param {string} businessId The Firestore business document ID (restaurant/shop ID).
+ * @param {string} restaurantName The name of the restaurant/business.
+ * @param {string} collectionName The Firestore collection name ('restaurants' or 'shops').
+ */
+export const sendSystemMessage = async (phoneNumber, messageText, businessPhoneNumberId, businessId, restaurantName, collectionName = 'restaurants') => {
+    try {
+        // Add header and footer to message
+        const header = `*${restaurantName} (powered by ServiZephyr)*\n\n`;
+        const footer = "\n\n_To end this chat and place an order, type 'end chat'_";
+        const fullMessage = header + messageText + footer;
+
+        // Send via WhatsApp API
+        const response = await sendWhatsAppMessage(phoneNumber, fullMessage, businessPhoneNumberId);
+
+        if (!response || !response.messages || !response.messages[0]) {
+            console.error('[WhatsApp Lib] Failed to get message ID from WhatsApp response');
+            return;
+        }
+
+        const wamid = response.messages[0].id;
+
+        // Store in Firestore
+        const firestore = await getFirestore();
+        const cleanPhone = phoneNumber.replace(/^\+?91/, ''); // Remove country code for conversation ID
+
+        const messageData = {
+            wamid: wamid,
+            type: 'system',
+            direction: 'outgoing',
+            body: fullMessage,
+            timestamp: FieldValue.serverTimestamp(),
+            status: 'sent'
+        };
+
+        await firestore
+            .collection(collectionName)
+            .doc(businessId)
+            .collection('conversations')
+            .doc(cleanPhone)
+            .collection('messages')
+            .doc(wamid)
+            .set(messageData);
+
+        console.log(`[WhatsApp Lib] System message sent and stored: ${wamid}`);
+        return response;
+
+    } catch (error) {
+        console.error('[WhatsApp Lib] Error in sendSystemMessage:', error);
+        throw error;
     }
 };

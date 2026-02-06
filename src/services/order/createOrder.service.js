@@ -23,7 +23,7 @@ import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 // V1 Fallback for online payments (not tested in V2)
 import { createOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
-import { deobfuscateGuestId } from '@/lib/guest-utils';
+import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
@@ -276,34 +276,32 @@ export async function createOrderV2(req) {
         // STEP 5: BRANCH BY PAYMENT TYPE
         // ========================================
 
-        // --- GUEST IDENTITY RESOLUTION ---
-        let validGuestId = null;
-        let securePhone = null;
+        // --- USER IDENTIFICATION (UID-FIRST PRIORITY) ---
+        // Use getOrCreateGuestProfile to ensure:
+        // 1. Logged-in users → use UID
+        // 2. Guest users → create/use guest profile
+        // 3. Security: UID prioritized over phone numbers
 
-        if (guestRef) {
-            console.log(`[createOrderV2] Resolving Guest Identity from ref: ${guestRef}`);
-            validGuestId = deobfuscateGuestId(guestRef);
-            if (validGuestId) {
-                const guestDoc = await firestore.collection('guest_profiles').doc(validGuestId).get();
-                if (guestDoc.exists) {
-                    securePhone = guestDoc.data().phone;
-                    console.log(`[createOrderV2] ✅ Resolved Guest ID: ${validGuestId} linked to phone: ***${securePhone.slice(-4)}`);
-                } else {
-                    console.warn(`[createOrderV2] Guest profile ${validGuestId} not found.`);
-                }
-            } else {
-                console.warn(`[createOrderV2] Failed to deobfuscate guestRef: ${guestRef}`);
-            }
-        }
-
-        // Normalize phone or use secure phone
         const requestPhoneNormalized = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
-        const normalizedPhone = securePhone || requestPhoneNormalized;
 
-        // Priority: Guest ID > Phone > Anon
-        const userId = validGuestId || normalizedPhone || `anon_${nanoid(10)}`;
+        let userId, normalizedPhone, isGuest;
 
-        console.log(`[createOrderV2] Final UserID: ${userId}, Linked Phone: ${normalizedPhone || 'None'}`);
+        if (requestPhoneNormalized) {
+            // Call getOrCreateGuestProfile - UID first, then guest ID
+            const profileResult = await getOrCreateGuestProfile(firestore, requestPhoneNormalized);
+            userId = profileResult.userId;  // UID or guest ID
+            isGuest = profileResult.isGuest;
+            normalizedPhone = requestPhoneNormalized;
+
+            console.log(`[createOrderV2] ✅ User identified: ${userId}, isGuest: ${isGuest}`);
+        } else {
+            // No phone - anonymous order
+            userId = `anon_${nanoid(10)}`;
+            isGuest = true;
+            normalizedPhone = null;
+
+            console.log(`[createOrderV2] ⚠️ Anonymous order: ${userId}`);
+        }
 
 
         // Customer location (for delivery)
@@ -340,15 +338,15 @@ export async function createOrderV2(req) {
                     console.log(`[createOrderV2] ✅ Reusing existing order token: ${trackingToken}`);
                 } else {
                     console.warn(`[createOrderV2] Existing order ${finalExistingOrderId} not found! Generating new token.`);
-                    trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || `order_${Date.now()}`, !!validGuestId);
+                    trackingToken = await generateSecureToken(firestore, userId);
                 }
             } catch (err) {
                 console.error(`[createOrderV2] Failed to fetch existing order token:`, err);
-                trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || `order_${Date.now()}`, !!validGuestId);
+                trackingToken = await generateSecureToken(firestore, userId);
             }
         } else {
             // New order - generate fresh token
-            trackingToken = await generateSecureToken(firestore, validGuestId || normalizedPhone || `order_${Date.now()}`, !!validGuestId);
+            trackingToken = await generateSecureToken(firestore, userId);
         }
 
         // ========================================
@@ -364,6 +362,7 @@ export async function createOrderV2(req) {
             const orderData = {
                 customerName: name || 'Guest',
                 customerId: userId,
+                userId: userId,  // ✅ NEW: Unified userId field
                 customerAddress: address?.full || null,
                 customerPhone: normalizedPhone,
                 customerLocation: customerLocation,
@@ -525,6 +524,7 @@ export async function createOrderV2(req) {
         const orderData = {
             customerName: (deliveryType === 'dine-in' ? (body.tab_name || body.customerName || 'Guest') : (name || 'Guest')),
             customerId: userId,
+            userId: userId,  // ✅ NEW: Unified userId field for queries
             customerAddress: address?.full || null,
             customerPhone: normalizedPhone,
             customerLocation: customerLocation,
@@ -686,20 +686,15 @@ export async function createOrderV2(req) {
 /**
  * Generate secure tracking token (same as V1)
  */
-async function generateSecureToken(firestore, identifier, isGuest = false) {
+async function generateSecureToken(firestore, userId) {
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h validity
 
     const tokenData = {
+        userId: userId,  // Store unified userId (UID or guest ID)
         expiresAt: expiry,
         type: 'tracking'
     };
-
-    if (isGuest) {
-        tokenData.guestId = identifier;
-    } else {
-        tokenData.phone = identifier;
-    }
 
     await firestore.collection('auth_tokens').doc(token).set(tokenData);
 

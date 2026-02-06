@@ -151,7 +151,7 @@ export async function POST(req) {
         // ✅ HANDLE DIFFERENT MEDIA TYPES
         if (text) {
             // Replaced button with footer text as per new requirement
-            const messageBody = `${text}\n\n_To end this chat and order, type "end chat"_`;
+            const messageBody = `${text}\n\n_To end this chat and place an order, type 'end chat'_`;
             messagePayload = {
                 type: 'text',
                 text: { body: messageBody }

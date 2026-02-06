@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 
 // Helper to get authenticated user UID or null if not logged in
 async function getUserIdFromToken(req) {
@@ -71,36 +72,24 @@ export async function POST(req) {
             return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
         }
 
+        // CRITICAL: Use UID-first priority via getOrCreateGuestProfile
         const firestore = await getFirestore();
+        const normalizedPhone = phone.slice(-10);
+
+        // Get or create user profile (UID-first, then guest)
+        const profileResult = await getOrCreateGuestProfile(firestore, normalizedPhone);
+        const userId = profileResult.userId;
+
+        console.log(`[API][user/addresses] Resolved userId: ${userId}, isGuest: ${profileResult.isGuest}`);
+
+        // Determine target collection
         let targetRef;
-
-        // 1. Check for Guest Profile First
-        if (guestId) {
-            console.log(`[API][user/addresses] Guest Session Detected: ${guestId}`);
-            targetRef = firestore.collection('guest_profiles').doc(guestId);
-
-            // Verify existence
-            const guestSnap = await targetRef.get();
-            if (!guestSnap.exists) {
-                console.warn(`[API][user/addresses] Guest profile ${guestId} not found, falling back to phone lookup.`);
-                targetRef = null;
-            } else {
-                console.log(`[API][user/addresses] Saving to Guest Profile: ${guestId}`);
-            }
-        }
-
-        // 2. Fallback to Phone/User Lookup if no Guest ID or Guest ID invalid
-        if (!targetRef) {
-            const normalizedPhone = phone.slice(-10);
-            const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
-
-            if (!userQuery.empty) {
-                targetRef = userQuery.docs[0].ref;
-                console.log(`[API][user/addresses] Found existing verified user for phone ${normalizedPhone}. Saving to UID: ${targetRef.id}.`);
-            } else {
-                targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-                console.log(`[API][user/addresses] No verified user found. Saving to 'unclaimed_profiles' for phone: ${normalizedPhone}.`);
-            }
+        if (profileResult.isGuest) {
+            targetRef = firestore.collection('guest_profiles').doc(userId);
+            console.log(`[API][user/addresses] Saving to guest profile: ${userId}`);
+        } else {
+            targetRef = firestore.collection('users').doc(userId);
+            console.log(`[API][user/addresses] Saving to user UID: ${userId}`);
         }
 
         await targetRef.set({
@@ -137,14 +126,17 @@ export async function DELETE(req) {
         if (phone) {
             const normalizedPhone = phone.slice(-10);
             console.log(`[API][user/addresses] DELETE request for phone number: ${normalizedPhone}`);
-            const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
 
-            if (!userQuery.empty) {
-                targetRef = userQuery.docs[0].ref;
-                console.log(`[API][user/addresses] Found verified user by phone: ${targetRef.id}`);
+            // CRITICAL: Use UID-first priority
+            const profileResult = await getOrCreateGuestProfile(firestore, normalizedPhone);
+            const userId = profileResult.userId;
+
+            if (profileResult.isGuest) {
+                targetRef = firestore.collection('guest_profiles').doc(userId);
+                console.log(`[API][user/addresses] Deleting from guest profile: ${userId}`);
             } else {
-                targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-                console.log(`[API][user/addresses] No verified user, checking unclaimed profile for phone: ${normalizedPhone}`);
+                targetRef = firestore.collection('users').doc(userId);
+                console.log(`[API][user/addresses] Deleting from user UID: ${userId}`);
             }
         }
         // Scenario 2: Request is from a logged-in user, identified by ID token

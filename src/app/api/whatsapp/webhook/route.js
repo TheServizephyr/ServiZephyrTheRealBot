@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
-import { sendWhatsAppMessage, downloadWhatsAppMedia } from '@/lib/whatsapp';
+import { sendWhatsAppMessage, downloadWhatsAppMedia, sendSystemMessage } from '@/lib/whatsapp';
 import { sendOrderStatusUpdateToCustomer, sendNewOrderToOwner } from '@/lib/notifications';
 import axios from 'axios';
 import { nanoid } from 'nanoid';
@@ -55,17 +55,17 @@ async function getBusiness(firestore, botPhoneNumberId) {
     return null;
 }
 
-const generateSecureToken = async (firestore, guestId) => {
-    console.log(`[Webhook WA] generateSecureToken: Generating for guestId: ${guestId}`);
+const generateSecureToken = async (firestore, userId) => {
+    console.log(`[Webhook WA] generateSecureToken: Generating for userId: ${userId}`);
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
-        guestId: guestId, // Store Guest ID instead of Phone
+        userId: userId, // Store User ID (UID or Guest ID)
         expiresAt: expiry,
         type: 'tracking'
     });
-    console.log("[Webhook WA] generateSecureToken: Token generated linked to Guest ID.");
+    console.log("[Webhook WA] generateSecureToken: Token generated linked to User ID.");
     return token;
 };
 
@@ -164,7 +164,8 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
 
         const trackingUrl = `https://servizephyr.com/track/dine-in/${orderId}?token=${trackingTokenForLink}`;
 
-        await sendWhatsAppMessage(fromNumber, `Thanks, your order request has been received!\n\n*Your Token is: ${dineInToken}*\n\nPlease show this token at the counter.\n\nTrack its live status here:\n${trackingUrl}`, botPhoneNumberId);
+        const collectionName = business.ref.parent.id;
+        await sendSystemMessage(fromNumber, `Thanks, your order request has been received!\n\n*Your Token is: ${dineInToken}*\n\nPlease show this token at the counter.\n\nTrack its live status here:\n${trackingUrl}`, botPhoneNumberId, business.id, business.data.name, collectionName);
 
         if (business.data.ownerPhone && business.data.botPhoneNumberId) {
             await sendNewOrderToOwner({
@@ -182,9 +183,11 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
     } catch (error) {
         console.error(`[Webhook WA DineIn] CRITICAL error processing confirmation for ${orderId}:`, error);
         if (error.message.includes("Order document not found")) {
-            await sendWhatsAppMessage(fromNumber, "Sorry, this order ID is invalid. Please try placing your order again.", botPhoneNumberId);
+            const collectionName = business.ref.parent.id;
+            await sendSystemMessage(fromNumber, "Sorry, this order ID is invalid. Please try placing your order again.", botPhoneNumberId, business.id, business.data.name, collectionName);
         } else {
-            await sendWhatsAppMessage(fromNumber, "Sorry, we couldn't process your request at the moment. Please try again or contact staff.", botPhoneNumberId);
+            const collectionName = business.ref.parent.id;
+            await sendSystemMessage(fromNumber, "Sorry, we couldn't process your request at the moment. Please try again or contact staff.", botPhoneNumberId, business.id, business.data.name, collectionName);
         }
         return true;
     }
@@ -205,47 +208,55 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
         switch (type) {
             case 'order': {
                 const businessId = payloadParts.join('_');
-                // 1. Get or Create Guest Profile (handles migration)
-                const { guestId } = await getOrCreateGuestProfile(firestore, customerPhone);
+                // 1. Get User ID (UID for logged-in, guest ID for non-logged-in)
+                const { userId } = await getOrCreateGuestProfile(firestore, customerPhone);
 
-                // 2. Generate Token linked to Guest ID
-                const token = await generateSecureToken(firestore, guestId);
+                // 2. Generate Token linked to User ID
+                const token = await generateSecureToken(firestore, userId);
 
-                // 3. Obfuscate Guest ID for URL
-                const publicRef = obfuscateGuestId(guestId);
+                // 3. Obfuscate User ID for URL
+                const publicRef = obfuscateGuestId(userId);
 
                 // 4. Generate Link with Guest Ref
                 const link = `https://servizephyr.com/order/${businessId}?ref=${publicRef}&token=${token}`;
 
-                await sendWhatsAppMessage(fromNumber, `Here is your personal secure link to place an order (valid for 24 hours):\n\n${link}`, botPhoneNumberId);
+                const collectionName = business.ref.parent.id;
+                await sendSystemMessage(fromNumber, `Here is your personal secure link to place an order (valid for 24 hours):\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
                 break;
             }
             case 'track': {
                 console.log(`[Webhook WA] 'track' action initiated for ${customerPhone}.`);
+
+                // Get user ID (UID if logged-in, guest ID if not)
+                const { userId } = await getOrCreateGuestProfile(firestore, customerPhone);
+
                 const ordersRef = firestore.collection('orders');
-                const q = ordersRef.where('customerPhone', '==', customerPhone).orderBy('orderDate', 'desc').limit(1);
+                const q = ordersRef.where('userId', '==', userId).orderBy('orderDate', 'desc').limit(1);
                 const querySnapshot = await q.get();
 
                 if (querySnapshot.empty) {
-                    console.log(`[Webhook WA] No recent orders found for ${customerPhone}.`);
-                    await sendWhatsAppMessage(fromNumber, `You don't have any recent orders to track.`, botPhoneNumberId);
+                    console.log(`[Webhook WA] No recent orders found for userId ${userId}.`);
+                    const collectionName = business.ref.parent.id;
+                    await sendSystemMessage(fromNumber, `You don't have any recent orders to track.`, botPhoneNumberId, business.id, business.data.name, collectionName);
                 } else {
                     const latestOrderDoc = querySnapshot.docs[0];
                     const latestOrder = latestOrderDoc.data();
 
                     if (!latestOrder.trackingToken) {
-                        console.error(`[Webhook WA] CRITICAL: Tracking token missing for latest order ${latestOrderDoc.id} of customer ${customerPhone}.`);
-                        await sendWhatsAppMessage(fromNumber, `We couldn't find tracking information for your last order. Please contact support.`, botPhoneNumberId);
+                        console.error(`[Webhook WA] CRITICAL: Tracking token missing for latest order ${latestOrderDoc.id} of userId ${userId}.`);
+                        const collectionName = business.ref.parent.id;
+                        await sendSystemMessage(fromNumber, `We couldn't find tracking information for your last order. Please contact support.`, botPhoneNumberId, business.id, business.data.name, collectionName);
                         return;
                     }
                     const orderId = latestOrderDoc.id;
                     const token = latestOrder.trackingToken;
-                    console.log(`[Webhook WA] Found latest order ${orderId} with tracking token.`);
+                    console.log(`[Webhook WA] Found latest order ${orderId} with tracking token for userId ${userId}.`);
 
                     const trackingPath = latestOrder.deliveryType === 'dine-in' ? 'dine-in/' : '';
                     const link = `https://servizephyr.com/track/${trackingPath}${orderId}?token=${token}`;
 
-                    await sendWhatsAppMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId);
+                    const collectionName = business.ref.parent.id;
+                    await sendSystemMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
                 }
                 break;
             }
@@ -256,7 +267,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     interactive: {
                         type: "button",
                         body: {
-                            text: `You are now connected directly with ${business.data.name}.\n\nAsk your questions here, and the restaurant will respond.`
+                            text: `You are now connected directly with ${business.data.name}.\n\nAsk your questions here, and the restaurant will respond.\n\n_To go back to menu and place an order, type 'end chat'_`
                         },
                         action: {
                             buttons: [
@@ -278,7 +289,8 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             case 'report': {
                 if (payloadParts[0] === 'admin') {
                     console.log(`[Webhook WA] Admin Report triggered by ${customerPhone} for business ${business.id}`);
-                    await sendWhatsAppMessage(fromNumber, `Thank you. Your request to speak with an admin has been noted. We will review the conversation and get back to you shortly.`, botPhoneNumberId);
+                    const collectionName = business.ref.parent.id;
+                    await sendSystemMessage(fromNumber, `Thank you. Your request to speak with an admin has been noted. We will review the conversation and get back to you shortly.`, botPhoneNumberId, business.id, business.data.name, collectionName);
                 }
                 break;
             }
@@ -287,7 +299,8 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
         }
     } catch (e) {
         console.error(`[Webhook WA] Error handling button action '${type}':`, e);
-        await sendWhatsAppMessage(fromNumber, `Sorry, we couldn't process your request right now. Please try again.`, botPhoneNumberId);
+        const collectionName = business.ref.parent.id;
+        await sendSystemMessage(fromNumber, `Sorry, we couldn't process your request right now. Please try again.`, botPhoneNumberId, business.id, business.data.name, collectionName);
     }
 }
 
