@@ -533,7 +533,7 @@ export async function PATCH(req) {
             for (const itemId of itemIds) {
                 const itemRef = menuRef.doc(itemId);
                 const itemSnap = await itemRef.get();
-                if (itemSnap.exists()) {
+                if (itemSnap.exists) {
                     const itemData = itemSnap.data();
                     itemsToDelete.push({
                         id: itemId,
