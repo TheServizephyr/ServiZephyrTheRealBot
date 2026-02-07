@@ -179,6 +179,11 @@ export async function POST(req) {
             }
         }
 
+        // 🔄 CACHE INVALIDATION: Increment menuVersion to force public API refresh
+        await firestore.collection(collectionName).doc(businessId).update({
+            menuVersion: FieldValue.increment(1)
+        });
+
         return NextResponse.json({ message: 'Coupon created successfully!', id: newCouponRef.id }, { status: 201 });
 
     } catch (error) {
@@ -216,6 +221,11 @@ export async function PATCH(req) {
         }
 
         await couponRef.update(updateData);
+
+        // 🔄 CACHE INVALIDATION: Increment menuVersion to force public API refresh
+        await firestore.collection(collectionName).doc(businessId).update({
+            menuVersion: FieldValue.increment(1)
+        });
 
         return NextResponse.json({ message: 'Coupon updated successfully!' }, { status: 200 });
 
@@ -270,6 +280,11 @@ export async function DELETE(req) {
         }
 
         await couponRef.delete();
+
+        // 🔄 CACHE INVALIDATION: Increment menuVersion to force public API refresh
+        await firestore.collection(collectionName).doc(businessId).update({
+            menuVersion: FieldValue.increment(1)
+        });
 
         // 🔍 Audit log: COUPON_DELETE (fire-and-forget)
         logAuditEvent({

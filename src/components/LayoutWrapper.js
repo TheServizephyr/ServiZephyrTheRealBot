@@ -69,12 +69,7 @@ const LayoutWrapper = ({ children }) => {
   // Check if the current path starts with any of the noLayoutPaths
   const hideLayout = noLayoutPaths.some(path => pathname.startsWith(path));
 
-  // THE FIX: If the main layout is being shown, force the light theme.
-  useEffect(() => {
-    if (!hideLayout) {
-      setTheme('light');
-    }
-  }, [hideLayout, setTheme]);
+
 
 
   if (hideLayout) {

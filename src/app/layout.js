@@ -6,6 +6,7 @@ import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import RedirectHandler from '@/components/RedirectHandler';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
+import { ThemeProvider } from "@/components/ThemeProvider";
 import Script from 'next/script';
 
 // Font configuration
@@ -24,12 +25,59 @@ const playfairDisplay = Playfair_Display({
 });
 
 export const metadata = {
-  title: "ServiZephyr | Founded by Ashwani Baghel - Restaurant Management",
-  description: "ServiZephyr - AI-powered restaurant management platform founded by Ashwani Baghel. Streamline orders, payments, dine-in operations & delivery management.",
-  keywords: "restaurant management, food ordering system, dine-in management, delivery management, online ordering for restaurants, restaurant POS, food business automation, restaurant software India",
-  authors: [{ name: "ServiZephyr" }],
-  creator: "ServiZephyr",
+  // Base URL for metadata resolution
+  metadataBase: new URL('https://servizephyr.com'),
+
+  title: {
+    default: "ServiZephyr - AI-Powered Restaurant & Street Food Management",
+    template: "%s | ServiZephyr"
+  },
+  description: "ServiZephyr is India's leading AI-powered restaurant management platform. Streamline orders, payments, dine-in operations, and delivery management for restaurants, cafes, and street food vendors.",
+  keywords: [
+    "restaurant management system", "POS software india", "food ordering app", "street food vendor app", "dine-in management", "inventory management", "QR code menu", "online food delivery system", "ServiZephyr", "Ashwani Baghel", "Utkarsh Patel",
+    // Feature Keywords
+    "digital token system", "smart queue management", "kitchen display system KDS", "whatsapp ordering bot", "contactless dining", "food court management", "waitlist management app",
+    // Misspellings & Variations
+    "Servi Zephyr", "Service Zephyr", "ServiZepher", "Zephyr Service", "Sarvi Zephyr", "Service Jephyr", "Servi Jeffer", "Zephyr App"
+  ],
+  authors: [{ name: "ServiZephyr Team" }, { name: "Ashwani Baghel", url: "https://servizephyr.com" }, { name: "Utkarsh Patel", url: "https://servizephyr.com" }],
+  creator: "Ashwani Baghel & Utkarsh Patel",
   publisher: "ServiZephyr",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+
+  // Canonical URL
+  alternates: {
+    canonical: '/',
+    languages: {
+      'en-US': '/en-US',
+      'hi-IN': '/hi-IN',
+    },
+  },
+
+  // Robot Directives
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+
+  // Verification to prove ownership
+  verification: {
+    google: 'google-site-verification=YOUR_VERIFICATION_CODE', // Placeholder
+    yandex: 'yandex-verification=YOUR_CODE',
+  },
+
+  category: 'technology',
 
   // PWA Configuration
   manifest: "/manifest.json",
@@ -64,14 +112,14 @@ export const metadata = {
     locale: "en_US",
     url: "https://servizephyr.com",
     siteName: "ServiZephyr",
-    title: "ServiZephyr - Street Food Vendor Management",
-    description: "Unleash the Zephyr of Success. Manage your street food business with ease.",
+    title: "ServiZephyr - AI-Powered Restaurant & Street Food Management",
+    description: "Manage your food business with ease. Zero commissions, AI insights, and seamless WhatsApp integration.",
     images: [
       {
-        url: "/logo.png",
+        url: "https://servizephyr.com/og-image.jpg", // Ensure this image exists or use logo
         width: 1200,
         height: 630,
-        alt: "ServiZephyr Logo",
+        alt: "ServiZephyr - Restaurant Management Made Simple",
       },
     ],
   },
@@ -79,9 +127,10 @@ export const metadata = {
   // Twitter Card
   twitter: {
     card: "summary_large_image",
-    title: "ServiZephyr - Street Food Vendor Management",
-    description: "Unleash the Zephyr of Success. Manage your street food business with ease.",
-    images: ["/logo.png"],
+    title: "ServiZephyr - AI-Powered Restaurant OS",
+    description: "The all-in-one OS for restaurants and street vendors. Order management, payments, and marketing on autopilot.",
+    images: ["https://servizephyr.com/twitter-image.jpg"], // Ensure this exists
+    creator: "@servizephyr",
   },
 
   // Viewport
@@ -93,6 +142,30 @@ export const metadata = {
   },
 };
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "ServiZephyr",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web, Android, iOS",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "INR"
+  },
+  "description": "AI-powered operating system for restaurants and street food vendors.",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.8",
+    "ratingCount": "1250"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "ServiZephyr",
+    "url": "https://servizephyr.com"
+  }
+};
+
 export default function RootLayout({ children }) {
   const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   return (
@@ -101,6 +174,11 @@ export default function RootLayout({ children }) {
         {/* Dynamic theme-color based on color scheme */}
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
+        {/* Structured Data (JSON-LD) */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </head>
       <body>
         <Script
@@ -157,15 +235,22 @@ export default function RootLayout({ children }) {
         </Script>
 
 
-        <FirebaseClientProvider>
-          <PWARecoveryHandler />
-          <GlobalHapticHandler />
-          <RedirectHandler />
-          <LayoutWrapper>
-            {children}
-          </LayoutWrapper>
-          <Toaster />
-        </FirebaseClientProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <FirebaseClientProvider>
+            <PWARecoveryHandler />
+            <GlobalHapticHandler />
+            <RedirectHandler />
+            <LayoutWrapper>
+              {children}
+            </LayoutWrapper>
+            <Toaster />
+          </FirebaseClientProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

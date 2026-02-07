@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, Ticket, Minus, Plus, Edit2 } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/components/ui/use-toast";
@@ -366,7 +366,12 @@ const CheckoutPageInternal = () => {
                 }
 
                 // ... (Payment settings fetch unchanged) ...
-                const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
+                // FETCH BOTH Payment Settings AND Menu (for Coupons/Delivery Params) in parallel
+                const [paymentSettingsRes, menuRes] = await Promise.all([
+                    fetch(`/api/owner/settings?restaurantId=${restaurantId}`),
+                    fetch(`/api/public/menu/${restaurantId}`)
+                ]);
+
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
                     if (deliveryType === 'delivery') {
@@ -393,6 +398,23 @@ const CheckoutPageInternal = () => {
                         packagingChargeEnabled: paymentData.packagingChargeEnabled || false,
                         packagingChargeAmount: paymentData.packagingChargeAmount || 0,
                     });
+                }
+
+                // 🎟️ PROCESS COUPONS & DELIVERY SETTINGS FROM MENU API
+                if (menuRes.ok) {
+                    const menuData = await menuRes.json();
+                    console.log('[Checkout] 🎟️ Fetched fresh menu data:', menuData.coupons?.length, 'coupons');
+
+                    // Update Cart Data with fresh coupons and potentially clearer delivery params
+                    // We treat this as a "Soft Update" to not overwrite user's cart items
+                    setCartData(prev => ({
+                        ...prev,
+                        availableCoupons: menuData.coupons || [],
+                        // Optional: Update delivery charges if you want them real-time
+                        deliveryCharge: menuData.deliveryCharge,
+                        minOrderValue: menuData.minOrderValue,
+                        deliveryFreeThreshold: menuData.deliveryFreeThreshold
+                    }));
                 }
 
                 if (deliveryType === 'delivery' && !activeOrderId) {
@@ -596,6 +618,27 @@ const CheckoutPageInternal = () => {
             tipAmount: tip
         };
     }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, bundlingOrderDetails, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput]);
+
+    const maxSavings = useMemo(() => {
+        if (!cartData?.availableCoupons?.length) return 0;
+
+        return Math.max(0, ...cartData.availableCoupons.map(coupon => {
+            // Check minimum order requirement
+            if (coupon.minOrder && subtotal < coupon.minOrder) return 0;
+
+            if (coupon.type === 'flat') {
+                return parseFloat(coupon.value) || 0;
+            } else if (coupon.type === 'percentage') {
+                const discount = (subtotal * (parseFloat(coupon.value) || 0)) / 100;
+                // Check for max discount cap
+                if (coupon.maxDiscount && coupon.maxDiscount > 0) {
+                    return Math.min(discount, coupon.maxDiscount);
+                }
+                return discount;
+            }
+            return 0;
+        }));
+    }, [cartData, subtotal]);
 
     const fullOrderDetailsForSplit = useMemo(() => ({
         restaurantId,
@@ -1278,7 +1321,7 @@ const CheckoutPageInternal = () => {
                         <Button variant="ghost" size="icon" onClick={() => {
                             // Preserve all params when going back
                             const params = new URLSearchParams(searchParams.toString());
-                            router.push(`/cart?${params.toString()}`);
+                            router.push(`/order/${restaurantId}?${params.toString()}`);
                         }} className="h-10 w-10"><ArrowLeft /></Button>
                         <div>
                             <p className="text-xs text-muted-foreground">{cameToPay ? 'Final Step' : activeOrderId ? 'Add to Order' : 'Step 1 of 1'}</p>
@@ -1409,15 +1452,21 @@ const CheckoutPageInternal = () => {
                         </div>
 
                         {/* COUPONS SECTION */}
-                        <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm cursor-pointer hover:border-primary/50 transition-colors"
+                        {/* COUPONS SECTION */}
+                        <div
+                            className="group flex items-center justify-between bg-card border border-border rounded-2xl p-4 cursor-pointer transition-all hover:bg-muted/50 active:scale-95 my-4 shadow-sm"
                             onClick={() => setIsCouponDrawerOpen(true)}
                         >
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <i className="fas fa-percentage text-blue-600 text-lg"></i>
-                                    <span className="font-bold text-sm text-blue-600">Use Coupons / View Offers</span>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center dark:bg-blue-900/20 dark:text-blue-400">
+                                    <Percent className="w-5 h-5" />
                                 </div>
-                                <i className="fas fa-chevron-right text-muted-foreground text-xs"></i>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Use Coupons / View Offers</span>
+                                    <span className="text-[11px] text-emerald-500 font-semibold mt-0.5">
+                                        {maxSavings > 0 ? `Save up to ₹${maxSavings.toFixed(0)} on this order` : 'View available offers'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -1485,12 +1534,20 @@ const CheckoutPageInternal = () => {
                         {/* BILL SUMMARY - COLLAPSIBLE */}
                         <div className="bg-card p-4 rounded-lg border border-border mb-6">
                             {/* Clickable Header */}
+                            {/* Clickable Header */}
                             <div
-                                className="flex items-center justify-between cursor-pointer"
+                                className="flex items-center justify-between cursor-pointer py-2"
                                 onClick={() => setIsBillSummaryExpanded(!isBillSummaryExpanded)}
                             >
-                                <h3 className="font-bold text-lg">Bill Summary</h3>
-                                <i className={`fas fa-chevron-${isBillSummaryExpanded ? 'up' : 'down'} text-muted-foreground text-sm`}></i>
+                                <h3 className="font-bold text-lg flex items-center gap-2">
+                                    Bill Summary
+                                    <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-normal">
+                                        {isBillSummaryExpanded ? 'Hide Details' : 'View Details'}
+                                    </span>
+                                </h3>
+                                <div className="bg-muted/50 p-2 rounded-full hover:bg-muted transition-colors">
+                                    {isBillSummaryExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                </div>
                             </div>
 
                             {/* Collapsed View - Show only "You Pay" */}
@@ -1580,34 +1637,75 @@ const CheckoutPageInternal = () => {
                 </main>
 
                 {/* STICKY FOOTER BAR */}
-                <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-lg w-full md:max-w-3xl lg:max-w-4xl mx-auto">
-                    <div className="px-4 py-3 flex items-center justify-between gap-3">
-                        {/* Left: Total + Payment Method Trigger */}
+                <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-[0_-5px_25px_-5px_rgba(0,0,0,0.1)] w-full md:max-w-3xl lg:max-w-4xl mx-auto">
+                    <div className="px-4 py-3 flex items-center gap-3">
+                        {/* Left: Payment Method Trigger (Selector Only) */}
                         <div
-                            className="flex-1 cursor-pointer"
+                            className="flex-1 cursor-pointer group"
                             onClick={() => setIsPaymentDrawerOpen(true)}
                         >
-                            <p className="text-xs font-bold text-primary mb-1">Total ₹{grandTotal.toFixed(2)}</p>
-                            <div className="flex items-center gap-2 text-sm font-bold">
-                                <i className={`fas ${selectedPaymentMethod === 'counter' ? 'fa-money-bill-wave' : 'fa-university'} text-primary`}></i>
-                                <span>{selectedPaymentMethod === 'counter' ? 'Cash on Delivery' : selectedPaymentMethod === 'online' ? 'Pay Online / UPI' : 'Select Payment'}</span>
-                                <i className="fas fa-chevron-up text-muted-foreground text-xs"></i>
+                            <div className="flex flex-col gap-0.5 justify-center h-full">
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">PAYMENT MODE</span>
+                                    <ChevronUp className="h-3 w-3 text-muted-foreground" />
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border border-border ${selectedPaymentMethod ? 'bg-primary/10 border-primary/20' : 'bg-muted'}`}>
+                                        {selectedPaymentMethod === 'counter' ? (
+                                            <HandCoins className="h-4 w-4 text-primary" />
+                                        ) : selectedPaymentMethod === 'online' ? (
+                                            <QrCode className="h-4 w-4 text-primary" />
+                                        ) : (
+                                            <Wallet className="h-4 w-4 text-muted-foreground" />
+                                        )}
+                                    </div>
+                                    <div className="leading-tight">
+                                        <p className={`text-sm font-bold line-clamp-1 ${selectedPaymentMethod ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                            {selectedPaymentMethod === 'counter' ? 'POD' : selectedPaymentMethod === 'online' ? 'UPI' : 'Select Mode'}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Right: Place Order Button */}
+                        {/* Right: Smart Action Button (Price + Action) */}
                         <button
                             onClick={() => {
+                                if (!selectedPaymentMethod) {
+                                    setIsPaymentDrawerOpen(true);
+                                    return;
+                                }
+
                                 if (selectedPaymentMethod === 'counter') {
                                     handlePayAtCounter();
                                 } else if (selectedPaymentMethod === 'online') {
                                     placeOrder('online');
                                 }
                             }}
-                            disabled={!selectedPaymentMethod || isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : !orderName.trim()))}
-                            className="bg-primary text-white px-6 py-3 rounded-xl font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : !orderName.trim()))}
+                            className={cn(
+                                "h-12 px-4 rounded-xl font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex-none w-[55%] sm:w-[45%]",
+                                selectedPaymentMethod
+                                    ? "bg-primary text-white hover:bg-primary/90 shadow-primary/25"
+                                    : "bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/25"
+                            )}
                         >
-                            {isProcessingPayment ? 'Processing...' : 'Place Order'}
+                            {isProcessingPayment ? (
+                                <span className="flex items-center justify-center gap-2">
+                                    <Loader2 className="animate-spin h-4 w-4" /> Processing
+                                </span>
+                            ) : (
+                                <div className="flex items-center justify-between w-full">
+                                    <div className="flex flex-col items-start pr-3 border-r border-white/20 mr-3 min-w-[3rem]">
+                                        <span className="text-[9px] font-medium opacity-80 uppercase tracking-wide leading-none mb-0.5">TOTAL</span>
+                                        <span className="text-base font-extrabold leading-none">₹{grandTotal.toFixed(0)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-1 justify-center whitespace-nowrap">
+                                        <span>{selectedPaymentMethod ? 'Place Order' : 'Select Payment'}</span>
+                                        <i className="fas fa-caret-right text-xs ml-0.5"></i>
+                                    </div>
+                                </div>
+                            )}
                         </button>
                     </div>
                 </div>
@@ -1617,20 +1715,20 @@ const CheckoutPageInternal = () => {
                     <>
                         {/* Overlay */}
                         <div
-                            className="fixed inset-0 bg-black/50 z-[60] animate-in fade-in duration-300"
+                            className="fixed inset-0 bg-black/60 z-[60] animate-in fade-in duration-300 backdrop-blur-sm"
                             onClick={() => setIsPaymentDrawerOpen(false)}
                         />
 
                         {/* Drawer Content */}
                         <div
-                            className="fixed bottom-0 left-0 right-0 bg-card rounded-t-3xl z-[70] animate-in slide-in-from-bottom duration-300 w-full md:max-w-3xl lg:max-w-4xl mx-auto"
-                            style={{ maxHeight: '80vh', overflowY: 'auto' }}
+                            className="fixed bottom-0 left-0 right-0 bg-card rounded-t-[2rem] z-[70] animate-in slide-in-from-bottom duration-300 w-full md:max-w-3xl lg:max-w-4xl mx-auto shadow-2xl border-t border-border/50"
+                            style={{ maxHeight: '85vh', overflowY: 'auto' }}
                         >
-                            <div className="p-6">
+                            <div className="p-6 pb-10">
                                 {/* Handle */}
-                                <div className="w-10 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-5" />
+                                <div className="w-12 h-1.5 bg-muted-foreground/20 rounded-full mx-auto mb-6" />
 
-                                <h2 className="text-lg font-bold mb-4">Payment Method</h2>
+                                <h2 className="text-xl font-bold mb-6 text-center">Choose Payment Method</h2>
 
                                 {/* Cash on Delivery Option */}
                                 {codEnabled && (
@@ -1640,18 +1738,22 @@ const CheckoutPageInternal = () => {
                                             setSelectedOnlinePaymentType(null);
                                             setTimeout(() => setIsPaymentDrawerOpen(false), 300);
                                         }}
-                                        className={`flex items-center gap-4 p-4 border-2 rounded-2xl mb-3 cursor-pointer transition-all ${selectedPaymentMethod === 'counter'
-                                            ? 'border-primary bg-green-50'
-                                            : 'border-border hover:border-primary/50'
+                                        className={`group flex items-center gap-4 p-5 border-2 rounded-2xl mb-4 cursor-pointer transition-all relative overflow-hidden ${selectedPaymentMethod === 'counter'
+                                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
+                                            : 'border-border hover:border-primary/50 hover:bg-muted/50'
                                             }`}
                                     >
-                                        <i className="fas fa-money-bill-wave text-primary text-2xl"></i>
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${selectedPaymentMethod === 'counter' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary'}`}>
+                                            <HandCoins className="h-6 w-6" />
+                                        </div>
                                         <div className="flex-1">
-                                            <p className="font-bold text-sm">Cash on Delivery</p>
-                                            <p className="text-xs text-muted-foreground">Pay at your doorstep</p>
+                                            <p className={`font-bold text-base ${selectedPaymentMethod === 'counter' ? 'text-primary' : 'text-foreground'}`}>Pay upon Delivery</p>
+                                            <p className="text-sm text-muted-foreground">Cash or UPI at your doorstep</p>
                                         </div>
                                         {selectedPaymentMethod === 'counter' && (
-                                            <i className="fas fa-check-circle text-primary text-xl"></i>
+                                            <div className="bg-primary text-white p-1 rounded-full">
+                                                <CheckCircle size={20} className="fill-current" />
+                                            </div>
                                         )}
                                     </div>
                                 )}
@@ -1664,18 +1766,22 @@ const CheckoutPageInternal = () => {
                                             setSelectedOnlinePaymentType('full');
                                             setTimeout(() => setIsPaymentDrawerOpen(false), 300);
                                         }}
-                                        className={`flex items-center gap-4 p-4 border-2 rounded-2xl cursor-pointer transition-all ${selectedPaymentMethod === 'online'
-                                            ? 'border-primary bg-green-50'
-                                            : 'border-border hover:border-primary/50'
+                                        className={`group flex items-center gap-4 p-5 border-2 rounded-2xl cursor-pointer transition-all relative overflow-hidden ${selectedPaymentMethod === 'online'
+                                            ? 'border-primary bg-primary/5 shadow-md shadow-primary/10'
+                                            : 'border-border hover:border-primary/50 hover:bg-muted/50'
                                             }`}
                                     >
-                                        <i className="fas fa-university text-blue-600 text-2xl"></i>
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${selectedPaymentMethod === 'online' ? 'bg-primary text-white' : 'bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary'}`}>
+                                            <QrCode className="h-6 w-6" />
+                                        </div>
                                         <div className="flex-1">
-                                            <p className="font-bold text-sm">Pay Online / UPI</p>
-                                            <p className="text-xs text-muted-foreground">PhonePe, GPay, Cards</p>
+                                            <p className={`font-bold text-base ${selectedPaymentMethod === 'online' ? 'text-primary' : 'text-foreground'}`}>Pay Online / UPI</p>
+                                            <p className="text-sm text-muted-foreground">PhonePe, GPay, Cards</p>
                                         </div>
                                         {selectedPaymentMethod === 'online' && (
-                                            <i className="fas fa-check-circle text-primary text-xl"></i>
+                                            <div className="bg-primary text-white p-1 rounded-full">
+                                                <CheckCircle size={20} className="fill-current" />
+                                            </div>
                                         )}
                                     </div>
                                 )}
