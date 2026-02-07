@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -280,25 +281,54 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
 const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle className="text-2xl">Browse Menu</DialogTitle>
-                    <DialogDescription>Quickly jump to any category.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
-                    {categories.map(category => (
-                        <button
-                            key={category.key}
-                            onClick={() => {
-                                onCategoryClick(category.key);
-                                onClose();
-                            }}
-                            className="p-4 rounded-lg text-left bg-card hover:bg-muted border border-border transition-colors"
-                        >
-                            <h4 className="font-semibold text-foreground">{category.title}</h4>
-                            <p className="text-sm text-muted-foreground">{category.count} items</p>
-                        </button>
-                    ))}
+            <DialogContent className="bg-background border-border text-foreground max-w-sm w-[90vw] rounded-2xl p-0 overflow-hidden shadow-xl gap-0">
+                <div className="p-5 border-b border-border/40 shrink-0 z-20 bg-background relative">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold">
+                            Browse Menu
+                        </DialogTitle>
+                        <DialogDescription className="text-sm text-muted-foreground">
+                            Quickly jump to any category.
+                        </DialogDescription>
+                    </DialogHeader>
+                </div>
+
+                {/* Wrapper with relative positioning for the blur effect */}
+                <div className="relative">
+                    {/* Scrollable List with Explicit Max-Height */}
+                    <div className="overflow-y-auto max-h-[60vh] py-2 px-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+                        {categories.map((category, index) => (
+                            <button
+                                key={category.key}
+                                onClick={() => {
+                                    onCategoryClick(category.key);
+                                    onClose();
+                                }}
+                                className="w-full px-6 py-4 flex items-center justify-between hover:bg-muted/50 transition-colors group border-b border-border/30 last:border-0"
+                            >
+                                <span className="text-base font-medium text-foreground group-hover:text-primary transition-colors text-left">
+                                    {category.title}
+                                </span>
+                                <span className="text-xs text-muted-foreground font-medium bg-muted px-2.5 py-1 rounded-full flex items-center justify-center min-w-[2rem]">
+                                    {category.count}
+                                </span>
+                            </button>
+                        ))}
+                        {/* Spacer for bottom blur */}
+                        <div className="h-12" />
+                    </div>
+
+                    {/* Bottom Blur/Gradient Fade */}
+                    <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none z-10" />
+                </div>
+
+                <div className="p-4 border-t border-border/40 bg-background shrink-0 z-20 relative shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+                    <Button
+                        onClick={onClose}
+                        className="w-full rounded-xl font-semibold bg-foreground text-background hover:bg-foreground/90 h-12"
+                    >
+                        <X className="w-4 h-4 mr-2" /> Close
+                    </Button>
                 </div>
             </DialogContent>
         </Dialog>
