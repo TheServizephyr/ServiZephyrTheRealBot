@@ -1018,7 +1018,7 @@ const OrderPageInternal = () => {
             if (!restaurantData || !restaurantData.businessType) return;
 
             const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
-            if (isStreetVendorPage && !tableIdFromUrl && !phone && !token && !ref && !activeOrderId) {
+            if (isStreetVendorPage && !tableIdFromUrl && !ref && !token && !activeOrderId) {
                 setIsTokenValid(true);
                 return;
             }
@@ -1312,6 +1312,7 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const handleDineInSetup = async () => {
+            console.log('🚀 [DEBUG] handleDineInSetup STARTED - tableIdFromUrl:', tableIdFromUrl);
             if (tableIdFromUrl) {
                 setDeliveryType('dine-in');
 
@@ -1321,10 +1322,13 @@ const OrderPageInternal = () => {
                 } else {
                     // First fetch table data from server
                     try {
+                        console.log('📞 [DEBUG] Fetching table data for:', tableIdFromUrl);
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
+                        console.log('📞 [DEBUG] Table API response status:', tableRes.status, tableRes.ok);
 
                         if (!tableRes.ok) {
                             const errorData = await tableRes.json();
+                            console.error('❌ [DEBUG] Table API error:', errorData);
                             // Table doesn't exist
                             setError(`Table "${tableIdFromUrl}" does not exist at this restaurant. Please check the QR code or contact the staff.`);
                             setLoading(false);
@@ -1333,11 +1337,14 @@ const OrderPageInternal = () => {
                         }
 
                         const tableData = await tableRes.json();
+                        console.log('📊 [DEBUG] Table data received:', tableData);
 
                         // NEW: Smart cleaning status handling
                         if (tableData.hasUncleanedOrders) {
+                            console.log('🧹 [DEBUG] Table has uncleaned orders:', tableData.uncleanedOrdersCount);
                             // ONLY block if NO seats available
                             if (tableData.availableSeats <= 0) {
+                                console.log('❌ [DEBUG] No available seats - BLOCKING');
                                 const message = `This table is fully occupied and being cleaned. Please wait or choose another table.\n\n📊 Table Status:\n• Available seats: ${tableData.availableSeats}\n• Orders awaiting cleanup: ${tableData.uncleanedOrdersCount}`;
                                 setError(message);
                                 setLoading(false);
@@ -1346,6 +1353,7 @@ const OrderPageInternal = () => {
                                 return;
                             } else {
                                 // Seats available - show info but ALLOW ordering
+                                console.log('✅ [DEBUG] Seats available despite cleaning - ALLOWING');
                                 console.log(`[Dine-In] Table ${tableIdFromUrl} has ${tableData.availableSeats} available seats, ${tableData.uncleanedOrdersCount} orders cleaning - ALLOWING order`);
                                 // Optional: Store cleaning info to show later as warning banner
                                 setTableStatus(prev => ({
@@ -1386,11 +1394,13 @@ const OrderPageInternal = () => {
                                 localStorage.removeItem(dineInTabKey);
                             }
                         }
-
+                        // Calculate table state
                         let state = 'available';
                         const occupiedSeats = tableData.current_pax || 0;
                         if (occupiedSeats >= tableData.max_capacity) state = 'full';
                         else if (occupiedSeats > 0) state = 'occupied';
+
+                        console.log('📊 [DEBUG] Table state calculated:', state);
 
                         setTableStatus({
                             ...tableData,
@@ -1399,18 +1409,25 @@ const OrderPageInternal = () => {
                             tableId: tableIdFromUrl,
                         });
 
+                        console.log('💾 [DEBUG] Table status set, now checking table state:', state);
                         if (state === 'full') {
+                            console.log('❌ [DEBUG] Table FULL - will NOT open modal');
                             setDineInState('full');
                         } else {
+                            console.log('✅ [DEBUG] Table not full, proceeding to persistent details check...');
                             // NEW: Check if we already have persistent details (e.g. from previous visit)
                             // If yes, we skip the modal so the user lands directly on the menu with the Welcome banner
                             const persistentDetails = getDineInDetails(restaurantId, tableIdFromUrl);
 
+                            console.log('🔍 [DEBUG] persistentDetails:', persistentDetails);
+                            console.log('🔍 [DEBUG] restaurantId:', restaurantId, 'tableId:', tableIdFromUrl);
+
                             if (persistentDetails) {
-                                console.log('[Dine-In] Persistent details found in handleDineInSetup - skipping modal');
+                                console.log('❌ [Dine-In] Persistent details found - SKIPPING MODAL');
                                 setDineInState('ready');
                                 setIsDineInModalOpen(false);
                             } else {
+                                console.log('✅ [Dine-In] NO persistent details - OPENING MODAL');
                                 setDineInState('ready_to_select'); // Allow starting new tab or joining
                                 setIsDineInModalOpen(true);
                             }
@@ -1433,8 +1450,12 @@ const OrderPageInternal = () => {
             }
         };
 
+        console.log('🔍 [DEBUG handleDineInSetup TRIGGER] isTokenValid:', isTokenValid, 'tableIdFromUrl:', tableIdFromUrl);
         if (isTokenValid) {
+            console.log('✅ [DEBUG] Calling handleDineInSetup...');
             handleDineInSetup();
+        } else {
+            console.log('❌ [DEBUG] NOT calling handleDineInSetup - isTokenValid is false');
         }
     }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
 
@@ -1459,7 +1480,8 @@ const OrderPageInternal = () => {
                 });
 
                 // Prevent modal from auto-opening
-                setDineInState('ready');
+                // setDineInState('ready'); // ❌ COMMENTED: This causes race condition with handleDineInSetup
+                // Modal control now handled by handleDineInSetup only
             } else {
                 console.log('[Dine-In] No saved details found - will show modal');
                 // Modal will open from handleDineInSetup
@@ -1717,7 +1739,9 @@ const OrderPageInternal = () => {
             if (activeToken) params.set('token', activeToken);
         }
 
-        const url = `/checkout?${params.toString()}`; // CHANGED: Skip cart, go directly to unified checkout
+        // Route to appropriate page based on delivery type
+        const targetPage = deliveryType === 'dine-in' ? '/cart' : '/checkout';
+        const url = `${targetPage}?${params.toString()}`;
         router.push(url);
     };
 

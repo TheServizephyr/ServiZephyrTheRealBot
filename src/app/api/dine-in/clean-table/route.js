@@ -156,7 +156,8 @@ async function handleCleanTable(req) {
                 totalCollected: tabData.paidAmount || 0,
                 integrityVerified: integrityValid,
                 tabId: tabId,
-                tableId: tabData.tableId
+                tableId: tabData.tableId,
+                pax_count: tabData.pax_count || 0 // ✅ Needed for table cleanup
             };
         });
 
@@ -183,6 +184,39 @@ async function handleCleanTable(req) {
             console.warn(`[Clean Table] ⚠️ Could not mark orders as cleaned:`, err.message);
             // Continue anyway - tab is already marked completed
         }
+
+        // ✅ CRITICAL: Update table document - decrement current_pax
+        if (result.tableId && restaurantId) {
+            try {
+                const tableRef = firestore.collection('restaurants').doc(restaurantId).collection('tables').doc(result.tableId);
+                const tableSnap = await tableRef.get();
+
+                if (tableSnap.exists) {
+                    const tableData = tableSnap.data();
+                    const paxToRemove = result.pax_count || 0;
+                    const newCurrentPax = Math.max(0, (tableData.current_pax || 0) - paxToRemove);
+
+                    const tableUpdate = {
+                        current_pax: newCurrentPax,
+                        updatedAt: FieldValue.serverTimestamp()
+                    };
+
+                    // If table is now empty, mark as Available
+                    if (newCurrentPax === 0) {
+                        tableUpdate.status = 'Available';
+                    }
+
+                    await tableRef.update(tableUpdate);
+                    console.log(`[Clean Table] ✅ Updated table ${result.tableId}: current_pax ${tableData.current_pax} → ${newCurrentPax}`);
+                } else {
+                    console.warn(`[Clean Table] ⚠️ Table ${result.tableId} not found`);
+                }
+            } catch (err) {
+                console.error(`[Clean Table] ❌ Failed to update table:`, err.message);
+                // Continue anyway - tab is already cleaned
+            }
+        }
+
 
         // Step 3: Double-check all orders are paid
         const allPaid = await areAllOrdersPaid(tabId);

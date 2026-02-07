@@ -1470,66 +1470,69 @@ const CheckoutPageInternal = () => {
                             </div>
                         </div>
 
-                        {/* TIP SELECTION GRID */}
-                        <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
-                            <div className="section-title flex items-center gap-2 mb-3">
-                                <i className="fas fa-heart text-primary"></i>
-                                <h3 className="font-bold text-sm uppercase text-muted-foreground">Tip your delivery hero</h3>
-                            </div>
-                            <div className="grid grid-cols-4 gap-2">
-                                {[10, 20, 30].map(amount => (
+
+                        {/* TIP SELECTION GRID - ONLY FOR DELIVERY */}
+                        {deliveryType === 'delivery' && (
+                            <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
+                                <div className="section-title flex items-center gap-2 mb-3">
+                                    <i className="fas fa-heart text-primary"></i>
+                                    <h3 className="font-bold text-sm uppercase text-muted-foreground">Tip your delivery hero</h3>
+                                </div>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[10, 20, 30].map(amount => (
+                                        <button
+                                            key={amount}
+                                            onClick={() => {
+                                                // Toggle tip: if already selected, remove it
+                                                if (selectedTipAmount === amount && !showCustomTipInput) {
+                                                    setSelectedTipAmount(0);
+                                                } else {
+                                                    setSelectedTipAmount(amount);
+                                                    setShowCustomTipInput(false);
+                                                }
+                                            }}
+                                            className={`border rounded-lg py-2 text-sm font-semibold transition-all ${selectedTipAmount === amount && !showCustomTipInput
+                                                ? 'border-primary bg-green-50 text-primary'
+                                                : 'border-border bg-white text-muted-foreground hover:border-primary/50'
+                                                }`}
+                                        >
+                                            ₹{amount}
+                                        </button>
+                                    ))}
                                     <button
-                                        key={amount}
                                         onClick={() => {
-                                            // Toggle tip: if already selected, remove it
-                                            if (selectedTipAmount === amount && !showCustomTipInput) {
-                                                setSelectedTipAmount(0);
-                                            } else {
-                                                setSelectedTipAmount(amount);
+                                            // Toggle custom tip input
+                                            if (showCustomTipInput) {
                                                 setShowCustomTipInput(false);
+                                                setSelectedTipAmount(0);
+                                                setCustomTipAmount('');
+                                            } else {
+                                                setShowCustomTipInput(true);
+                                                setSelectedTipAmount(0);
                                             }
                                         }}
-                                        className={`border rounded-lg py-2 text-sm font-semibold transition-all ${selectedTipAmount === amount && !showCustomTipInput
+                                        className={`border rounded-lg py-2 text-sm font-semibold transition-all ${showCustomTipInput
                                             ? 'border-primary bg-green-50 text-primary'
                                             : 'border-border bg-white text-muted-foreground hover:border-primary/50'
                                             }`}
                                     >
-                                        ₹{amount}
+                                        Custom
                                     </button>
-                                ))}
-                                <button
-                                    onClick={() => {
-                                        // Toggle custom tip input
-                                        if (showCustomTipInput) {
-                                            setShowCustomTipInput(false);
-                                            setSelectedTipAmount(0);
-                                            setCustomTipAmount('');
-                                        } else {
-                                            setShowCustomTipInput(true);
-                                            setSelectedTipAmount(0);
-                                        }
-                                    }}
-                                    className={`border rounded-lg py-2 text-sm font-semibold transition-all ${showCustomTipInput
-                                        ? 'border-primary bg-green-50 text-primary'
-                                        : 'border-border bg-white text-muted-foreground hover:border-primary/50'
-                                        }`}
-                                >
-                                    Custom
-                                </button>
+                                </div>
+                                {showCustomTipInput && (
+                                    <input
+                                        type="number"
+                                        placeholder="Enter custom tip amount"
+                                        className="w-full mt-3 border border-primary rounded-lg px-3 py-2 text-sm outline-none"
+                                        value={customTipAmount}
+                                        onChange={(e) => {
+                                            setCustomTipAmount(e.target.value);
+                                            setSelectedTipAmount(parseFloat(e.target.value) || 0);
+                                        }}
+                                    />
+                                )}
                             </div>
-                            {showCustomTipInput && (
-                                <input
-                                    type="number"
-                                    placeholder="Enter custom tip amount"
-                                    className="w-full mt-3 border border-primary rounded-lg px-3 py-2 text-sm outline-none"
-                                    value={customTipAmount}
-                                    onChange={(e) => {
-                                        setCustomTipAmount(e.target.value);
-                                        setSelectedTipAmount(parseFloat(e.target.value) || 0);
-                                    }}
-                                />
-                            )}
-                        </div>
+                        )}
 
                         {/* BILL SUMMARY - COLLAPSIBLE */}
                         <div className="bg-card p-4 rounded-lg border border-border mb-6">
