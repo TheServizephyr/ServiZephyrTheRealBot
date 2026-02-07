@@ -41,6 +41,30 @@ const TokenVerificationLock = ({ message }) => (
     </div>
 );
 
+// ✅ NEW: Helper for managing Back Button state for modals
+const BackButtonHandler = ({ onClose }) => {
+    useEffect(() => {
+        // Push state on mount
+        const state = { modalOpen: true, timestamp: Date.now() };
+        window.history.pushState(state, '', window.location.href);
+
+        const handlePopState = (event) => {
+            // If popstate fires, it means user pressed back (or forward)
+            // We should close the modal
+            onClose();
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+            // Parent handles history.back() on manual close
+        };
+    }, []);
+
+    return null;
+};
+
 
 
 
@@ -1799,56 +1823,74 @@ const CheckoutPageInternal = () => {
                 {/* ADDRESS SELECTOR DRAWER - TOP SLIDE IN */}
                 <AnimatePresence>
                     {isAddressSelectorOpen && (
-                        <motion.div
-                            initial={{ y: '-100%' }}
-                            animate={{ y: 0 }}
-                            exit={{ y: '-100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                            drag="y"
-                            dragConstraints={{ top: -500, bottom: 0 }}
-                            dragElastic={{ top: 0.2, bottom: 0.1 }}
-                            onDragEnd={(e, { offset, velocity }) => {
-                                if (offset.y < -100 || velocity.y < -200) {
-                                    setIsAddressSelectorOpen(false);
-                                }
-                            }}
-                            className="fixed inset-0 z-[100] bg-background flex flex-col"
-                            style={{ touchAction: 'none' }}
-                        >
-                            {/* Header */}
-                            <div className="p-4 border-b border-border flex items-center gap-4 bg-background z-10 shadow-sm">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setIsAddressSelectorOpen(false)}
-                                >
-                                    <ArrowLeft className="h-5 w-5" />
-                                </Button>
-                                <h2 className="text-lg font-bold">Select a Location</h2>
-                            </div>
+                        <>
+                            {/* Overlay */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => window.history.back()}
+                                className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm"
+                            />
 
-                            {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-4 bg-muted/10">
-                                <div className="max-w-3xl mx-auto space-y-4">
-                                    {/* Address Selection List Component */}
-                                    <AddressSelectionList
-                                        addresses={userAddresses}
-                                        selectedAddressId={selectedAddress?.id}
-                                        onSelect={(addr) => {
-                                            setSelectedAddress(addr);
-                                            setIsAddressSelectorOpen(false);
-                                        }}
-                                        onUseCurrentLocation={handleUseCurrentLocation}
-                                        onAddNewAddress={handleAddNewAddress}
-                                    // Checkout drawer typically doesn't allow deleting, but we can enable it if desired. 
-                                    // The original code didn't have delete buttons in the checkout drawer, only in location page.
-                                    // We will omit onDelete here to match previous behavior (or keeping it clean).
-                                    />
+                            <motion.div
+                                initial={{ y: '-100%' }}
+                                animate={{ y: 0 }}
+                                exit={{ y: '-100%' }}
+                                transition={{ type: 'spring', damping: 30, stiffness: 250 }}
+                                drag="y"
+                                dragConstraints={{ top: -1000, bottom: 0 }}
+                                dragElastic={{ top: 0.1, bottom: 0.05 }}
+                                onDragEnd={(e, { offset, velocity }) => {
+                                    if (offset.y < -100 || velocity.y < -500) {
+                                        window.history.back();
+                                    }
+                                }}
+                                className="fixed top-0 left-0 right-0 h-screen bg-background z-[100] flex flex-col overflow-hidden shadow-2xl"
+                            >
+                                {/* Header */}
+                                <div className="p-4 border-b border-border flex items-center justify-between bg-background z-10 shadow-sm shrink-0">
+                                    <h2 className="text-lg font-bold">Select a Location</h2>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => window.history.back()}
+                                    >
+                                        <ChevronUp size={24} />
+                                    </Button>
                                 </div>
-                            </div>
-                        </motion.div>
+
+                                {/* Content */}
+                                <div className="flex-1 overflow-y-auto p-4 bg-muted/5 overscroll-contain">
+                                    <div className="max-w-3xl mx-auto">
+                                        {/* Address Selection List Component */}
+                                        <AddressSelectionList
+                                            addresses={userAddresses}
+                                            selectedAddressId={selectedAddress?.id}
+                                            onSelect={(addr) => {
+                                                window.history.back();
+                                                setTimeout(() => setSelectedAddress(addr), 50);
+                                            }}
+                                            onUseCurrentLocation={handleUseCurrentLocation}
+                                            onAddNewAddress={handleAddNewAddress}
+                                        />
+
+                                        {/* Drag Handle Indicator - Pull Up to Close */}
+                                        <div className="w-full flex flex-col items-center justify-center py-8 opacity-40 space-y-2 pointer-events-none mt-4">
+                                            <ChevronUp size={16} className="animate-bounce" />
+                                            <span className="text-xs font-medium uppercase tracking-widest">Pull up to close</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </>
                     )}
                 </AnimatePresence>
+
+                {/* Back Button Handler Effect for Address Drawer */}
+                {isAddressSelectorOpen && (
+                    <BackButtonHandler onClose={() => setIsAddressSelectorOpen(false)} />
+                )}
 
                 {/* COUPON SELECTOR DRAWER - BOTTOM SLIDE IN */}
                 <AnimatePresence>
