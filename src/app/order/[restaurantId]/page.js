@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -44,6 +45,32 @@ const TokenVerificationLock = ({ message }) => (
         <p className="mt-4 text-sm text-muted-foreground">If you have an ongoing order, please use the original device. Otherwise, please see the host for assistance.</p>
     </div>
 );
+
+// ✅ NEW: Helper for managing Back Button state for modals
+const BackButtonHandler = ({ onClose }) => {
+    useEffect(() => {
+        // Push state on mount
+        const state = { modalOpen: true, timestamp: Date.now() };
+        window.history.pushState(state, '', window.location.href);
+
+        const handlePopState = (event) => {
+            // If popstate fires, it means user pressed back (or forward)
+            // We should close the modal
+            onClose();
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+            // We assume if we unmount without popstate (e.g. manual close), 
+            // the parent handles the history.back() or we don't care about the stale state 
+            // (actually we DO care, but manual check is harder here without ref)
+        };
+    }, []);
+
+    return null;
+};
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -280,25 +307,54 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
 const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle className="text-2xl">Browse Menu</DialogTitle>
-                    <DialogDescription>Quickly jump to any category.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
-                    {categories.map(category => (
-                        <button
-                            key={category.key}
-                            onClick={() => {
-                                onCategoryClick(category.key);
-                                onClose();
-                            }}
-                            className="p-4 rounded-lg text-left bg-card hover:bg-muted border border-border transition-colors"
-                        >
-                            <h4 className="font-semibold text-foreground">{category.title}</h4>
-                            <p className="text-sm text-muted-foreground">{category.count} items</p>
-                        </button>
-                    ))}
+            <DialogContent className="bg-background border-border text-foreground max-w-sm w-[90vw] rounded-2xl p-0 overflow-hidden shadow-xl gap-0">
+                <div className="p-5 border-b border-border/40 shrink-0 z-20 bg-background relative">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold">
+                            Browse Menu
+                        </DialogTitle>
+                        <DialogDescription className="text-sm text-muted-foreground">
+                            Quickly jump to any category.
+                        </DialogDescription>
+                    </DialogHeader>
+                </div>
+
+                {/* Wrapper with relative positioning for the blur effect */}
+                <div className="relative">
+                    {/* Scrollable List with Explicit Max-Height */}
+                    <div className="overflow-y-auto max-h-[60vh] py-2 px-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+                        {categories.map((category, index) => (
+                            <button
+                                key={category.key}
+                                onClick={() => {
+                                    onCategoryClick(category.key);
+                                    onClose();
+                                }}
+                                className="w-full px-6 py-4 flex items-center justify-between hover:bg-muted/50 transition-colors group border-b border-border/30 last:border-0"
+                            >
+                                <span className="text-base font-medium text-foreground group-hover:text-primary transition-colors text-left">
+                                    {category.title}
+                                </span>
+                                <span className="text-xs text-muted-foreground font-medium bg-muted px-2.5 py-1 rounded-full flex items-center justify-center min-w-[2rem]">
+                                    {category.count}
+                                </span>
+                            </button>
+                        ))}
+                        {/* Spacer for bottom blur */}
+                        <div className="h-12" />
+                    </div>
+
+                    {/* Bottom Blur/Gradient Fade */}
+                    <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none z-10" />
+                </div>
+
+                <div className="p-4 border-t border-border/40 bg-background shrink-0 z-20 relative shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+                    <Button
+                        onClick={onClose}
+                        className="w-full rounded-xl font-semibold bg-foreground text-background hover:bg-foreground/90 h-12"
+                    >
+                        <X className="w-4 h-4 mr-2" /> Close
+                    </Button>
                 </div>
             </DialogContent>
         </Dialog>
@@ -1908,7 +1964,7 @@ const OrderPageInternal = () => {
                 <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
                 <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
 
-                {/* ADDRESS SELECTION DRAWER */}
+                {/* ADDRESS SELECTION DRAWER - TOP SHEET */}
                 <AnimatePresence>
                     {isAddressSelectorOpen && (
                         <>
@@ -1917,54 +1973,73 @@ const OrderPageInternal = () => {
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                onClick={() => setIsAddressSelectorOpen(false)}
+                                onClick={() => window.history.back()}
                             />
                             <motion.div
-                                className="fixed top-0 right-0 h-full w-full sm:w-[400px] bg-background z-[70] shadow-2xl flex flex-col"
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
+                                className="fixed top-0 left-0 right-0 h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden"
+                                initial={{ y: '-100%' }}
+                                animate={{ y: 0 }}
+                                exit={{ y: '-100%' }}
                                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                                drag="y"
+                                dragConstraints={{ top: -1000, bottom: 0 }}
+                                dragElastic={{ top: 0.1, bottom: 0.05 }}
+                                onDragEnd={(e, { offset, velocity }) => {
+                                    if (offset.y < -100 || velocity.y < -500) {
+                                        window.history.back();
+                                    }
+                                }}
                             >
-                                <div className="p-4 border-b flex items-center justify-between">
+                                <div className="p-4 border-b flex items-center justify-between shrink-0 bg-background z-10">
                                     <h2 className="font-bold text-lg">Select Address</h2>
-                                    <Button variant="ghost" size="icon" onClick={() => setIsAddressSelectorOpen(false)}>
-                                        <X />
+                                    <Button variant="ghost" size="icon" onClick={() => window.history.back()}>
+                                        <ChevronUp />
                                     </Button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-4">
+                                <div className="flex-1 overflow-y-auto p-4 overscroll-contain">
                                     <AddressSelectionList
                                         addresses={userAddresses}
                                         selectedAddressId={customerLocation?.id}
-                                        onSelect={handleSelectNewAddress}
+                                        onSelect={(addr) => {
+                                            window.history.back(); // Close first (pops state)
+                                            // Small timeout to allow state pop before setting new address
+                                            setTimeout(() => handleSelectNewAddress(addr), 50);
+                                        }}
                                         loading={addressLoading}
                                         onUseCurrentLocation={() => {
-                                            // Navigate to Add Address with useCurrent flag
-                                            const search = window.location.search || '';
-                                            const separator = search ? '&' : '?';
-                                            router.push(`/add-address${search}${separator}useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                            router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                         onAddNewAddress={() => {
                                             router.push(`/add-address?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                         onDelete={async (id) => {
-                                            // Handle delete simply by reloading list logic
-                                            // Ideally, implement delete API call here
                                             if (confirm('Are you sure you want to delete this address?')) {
                                                 setAddressLoading(true);
                                                 try {
                                                     await fetch(`/api/user/addresses?id=${id}`, { method: 'DELETE' });
-                                                    // Refresh
-                                                    handleOpenAddressDrawer();
+                                                    // Refresh logic (simplified: close and reopen or just refetch if logic separated)
+                                                    // ideally we should have a refetch function, but for now we might need to close/open
+                                                    // or just manually remove from local state
+                                                    setUserAddresses(prev => prev.filter(a => a.id !== id));
                                                 } catch (e) { console.error(e) } finally { setAddressLoading(false); }
                                             }
                                         }}
                                     />
+                                    {/* Drag Handle Indicator - Pull Up to Close */}
+                                    <div className="w-full flex flex-col items-center justify-center py-6 opacity-50 space-y-2 pointer-events-none">
+                                        <ChevronUp size={16} className="animate-bounce" />
+                                        <span className="text-xs font-medium">Pull up to close</span>
+                                    </div>
                                 </div>
                             </motion.div>
                         </>
                     )}
                 </AnimatePresence>
+
+                {/* Back Button Handler Effect */}
+                {isAddressSelectorOpen && (
+                    <BackButtonHandler onClose={() => setIsAddressSelectorOpen(false)} />
+                )}
 
                 <header>
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
