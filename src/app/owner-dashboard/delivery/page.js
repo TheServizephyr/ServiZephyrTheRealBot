@@ -15,7 +15,7 @@ import { useSearchParams } from 'next/navigation';
 import { Switch } from '@/components/ui/switch';
 import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
-import { Trash2, Upload, QrCode } from 'lucide-react'; // Added icons
+import { Trash2, Upload, QrCode, AlertTriangle } from 'lucide-react'; // Added icons
 import imageCompression from 'browser-image-compression'; // ✅ Image Compression
 
 export const dynamic = 'force-dynamic';
@@ -441,12 +441,58 @@ const RiderQRManager = ({ rider, onUpdate }) => {
     );
 };
 
+const DeleteConfirmationModal = ({ isOpen, setIsOpen, onConfirm, riderName }) => {
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleConfirm = async () => {
+        setIsDeleting(true);
+        try {
+            await onConfirm();
+            setIsOpen(false);
+        } catch (error) {
+            // Error handling is managed by parent
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogContent className="bg-card border-border text-foreground sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-5 w-5" />
+                        Confirm Deletion
+                    </DialogTitle>
+                    <DialogDescription className="py-2">
+                        Are you sure you want to remove <span className="font-bold text-foreground">{riderName}</span> from your team?
+                        <br /><br />
+                        This action cannot be undone. The rider will lose access to the Rider App immediately.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="secondary" disabled={isDeleting}>Cancel</Button>
+                    </DialogClose>
+                    <Button variant="destructive" onClick={handleConfirm} disabled={isDeleting}>
+                        {isDeleting ? 'Removing...' : 'Remove Rider'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 export default function DeliveryPage() {
     const [data, setData] = useState({ boys: [], performance: {}, readyOrders: [], weeklyPerformance: [] });
     const [settings, setSettings] = useState({}); // Store settings for QR code
     const [loading, setLoading] = useState(true);
     const [isInviteModalOpen, setInviteModalOpen] = useState(false);
     const [isAssignModalOpen, setAssignModalOpen] = useState(false);
+    // Delete Modal State
+    const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [riderToDelete, setRiderToDelete] = useState(null);
+
     const [selectedBoy, setSelectedBoy] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
@@ -563,6 +609,18 @@ export default function DeliveryPage() {
         }
     };
 
+    // New Delete Handler
+    const handleDeleteRider = async () => {
+        if (!riderToDelete) return;
+        try {
+            await handleApiCall('DELETE', { id: riderToDelete.id });
+            await fetchData(true);
+            setInfoDialog({ isOpen: true, title: "Success", message: `${riderToDelete.name} has been removed successfully.` });
+        } catch (e) {
+            setInfoDialog({ isOpen: true, title: "Error", message: e.message });
+        }
+    };
+
     return (
         <div className="p-4 md:p-6 text-foreground bg-background min-h-screen">
             <InfoDialog
@@ -573,6 +631,13 @@ export default function DeliveryPage() {
             />
             <InviteRiderModal isOpen={isInviteModalOpen} setIsOpen={setInviteModalOpen} onInvite={handleInviteRider} />
             {selectedBoy && <AssignOrderModal isOpen={isAssignModalOpen} setIsOpen={setAssignModalOpen} onAssign={handleConfirmAssignment} boyName={selectedBoy.name} readyOrders={data.readyOrders} />}
+
+            <DeleteConfirmationModal
+                isOpen={isDeleteModalOpen}
+                setIsOpen={setDeleteModalOpen}
+                onConfirm={handleDeleteRider}
+                riderName={riderToDelete?.name}
+            />
 
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -654,15 +719,9 @@ export default function DeliveryPage() {
                                             size="sm"
                                             variant="ghost"
                                             className="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 w-8 p-0"
-                                            onClick={async () => {
-                                                if (confirm(`Remove ${boy.name} from your team?`)) {
-                                                    try {
-                                                        await handleApiCall('DELETE', { id: boy.id });
-                                                        fetchData(true);
-                                                    } catch (e) {
-                                                        alert(e.message);
-                                                    }
-                                                }
+                                            onClick={() => {
+                                                setRiderToDelete(boy);
+                                                setDeleteModalOpen(true);
                                             }}
                                         >
                                             <Trash2 size={14} />

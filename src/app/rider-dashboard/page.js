@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
+import { usePolling } from '@/lib/usePolling';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
@@ -338,7 +339,7 @@ const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading, sequenceNum
                 </button>
             )}
 
-            <p className="text-xs text-center text-muted-foreground mt-3 font-medium">Order #{order.id?.substring(0, 8)}</p>
+            <p className="text-xs text-center text-muted-foreground mt-3 font-medium">Order #{order.customerOrderId || order.id?.substring(0, 8)}</p>
         </motion.div>
     );
 };
@@ -384,58 +385,44 @@ export default function RiderDashboardPage() {
         return await response.json();
     }, [user]);
 
-    // ✅ STEP 8A: Intelligent GPS Tracking with Retry
-    useEffect(() => {
-        let locationInterval;
-        let retryTimeout;
+    // Use adaptive polling for high-performance location tracking
+    usePolling(async () => {
+        if (!user || (driverData?.status !== 'online' && driverData?.status !== 'on-delivery')) return;
 
-        const sendLocation = async () => {
-            try {
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 0
-                    });
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
                 });
+            });
 
-                const { latitude, longitude, speed, heading, accuracy } = position.coords;
+            const { latitude, longitude, speed, heading, accuracy } = position.coords;
+            const currentOrderId = activeOrders.length > 0 ? activeOrders[0].id : null;
 
-                // ✅ Get current active order (first in queue or currently delivering)
-                const currentOrderId = activeOrders.length > 0 ? activeOrders[0].id : null;
+            const locationRef = ref(rtdb, `rider_locations/${user.uid}`);
+            await set(locationRef, {
+                latitude,
+                longitude,
+                speed: speed || 0,
+                bearing: heading || 0,
+                accuracy: accuracy || 10,
+                timestamp: Date.now(),
+                orderId: currentOrderId,
+                isOnline: true
+            });
 
-                // ✅ WRITE TO RTDB (Cheap, fast, real-time!)
-                const locationRef = ref(rtdb, `rider_locations/${user.uid}`);
-                await set(locationRef, {
-                    latitude,
-                    longitude,
-                    speed: speed || 0,
-                    bearing: heading || 0,
-                    accuracy: accuracy || 10,
-                    timestamp: Date.now(),
-                    orderId: currentOrderId, // ✅ Multi-order support
-                    isOnline: true
-                });
+            console.log('[RTDB] Location updated', currentOrderId ? `(Order: ${currentOrderId.substring(0, 8)})` : '(No active order)');
 
-                console.log('[RTDB] Location updated', currentOrderId ? `(Order: ${currentOrderId.substring(0, 8)})` : '(No active order)');
-
-            } catch (err) {
-                console.warn('[GPS] Failed, retrying in 5s:', err.message);
-                // ✅ Fast retry on failure instead of waiting 20s
-                retryTimeout = setTimeout(sendLocation, 5000);
-            }
-        };
-
-        if (driverData?.status === 'online' || driverData?.status === 'on-delivery') {
-            sendLocation(); // Send immediately on mount
-            locationInterval = setInterval(sendLocation, 10000); // ✅ 10s with RTDB is cheap!
+        } catch (err) {
+            console.warn('[GPS] Failed:', err.message);
         }
-
-        return () => {
-            if (locationInterval) clearInterval(locationInterval);
-            if (retryTimeout) clearTimeout(retryTimeout);
-        };
-    }, [driverData?.status, handleApiCall, user, activeOrders]);
+    }, {
+        interval: 10000,
+        enabled: driverData?.status === 'online' || driverData?.status === 'on-delivery',
+        deps: [driverData?.status, user?.uid, activeOrders?.length]
+    });
 
     // ✅ SEPARATE CLEANUP: Remove RTDB location when going offline
     useEffect(() => {
@@ -489,29 +476,6 @@ export default function RiderDashboardPage() {
         };
     }, []);
 
-    // ✅ STEP 8D: Auto Resume Tracking on Foreground
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (!document.hidden && (driverData?.status === 'online' || driverData?.status === 'on-delivery')) {
-                console.log('[Visibility] App resumed, forcing location update');
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        handleApiCall('/api/rider/dashboard', 'PATCH', {
-                            location: {
-                                latitude: position.coords.latitude,
-                                longitude: position.coords.longitude
-                            }
-                        }).catch(err => console.error('[GPS Resume]', err));
-                    },
-                    (err) => console.error('[GPS Resume] Failed:', err),
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [driverData?.status, handleApiCall]);
 
     // 🔥 POLISH 2: GPS Permission Monitoring
     useEffect(() => {

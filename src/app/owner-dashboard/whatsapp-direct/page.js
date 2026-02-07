@@ -28,6 +28,7 @@ import { Calendar } from "@/components/ui/calendar";
 import CustomAudioPlayer from '@/components/CustomAudioPlayer';
 import { useToast } from "@/components/ui/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { usePolling } from '@/lib/usePolling';
 
 export const dynamic = 'force-dynamic';
 
@@ -714,72 +715,52 @@ function WhatsAppDirectPageContent() {
         }
     }, [handleApiCall]); // Stable reference with handleApiCall dependency
 
-    // Real-time listener for conversations
-    useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) {
-            setLoadingConversations(false);
-            return;
-        }
+    // Use adaptive polling for conversations
+    usePolling(() => fetchConversations(true), {
+        interval: 30000,
+        enabled: !!auth.currentUser,
+        deps: [fetchConversations]
+    });
 
-        // ALWAYS USE API - Cost optimization (no direct Firestore reads)
-        // Real-time listeners consume massive quota, API polling is cheaper
-        console.log('[WhatsApp] Using API polling for all users (cost optimization)');
-        fetchConversations();
-        const interval = setInterval(() => fetchConversations(true), 30000); // Poll every 30s
-        return () => {
-            console.log('[WhatsApp] Cleaning up polling interval');
-            clearInterval(interval);
-        };
-    }, [fetchConversations]);
-
-    // Real-time listener for messages in active conversation
+    // Clear messages when switching conversations
     useEffect(() => {
         if (!activeConversation) {
             setMessages([]);
-            return;
+        } else {
+            setMessages([]);
+            setLoadingMessages(true);
         }
+    }, [activeConversation?.id]);
 
-        console.log('[WhatsApp] Subscribing to real-time messages for:', activeConversation.id);
-        // FORCE RESET: Clear old messages immediately when the ID changes
-        setMessages([]);
-        setLoadingMessages(true);
+    // Use adaptive polling for messages in active conversation
+    usePolling(async () => {
+        if (!activeConversation) return;
 
-        const fetchAndMarkRead = async () => {
-            try {
-                const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: activeConversation.id });
-                const msgs = data.messages || [];
-                setMessages(msgs);
+        try {
+            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: activeConversation.id });
+            const msgs = data.messages || [];
+            if (msgs.length > 0) setMessages(msgs);
 
-                // Identify unread customer messages
-                const unreadMessageIds = msgs
-                    .filter(m => m.sender === 'customer' && m.status !== 'read')
-                    .map(m => m.id);
+            const unreadMessageIds = msgs
+                .filter(m => m.sender === 'customer' && m.status !== 'read')
+                .map(m => m.id);
 
-                if (unreadMessageIds.length > 0) {
-                    console.log('[WhatsApp] Marking messages as read:', unreadMessageIds);
-                    // Fire and forget - don't await to avoid blocking UI
-                    handleApiCall('/api/owner/whatsapp-direct/messages', 'PATCH', {
-                        conversationId: activeConversation.id,
-                        messageIds: unreadMessageIds
-                    }).catch(err => console.error("Failed to mark messages as read:", err));
-                }
-
-            } catch (error) {
-                console.error("Error fetching messages:", error);
-            } finally {
-                setLoadingMessages(false);
+            if (unreadMessageIds.length > 0) {
+                handleApiCall('/api/owner/whatsapp-direct/messages', 'PATCH', {
+                    conversationId: activeConversation.id,
+                    messageIds: unreadMessageIds
+                }).catch(err => console.error("Failed to mark messages as read:", err));
             }
-        };
-
-        fetchAndMarkRead();
-        const interval = setInterval(fetchAndMarkRead, 3000); // Poll every 3s
-
-        return () => {
-            console.log('[WhatsApp] Cleaning up messages polling interval');
-            clearInterval(interval);
-        };
-    }, [activeConversation, handleApiCall]);
+        } catch (error) {
+            console.error("Error fetching messages:", error);
+        } finally {
+            setLoadingMessages(false);
+        }
+    }, {
+        interval: 3000,
+        enabled: !!activeConversation,
+        deps: [activeConversation?.id]
+    });
 
     const handleConversationClick = (conversation) => {
         // INSTANT RESET: Clear everything to prevent old data leakage

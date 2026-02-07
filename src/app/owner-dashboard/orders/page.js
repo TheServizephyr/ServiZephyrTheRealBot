@@ -32,31 +32,31 @@ function OrdersPageContent() {
     if (!isManualRefresh) {
       setLoading(true);
     }
-    
-    try {
-        const user = auth.currentUser;
-        if(!user) throw new Error("Authentication required.");
-        const idToken = await user.getIdToken();
 
-        let url = new URL('/api/owner/orders', window.location.origin);
-        if (impersonatedOwnerId) {
-            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-        }
-        
-        const res = await fetch(url.toString(), {
-            headers: { 'Authorization': `Bearer ${idToken}` }
-        });
-        if(!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.message || 'Failed to fetch orders');
-        }
-        const data = await res.json();
-        setOrders(data.orders || []);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Authentication required.");
+      const idToken = await user.getIdToken();
+
+      let url = new URL('/api/owner/orders', window.location.origin);
+      if (impersonatedOwnerId) {
+        url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+      }
+
+      const res = await fetch(url.toString(), {
+        headers: { 'Authorization': `Bearer ${idToken}` }
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to fetch orders');
+      }
+      const data = await res.json();
+      setOrders(data.orders || []);
     } catch (error) {
-        console.error("Error fetching orders:", error);
-        setInfoDialog({ isOpen: true, title: "Error", message: `Could not load orders: ${error.message}` });
+      console.error("Error fetching orders:", error);
+      setInfoDialog({ isOpen: true, title: "Error", message: `Could not load orders: ${error.message}` });
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -68,12 +68,38 @@ function OrdersPageContent() {
     return () => unsubscribe();
   }, [impersonatedOwnerId]);
 
-  const handleStatusChange = (orderId, newStatus) => {
+  const handleStatusChange = async (orderId, newStatus) => {
+    // Optimistic Update
     setOrders(currentOrders =>
       currentOrders.map(order =>
         order.id === orderId ? { ...order, status: newStatus } : order
       )
     );
+
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Auth required");
+      const idToken = await user.getIdToken();
+
+      const res = await fetch('/api/owner/orders', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ orderId, newStatus })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Failed to update status");
+      }
+    } catch (err) {
+      console.error("Failed to update status on server:", err);
+      setInfoDialog({ isOpen: true, title: "Update Failed", message: err.message });
+      // Refresh to revert UI state
+      loadData(true);
+    }
   };
 
   return (
@@ -83,11 +109,11 @@ function OrdersPageContent() {
       animate="visible"
       className="space-y-8 p-4 md:p-6 bg-background text-foreground min-h-screen"
     >
-      <InfoDialog 
-          isOpen={infoDialog.isOpen} 
-          onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
-          title={infoDialog.title} 
-          message={infoDialog.message}
+      <InfoDialog
+        isOpen={infoDialog.isOpen}
+        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+        title={infoDialog.title}
+        message={infoDialog.message}
       />
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">
@@ -104,18 +130,18 @@ function OrdersPageContent() {
           <span className="ml-2">{loading ? "Refreshing..." : "Refresh Orders"}</span>
         </motion.button>
       </div>
-      
+
       <div className="grid grid-cols-1 gap-8">
-        <Table data={orders} onStatusChange={handleStatusChange} loading={loading}/>
+        <Table data={orders} onStatusChange={handleStatusChange} loading={loading} />
       </div>
     </motion.div>
   );
 }
 
 export default function OrdersPage() {
-    return (
-        <Suspense fallback={<div>Loading...</div>}>
-            <OrdersPageContent />
-        </Suspense>
-    )
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <OrdersPageContent />
+    </Suspense>
+  )
 }

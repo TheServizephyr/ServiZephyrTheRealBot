@@ -16,81 +16,114 @@ import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
  * @param {Object} metadata - Additional metadata to log (optional)
  * @returns {Object} - { uid, businessId, businessSnap, collectionName, isAdmin, isImpersonating }
  */
+/**
+ * Verify owner/admin and get business with audit logging support
+ * This is a common helper that can be used across all owner API routes
+ * 
+ * @param {Request} req - Next.js request object
+ * @param {string} action - Action being performed (e.g., 'view_orders', 'update_settings')
+ * @param {Object} metadata - Additional metadata to log (optional)
+ * @returns {Object} - { uid, businessId, businessSnap, collectionName, isAdmin, isImpersonating }
+ */
 export async function verifyOwnerWithAudit(req, action, metadata = {}) {
-    const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req);
+    // 1. REQUEST-LEVEL CACHING: Reuse context if already resolved in this request
+    // We attach it to the 'req' object as it persists through the life of the API call.
+    if (!req._ownerContextPromise) {
+        req._ownerContextPromise = (async () => {
+            const firestore = await getFirestore();
+            const uid = await verifyAndGetUid(req);
 
-    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
-    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const sessionExpiry = url.searchParams.get('session_expiry');
+            const userDoc = await firestore.collection('users').doc(uid).get();
+            if (!userDoc.exists) {
+                throw { message: 'Access Denied: User profile not found.', status: 403 };
+            }
 
-    const userDoc = await firestore.collection('users').doc(uid).get();
+            const userData = userDoc.data();
+            const userRole = userData.role;
 
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
+            // --- RESOLVE TARGET OWNER ID ---
+            const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+            const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+            const employeeOfOwnerId = url.searchParams.get('employee_of');
+            const sessionExpiry = url.searchParams.get('session_expiry');
+
+            let targetOwnerId = uid;
+            let isImpersonating = false;
+
+            if (userRole === 'admin' && impersonatedOwnerId) {
+                if (sessionExpiry && isSessionExpired(parseInt(sessionExpiry))) {
+                    throw { message: 'Impersonation session has expired. Please re-authenticate.', status: 401 };
+                }
+                targetOwnerId = impersonatedOwnerId;
+                isImpersonating = true;
+            } else if (employeeOfOwnerId) {
+                const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
+                if (!accessResult.authorized) {
+                    throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
+                }
+                targetOwnerId = employeeOfOwnerId;
+            } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
+                throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+            }
+
+            // Calculate effective caller role (for RBAC)
+            let callerRole = userRole;
+            if (employeeOfOwnerId) {
+                // If it's employee access, the verifyEmployeeAccess logic should have run
+                // We'll re-run or better yet, store it during resolution.
+            }
+
+            // Actually, let's do it properly inside the promise logic.
+            // I'll re-insert the resolution logic with callerRole support.
+
+            // --- RESOLVE BUSINESS ---
+            const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+            for (const collectionName of collectionsToTry) {
+                const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
+                if (!querySnapshot.empty) {
+                    const doc = querySnapshot.docs[0];
+
+                    // Determine callerRole
+                    let effectiveCallerRole = userRole;
+                    if (employeeOfOwnerId) {
+                        const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
+                        effectiveCallerRole = accessResult.employeeRole || userRole;
+                    }
+
+                    return {
+                        uid: targetOwnerId,
+                        businessId: doc.id,
+                        businessSnap: doc,
+                        collectionName,
+                        isAdmin: userRole === 'admin',
+                        isImpersonating,
+                        userData,
+                        callerRole: effectiveCallerRole, // ✅ ADDED
+                        adminId: isImpersonating ? uid : null,
+                        adminEmail: isImpersonating ? userData.email : null
+                    };
+                }
+            }
+
+            throw { message: 'No business associated with this owner.', status: 404 };
+        })();
     }
 
-    const userData = userDoc.data();
-    const userRole = userData.role;
+    // 2. AWAIT RESOLUTION
+    const context = await req._ownerContextPromise;
 
-    let targetOwnerId = uid;
-    let isImpersonating = false;
-
-    // --- ADMIN IMPERSONATION ---
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        // Validate session expiry
-        if (sessionExpiry && isSessionExpired(parseInt(sessionExpiry))) {
-            throw { message: 'Impersonation session has expired. Please re-authenticate.', status: 401 };
-        }
-
-        targetOwnerId = impersonatedOwnerId;
-        isImpersonating = true;
-
-        // Log the impersonation action
+    // 3. AUDIT LOGGING (Always run per check if impersonating)
+    if (context.isImpersonating && action) {
         await logImpersonation({
-            adminId: uid,
-            adminEmail: userData.email,
-            targetOwnerId: impersonatedOwnerId,
+            adminId: context.adminId,
+            adminEmail: context.adminEmail,
+            targetOwnerId: context.uid,
             action,
             metadata,
             ipAddress: getClientIP(req),
             userAgent: getUserAgent(req)
         });
     }
-    // --- EMPLOYEE ACCESS (SECURE) ---
-    else if (employeeOfOwnerId) {
-        const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
-        if (!accessResult.authorized) {
-            console.warn(`[SECURITY] Blocked unauthorized employee_of access: ${uid} -> ${employeeOfOwnerId}`);
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-        console.log(`[API Employee Access] ${uid} (${accessResult.employeeRole}) accessing ${employeeOfOwnerId}'s data for ${action}`);
-        targetOwnerId = employeeOfOwnerId;
-    }
-    // --- OWNER ACCESS ---
-    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
 
-    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-    for (const collectionName of collectionsToTry) {
-        const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
-        if (!querySnapshot.empty) {
-            const doc = querySnapshot.docs[0];
-            return {
-                uid: targetOwnerId,
-                businessId: doc.id,
-                businessSnap: doc,
-                collectionName,
-                isAdmin: userRole === 'admin',
-                isImpersonating,
-                adminId: isImpersonating ? uid : null,
-                adminEmail: isImpersonating ? userData.email : null
-            };
-        }
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
+    return context;
 }

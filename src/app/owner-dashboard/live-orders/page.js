@@ -23,6 +23,7 @@ import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import PrintOrderDialog from '@/components/PrintOrderDialog';
 import { useReactToPrint } from 'react-to-print';
+import { usePolling } from '@/lib/usePolling';
 
 
 export const dynamic = 'force-dynamic';
@@ -753,7 +754,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                             className="text-sm font-medium leading-tight hover:text-primary cursor-pointer hover:underline decoration-dashed underline-offset-2"
                             onClick={() => onDetailClick(order.id, order.customerId)}
                         >
-                            {order.customer || 'Guest'} <span className="text-muted-foreground">• {order.customerPhone}</span>
+                            {order.customerName || order.customer || 'Guest'} <span className="text-muted-foreground">• {order.customerPhone}</span>
                         </div>
                     </div>
                 </div>
@@ -947,25 +948,19 @@ export default function LiveOrdersPage() {
     };
 
 
+    // Use adaptive polling for impersonation/employee access
+    usePolling(() => fetchInitialData(true), {
+        interval: 60000,
+        enabled: !!(impersonatedOwnerId || employeeOfOwnerId),
+        deps: [impersonatedOwnerId, employeeOfOwnerId]
+    });
+
     // Real-time listener for orders (replaces 30-second polling)
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) {
             setLoading(false);
             return;
-        }
-
-        // For impersonation or employee access, use API polling (can't use Firestore directly due to permission rules)
-        if (impersonatedOwnerId || employeeOfOwnerId) {
-            console.log('[LiveOrders] Using API polling for impersonation/employee access');
-            fetchInitialData();
-            // Optimized Polling: 60s + Visibility Check
-            const interval = setInterval(() => {
-                if (document.visibilityState === 'visible') {
-                    fetchInitialData(true);
-                }
-            }, 60000);
-            return () => clearInterval(interval);
         }
 
         // ✅ For owner's own dashboard - use REAL-TIME Firestore listener
@@ -1089,27 +1084,6 @@ export default function LiveOrdersPage() {
         };
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
-    // 🔧 FIX: Page Visibility API
-    // Only refresh for impersonation/employee modes (polling).
-    // For Owner, the Firestore listener (onSnapshot) handles reconnection automatically.
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                if (impersonatedOwnerId || employeeOfOwnerId) {
-                    console.log('[LiveOrders] Tab visible (Impersonation) - refreshing data...');
-                    fetchInitialData(true);
-                } else {
-                    console.log('[LiveOrders] Tab visible (Owner) - Firestore listener handles updates.');
-                }
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
         const user = auth.currentUser;

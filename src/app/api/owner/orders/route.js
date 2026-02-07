@@ -7,57 +7,7 @@ import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import Razorpay from 'razorpay';
 
 
-async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const uid = await verifyAndGetUid(req); // Use central helper
-
-    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-
-    let targetOwnerId = uid;
-
-    // Admin impersonation
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing orders for owner ${impersonatedOwnerId}.`);
-        targetOwnerId = impersonatedOwnerId;
-    }
-    // Employee access
-    else if (employeeOfOwnerId) {
-        const linkedOutlets = userData.linkedOutlets || [];
-        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
-
-        if (!hasAccess) {
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-
-        console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s orders`);
-        targetOwnerId = employeeOfOwnerId;
-    }
-    // Owner access
-    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
-
-    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-    for (const collectionName of collectionsToTry) {
-        const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
-        if (!query.empty) {
-            const doc = query.docs[0];
-            return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, isAdmin: userRole === 'admin' };
-        }
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
+// (Redundant verifyOwnerAndGetBusiness removed in favor of verifyOwnerWithAudit)
 
 
 export async function GET(req) {
@@ -118,42 +68,30 @@ export async function GET(req) {
         if (customerId) {
             console.log(`[API] Fetching orders for customerId: ${customerId} (restaurantId: ${businessId})`);
 
-            // Try querying by customerId first
-            // NOTE: Removed .orderBy and .limit to avoid needing a composite index (FAILED_PRECONDITION)
-            // We fetch all orders for this customer and sort in memory.
-            let customerQuery = ordersRef
+            // ✅ FIXED: Using indexed query with .orderBy and .limit
+            const customerQuery = ordersRef
                 .where('restaurantId', '==', businessId)
-                .where('customerId', '==', customerId);
+                .where('customerId', '==', customerId)
+                .orderBy('orderDate', 'desc')
+                .limit(20);
 
             let snap = await customerQuery.get();
 
             // Fallback: If no orders found, try querying by 'userId' (common legacy field name)
             if (snap.empty) {
                 console.log(`[API] No orders found with customerId, trying userId...`);
-                customerQuery = ordersRef
+                const userIdQuery = ordersRef
                     .where('restaurantId', '==', businessId)
-                    .where('userId', '==', customerId);
-                snap = await customerQuery.get();
+                    .where('userId', '==', customerId)
+                    .orderBy('orderDate', 'desc')
+                    .limit(20);
+                snap = await userIdQuery.get();
             }
 
-            console.log(`[API] Found ${snap.size} orders for customer.`);
+            console.log(`[API] Found ${snap.size} orders for customer via indexed query.`);
 
-            // Sort and limit in memory
-            let docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            // Manual Sort: Descending by orderDate
-            docs.sort((a, b) => {
-                const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
-                const dateB = b.orderDate?.toDate ? b.orderDate.toDate() : new Date(b.orderDate);
-                return dateB - dateA;
-            });
-
-            // Manual Limit: Top 20
-            docs = docs.slice(0, 20);
-
-            const orders = docs.map(data => {
-                // ... (reuse the mapping logic locally or refactor)
-                // For brevity, we'll map here and return immediately to avoid variable scope issues with the main 'orders' variable
+            const orders = snap.docs.map(doc => {
+                const data = doc.data();
                 const statusHistory = (data.statusHistory || []).map(h => ({
                     ...h,
                     timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
@@ -163,7 +101,7 @@ export async function GET(req) {
                     qty: item.quantity || item.qty,
                 }));
                 return {
-                    id: data.id,
+                    id: doc.id,
                     ...data,
                     items: itemsWithQty,
                     orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
@@ -179,9 +117,18 @@ export async function GET(req) {
             // Ensure dates are valid Date objects
             const start = new Date(startDate);
             const end = new Date(endDate);
-            query = query.where('orderDate', '>=', start).where('orderDate', '<=', end).orderBy('orderDate', 'desc');
+            // ✅ SCIPING: Fixed to include restaurantId
+            query = query
+                .where('restaurantId', '==', businessId)
+                .where('orderDate', '>=', start)
+                .where('orderDate', '<=', end)
+                .orderBy('orderDate', 'desc');
         } else {
-            query = query.orderBy('orderDate', 'desc').limit(50);
+            // ✅ SCIPING: Fixed to include restaurantId
+            query = query
+                .where('restaurantId', '==', businessId)
+                .orderBy('orderDate', 'desc')
+                .limit(50);
         }
 
         const ordersSnap = await query.get();
@@ -221,405 +168,230 @@ export async function GET(req) {
 
 
 export async function PATCH(req) {
-    console.log('[API][PATCH /orders] Request received.');
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
+        const { businessId, businessSnap, uid, callerRole } = await verifyOwnerWithAudit(req, 'update_orders_patch');
+        const userRole = callerRole;
 
-        const body = await req.json();
-        console.log(`[API][PATCH /orders] Body:`, body);
+        const {
+            idsToUpdate = [],
+            orderIds = [],
+            orderId,
+            newStatus,
+            deliveryBoyId,
+            rejectionReason,
+            paymentStatus,
+            paymentMethod,
+            isCashRefund,
+            cashRefundOrderIds = [],
+            shouldRefund
+        } = await req.json();
 
-        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason, action, shouldRefund, paymentStatus, paymentMethod } = body;
+        // Support multiple Order ID field names for backward compatibility
+        let finalIdsToUpdate = [...idsToUpdate];
+        if (finalIdsToUpdate.length === 0 && orderIds.length > 0) finalIdsToUpdate = [...orderIds];
+        if (finalIdsToUpdate.length === 0 && orderId) finalIdsToUpdate = [orderId];
 
-        console.log(`[API][PATCH /orders] newStatus received:`, newStatus);
-        console.log(`[API][PATCH /orders] rejectionReason:`, rejectionReason);
+        // 1. Gather all unique IDs to pre-fetch in parallel
+        const allTargetIds = [...new Set([...finalIdsToUpdate, ...cashRefundOrderIds])];
+        if (allTargetIds.length === 0) {
+            return NextResponse.json({ message: 'No Order IDs provided.' }, { status: 400 });
+        }
 
-        console.log(`[API][PATCH /orders] 🔍 Starting owner verification...`);
-        const { businessId, businessSnap } = await verifyOwnerWithAudit(
-            req,
-            'update_order_status',
-            { orderId, orderIds, newStatus, rejectionReason, action, paymentStatus }
+        console.log(`[API][PATCH /orders] Pre-fetching ${allTargetIds.length} orders in parallel for business ${businessId}...`);
+        const orderSnaps = await Promise.all(
+            allTargetIds.map(id => firestore.collection('orders').doc(id).get())
         );
-        console.log(`[API][PATCH /orders] ✅ Owner verified. businessId:`, businessId);
+        const orderMap = new Map(orderSnaps.filter(s => s.exists).map(s => [s.id, s]));
 
-        const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
+        const batch = firestore.batch();
+        const sideEffects = [];
+        const businessData = businessSnap.data();
 
-        // Handle markCashRefunded action
-        if (action === 'markCashRefunded') {
-            if (idsToUpdate.length === 0) {
-                return NextResponse.json({ message: 'Order ID(s) required.' }, { status: 400 });
-            }
+        // --- 2. Handle Cash Refund ---
+        if (isCashRefund && cashRefundOrderIds.length > 0) {
+            for (const id of cashRefundOrderIds) {
+                const orderSnap = orderMap.get(id);
+                if (!orderSnap || orderSnap.data().restaurantId !== businessId) continue;
 
-            const batch = firestore.batch();
-            for (const id of idsToUpdate) {
-                const orderRef = firestore.collection('orders').doc(id);
-                const orderDoc = await orderRef.get();
-                if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
-                    console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
-                    continue;
-                }
-
-                batch.update(orderRef, {
+                batch.update(orderSnap.ref, {
                     cashRefunded: true,
                     cashRefundedAt: FieldValue.serverTimestamp()
                 });
             }
-
-            await batch.commit();
-            return NextResponse.json({ message: 'Cash refund marked successfully.' });
         }
 
-        // Handle payment status update (for dine-in mark as paid)
-        if (paymentStatus && idsToUpdate.length > 0) {
-            const batch = firestore.batch();
-            for (const id of idsToUpdate) {
-                const orderRef = firestore.collection('orders').doc(id);
-                const orderDoc = await orderRef.get();
-                if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
-                    console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
-                    continue;
-                }
+        // --- 3. Handle Payment Status Update ---
+        if (paymentStatus && finalIdsToUpdate.length > 0) {
+            for (const id of finalIdsToUpdate) {
+                const orderSnap = orderMap.get(id);
+                if (!orderSnap || orderSnap.data().restaurantId !== businessId) continue;
 
                 const updateData = { paymentStatus };
-                if (paymentMethod) {
-                    updateData.paymentMethod = paymentMethod;
-                }
+                if (paymentMethod) updateData.paymentMethod = paymentMethod;
+                batch.update(orderSnap.ref, updateData);
+            }
+        }
 
-                batch.update(orderRef, updateData);
+        // --- 4. Handle Order Status Update (Main Flow) ---
+        if (newStatus && finalIdsToUpdate.length > 0) {
+            const validStatuses = [
+                "pending", "confirmed", "preparing", "dispatched",
+                "reached_restaurant", "picked_up", "on_the_way",
+                "delivery_attempted", "failed_delivery", "returned_to_restaurant",
+                "delivered", "rejected", "ready_for_pickup", "Ready"
+            ];
+            if (!validStatuses.includes(newStatus)) {
+                return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
             }
 
-            await batch.commit();
-            return NextResponse.json({ message: 'Payment status updated successfully.' });
-        }
-
-        if (idsToUpdate.length === 0 || !newStatus) {
-            return NextResponse.json({ message: 'Order ID(s) and new status are required.' }, { status: 400 });
-        }
-
-        const validStatuses = [
-            "pending", "confirmed", "preparing", "dispatched",
-            "reached_restaurant", "picked_up", "on_the_way", // ✅ STEP 4: New pickup flow statuses
-            "delivery_attempted", "failed_delivery", "returned_to_restaurant", // ✅ STEP 5: Failure flow
-            "delivered", "rejected", "ready_for_pickup", "Ready"
-        ];
-        if (!validStatuses.includes(newStatus)) {
-            return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
-        }
-
-        const batch = firestore.batch();
-        let deliveryBoyData = null;
-
-        // ✅ FIX: Allow checks for 'ready_for_pickup' (New Flow) or 'dispatched' (Old Flow)
-        if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && deliveryBoyId) {
-            console.log(`[API][PATCH /orders] Dispatch logic started for rider ${deliveryBoyId}.`);
-            const businessCollectionName = businessSnap.data().businessType === 'shop' ? 'shops' : (businessSnap.data().businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
-            const deliveryBoyRef = firestore.collection(businessCollectionName).doc(businessId).collection('deliveryBoys').doc(deliveryBoyId);
-
-            const deliveryBoySnap = await deliveryBoyRef.get();
-            if (deliveryBoySnap.exists) {
-                deliveryBoyData = deliveryBoySnap.data();
-
-                // ✅ STEP 6B: Check rider capacity before assignment
-                const activeOrdersQuery = firestore.collection('orders')
+            // Optional Rider Capacity Check (Only if assigning rider)
+            if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && deliveryBoyId) {
+                const activeOrdersSnap = await firestore.collection('orders')
                     .where('deliveryBoyId', '==', deliveryBoyId)
-                    .where('status', 'in', [
-                        'ready_for_pickup', 'dispatched', 'reached_restaurant', 'picked_up', 'on_the_way', 'delivery_attempted'
-                    ]);
+                    .where('status', 'in', ['ready_for_pickup', 'dispatched', 'reached_restaurant', 'picked_up', 'on_the_way', 'delivery_attempted'])
+                    .get();
 
-                const activeOrdersSnap = await activeOrdersQuery.get();
-                const activeCount = activeOrdersSnap.size;
-
-                const MAX_ACTIVE_ORDERS = 5; // Hard safety limit
-
-                if (activeCount >= MAX_ACTIVE_ORDERS) {
-                    console.warn(`[API][PATCH /orders] Rider ${deliveryBoyId} already has ${activeCount} active orders (max: ${MAX_ACTIVE_ORDERS}).`);
+                if (activeOrdersSnap.size >= 5) {
                     return NextResponse.json({
-                        message: `Rider already has ${activeCount} active deliveries (maximum: ${MAX_ACTIVE_ORDERS})`,
-                        suggestion: 'Please assign another rider or wait for current deliveries to complete',
-                        riderActiveOrders: activeCount
+                        message: `Rider already has ${activeOrdersSnap.size} active deliveries (max: 5)`,
+                        suggestion: 'Please assign another rider.'
                     }, { status: 400 });
                 }
-
-                console.log(`[API][PATCH /orders] Rider ${deliveryBoyId} capacity check passed (${activeCount}/${MAX_ACTIVE_ORDERS} orders).`);
-
-                // ✅ REMOVED: Status update in subcollection
-                // Rider status is now ONLY managed in drivers/{uid}.status
-                // This prevents dual-storage sync bugs
             }
-        }
 
-        for (const id of idsToUpdate) {
-            const orderRef = firestore.collection('orders').doc(id);
-            const orderDoc = await orderRef.get();
-            if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
-                console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
-                continue; // Skip this order
-            }
-            const orderData = orderDoc.data();
+            for (const id of finalIdsToUpdate) {
+                const orderSnap = orderMap.get(id);
+                if (!orderSnap || orderSnap.data().restaurantId !== businessId) continue;
 
-            const updateData = {
-                status: newStatus,
-                statusHistory: FieldValue.arrayUnion({
+                const orderData = orderSnap.data();
+                const updateData = {
                     status: newStatus,
-                    timestamp: new Date()
-                })
-            };
-
-            if (newStatus === 'rejected' && rejectionReason) {
-                updateData.rejectionReason = rejectionReason;
-            }
-            if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && deliveryBoyId) {
-                updateData.deliveryBoyId = deliveryBoyId;
-            }
-
-            if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
-                const newTabId = `tab_${Date.now()}`;
-                updateData.dineInTabId = newTabId;
-            }
-
-            batch.update(orderRef, updateData);
-
-            // Auto-refund for cancelled/rejected orders with online payment
-            if ((newStatus === 'rejected' || newStatus === 'cancelled') && orderData.paymentDetails) {
-                const paymentDetailsArray = Array.isArray(orderData.paymentDetails) ? orderData.paymentDetails : [orderData.paymentDetails].filter(Boolean);
-                const razorpayPayment = paymentDetailsArray.find(p => p.method === 'razorpay' && p.razorpay_payment_id);
-
-                if (razorpayPayment && !orderData.refundStatus) {
-                    // Check if vendor chose to refund (default true for backward compatibility)
-                    const shouldProcessRefund = shouldRefund !== undefined ? shouldRefund : true;
-
-                    if (shouldProcessRefund) {
-                        console.log(`[API][PATCH /orders] Auto-refunding order ${id} due to ${newStatus} status`);
-
-                        try {
-                            // Initialize Razorpay
-                            const razorpay = new Razorpay({
-                                key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                                key_secret: process.env.RAZORPAY_KEY_SECRET,
-                            });
-
-                            // Process full refund
-                            const refundAmount = orderData.totalAmount || orderData.grandTotal || 0;
-                            const paymentId = razorpayPayment.razorpay_payment_id;
-
-                            const refundData = await razorpay.payments.refund(paymentId, {
-                                amount: Math.round(refundAmount * 100), // Convert to paise
-                                speed: 'normal',
-                                notes: {
-                                    orderId: id,
-                                    reason: `Order ${newStatus} by vendor`,
-                                    refundType: 'full',
-                                    autoRefund: true
-                                }
-                            });
-
-                            console.log(`[API][PATCH /orders] Auto-refund successful: ${refundData.id}`);
-
-                            // Update order with refund info
-                            batch.update(orderRef, {
-                                refundStatus: 'completed',
-                                refundAmount: refundAmount,
-                                refundReason: `Order ${newStatus} by vendor`,
-                                refundDate: FieldValue.serverTimestamp(),
-                                refundId: refundData.id,
-                                autoRefunded: true
-                            });
-
-                            // Create refund record
-                            const refundRecord = {
-                                refundId: refundData.id,
-                                orderId: id,
-                                paymentId,
-                                amount: refundAmount,
-                                currency: 'INR',
-                                status: refundData.status,
-                                refundType: 'full',
-                                reason: `Order ${newStatus} by vendor`,
-                                notes: 'Auto-refund on cancellation',
-                                vendorId: businessId,
-                                customerId: orderData.customerId || orderData.userId,
-                                autoRefund: true,
-                                createdAt: FieldValue.serverTimestamp(),
-                                processedAt: refundData.created_at ? new Date(refundData.created_at * 1000) : FieldValue.serverTimestamp()
-                            };
-
-                            await firestore.collection('refunds').doc(refundData.id).set(refundRecord);
-                        } catch (refundError) {
-                            console.error(`[API][PATCH /orders] Auto-refund failed for order ${id}:`, refundError);
-                            // Don't fail the entire order update if refund fails
-                            // Vendor can manually refund later
-                        }
-                    } else {
-                        // Vendor chose NOT to refund
-                        console.log(`[API][PATCH /orders] No refund for order ${id} - vendor decision`);
-                        batch.update(orderRef, {
-                            refundStatus: 'not_applicable',
-                            noRefundReason: 'vendor_decision',
-                            noRefundDate: FieldValue.serverTimestamp()
-                        });
-                    }
-                }
-            }
-
-            const businessData = businessSnap.data();
-
-            if (orderData.customerPhone) {
-                console.log(`[API LOG] Preparing to send notification for status '${newStatus}' for order ${id}.`);
-                const notificationPayload = {
-                    customerPhone: orderData.customerPhone,
-                    botPhoneNumberId: businessData.botPhoneNumberId,
-                    customerName: orderData.customerName,
-                    orderId: id,
-                    customerOrderId: orderData.customerOrderId, // ✅ Pass Customer-facing ID
-                    restaurantName: businessData.name,
-                    status: newStatus,
-                    deliveryBoy: deliveryBoyData,
-                    businessType: businessData.businessType || 'restaurant',
-                    // ✅ NEW: Pass deliveryType to allow conditional logic (e.g. suppressing 'ready_for_pickup' for delivery)
-                    deliveryType: orderData.deliveryType,
-                    trackingToken: orderData.trackingToken, // ✅ Pass token for secure URL
-                    amount: orderData.totalAmount || 0,
-                    orderDate: orderData.orderDate // Pass raw Firestore timestamp or ISO string
+                    statusHistory: FieldValue.arrayUnion({
+                        status: newStatus,
+                        timestamp: new Date()
+                    })
                 };
 
-                sendOrderStatusUpdateToCustomer(notificationPayload).catch(e =>
-                    console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${id}. Error:`, e.message)
-                );
-            } else {
-                console.warn(`[API LOG] No customer phone for order ${id}, skipping notification.`);
+                if (newStatus === 'rejected' && rejectionReason) updateData.rejectionReason = rejectionReason;
+                if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && deliveryBoyId) updateData.deliveryBoyId = deliveryBoyId;
+
+                if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
+                    updateData.dineInTabId = `tab_${Date.now()}`;
+                }
+
+                batch.update(orderSnap.ref, updateData);
+
+                // Queue Side Effects (Notifications, Refunds, RTDB, Cache)
+                sideEffects.push((async () => {
+                    try {
+                        const effects = [];
+
+                        // A. Notifications
+                        if (orderData.customerPhone) {
+                            effects.push(sendOrderStatusUpdateToCustomer({
+                                customerPhone: orderData.customerPhone,
+                                botPhoneNumberId: businessData.botPhoneNumberId,
+                                customerName: orderData.customerName,
+                                orderId: id,
+                                customerOrderId: orderData.customerOrderId,
+                                restaurantName: businessData.name,
+                                status: newStatus,
+                                businessType: businessData.businessType || 'restaurant',
+                                deliveryType: orderData.deliveryType,
+                                trackingToken: orderData.trackingToken,
+                                amount: orderData.totalAmount || 0,
+                                orderDate: orderData.orderDate
+                            }));
+                        }
+
+                        // B. Auto-Close Restaurant on Rejection
+                        if (newStatus === 'rejected') {
+                            const bizCollection = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
+                            effects.push(firestore.collection(bizCollection).doc(businessId).update({ isOpen: false }));
+                            effects.push(sendRestaurantStatusChangeNotification({
+                                ownerPhone: businessData.ownerPhone,
+                                botPhoneNumberId: businessData.botPhoneNumberId,
+                                newStatus: false,
+                                restaurantId: businessId,
+                            }));
+                        }
+
+                        // C. Handle Razorpay Auto-Refund
+                        if ((newStatus === 'rejected' || newStatus === 'cancelled') && orderData.paymentDetails) {
+                            const paymentDetailsArray = Array.isArray(orderData.paymentDetails) ? orderData.paymentDetails : [orderData.paymentDetails].filter(Boolean);
+                            const rzp = paymentDetailsArray.find(p => p.method === 'razorpay' && p.razorpay_payment_id);
+
+                            if (rzp && !orderData.refundStatus && (shouldRefund !== false)) {
+                                const razorpay = new Razorpay({
+                                    key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                                    key_secret: process.env.RAZORPAY_KEY_SECRET,
+                                });
+
+                                const refund = await razorpay.payments.refund(rzp.razorpay_payment_id, {
+                                    amount: Math.round((orderData.totalAmount || 0) * 100),
+                                    notes: { orderId: id, reason: `Vendor ${newStatus} Action` }
+                                });
+
+                                effects.push(orderSnap.ref.update({
+                                    refundStatus: 'completed',
+                                    refundId: refund.id,
+                                    refundDate: FieldValue.serverTimestamp()
+                                }));
+                                effects.push(firestore.collection('refunds').doc(refund.id).set({
+                                    orderId: id,
+                                    amount: orderData.totalAmount,
+                                    status: refund.status,
+                                    createdAt: FieldValue.serverTimestamp(),
+                                    vendorId: businessId
+                                }));
+                            }
+                        }
+
+                        // D. RTDB Sync
+                        const database = await getDatabase();
+                        const isDelivery = orderData.deliveryType === 'delivery' || orderData.deliveryType === 'takeaway';
+                        const trackingPath = isDelivery ? `delivery_tracking/${id}` : `dine_in_tracking/${id}`;
+                        const isFinalized = ['delivered', 'rejected', 'cancelled', 'served', 'paid'].includes(newStatus);
+
+                        if (isFinalized) {
+                            effects.push(database.ref(trackingPath).remove());
+                        } else {
+                            effects.push(database.ref(trackingPath).set({
+                                status: newStatus,
+                                updatedAt: Date.now(),
+                                token: orderData.trackingToken || 'temp_token'
+                            }));
+                        }
+
+                        // E. Cache Invalidation (KV)
+                        const { kv } = await import('@vercel/kv');
+                        if (process.env.KV_REST_API_URL) {
+                            effects.push(kv.del(`order_status:${id}`));
+                        }
+
+                        await Promise.allSettled(effects);
+                    } catch (err) {
+                        console.error(`[SideEffect Error] Order ${id}:`, err);
+                    }
+                })());
             }
         }
 
+        // --- 5. Commit Batch & Fire Side Effects ---
+        console.log(`[API][PATCH /orders] Committing batch for ${allTargetIds.length} operations...`);
         await batch.commit();
-        console.log(`[API][PATCH /orders] Batch update completed successfully for ${idsToUpdate.length} orders.`);
 
-        // ✅ AUTO-CLOSE RESTAURANT ON ORDER REJECTION
-        console.log(`[API][PATCH /orders] 🔍 Checking if should auto-close... newStatus='${newStatus}'`);
-        if (newStatus === 'rejected') {
-            console.log(`[API][PATCH /orders] 🚨 TRIGGERED: Auto-closing restaurant due to order rejection`);
-            try {
-                const businessData = businessSnap.data();
-                console.log(`[API][PATCH /orders] businessData.businessType:`, businessData.businessType);
-                console.log(`[API][PATCH /orders] businessData.isOpen (current):`, businessData.isOpen);
+        // Parallel execution of side effects in background
+        Promise.allSettled(sideEffects).then(results => {
+            const failed = results.filter(r => r.status === 'rejected');
+            if (failed.length > 0) console.error(`[API][PATCH /orders] ${failed.length} side effect chains had errors.`);
+        });
 
-                const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
-                console.log(`[API][PATCH /orders] Determined collection:`, businessCollectionName);
-
-                const businessRef = firestore.collection(businessCollectionName).doc(businessId);
-                console.log(`[API][PATCH /orders] Business ref path:`, businessRef.path);
-
-                // Update restaurant isOpen status to false
-                console.log(`[API][PATCH /orders] 📝 Updating isOpen to false...`);
-                await businessRef.update({ isOpen: false });
-                console.log(`[API][PATCH /orders] ✅ Database updated successfully`);
-
-                // Send notification to owner about the status change
-                console.log(`[API][PATCH /orders] 📲 Sending notification to owner...`);
-                sendRestaurantStatusChangeNotification({
-                    ownerPhone: businessData.ownerPhone,
-                    botPhoneNumberId: businessData.botPhoneNumberId,
-                    newStatus: false, // Restaurant is now closed
-                    restaurantId: businessId,
-                }).catch(e => console.error("[API][PATCH /orders] Failed to send restaurant closure notification:", e));
-
-                console.log(`[API][PATCH /orders] ✅ Restaurant auto-closed successfully`);
-            } catch (closeError) {
-                console.error(`[API][PATCH /orders] ❌ Failed to auto-close restaurant:`, closeError);
-                console.error(`[API][PATCH /orders] Error stack:`, closeError.stack);
-                // Non-fatal - order rejection already succeeded
-            }
-        } else {
-            console.log(`[API][PATCH /orders] ⏭️ Skipping auto-close (status is not 'rejected')`);
-        }
-
-        // ✅ RTDB Write for Real-time Tracking (NEW!)
-        console.log('[RTDB] Starting RTDB write for', idsToUpdate.length, 'orders');
-        try {
-            const database = await getDatabase();
-            console.log('[RTDB] Database instance obtained successfully');
-
-            for (const id of idsToUpdate) {
-                console.log(`[RTDB] Processing order ${id}`);
-                const orderRef = firestore.collection('orders').doc(id);
-                const orderSnap = await orderRef.get();
-                const orderData = orderSnap.data();
-
-                if (!orderData) {
-                    console.warn(`[RTDB] No orderData found for ${id}`);
-                    continue;
-                }
-
-                console.log(`[RTDB] Order ${id} deliveryType:`, orderData.deliveryType);
-
-                const isDelivery = orderData.deliveryType === 'delivery' || orderData.deliveryType === 'takeaway';
-                const isDineIn = orderData.deliveryType === 'dine-in';
-
-                console.log(`[RTDB] Order ${id} - isDelivery:${isDelivery}, isDineIn:${isDineIn}`);
-
-                if (isDelivery) {
-                    const trackingRef = database.ref(`delivery_tracking/${id}`);
-
-                    if (['delivered', 'rejected', 'cancelled', 'returned_to_restaurant', 'failed_delivery'].includes(newStatus)) {
-                        // CLEANUP: If finalized, remove from RTDB to save space
-                        await trackingRef.remove();
-                        console.log(`[RTDB] 🗑️ Cleaned up delivery_tracking for finalized order ${id}`);
-                    } else {
-                        // UPDATE
-                        await trackingRef.set({
-                            status: newStatus,
-                            updatedAt: Date.now(),
-                            token: orderData.trackingToken || 'temp_token'
-                        });
-                        console.log(`[RTDB] ✅ Delivery tracking updated for ${id} with status: ${newStatus}`);
-                    }
-
-                } else if (isDineIn) {
-                    const trackingRef = database.ref(`dine_in_tracking/${id}`);
-
-                    if (['served', 'paid', 'rejected', 'cancelled'].includes(newStatus)) {
-                        // CLEANUP: If finalized, remove from RTDB
-                        await trackingRef.remove();
-                        console.log(`[RTDB] 🗑️ Cleaned up dine_in_tracking for finalized order ${id}`);
-                    } else {
-                        // UPDATE
-                        await trackingRef.set({
-                            status: newStatus,
-                            updatedAt: Date.now(),
-                            tableNumber: orderData.tableId || 'N/A',
-                            token: orderData.trackingToken || 'temp_token'
-                        });
-                        console.log(`[RTDB] ✅ Dine-in tracking updated for ${id} with status: ${newStatus}`);
-                    }
-                } else {
-                    console.warn(`[RTDB] Order ${id} has unknown deliveryType: ${orderData.deliveryType}`);
-                }
-            }
-            console.log('[RTDB] All RTDB writes completed');
-        } catch (rtdbError) {
-            // Non-fatal - Firestore is source of truth
-            console.error('[API][PATCH /orders] ❌ RTDB write failed:', rtdbError);
-            console.error('[RTDB] Error stack:', rtdbError.stack);
-        }
-
-        // ✅ CRITICAL FIX: Invalidate cache for all updated orders
-        // Without this, customers see stale 'pending' status for 60s after restaurant changes to 'rejected'
-        try {
-            const { kv } = await import('@vercel/kv');
-            const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
-
-            if (isKvAvailable) {
-                for (const id of idsToUpdate) {
-                    const cacheKey = `order_status:${id}`;
-                    await kv.del(cacheKey);
-                    console.log(`[API][PATCH /orders] ✅ Cache invalidated for ${cacheKey}`);
-                }
-            }
-        } catch (cacheError) {
-            console.warn('[API][PATCH /orders] Cache invalidation failed (non-fatal):', cacheError);
-            // Non-fatal - status update already succeeded
-        }
-
-        return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
+        return NextResponse.json({
+            message: 'Orders updated successfully.',
+            processedCount: orderMap.size
+        }, { status: 200 });
 
     } catch (error) {
         console.error("[API][PATCH /orders] CRITICAL ERROR:", error);

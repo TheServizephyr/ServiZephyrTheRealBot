@@ -1,65 +1,10 @@
-
-'use server';
-
-import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
-import { isAfter, subDays } from 'date-fns';
-import { recalculateTabTotals, verifyTabIntegrity, areAllOrdersPaid } from '@/lib/dinein-utils';
-
-async function getBusinessRef(req) {
-    const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req);
-
-    const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = searchParams.get('employee_of');
-    let finalUserId = uid;
-
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-
-    // Admin impersonation
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        finalUserId = impersonatedOwnerId;
-    }
-    // Employee access
-    else if (employeeOfOwnerId) {
-        const linkedOutlets = userData.linkedOutlets || [];
-        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
-
-        if (!hasAccess) {
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-        finalUserId = employeeOfOwnerId;
-    }
-    // Owner access
-    else if (!['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userRole)) {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
-
-    const collectionsToTry = ['restaurants', 'shops'];
-    for (const collection of collectionsToTry) {
-        const query = await firestore.collection(collection).where('ownerId', '==', finalUserId).limit(1).get();
-        if (!query.empty) {
-            return query.docs[0].ref;
-        }
-    }
-
-    throw { message: 'No business associated with this request.', status: 404 };
-}
-
+import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 
 export async function GET(req) {
     const firestore = await getFirestore();
     try {
-        const businessRef = await getBusinessRef(req);
-        if (!businessRef) throw { message: 'Business reference not found.', status: 404 };
+        const { businessId, businessSnap } = await verifyOwnerWithAudit(req, 'fetch_dine_in_tables');
+        const businessRef = businessSnap.ref;
 
         // 1. Fetch ALL tables from the `/tables` subcollection. This is our source of truth.
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
@@ -396,17 +341,12 @@ export async function GET(req) {
         });
 
         if (tablesToUpdate.length > 0) {
-            console.log(`[Dine-In API] Self-healing ${tablesToUpdate.length} tables (State/Pax mismatch)`);
+            console.log(`[Dine-In API] Self-healing ${tablesToUpdate.length} tables in background...`);
             const batch = firestore.batch();
             tablesToUpdate.forEach(t => batch.update(t.ref, t.data));
 
-            try {
-                // Await to ensure DB consistency for subsequent operations (like creating new tabs)
-                await batch.commit();
-                console.log("[Dine-In API] Self-heal completed");
-            } catch (e) {
-                console.error("[Dine-In API] Self-heal failed:", e);
-            }
+            // Background execution
+            batch.commit().catch(e => console.error("[Dine-In API] Background self-heal failed:", e));
         }
 
         const finalTablesData = Array.from(tableMap.values());

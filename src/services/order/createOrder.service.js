@@ -285,6 +285,7 @@ export async function createOrderV2(req) {
         const requestPhoneNormalized = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
 
         let userId, normalizedPhone, isGuest;
+        let finalCustomerName = name || 'Guest';
 
         if (requestPhoneNormalized) {
             // Call getOrCreateGuestProfile - UID first, then guest ID
@@ -292,8 +293,29 @@ export async function createOrderV2(req) {
             userId = profileResult.userId;  // UID or guest ID
             isGuest = profileResult.isGuest;
             normalizedPhone = requestPhoneNormalized;
+            const profileData = profileResult.data || {};
 
             console.log(`[createOrderV2] ✅ User identified: ${userId}, isGuest: ${isGuest}`);
+
+            // ✅ AUTO-POPULATE CUSTOMER NAME
+            // If name is missing or "Guest", try to get it from profile (if identified)
+            if ((!name || name === 'Guest')) {
+                if (profileData.name) {
+                    finalCustomerName = profileData.name;
+                    console.log(`[createOrderV2] ✅ Auto-populated customer name from profile result: ${finalCustomerName}`);
+                } else if (userId && !isGuest) {
+                    // Fallback: explicit fetch for logged-in users if profileData was missing (rare)
+                    try {
+                        const userDoc = await firestore.collection('users').doc(userId).get();
+                        if (userDoc.exists && userDoc.data().name) {
+                            finalCustomerName = userDoc.data().name;
+                            console.log(`[createOrderV2] ✅ Auto-populated customer name from user doc: ${finalCustomerName}`);
+                        }
+                    } catch (err) {
+                        console.warn(`[createOrderV2] Failed to fetch user profile for name:`, err);
+                    }
+                }
+            }
         } else {
             // No phone - anonymous order
             userId = `anon_${nanoid(10)}`;
@@ -303,24 +325,8 @@ export async function createOrderV2(req) {
             console.log(`[createOrderV2] ⚠️ Anonymous order: ${userId}`);
         }
 
-        // ✅ AUTO-POPULATE CUSTOMER NAME
-        // If name is missing or "Guest", try to get it from profile (if identified)
-        let finalCustomerName = name || 'Guest';
-        if ((!name || name === 'Guest') && userId && !isGuest) {
-            try {
-                // Fetch user document to get real name
-                const userDoc = await firestore.collection('users').doc(userId).get();
-                if (userDoc.exists) {
-                    const uData = userDoc.data();
-                    if (uData.name) {
-                        finalCustomerName = uData.name;
-                        console.log(`[createOrderV2] ✅ Auto-populated customer name from profile: ${finalCustomerName}`);
-                    }
-                }
-            } catch (err) {
-                console.warn(`[createOrderV2] Failed to fetch user profile for name:`, err);
-            }
-        }
+        // Default if still missing
+        if (!finalCustomerName) finalCustomerName = 'Guest';
         // Also check if address has a name property if specifically provided
         if ((!finalCustomerName || finalCustomerName === 'Guest') && address && address.name) {
             finalCustomerName = address.name;

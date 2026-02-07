@@ -22,6 +22,8 @@ import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 
 
+import { usePolling } from '@/lib/usePolling';
+
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading, onCreateNew, onShowQr }) => {
@@ -1581,7 +1583,14 @@ const DineInPageContent = () => {
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [handleApiCall]);
+
+    // Use adaptive polling for impersonation/employee modes
+    usePolling(fetchData, {
+        interval: 15000,
+        enabled: !!(impersonatedOwnerId || employeeOfOwnerId),
+        deps: [impersonatedOwnerId, employeeOfOwnerId]
+    });
 
     useEffect(() => {
         const fetchAndSetRestaurantDetails = async () => {
@@ -1664,12 +1673,9 @@ const DineInPageContent = () => {
             return;
         }
 
-        // For impersonation/employee: Use polling (fallback)
+        // For impersonation/employee: Polling is handled by usePolling hook above
         if (impersonatedOwnerId || employeeOfOwnerId) {
-            console.log('[Dine-In] Using API polling for impersonation/employee');
-            fetchData();
-            const interval = setInterval(() => fetchData(true), 15000);
-            return () => clearInterval(interval);
+            return;
         }
 
         // For Owner: Use Signal-based Refresh
@@ -1729,27 +1735,6 @@ const DineInPageContent = () => {
         };
     }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id]);
 
-    // 🔧 FIX: Page Visibility API
-    // Only refresh for impersonation/employee modes (polling).
-    // For Owner, the Signal listeners handle updates automatically.
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                if (impersonatedOwnerId || employeeOfOwnerId) {
-                    console.log('[Dine-In] Tab visible (Impersonation) - refreshing...');
-                    fetchData(true);
-                } else {
-                    console.log('[Dine-In] Tab visible (Owner) - Signal listeners active.');
-                }
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({

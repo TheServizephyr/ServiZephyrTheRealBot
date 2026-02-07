@@ -9,112 +9,17 @@ import { logAuditEvent, AUDIT_ACTIONS, createPriceChangeMetadata } from '@/lib/s
 import { menuPriceLimiter, menuDeleteLimiter } from '@/lib/security/rate-limiter';
 import { validatePriceChange, extractPortions } from '@/lib/security/validation-helpers';
 
-// Helper to verify owner and get their first business ID
-async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    console.log("[API LOG] verifyOwnerAndGetBusiness: Starting verification...");
-    const uid = await verifyAndGetUid(req); // Use central helper
-    console.log(`[API LOG] verifyOwnerAndGetBusiness: UID verified: ${uid}`);
-
-    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
-    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const sessionExpiry = url.searchParams.get('session_expiry');
-
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        console.error(`[API ERROR] verifyOwnerAndGetBusiness: User profile not found for UID: ${uid}`);
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-    console.log(`[API LOG] verifyOwnerAndGetBusiness: User role is '${userRole}'.`);
-
-    let targetOwnerId = uid;
-    let isImpersonating = false;
-    let accessResult = null; // Declare at parent scope for employee access
-
-    // --- ADMIN IMPERSONATION ---
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        // Validate session expiry
-        if (sessionExpiry && isSessionExpired(parseInt(sessionExpiry))) {
-            console.error(`[API ERROR] Impersonation session expired for admin ${uid}`);
-            throw { message: 'Impersonation session has expired. Please re-authenticate.', status: 401 };
-        }
-
-        console.log(`[API LOG] Impersonation: Admin ${uid} is managing data for owner ${impersonatedOwnerId}.`);
-        targetOwnerId = impersonatedOwnerId;
-        isImpersonating = true;
-    }
-    // --- EMPLOYEE ACCESS (SECURE) ---
-    else if (employeeOfOwnerId) {
-        accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
-        if (!accessResult.authorized) {
-            console.warn(`[SECURITY] Blocked unauthorized employee_of access: ${uid} -> ${employeeOfOwnerId}`);
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-        console.log(`[API Employee Access] ${uid} (${accessResult.employeeRole}) accessing ${employeeOfOwnerId}'s menu`);
-        targetOwnerId = employeeOfOwnerId;
-    }
-    // --- OWNER ACCESS ---
-    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-        console.error(`[API ERROR] verifyOwnerAndGetBusiness: User ${uid} with role '${userRole}' does not have sufficient privileges.`);
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
-
-    // Calculate effective caller role
-    let effectiveCallerRole = userRole; // Default to owner role
-    if (accessResult && accessResult.employeeRole) {
-        effectiveCallerRole = accessResult.employeeRole; // Use employee role if employee access
-    }
-
-    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-    for (const collectionName of collectionsToTry) {
-        console.log(`[API LOG] verifyOwnerAndGetBusiness: Checking collection '${collectionName}' for ownerId '${targetOwnerId}'...`);
-        const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
-        if (!querySnapshot.empty) {
-            const doc = querySnapshot.docs[0];
-            console.log(`[API LOG] verifyOwnerAndGetBusiness: Found business in '${collectionName}' with ID: ${doc.id}`);
-            return {
-                uid: targetOwnerId,
-                businessId: doc.id,
-                businessSnap: doc,
-                collectionName,
-                isAdmin: userRole === 'admin',
-                isImpersonating,
-                adminId: isImpersonating ? uid : null,
-                adminEmail: isImpersonating ? userData.email : null,
-                callerRole: effectiveCallerRole
-            };
-        }
-    }
-
-    console.error(`[API ERROR] verifyOwnerAndGetBusiness: No business associated with ownerId '${targetOwnerId}' found in any collection.`);
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
+// --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
+// (Logic moved inside methods below)
 
 export async function GET(req) {
     console.log("[API LOG] GET /api/owner/menu: Request received.");
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, businessSnap, collectionName, isImpersonating, adminId, adminEmail, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(req, 'view_menu');
         console.log(`[API LOG] GET /api/owner/menu: Verified access for business ${businessId}.`);
 
-        // Audit log for impersonation
-        if (isImpersonating) {
-            await logImpersonation({
-                adminId,
-                adminEmail,
-                targetOwnerId: uid,
-                action: 'view_menu',
-                metadata: { businessId, collectionName },
-                ipAddress: getClientIP(req),
-                userAgent: getUserAgent(req)
-            });
-        }
+        // (Audit logging handled by verifyOwnerWithAudit internally for impersonation)
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         const menuSnap = await menuRef.orderBy('order', 'asc').get();
@@ -178,11 +83,10 @@ export async function GET(req) {
 export async function POST(req) {
     console.log("[API LOG] POST /api/owner/menu: Request received.");
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
         console.log("[API LOG] Firebase Admin SDK initialized for POST.");
 
-        const { businessId, businessSnap, collectionName, isImpersonating, adminId, adminEmail, uid, callerRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, uid, callerRole } = await verifyOwnerWithAudit(req, 'manage_menu_post');
         const userRole = callerRole; // Use the actual role of the caller (owner/manager/etc)
         console.log(`[API LOG] POST /api/owner/menu: Owner verified for business ID: ${businessId} in collection ${collectionName}. Caller role: ${userRole}`);
 
@@ -377,18 +281,7 @@ export async function POST(req) {
             // Non-fatal - menu save succeeded, just cache won't auto-invalidate
         }
 
-        // Audit log for impersonation
-        if (isImpersonating) {
-            await logImpersonation({
-                adminId,
-                adminEmail,
-                targetOwnerId: uid,
-                action: isEditing ? 'update_menu_item' : 'create_menu_item',
-                metadata: { businessId, itemId: newItemId, itemName: item.name, categoryId: finalCategoryId },
-                ipAddress: getClientIP(req),
-                userAgent: getUserAgent(req)
-            });
-        }
+        // (Audit logging handled by verifyOwnerWithAudit internally for impersonation)
 
         const message = isEditing ? 'Item updated successfully!' : 'Item added successfully!';
         const status = isEditing ? 200 : 201;
@@ -405,9 +298,8 @@ export async function POST(req) {
 export async function DELETE(req) {
     console.log("[API LOG] DELETE /api/owner/menu: Request received.");
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName, isImpersonating, adminId, adminEmail, uid, callerRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, callerRole } = await verifyOwnerWithAudit(req, 'delete_menu_item');
         const userRole = callerRole;
 
         // 🔐 RBAC: Only Owner can delete menu items
@@ -437,18 +329,7 @@ export async function DELETE(req) {
             console.error('[Menu API] ❌ menuVersion increment failed:', versionError);
         }
 
-        // Audit log for impersonation
-        if (isImpersonating) {
-            await logImpersonation({
-                adminId,
-                adminEmail,
-                targetOwnerId: uid,
-                action: 'delete_menu_item',
-                metadata: { businessId, itemId },
-                ipAddress: getClientIP(req),
-                userAgent: getUserAgent(req)
-            });
-        }
+        // (Audit logging handled by verifyOwnerWithAudit internally for impersonation)
 
         return NextResponse.json({ message: 'Item deleted successfully.' }, { status: 200 });
     } catch (error) {
@@ -461,9 +342,8 @@ export async function DELETE(req) {
 export async function PATCH(req) {
     console.log("[API LOG] PATCH /api/owner/menu: Request received.");
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName, callerRole, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, callerRole, uid } = await verifyOwnerWithAudit(req, 'update_menu_patch');
         const userRole = callerRole;
         const { itemIds, action, updates } = await req.json();
         console.log("[API LOG] PATCH /api/owner/menu: Body:", { itemIds, action, updates, userRole });

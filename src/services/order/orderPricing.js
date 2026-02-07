@@ -108,7 +108,7 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
                 quantity: itemQuantity
             });
 
-            console.log(`[OrderPricing] Item ${item.id}: ₹${itemPrice} x ${itemQuantity} = ₹${itemTotal}`);
+            console.log(`[OrderPricing] Item ${item.id}: ₹${itemPrice} x ${itemQuantity} = ₹${itemTotal} (Client expected price: ₹${item.price || item.totalPrice / itemQuantity || 'unknown'})`);
 
         } catch (error) {
             console.error(`[OrderPricing] Validation failed for item ${item.id}:`, error.message);
@@ -226,8 +226,13 @@ export function validatePriceMatch(clientSubtotal, serverSubtotal, tolerance = 1
     console.log(`  Tolerance: ₹${tolerance}`);
 
     if (difference > tolerance) {
+        console.error(`[OrderPricing] Price mismatch detail:`);
+        console.error(`  Client Subtotal: ₹${clientSubtotal}`);
+        console.error(`  Server Subtotal: ₹${serverSubtotal}`);
+        console.error(`  Difference: ₹${difference}`);
+
         throw new PricingError(
-            `Price mismatch detected. Menu prices may have changed. Please refresh and try again. (Client: ₹${clientSubtotal}, Server: ₹${serverSubtotal})`
+            `Price mismatch detected. Menu prices may have changed. Please refresh and try again. (Client: ₹${clientSubtotal}, Server: ₹${serverSubtotal}, Diff: ₹${difference.toFixed(2)})`
         );
     }
 

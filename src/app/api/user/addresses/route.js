@@ -84,6 +84,9 @@ export async function POST(req) {
 
         // Determine target collection
         let targetRef;
+        let currentName = profileResult.data?.name || '';
+        const newName = address.name;
+
         if (profileResult.isGuest) {
             targetRef = firestore.collection('guest_profiles').doc(userId);
             console.log(`[API][user/addresses] Saving to guest profile: ${userId}`);
@@ -92,11 +95,19 @@ export async function POST(req) {
             console.log(`[API][user/addresses] Saving to user UID: ${userId}`);
         }
 
-        await targetRef.set({
+        const updateData = {
             addresses: FieldValue.arrayUnion(address),
             // Update phone on profile if missing
             phone: phone
-        }, { merge: true });
+        };
+
+        // ✅ SYNC NAME: If profile has no name or is "Guest", update it from address contact
+        if ((!currentName || currentName === 'Guest') && newName) {
+            console.log(`[API][user/addresses] Updating profile name from '${currentName}' to '${newName}'`);
+            updateData.name = newName;
+        }
+
+        await targetRef.set(updateData, { merge: true });
 
         console.log(`[API][user/addresses] Address added successfully to document: ${targetRef.path}.`);
         return NextResponse.json({ message: 'Address added successfully!', address }, { status: 200 });

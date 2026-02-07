@@ -1,69 +1,23 @@
 
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
-async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const uid = await verifyAndGetUid(req); // Use central helper
-
-    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-
-    let targetOwnerId = uid;
-
-    // Admin impersonation
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing analytics for owner ${impersonatedOwnerId}.`);
-        targetOwnerId = impersonatedOwnerId;
-    }
-    // Employee access
-    else if (employeeOfOwnerId) {
-        const linkedOutlets = userData.linkedOutlets || [];
-        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
-
-        if (!hasAccess) {
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-
-        console.log(`[API Employee Access] ${uid} viewing ${employeeOfOwnerId}'s analytics`);
-        targetOwnerId = employeeOfOwnerId;
-    }
-    // Owner access
-    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
-
-    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-    for (const collectionName of collectionsToTry) {
-        const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
-        if (!query.empty) {
-            const doc = query.docs[0];
-            return { restaurantId: doc.id, restaurantData: doc.data(), businessType: doc.data().businessType || collectionName.slice(0, -1) };
-        }
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
-
-
 export async function GET(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId, restaurantData, businessType } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+
+        // Use centralized resolver with request-level caching
+        const { businessId: restaurantId, businessSnap, collectionName } = await verifyOwnerWithAudit(
+            req,
+            'view_analytics'
+        );
+        const restaurantData = businessSnap.data();
+        const businessType = restaurantData.businessType || collectionName.slice(0, -1);
 
         const url = new URL(req.url, `http://${req.headers.host}`);
         const filter = url.searchParams.get('filter') || 'This Month';

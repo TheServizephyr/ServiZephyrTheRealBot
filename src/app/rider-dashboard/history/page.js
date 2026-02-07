@@ -222,7 +222,7 @@ export default function RiderHistoryPage() {
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
                                         <h3 className="text-lg font-bold text-gray-800">{delivery.customerName}</h3>
-                                        <p className="text-xs text-gray-500">Order #{delivery.id.substring(0, 8)}</p>
+                                        <p className="text-xs text-gray-500">Order #{delivery.customerOrderId || delivery.id.substring(0, 8)}</p>
                                     </div>
                                     <div className="text-right">
                                         <div className="text-xl font-black text-gray-800">

@@ -814,6 +814,28 @@ function OrderTrackingContent() {
                                 </div>
                             )}
 
+                            {/* CUSTOMER DETAILS (New Addition) */}
+                            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6 relative overflow-hidden">
+                                { /* Add a subtle background pattern or icon for visual separation */}
+                                <div className="absolute top-0 right-0 p-4 opacity-5">
+                                    <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" /></svg>
+                                </div>
+
+                                <div className="flex flex-col gap-1 relative z-10">
+                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Delivering To</span>
+                                    <h3 className="font-bold text-gray-900 text-lg">
+                                        {/* Fallback chain: customerName -> customer (which might serve as name) -> Guest */}
+                                        {orderData.order.customerName || orderData.order.customer || 'Guest'}
+                                    </h3>
+                                    <p className="text-sm text-gray-600 leading-relaxed font-medium">
+                                        {/* Fallback chain: customerAddress string -> address object (if exists) -> default message */}
+                                        {orderData.order.customerAddress ||
+                                            (orderData.order.address && (orderData.order.address.street || orderData.order.address.formatted_address || orderData.order.address.text)) ||
+                                            'Address details not available'}
+                                    </p>
+                                </div>
+                            </div>
+
                             {/* ORDER SUMMARY */}
                             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
                                 <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-50">
@@ -884,10 +906,12 @@ function OrderTrackingContent() {
                                         const platform = Number(orderData.order.convenienceFee) || 0;
                                         const discount = Number(orderData.order.discount) || 0;
 
-                                        // Fallback: If extra charges exist but aren't labeled, attribute to Delivery
-                                        const calculatedExtras = total - subtotal;
-                                        if (delivery === 0 && tax === 0 && packing === 0 && platform === 0 && calculatedExtras > 0) {
-                                            delivery = calculatedExtras;
+                                        // Improved breakdown logic: Calculate residual as delivery if not accounted for
+                                        const accounted = subtotal + tax + packing + platform - discount;
+                                        const residual = total - accounted;
+
+                                        if (delivery === 0 && residual > 0) {
+                                            delivery = residual;
                                         }
 
                                         return (
@@ -905,7 +929,7 @@ function OrderTrackingContent() {
                                                 {tax > 0 && (
                                                     <div className="flex justify-between text-xs text-gray-500">
                                                         <span>Taxes (GST)</span>
-                                                        <span>₹{tax}</span>
+                                                        <span>₹{Math.round(tax)}</span>
                                                     </div>
                                                 )}
                                                 {packing > 0 && (
@@ -933,7 +957,7 @@ function OrderTrackingContent() {
 
                                 <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between items-center">
                                     <span className="text-gray-700 text-sm font-bold">Total Bill</span>
-                                    <span className="text-xl font-black text-gray-900">₹{orderData.order.totalAmount}</span>
+                                    <span className="text-xl font-black text-gray-900">₹{Math.round(orderData.order.totalAmount)}</span>
                                 </div>
                             </div>
                         </div>

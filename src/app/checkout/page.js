@@ -121,7 +121,7 @@ const CheckoutPageInternal = () => {
         packagingChargeEnabled: false, packagingChargeAmount: 0
     });
 
-    const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null);
+    // const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null);
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
 
     // NEW: Pro Checkout UI States
@@ -485,7 +485,21 @@ const CheckoutPageInternal = () => {
         }
     }, [userAddresses]); // Run when userAddresses loads
 
-    // ... (Bundling logic unchanged) ...
+    /*
+    useEffect(() => {
+        const fetchBundlingInfo = async () => {
+            if (deliveryType !== 'delivery' || !selectedAddress) return;
+            try {
+                const res = await fetch(`/api/order/bundling?phone=${orderPhone}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.activeOrder) setBundlingOrderDetails(data.activeOrder);
+                }
+            } catch (err) { console.error("Bundling check failed:", err); }
+        };
+        fetchBundlingInfo();
+    }, [deliveryType, selectedAddress, orderPhone]);
+    */
 
     const deliveryType = useMemo(() => {
         if (tableId) return 'dine-in';
@@ -519,85 +533,18 @@ const CheckoutPageInternal = () => {
         // (End of appliedCoupons loop)
 
 
-        // ========== BUNDLING FEATURE - TEMPORARILY DISABLED FOR MVP ==========
         /*
         // SMART BUNDLING CHECK (Checkout Phase)
-        let isSmartBundlingEligible = false;
         if (bundlingOrderDetails && bundlingOrderDetails.createdAt && selectedAddress) {
-            // 1. Check Time (10 mins)
-            let createdAtDate = bundlingOrderDetails.createdAt;
-            if (typeof createdAtDate === 'string') createdAtDate = new Date(createdAtDate);
-            if (createdAtDate && createdAtDate.seconds) createdAtDate = new Date(createdAtDate.seconds * 1000);
-
-            const now = new Date();
-            const diffMinutes = (now - createdAtDate) / (1000 * 60);
-
-            // 2. Check Status
-            const status = bundlingOrderDetails.status;
-            const isStatusEligible = !['out_for_delivery', 'delivered', 'cancelled', 'rejected'].includes(status);
-
-            // 3. Check Address (CRITICAL: Must match)
-            let addressMatch = false;
-
-            // 1. Strict ID Match
-            if (selectedAddress.id && bundlingOrderDetails.customerAddress?.id === selectedAddress.id) {
-                addressMatch = true;
-            }
-            // 2. Fallback: Content Match (if distinct objects but same location)
-            else if (selectedAddress && bundlingOrderDetails.customerAddress) {
-                const addr1 = bundlingOrderDetails.customerAddress;
-                const addr2 = selectedAddress;
-
-                const clean = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
-
-                console.log("[Bundling Check] Addr1 (Active):", addr1);
-                console.log("[Bundling Check] Addr2 (Selected):", addr2);
-                console.log(`[Bundling Check] Comparing: '${clean(addr1.addressLine1)}' vs '${clean(addr2.addressLine1)}'`);
-
-                // Helper to extract a comparable string from an address (string or object)
-                const getAddrString = (addr) => {
-                    if (!addr) return '';
-                    // Case A: Address is already a string
-                    if (typeof addr === 'string') return addr.trim().toLowerCase().replace(/\s+/g, ' ');
-
-                    // Case B: Address is an object - try specific keys
-                    const keys = ['full', 'addressLine1', 'street', 'line1', 'address'];
-                    for (const k of keys) {
-                        if (addr[k] && String(addr[k]).trim().length > 0) return String(addr[k]).trim().toLowerCase().replace(/\s+/g, ' ');
-                    }
-
-                    // Case C: Construct from components if no full string
-                    const parts = [addr.addressLine1, addr.street, addr.city, addr.zipCode, addr.postcode].filter(Boolean);
-                    if (parts.length > 0) return parts.join(' ').trim().toLowerCase().replace(/\s+/g, ' ');
-
-                    return '';
-                };
-
-                const str1 = getAddrString(addr1);
-                const str2 = getAddrString(addr2);
-
-                console.log(`[Bundling Check] Match Validated? '${str1}' === '${str2}'`);
-
-                // CRITICAL: Only match if strings are non-empty and identical
-                if (str1 && str2 && str1 === str2) {
-                    addressMatch = true;
-                }
-                // Check Full String address if available
-                else if (clean(addr1.full) === clean(addr2.full) && clean(addr1.full).length > 10) {
-                    addressMatch = true;
-                }
-            }
-
-            if (diffMinutes <= 10 && isStatusEligible && addressMatch) {
-                isSmartBundlingEligible = true;
-            }
+            // ... (commented out logic)
         }
         */
-        const isSmartBundlingEligible = false; // Bundling disabled
+        const isSmartBundlingEligibleValue = false; // Internal value for calculation
+        // ========== END BUNDLING FEATURE ==========
         // ========== END BUNDLING FEATURE ==========
 
         // ========== BUNDLING FEATURE: Removed isSmartBundlingEligible from condition ==========
-        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree || activeOrderId) ? 0 : (cartData.deliveryCharge || 0);
+        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree) ? 0 : (cartData.deliveryCharge || 0);
 
         // Calculate Tip from State
         let currentTip = selectedTipAmount;
@@ -617,8 +564,8 @@ const CheckoutPageInternal = () => {
                 sgstAmount = taxableAmount * (halfGstRate / 100);
             }
         }
-        const packagingCharge = (diningPreference === 'takeaway' && vendorCharges?.packagingChargeEnabled) ? (vendorCharges.packagingChargeAmount || 0) : 0;
-        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + cgstAmount + sgstAmount + tip + packagingCharge;
+        const internalPackagingCharge = (diningPreference === 'takeaway' && vendorCharges?.packagingChargeEnabled) ? (vendorCharges.packagingChargeAmount || 0) : 0;
+        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + cgstAmount + sgstAmount + tip + internalPackagingCharge;
 
         let calculatedConvenienceFee = 0;
         if (selectedPaymentMethod === 'online' && vendorCharges?.convenienceFeeEnabled) {
@@ -637,11 +584,11 @@ const CheckoutPageInternal = () => {
             sgst: sgstAmount,
             convenienceFee: calculatedConvenienceFee,
             grandTotal: finalGrandTotal,
-            packagingCharge,
-            isSmartBundlingEligible,
+            packagingCharge: internalPackagingCharge,
+            isSmartBundlingEligible: isSmartBundlingEligibleValue,
             tipAmount: tip
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, bundlingOrderDetails, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput]);
 
     const maxSavings = useMemo(() => {
         if (!cartData?.availableCoupons?.length) return 0;
@@ -1593,11 +1540,11 @@ const CheckoutPageInternal = () => {
                                         <span>₹{subtotal.toFixed(2)}</span>
                                     </div>
                                     {/* DELIVERY CHARGE ROW */}
-                                    {((finalDeliveryCharge > 0) || (deliveryType === 'delivery' && activeOrderId) || isSmartBundlingEligible) && (
+                                    {((finalDeliveryCharge > 0) || (deliveryType === 'delivery')) && (
                                         <div className="flex justify-between text-sm">
                                             <span>Delivery Fee</span>
                                             <span className={finalDeliveryCharge === 0 ? "text-green-600 font-bold" : ""}>
-                                                {finalDeliveryCharge === 0 ? "FREE (Bundled)" : `₹${finalDeliveryCharge.toFixed(2)}`}
+                                                {finalDeliveryCharge === 0 ? "FREE" : `₹${finalDeliveryCharge.toFixed(2)}`}
                                             </span>
                                         </div>
                                     )}
