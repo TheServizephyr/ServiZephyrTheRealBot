@@ -414,6 +414,7 @@ function WhatsAppDirectPageContent() {
     const [editedName, setEditedName] = useState('');
     const [notes, setNotes] = useState('');
     const [isSavingNotes, setIsSavingNotes] = useState(false);
+    const currentNotesPhoneRef = useRef(null); // TRACKER: Which customer does 'notes' state belong to?
 
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
@@ -740,6 +741,8 @@ function WhatsAppDirectPageContent() {
         }
 
         console.log('[WhatsApp] Subscribing to real-time messages for:', activeConversation.id);
+        // FORCE RESET: Clear old messages immediately when the ID changes
+        setMessages([]);
         setLoadingMessages(true);
 
         const fetchAndMarkRead = async () => {
@@ -778,11 +781,26 @@ function WhatsAppDirectPageContent() {
         };
     }, [activeConversation, handleApiCall]);
 
-    const handleConversationClick = async (conversation) => {
+    const handleConversationClick = (conversation) => {
+        // INSTANT RESET: Clear everything to prevent old data leakage
+        setMessages([]);
+        setNotes('');
+        setCustomerDetails(null);
+        setIsReviewing(false);
+        setIsPlayingPreview(false);
+        setNewMessage('');
+
+        // Use a slight delay for setActiveConversation if needed, 
+        // but typically setting it now is fine as long as we clear data.
         setActiveConversation(conversation);
         setLoadingMessages(true);
-        setMessages([]);
-        await fetchMessages(conversation.id);
+        setLoadingDetails(true);
+
+        // Individual triggers for safety, though useEffects will also catch these
+        fetchMessages(conversation.id);
+        if (conversation.customerPhone) {
+            fetchCustomerDetails(conversation.customerPhone);
+        }
     };
 
     const handleSendMessage = async (e) => {
@@ -927,13 +945,25 @@ function WhatsAppDirectPageContent() {
         setLoadingDetails(true);
         try {
             const data = await handleApiCall(`/api/owner/whatsapp-direct/customer-details?phoneNumber=${phoneNumber}`, 'GET');
+
+            // RACE CONDITION GUARD: If user switched while fetching, discard.
+            if (activeConversation?.customerPhone !== phoneNumber) return;
+
+            // Sync tracker ref
+            currentNotesPhoneRef.current = phoneNumber;
+
+            // Check for local draft first
+            const localDraft = localStorage.getItem(`draft_notes_${phoneNumber}`);
+
             if (data.exists) {
                 setCustomerDetails(data.details);
-                setNotes(data.details.notes || '');
+                // Ensure fresh state
+                const finalNotes = localDraft !== null ? localDraft : (data.details.notes || '');
+                setNotes(finalNotes);
                 setEditedName(data.details.customName || activeConversation?.customerName || '');
             } else {
                 setCustomerDetails(null);
-                setNotes('');
+                setNotes(localDraft || '');
                 setEditedName(activeConversation?.customerName || '');
             }
         } catch (error) {
@@ -941,27 +971,75 @@ function WhatsAppDirectPageContent() {
         } finally {
             setLoadingDetails(false);
         }
-    }, [handleApiCall, activeConversation]);
+    }, [handleApiCall, activeConversation?.customerPhone]);
+
+    // Reset notes state immediately when starting to switch conversations 
+    // to prevent visual leakage and race conditions.
+    useEffect(() => {
+        if (activeConversation?.customerPhone) {
+            const phoneNumber = activeConversation.customerPhone;
+
+            // INSTANT LOADING: Use cached notes from conversation list if available
+            // This makes the transition feel immediate.
+            const cachedNotes = activeConversation.notes || '';
+            const localDraft = localStorage.getItem(`draft_notes_${phoneNumber}`);
+
+            setNotes(localDraft !== null ? localDraft : cachedNotes);
+            currentNotesPhoneRef.current = phoneNumber;
+
+            // fetchCustomerDetails is also triggered by handleConversationClick
+            // but we keep this as a safety guard for URL-based navigation
+            fetchCustomerDetails(phoneNumber);
+        } else {
+            setNotes('');
+            currentNotesPhoneRef.current = null;
+            setCustomerDetails(null);
+        }
+    }, [activeConversation?.id, activeConversation?.customerPhone]); // Sync on ID mix too
+
+    // Persist draft notes as user types
+    useEffect(() => {
+        const activePhone = activeConversation?.customerPhone;
+        const statePhone = currentNotesPhoneRef.current;
+
+        // CRITICAL GUARD: Only save if the 'notes' state actually belongs to the active customer.
+        if (activePhone && statePhone === activePhone && notes !== undefined) {
+            if (notes.trim() !== '') {
+                localStorage.setItem(`draft_notes_${activePhone}`, notes);
+            } else {
+                // If user cleared the note intentionally, remove the draft
+                localStorage.removeItem(`draft_notes_${activePhone}`);
+            }
+        }
+    }, [notes]); // Listen ONLY to notes changes
 
     const handleSaveDetails = async () => {
         if (!activeConversation) return;
         setIsSavingNotes(true);
+        const phoneNumber = activeConversation.customerPhone;
         try {
-            await handleApiCall('/api/owner/whatsapp-direct/customer-details', 'PATCH', {
-                phoneNumber: activeConversation.customerPhone,
+            const response = await handleApiCall('/api/owner/whatsapp-direct/customer-details', 'PATCH', {
+                phoneNumber: phoneNumber,
                 customName: editedName,
                 notes: notes
             });
 
-            // Update local state if name changed
-            if (editedName !== activeConversation.customerName) {
-                const updatedConvo = { ...activeConversation, customerName: editedName };
-                setActiveConversation(updatedConvo);
-                setConversations(prev => prev.map(c => c.id === updatedConvo.id ? { ...c, customerName: editedName } : c));
+            // Clear draft on success
+            localStorage.removeItem(`draft_notes_${phoneNumber}`);
+
+            // Update local state with fresh data from server (syncs stats too)
+            if (response.details) {
+                setCustomerDetails(response.details);
+                setNotes(response.details.notes || '');
+
+                // Update conversation list if name changed
+                if (response.details.customName !== activeConversation.customerName) {
+                    const updatedConvo = { ...activeConversation, customerName: response.details.customName };
+                    setActiveConversation(updatedConvo);
+                    setConversations(prev => prev.map(c => c.id === updatedConvo.id ? { ...c, customerName: response.details.customName } : c));
+                }
             }
 
-            // Refresh details
-            fetchCustomerDetails(activeConversation.customerPhone);
             setIsEditingName(false);
 
             toast({

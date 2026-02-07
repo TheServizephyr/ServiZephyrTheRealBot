@@ -319,7 +319,7 @@ function OwnerDashboardContent({ children }) {
 
   }, [user, isUserLoading, authChecked, effectiveOwnerId, router]);
 
-  if (isUserLoading || !authChecked) {
+  if ((isUserLoading || !authChecked) && !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <GoldenCoinSpinner />

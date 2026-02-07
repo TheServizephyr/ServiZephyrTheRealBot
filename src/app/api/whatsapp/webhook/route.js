@@ -390,15 +390,22 @@ const processIncomingMedia = async (mediaId, businessId) => {
 
         console.log(`[Webhook WA] Media uploaded to Storage: ${filePath}`);
 
-        // Generate Signed Read URL
-        // ✅ FIX: Expiration: 7 days (standard retention)
-        const [readUrl] = await file.getSignedUrl({
-            version: 'v4',
-            action: 'read',
-            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        });
+        // ✅ HANDLE PERMANENT PUBLIC ACCESS
+        // We make the file public and use a permanent URL to avoid 403 errors and expiry issues.
+        try {
+            await file.makePublic();
+        } catch (err) {
+            console.error("[Webhook WA] Failed to make file public, falling back to signed URL:", err);
+            const [signedUrl] = await file.getSignedUrl({
+                version: 'v4',
+                action: 'read',
+                expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+            });
+            return signedUrl;
+        }
 
-        return readUrl;
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+        return publicUrl;
     } catch (error) {
         console.error("[Webhook WA] Error processing incoming media:", error);
         return null; // Return null on failure so we can fallback to placeholder

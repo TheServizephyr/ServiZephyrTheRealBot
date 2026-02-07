@@ -44,6 +44,21 @@ async function verifyOwnerAndGetBusinessRef(req) {
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
+const getPhoneVariations = (phoneNumber) => {
+    if (!phoneNumber) return [];
+    const cleanPhone = phoneNumber.replace(/\D/g, ''); // Remove all non-digits
+    const last10 = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+
+    // Platform Standard: 10-digit number is used for conversation IDs and customer registry.
+    // We only check the 10-digit version and the version with '91' prefix for legacy compatibility.
+    const variations = [
+        last10,
+        `91${last10}`
+    ];
+
+    return Array.from(new Set(variations));
+};
+
 export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
@@ -57,49 +72,25 @@ export async function GET(req) {
         const firestore = await getFirestore();
         const customersRef = businessRef.collection('customers');
 
-        // --- Phone Number Matching Strategy ---
-        // WhatsApp numbers often include country code (e.g., 919876543210).
-        // Database might store as 9876543210, +919876543210, or 919876543210.
-        // We try variations to find the matching customer document.
-
-        const cleanPhone = phoneNumber.replace(/\D/g, ''); // Remove all non-digits
-        // Safe slice for last 10 digits
-        const last10 = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
-
-        // Variations to try
-        const phoneVariations = [
-            phoneNumber,                    // derived from URL
-            cleanPhone,                     // only digits
-            last10,                         // last 10 digits (common in India)
-            `+${cleanPhone}`,               // with plus
-            `91${last10}`,                  // with 91 prefix
-            `+91${last10}`                  // with +91 prefix
-        ];
-
-        // Remove duplicates and filter valid-ish numbers (min 10 digits)
-        const uniqueVariations = [...new Set(phoneVariations)].filter(p => p && p.length >= 10);
-
+        const uniqueVariations = getPhoneVariations(phoneNumber);
         console.log(`[Customer Details] Searching for ${phoneNumber} with variations:`, uniqueVariations);
 
         let customerDoc = null;
 
-        // Collect ALL matching customer records (may have duplicates with different stats)
+        // Collect ALL matching customer records in parallel
+        const lookupPromises = uniqueVariations.flatMap(variant => [
+            customersRef.where('phoneNumber', '==', variant).get(),
+            customersRef.where('phone', '==', variant).get(),
+            customersRef.doc(variant).get()
+        ]);
+
+        const snapshots = await Promise.all(lookupPromises);
         const allMatchingCustomers = [];
 
-        for (const variant of uniqueVariations) {
-            // Try 'phoneNumber' field
-            let snapshot = await customersRef.where('phoneNumber', '==', variant).get();
-            snapshot.docs.forEach(doc => allMatchingCustomers.push(doc));
-
-            // Try 'phone' field  
-            snapshot = await customersRef.where('phone', '==', variant).get();
-            snapshot.docs.forEach(doc => allMatchingCustomers.push(doc));
-
-            // Try Document ID
-            const docRef = customersRef.doc(variant);
-            const docSnap = await docRef.get();
-            if (docSnap.exists) allMatchingCustomers.push(docSnap);
-        }
+        snapshots.forEach(snap => {
+            if (snap.docs) snap.docs.forEach(doc => allMatchingCustomers.push(doc));
+            else if (snap.exists) allMatchingCustomers.push(snap);
+        });
 
         // Deduplicate by ID
         const uniqueCustomers = Array.from(
@@ -112,15 +103,7 @@ export async function GET(req) {
         customerDoc = uniqueCustomers.find(doc => {
             const data = doc.data();
             return data.totalSpend !== undefined && data.totalSpend !== null;
-        });
-
-        // Fallback to first record
-        if (!customerDoc && uniqueCustomers.length > 0) {
-            customerDoc = uniqueCustomers[0];
-            console.log(`[Customer Details] No record with totalSpend, using first`);
-        }
-
-
+        }) || uniqueCustomers[0];
 
         if (customerDoc) {
             const data = customerDoc.data();
@@ -134,11 +117,12 @@ export async function GET(req) {
                 const ordersRef = firestore.collection('orders');
 
                 // Query orders by restaurantId and phone variations
+                // NOTE: We remove the 'status != rejected' query to avoid requiring a composite index.
+                // We will filter in-memory instead.
                 const orderQueries = uniqueVariations.map(variant =>
                     ordersRef
                         .where('restaurantId', '==', businessRef.id)
                         .where('customerPhone', '==', variant)
-                        .where('status', '!=', 'rejected')
                         .get()
                 );
 
@@ -150,14 +134,19 @@ export async function GET(req) {
                     snapshot.docs.forEach(doc => allOrders.set(doc.id, doc));
                 });
 
-                totalOrders = allOrders.size;
-
-                // Calculate total spent
+                // Calculate total spent and filter out rejected orders
+                // Filtering 'rejected' in memory to avoid needing a Firestore composite index
                 allOrders.forEach(doc => {
                     const orderData = doc.data();
+                    if (orderData.status === 'rejected') {
+                        allOrders.delete(doc.id);
+                        return;
+                    }
                     const amount = parseFloat(orderData.totalAmount || orderData.amount || orderData.billTotal || 0);
                     if (!isNaN(amount)) totalSpent += amount;
                 });
+
+                totalOrders = allOrders.size;
 
                 console.log(`[Customer Details] Calculated from orders - Orders: ${totalOrders}, Spent: ₹${totalSpent}`);
 
@@ -171,9 +160,8 @@ export async function GET(req) {
                 details: {
                     customName: data.customName || data.name || '',
                     notes: data.notes || '',
-                    totalOrders: data.totalOrders || 0,
-                    totalSpent: data.totalSpend || 0,
-                    // Handle Firestore Timestamp or ISO string
+                    totalOrders: totalOrders, // Use calculated value
+                    totalSpent: totalSpent,   // Use calculated value
                     createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || null)
                 }
             }, { status: 200 });
@@ -206,17 +194,39 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Phone number is required' }, { status: 400 });
         }
 
+        const firestore = await getFirestore();
         const customersRef = businessRef.collection('customers');
-        const querySnapshot = await customersRef.where('phoneNumber', '==', phoneNumber).limit(1).get();
+        const uniqueVariations = getPhoneVariations(phoneNumber);
+
+        // Collect ALL matching customer records in parallel
+        const lookupPromises = uniqueVariations.flatMap(variant => [
+            customersRef.where('phoneNumber', '==', variant).get(),
+            customersRef.where('phone', '==', variant).get(),
+            customersRef.doc(variant).get()
+        ]);
+
+        const snapshots = await Promise.all(lookupPromises);
+        const allMatchingCustomers = [];
+
+        snapshots.forEach(snap => {
+            if (snap.docs) snap.docs.forEach(doc => allMatchingCustomers.push(doc));
+            else if (snap.exists) allMatchingCustomers.push(snap);
+        });
+
+        const uniqueCustomers = Array.from(
+            new Map(allMatchingCustomers.map(doc => [doc.id, doc])).values()
+        );
 
         let customerRef;
         let oldName = '';
 
-        if (querySnapshot.empty) {
-            // Create new customer record if it doesn't exist (lazy creation)
-            customerRef = customersRef.doc();
+        if (uniqueCustomers.length === 0) {
+            // Create new customer record if it doesn't exist
+            // ALWAYS use the 10-digit standardized number as the phone and document ID
+            const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
+            customerRef = customersRef.doc(last10);
             await customerRef.set({
-                phoneNumber,
+                phoneNumber: last10,
                 customName: customName || '',
                 notes: notes || '',
                 createdAt: new Date(),
@@ -224,9 +234,14 @@ export async function PATCH(req) {
                 totalSpent: 0
             });
         } else {
-            const doc = querySnapshot.docs[0];
-            customerRef = doc.ref;
-            oldName = doc.data().customName || doc.data().name;
+            // Prefer the record that has totalSpend (consistent with GET)
+            let chosenDoc = uniqueCustomers.find(doc => {
+                const data = doc.data();
+                return data.totalSpend !== undefined && data.totalSpend !== null;
+            }) || uniqueCustomers[0];
+
+            customerRef = chosenDoc.ref;
+            oldName = chosenDoc.data().customName || chosenDoc.data().name;
 
             const updates = {};
             if (customName !== undefined) updates.customName = customName;
@@ -237,20 +252,92 @@ export async function PATCH(req) {
             }
         }
 
-        // If name changed, update the conversation document too for immediate UI reflection in the list
-        if (customName && customName !== oldName) {
-            const conversationsRef = businessRef.collection('conversations');
-            // Find conversation by customerPhone
-            const convQuery = await conversationsRef.where('customerPhone', '==', phoneNumber).limit(1).get();
-            if (!convQuery.empty) {
-                await convQuery.docs[0].ref.update({ customerName: customName });
+        // Sync with Conversation document for immediate UI reflect in the list and instant notes load
+        const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
+        const conversationsRef = businessRef.collection('conversations');
+        const convRef = conversationsRef.doc(last10);
+
+        const convUpdates = {};
+        if (customName !== undefined && customName !== oldName) convUpdates.customerName = customName;
+        if (notes !== undefined) convUpdates.notes = notes;
+
+        if (Object.keys(convUpdates).length > 0) {
+            // Check if conversation exists (might have been deleted if > 7 days)
+            const convSnap = await convRef.get();
+            if (convSnap.exists) {
+                await convRef.update(convUpdates);
             }
         }
 
-        return NextResponse.json({ message: 'Customer details updated successfully' }, { status: 200 });
+        // Fetch the latest details to return to the frontend for immediate sync
+        const freshDetails = await fetchLatestCustomerDetails(businessRef, phoneNumber, firestore);
+
+        return NextResponse.json({
+            message: 'Customer details updated successfully',
+            details: freshDetails
+        }, { status: 200 });
 
     } catch (error) {
         console.error("PATCH Customer Details Error:", error);
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
+}
+
+// Helper to get fresh data for sync (used by both GET and PATCH)
+async function fetchLatestCustomerDetails(businessRef, phoneNumber, firestore) {
+    const customersRef = businessRef.collection('customers');
+    const uniqueVariations = getPhoneVariations(phoneNumber);
+    const lookupPromises = uniqueVariations.flatMap(variant => [
+        customersRef.where('phoneNumber', '==', variant).get(),
+        customersRef.where('phone', '==', variant).get(),
+        customersRef.doc(variant).get()
+    ]);
+
+    const snapshots = await Promise.all(lookupPromises);
+    const allMatchingCustomers = [];
+
+    snapshots.forEach(snap => {
+        if (snap.docs) snap.docs.forEach(doc => allMatchingCustomers.push(doc));
+        else if (snap.exists) allMatchingCustomers.push(snap);
+    });
+
+    const uniqueCustomers = Array.from(new Map(allMatchingCustomers.map(doc => [doc.id, doc])).values());
+    if (uniqueCustomers.length === 0) return null;
+
+    const customerDoc = uniqueCustomers.find(doc => {
+        const d = doc.data();
+        return d.totalSpend !== undefined && d.totalSpend !== null;
+    }) || uniqueCustomers[0];
+
+    const data = customerDoc.data();
+
+    // Calculate dynamic stats
+    const ordersRef = firestore.collection('orders');
+    const orderQueries = uniqueVariations.map(variant =>
+        ordersRef.where('restaurantId', '==', businessRef.id).where('customerPhone', '==', variant).get()
+    );
+    const orderSnapshots = await Promise.all(orderQueries);
+
+    const allOrders = new Map();
+    orderSnapshots.forEach(snapshot => snapshot.docs.forEach(doc => allOrders.set(doc.id, doc)));
+
+    let totalSpent = 0;
+    // Filter rejected orders in memory
+    allOrders.forEach(doc => {
+        const orderData = doc.data();
+        if (orderData.status === 'rejected') {
+            allOrders.delete(doc.id);
+            return;
+        }
+        const amount = parseFloat(orderData.totalAmount || orderData.amount || orderData.billTotal || 0);
+        if (!isNaN(amount)) totalSpent += amount;
+    });
+
+    return {
+        customName: data.customName || data.name || '',
+        notes: data.notes || '',
+        totalOrders: allOrders.size,
+        totalSpent: totalSpent,
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || null)
+    };
 }
