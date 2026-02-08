@@ -91,6 +91,9 @@ async function fetchCollection(firestore, collectionName) {
 
 export async function GET(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = await getFirestore();
 
         const [restaurants, shops, streetVendors] = await Promise.all([
@@ -139,6 +142,9 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const { restaurantId, businessType, status, restrictedFeatures, suspensionRemark } = await req.json();
 
         if (!restaurantId || !businessType || !status) {

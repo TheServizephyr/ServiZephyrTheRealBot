@@ -5,10 +5,10 @@ import { getFirestore, getAuth } from '@/lib/firebase-admin';
 async function fetchCollection(firestore, collectionName) {
     const snapshot = await firestore.collection(collectionName).get();
     const auth = getAuth();
-    
+
     const promises = snapshot.docs.map(async (doc) => {
         const data = doc.data();
-        
+
         if (!data || Object.keys(data).length === 0) {
             console.warn(`[API] Skipping empty document in ${collectionName} with ID: ${doc.id}`);
             return null;
@@ -32,8 +32,8 @@ async function fetchCollection(firestore, collectionName) {
             id: doc.id,
             name: data.name || 'Unnamed Business',
             ownerId: data.ownerId,
-            ownerName: 'N/A', 
-            ownerEmail: 'N/A', 
+            ownerName: 'N/A',
+            ownerEmail: 'N/A',
             onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
             status: capitalizedStatus,
             restrictedFeatures: data.restrictedFeatures || [],
@@ -45,7 +45,7 @@ async function fetchCollection(firestore, collectionName) {
                 const userRecord = await auth.getUser(business.ownerId);
                 business.ownerName = userRecord.displayName || 'No Name';
                 business.ownerEmail = userRecord.email;
-            } catch(e) {
+            } catch (e) {
                 console.warn(`[API] Could not find user for ownerId: ${business.ownerId} in ${business.name}.`);
             }
         }
@@ -57,16 +57,19 @@ async function fetchCollection(firestore, collectionName) {
 
 export async function GET(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = getFirestore();
-        
+
         const [restaurants, shops, streetVendors] = await Promise.all([
             fetchCollection(firestore, 'restaurants'),
             fetchCollection(firestore, 'shops'),
             fetchCollection(firestore, 'street_vendors')
         ]);
-        
+
         const allListings = [...restaurants, ...shops, ...streetVendors];
-        
+
         // Sort by onboarding date as a default
         allListings.sort((a, b) => new Date(b.onboarded) - new Date(a.onboarded));
 
@@ -81,6 +84,9 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const { restaurantId, businessType, status, restrictedFeatures, suspensionRemark } = await req.json();
 
         if (!restaurantId || !businessType || !status) {
@@ -101,11 +107,11 @@ export async function PATCH(req) {
         } else if (businessType === 'street-vendor') {
             collectionName = 'street_vendors';
         } else {
-             return NextResponse.json({ message: 'Invalid business type' }, { status: 400 });
+            return NextResponse.json({ message: 'Invalid business type' }, { status: 400 });
         }
 
         const restaurantRef = firestore.collection(collectionName).doc(restaurantId);
-        
+
         const updateData = {
             approvalStatus: status.toLowerCase(),
         };
@@ -118,9 +124,9 @@ export async function PATCH(req) {
             updateData.restrictedFeatures = [];
             updateData.suspensionRemark = '';
         }
-        
+
         await restaurantRef.set(updateData, { merge: true });
-        
+
         return NextResponse.json({ message: 'Business status updated successfully' }, { status: 200 });
 
     } catch (error) {

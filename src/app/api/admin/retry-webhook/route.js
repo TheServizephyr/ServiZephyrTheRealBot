@@ -5,25 +5,9 @@ export async function POST(req) {
     console.log('[Admin Retry] Webhook retry request received');
 
     try {
-        // AUTH CHECK: Ensure only authenticated admins/owners can retry
-        const authHeader = req.headers.get('authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized - Missing token' }, { status: 401 });
-        }
-
-        const idToken = authHeader.split('Bearer ')[1];
-        let decodedToken;
-
-        try {
-            const auth = await getAuth();
-            decodedToken = await auth.verifyIdToken(idToken);
-        } catch (authError) {
-            console.error('[Admin Retry] Auth error:', authError);
-            return NextResponse.json({ error: 'Unauthorized - Invalid token' }, { status: 401 });
-        }
-
-        // TODO: Add role check (admin/owner only) once roles are implemented
-        console.log(`[Admin Retry] Authenticated user: ${decodedToken.uid}`);
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        const { uid, userData } = await verifyAdmin(req);
+        console.log(`[Admin Retry] Authenticated admin: ${uid}`);
 
         const { webhookId } = await req.json();
 

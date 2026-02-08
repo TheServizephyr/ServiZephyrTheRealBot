@@ -1,11 +1,12 @@
-
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { verifyAdmin } from '@/lib/verify-admin';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req) {
+export async function POST(req) {
     try {
+        await verifyAdmin(req);
         const firestore = await getFirestore();
         const results = {
             processed: 0,

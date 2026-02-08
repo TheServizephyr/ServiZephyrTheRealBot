@@ -232,39 +232,70 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
 
+  // Realtime Listener for WhatsApp Unread Count
   useEffect(() => {
-    // Only fetch if user is owner or has access to whatsapp
+    // Only fetch if user is owner or has access (and not impersonating for now to keep it simple/secure in client)
     if (!auth.currentUser) return;
+    if (impersonatedOwnerId || employeeOfOwnerId) return; // Skip for now until we handle composite query permissions perfectly
 
-    const fetchUnreadCount = async () => {
+    let unsubscribe = () => { };
+
+    const setupListener = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
-        const idToken = await user.getIdToken();
 
-        let url = new URL('/api/owner/whatsapp-direct/conversations', window.location.origin);
-        // Only fetch metadata/summary to save bandwidth if possible, for now using existing endpoint 
-        // In real app, create a dedicated lightweight /stats endpoint
-        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-        if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
+        // 1. Resolve Business ID (Restaurant or Shop)
+        // Try Restaurant first
+        let businessId = null;
+        let businessCollection = 'restaurants';
 
-        const res = await fetch(url.toString(), {
-          headers: { 'Authorization': `Bearer ${idToken}` }
+        const restaurantsQuery = query(
+          collection(db, 'restaurants'),
+          where('ownerId', '==', user.uid),
+          limit(1)
+        );
+        const restaurantSnapshot = await getDocs(restaurantsQuery);
+
+        if (!restaurantSnapshot.empty) {
+          businessId = restaurantSnapshot.docs[0].id;
+        } else {
+          // Try Shop
+          const shopsQuery = query(
+            collection(db, 'shops'),
+            where('ownerId', '==', user.uid),
+            limit(1)
+          );
+          const shopSnapshot = await getDocs(shopsQuery);
+          if (!shopSnapshot.empty) {
+            businessId = shopSnapshot.docs[0].id;
+            businessCollection = 'shops';
+          }
+        }
+
+        if (!businessId) return;
+
+        // 2. Listen to Conversations with unreadCount > 0
+        const q = query(
+          collection(db, businessCollection, businessId, 'conversations'),
+          where('unreadCount', '>', 0)
+        );
+
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          const totalUnread = snapshot.docs.reduce((acc, doc) => acc + (doc.data().unreadCount || 0), 0);
+          setWhatsappUnreadCount(totalUnread);
+        }, (error) => {
+          console.error("Error listening to whatsapp conversations:", error);
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          const total = (data.conversations || []).reduce((acc, curr) => acc + (curr.unreadCount || 0), 0);
-          setWhatsappUnreadCount(total);
-        }
       } catch (error) {
-        console.error("Failed to fetch WhatsApp unread count:", error);
+        console.error("Error setting up whatsapp listener:", error);
       }
     };
 
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 60000); // Poll every 60s
-    return () => clearInterval(interval);
+    setupListener();
+
+    return () => unsubscribe();
   }, [impersonatedOwnerId, employeeOfOwnerId]);
 
   // Fetch Pending Orders Count (Real-time)

@@ -6,6 +6,9 @@ export const dynamic = 'force-dynamic';
 // GET all reports for the admin
 export async function GET(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = await getFirestore();
         const mailboxRef = firestore.collection('adminMailbox');
         const snapshot = await mailboxRef.orderBy('timestamp', 'desc').get();
@@ -88,6 +91,9 @@ export async function POST(req) {
 // PATCH to update a report's status
 export async function PATCH(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const { reportId, status } = await req.json();
 
         if (!reportId || !status) {

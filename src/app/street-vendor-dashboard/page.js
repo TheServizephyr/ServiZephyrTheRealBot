@@ -25,6 +25,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 
 
+import { usePolling } from '@/lib/usePolling';
+
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDateTime = (timestamp) => {
     if (!timestamp) return '';
@@ -800,27 +802,24 @@ const StreetVendorDashboardContent = () => {
         }
     }, [effectiveOwnerId, handleApiCall]);
 
-    // Fetch Orders
+    // POLL: For impersonation/employee access (Optimized)
+    usePolling(fetchOrdersViaApi, {
+        interval: 30000,
+        enabled: !!effectiveOwnerId,
+        deps: [effectiveOwnerId]
+    });
+
+    // LISTENER: For owner's own access (Real-time)
     useEffect(() => {
-        console.log('[Orders Debug] useEffect running, effectiveOwnerId:', effectiveOwnerId, 'vendorId:', vendorId);
+        if (effectiveOwnerId) return; // Handled by polling above
 
-        // For impersonation or employee access, use API polling (don't need vendorId - API handles it)
-        if (effectiveOwnerId) {
-            console.log('[Orders] Fetching via API for employee/impersonation access:', effectiveOwnerId);
-            fetchOrdersViaApi();
-            // Poll every 30 seconds
-            const interval = setInterval(fetchOrdersViaApi, 30000);
-            return () => clearInterval(interval);
-        }
-
-        // For owner's own access, wait for vendorId from Firestore
         if (!vendorId) {
             console.log('[Orders Debug] No vendorId yet, skipping Firestore query');
             return;
         }
 
         setLoading(true);
-        let isInitialLoad = true; // Flag to skip sound on initial fetch
+        let isInitialLoad = true;
 
         const ordersQuery = query(
             collection(db, "orders"),
@@ -852,7 +851,7 @@ const StreetVendorDashboardContent = () => {
 
             setOrders(fetchedOrders);
             setLoading(false);
-            isInitialLoad = false; // Mark initial load complete
+            isInitialLoad = false;
         }, (err) => {
             const contextualError = new FirestorePermissionError({ path: `orders`, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
@@ -861,7 +860,7 @@ const StreetVendorDashboardContent = () => {
         });
 
         return () => unsubscribe();
-    }, [vendorId, effectiveOwnerId, fetchOrdersViaApi]);
+    }, [vendorId, effectiveOwnerId]);
 
     // 🔧 FIX: Page Visibility API - Auto-refresh when tab becomes active again
     // Prevents "Failed to fetch" errors when user returns after leaving tab inactive

@@ -184,13 +184,18 @@ export async function PATCH(req) {
             paymentMethod,
             isCashRefund,
             cashRefundOrderIds = [],
-            shouldRefund
+            shouldRefund,
+            action // Added action field
         } = await req.json();
 
         // Support multiple Order ID field names for backward compatibility
         let finalIdsToUpdate = [...idsToUpdate];
         if (finalIdsToUpdate.length === 0 && orderIds.length > 0) finalIdsToUpdate = [...orderIds];
         if (finalIdsToUpdate.length === 0 && orderId) finalIdsToUpdate = [orderId];
+
+        // 🔧 FIX: Map frontend action to backend flag
+        const effectiveIsCashRefund = isCashRefund || action === 'markCashRefunded';
+        const effectiveCashRefundIds = cashRefundOrderIds.length > 0 ? cashRefundOrderIds : finalIdsToUpdate;
 
         // 1. Gather all unique IDs to pre-fetch in parallel
         const allTargetIds = [...new Set([...finalIdsToUpdate, ...cashRefundOrderIds])];
@@ -209,8 +214,8 @@ export async function PATCH(req) {
         const businessData = businessSnap.data();
 
         // --- 2. Handle Cash Refund ---
-        if (isCashRefund && cashRefundOrderIds.length > 0) {
-            for (const id of cashRefundOrderIds) {
+        if (effectiveIsCashRefund && effectiveCashRefundIds.length > 0) {
+            for (const id of effectiveCashRefundIds) {
                 const orderSnap = orderMap.get(id);
                 if (!orderSnap || orderSnap.data().restaurantId !== businessId) continue;
 
@@ -382,11 +387,15 @@ export async function PATCH(req) {
         console.log(`[API][PATCH /orders] Committing batch for ${allTargetIds.length} operations...`);
         await batch.commit();
 
-        // Parallel execution of side effects in background
-        Promise.allSettled(sideEffects).then(results => {
-            const failed = results.filter(r => r.status === 'rejected');
-            if (failed.length > 0) console.error(`[API][PATCH /orders] ${failed.length} side effect chains had errors.`);
-        });
+        // CRITICAL: Await side effects to prevent Vercel execution freeze
+        // "Fire-and-forget" is unsafe for refunds/notifications in serverless environment
+        const results = await Promise.allSettled(sideEffects);
+
+        const failed = results.filter(r => r.status === 'rejected');
+        if (failed.length > 0) {
+            console.error(`[API][PATCH /orders] ${failed.length} side effect chains had errors.`);
+            failed.forEach((f, idx) => console.error(`   Effect ${idx} error:`, f.reason));
+        }
 
         return NextResponse.json({
             message: 'Orders updated successfully.',

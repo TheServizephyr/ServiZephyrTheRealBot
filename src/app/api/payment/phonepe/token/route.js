@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 
 // PhonePe OAuth Credentials
-const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || "M23Z4Z8YT4OW5_2511281822";
-const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || "MzY4MjkwYzctZGM3Mi00NDBjLWJjYjQtNzYyMjY5YWRkNDc0";
+// PhonePe OAuth Credentials
+const CLIENT_ID = process.env.PHONEPE_CLIENT_ID;
+const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET;
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || "1";
-const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token";
+const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL;
 
 // In-memory token cache (simple implementation)
 let tokenCache = {

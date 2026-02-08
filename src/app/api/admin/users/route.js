@@ -4,6 +4,9 @@ import { getFirestore, getAuth } from '@/lib/firebase-admin';
 
 export async function GET(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = await getFirestore();
         const usersSnap = await firestore.collection('users').get();
 
@@ -87,6 +90,9 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const { userId, status } = await req.json();
 
         if (!userId || !status) {

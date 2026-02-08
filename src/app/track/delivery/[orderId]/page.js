@@ -540,154 +540,156 @@ function OrderTrackingContent() {
                 <div className={`flex-1 overflow-y-auto overflow-x-hidden w-full ${isMapExpanded ? 'overflow-hidden' : ''}`}>
 
                     {/* HEADER & STATUS CARD */}
-                    <div className="px-5 pt-6 pb-4 z-20">
-                        <motion.div
-                            key={currentOrderId} // Animate on switch active
-                            initial={{ y: -20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            className="bg-white/90 backdrop-blur-sm shadow-sm rounded-2xl p-4 border border-gray-100"
-                        >
-                            <div className="flex justify-between items-start mb-3">
-                                <div>
-                                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderData?.order?.customerOrderId || currentOrderId?.slice(0, 8) || '...'}</p>
-                                    <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="sm" onClick={() => {
-                                        if (orderData?.restaurant?.id) {
-                                            const token = searchParams.get('token');
-                                            const phone = searchParams.get('phone');
-                                            let targetUrl = `/order/${orderData.restaurant.id}`;
-                                            const params = new URLSearchParams();
-                                            const ref = searchParams.get('ref'); // CAPTURE REF
-                                            if (token) params.set('token', token);
-                                            if (phone) params.set('phone', phone);
-                                            if (ref) params.set('ref', ref); // ADD REF
-                                            // FIXED: Pass activeOrderId to preserve bundled session state
-                                            if (currentOrderId) params.set('activeOrderId', currentOrderId);
-
-                                            if (params.toString()) targetUrl += `?${params.toString()}`;
-
-                                            router.push(targetUrl);
-                                        } else {
-                                            router.back();
-                                        }
-                                    }} className="text-gray-500 hover:bg-gray-50 h-8 w-8 p-0 rounded-full">
-                                        <ArrowLeft size={18} />
-                                    </Button>
-                                    <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-gray-50">
-                                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                                    </Button>
-                                </div>
-                            </div>
-
-                            {/* DYNAMIC STATUS BAR */}
-                            {(() => {
-                                const status = orderData?.order?.status || 'pending';
-                                let statusText = "Order In Progress";
-                                let statusColor = "bg-gray-100 text-gray-600";
-                                let icon = <Loader2 size={16} className="animate-spin" />;
-
-                                // Determine if it's a delivery order to adjust 'ready' status text
-                                const isDelivery = orderData.deliveryBoy ||
-                                    (orderData.order.deliveryMode === 'delivery') ||
-                                    (orderData.order.type === 'delivery');
-
-                                // Custom Status Logic
-                                switch (status) {
-                                    case 'pending':
-                                    case 'placed':
-                                    case 'paid':
-                                        statusText = "Order Placed";
-                                        statusColor = "bg-blue-50 text-blue-700";
-                                        icon = <CheckCircle size={18} />;
-                                        break;
-
-                                    case 'confirmed':
-                                    case 'accepted':
-                                        statusText = "Order Confirmed";
-                                        statusColor = "bg-green-50 text-green-700";
-                                        icon = <Check size={18} />;
-                                        break;
-
-                                    case 'preparing':
-                                    case 'cooking':
-                                        statusText = "Preparing Your Food";
-                                        statusColor = "bg-orange-50 text-orange-700";
-                                        icon = <CookingPot size={18} className="animate-pulse" />;
-                                        break;
-
-                                    case 'dispatched':
-                                    case 'reached_restaurant':
-                                    case 'rider_assigned':
-                                        // User requested explicit "Rider Assigned" for these states
-                                        statusText = "Rider Assigned";
-                                        statusColor = "bg-indigo-50 text-indigo-700"; // Distinct color
-                                        icon = <Bike size={18} />;
-                                        break;
-
-                                    case 'ready':
-                                    case 'ready_for_pickup':
-                                        if (isDelivery) {
-                                            // Delivery: Food is ready, waiting for rider pickup -> Show "Rider Assigned" (or "Food Ready")
-                                            // User preferred "Rider Assigned"
-                                            statusText = "Rider Assigned";
-                                            statusColor = "bg-indigo-50 text-indigo-700 text-sm";
-                                            icon = <Bike size={18} />;
-                                        } else {
-                                            // Pickup: Customer picks up
-                                            statusText = "Ready for Pickup";
-                                            statusColor = "bg-blue-100 text-blue-800";
-                                            icon = <PackageCheck size={18} />;
-                                        }
-                                        break;
-
-                                    case 'picked_up':
-                                    case 'out_for_delivery':
-                                    case 'on_the_way':
-                                        statusText = "Out for Delivery";
-                                        statusColor = "bg-green-100 text-green-800";
-                                        icon = <Bike size={18} className="animate-bounce" />;
-                                        break;
-
-                                    case 'reached':
-                                    case 'rider_arrived':
-                                        statusText = "Rider Reached";
-                                        statusColor = "bg-teal-50 text-teal-700";
-                                        icon = <MapPin size={18} />;
-                                        break;
-
-                                    case 'delivered':
-                                    case 'picked_up_by_customer':
-                                        statusText = "Food Delivered";
-                                        statusColor = "bg-green-600 text-white shadow-green-200";
-                                        icon = <PackageCheck size={18} />;
-                                        break;
-
-                                    case 'cancelled':
-                                    case 'rejected':
-                                    case 'failed_delivery':
-                                        statusText = "Order Cancelled";
-                                        statusColor = "bg-red-50 text-red-700";
-                                        icon = <XCircle size={18} />;
-                                        break;
-
-                                    default:
-                                        // Fallback for unknown states
-                                        statusText = "Order In Progress";
-                                        statusColor = "bg-gray-50 text-gray-500";
-                                        icon = <RefreshCw size={16} className="animate-spin opacity-50" />;
-                                }
-
-                                return (
-                                    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${statusColor} font-bold shadow-sm transition-colors duration-300`}>
-                                        <div className="shrink-0">{icon}</div>
-                                        <span className="text-sm tracking-wide truncate">{statusText}</span>
+                    {!isMapExpanded && (
+                        <div className="px-5 pt-6 pb-4 z-20">
+                            <motion.div
+                                key={currentOrderId} // Animate on switch active
+                                initial={{ y: -20, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                className="bg-white/90 backdrop-blur-sm shadow-sm rounded-2xl p-4 border border-gray-100"
+                            >
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">ORDER #{orderData?.order?.customerOrderId || currentOrderId?.slice(0, 8) || '...'}</p>
+                                        <h1 className="text-xl font-black text-gray-900 leading-tight line-clamp-1">{orderData?.restaurant?.name || 'Restaurant'}</h1>
                                     </div>
-                                );
-                            })()}
-                        </motion.div>
-                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="ghost" size="sm" onClick={() => {
+                                            if (orderData?.restaurant?.id) {
+                                                const token = searchParams.get('token');
+                                                const phone = searchParams.get('phone');
+                                                let targetUrl = `/order/${orderData.restaurant.id}`;
+                                                const params = new URLSearchParams();
+                                                const ref = searchParams.get('ref'); // CAPTURE REF
+                                                if (token) params.set('token', token);
+                                                if (phone) params.set('phone', phone);
+                                                if (ref) params.set('ref', ref); // ADD REF
+                                                // FIXED: Pass activeOrderId to preserve bundled session state
+                                                if (currentOrderId) params.set('activeOrderId', currentOrderId);
+
+                                                if (params.toString()) targetUrl += `?${params.toString()}`;
+
+                                                router.push(targetUrl);
+                                            } else {
+                                                router.back();
+                                            }
+                                        }} className="text-gray-500 hover:bg-gray-50 h-8 w-8 p-0 rounded-full">
+                                            <ArrowLeft size={18} />
+                                        </Button>
+                                        <Button variant="ghost" size="sm" onClick={() => fetchData(true)} className="text-gray-400 h-8 w-8 p-0 rounded-full hover:bg-gray-50">
+                                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* DYNAMIC STATUS BAR */}
+                                {(() => {
+                                    const status = orderData?.order?.status || 'pending';
+                                    let statusText = "Order In Progress";
+                                    let statusColor = "bg-gray-100 text-gray-600";
+                                    let icon = <Loader2 size={16} className="animate-spin" />;
+
+                                    // Determine if it's a delivery order to adjust 'ready' status text
+                                    const isDelivery = orderData.deliveryBoy ||
+                                        (orderData.order.deliveryMode === 'delivery') ||
+                                        (orderData.order.type === 'delivery');
+
+                                    // Custom Status Logic
+                                    switch (status) {
+                                        case 'pending':
+                                        case 'placed':
+                                        case 'paid':
+                                            statusText = "Order Placed";
+                                            statusColor = "bg-blue-50 text-blue-700";
+                                            icon = <CheckCircle size={18} />;
+                                            break;
+
+                                        case 'confirmed':
+                                        case 'accepted':
+                                            statusText = "Order Confirmed";
+                                            statusColor = "bg-green-50 text-green-700";
+                                            icon = <Check size={18} />;
+                                            break;
+
+                                        case 'preparing':
+                                        case 'cooking':
+                                            statusText = "Preparing Your Food";
+                                            statusColor = "bg-orange-50 text-orange-700";
+                                            icon = <CookingPot size={18} className="animate-pulse" />;
+                                            break;
+
+                                        case 'dispatched':
+                                        case 'reached_restaurant':
+                                        case 'rider_assigned':
+                                            // User requested explicit "Rider Assigned" for these states
+                                            statusText = "Rider Assigned";
+                                            statusColor = "bg-indigo-50 text-indigo-700"; // Distinct color
+                                            icon = <Bike size={18} />;
+                                            break;
+
+                                        case 'ready':
+                                        case 'ready_for_pickup':
+                                            if (isDelivery) {
+                                                // Delivery: Food is ready, waiting for rider pickup -> Show "Rider Assigned" (or "Food Ready")
+                                                // User preferred "Rider Assigned"
+                                                statusText = "Rider Assigned";
+                                                statusColor = "bg-indigo-50 text-indigo-700 text-sm";
+                                                icon = <Bike size={18} />;
+                                            } else {
+                                                // Pickup: Customer picks up
+                                                statusText = "Ready for Pickup";
+                                                statusColor = "bg-blue-100 text-blue-800";
+                                                icon = <PackageCheck size={18} />;
+                                            }
+                                            break;
+
+                                        case 'picked_up':
+                                        case 'out_for_delivery':
+                                        case 'on_the_way':
+                                            statusText = "Out for Delivery";
+                                            statusColor = "bg-green-100 text-green-800";
+                                            icon = <Bike size={18} className="animate-bounce" />;
+                                            break;
+
+                                        case 'reached':
+                                        case 'rider_arrived':
+                                            statusText = "Rider Reached";
+                                            statusColor = "bg-teal-50 text-teal-700";
+                                            icon = <MapPin size={18} />;
+                                            break;
+
+                                        case 'delivered':
+                                        case 'picked_up_by_customer':
+                                            statusText = "Food Delivered";
+                                            statusColor = "bg-green-600 text-white shadow-green-200";
+                                            icon = <PackageCheck size={18} />;
+                                            break;
+
+                                        case 'cancelled':
+                                        case 'rejected':
+                                        case 'failed_delivery':
+                                            statusText = "Order Cancelled";
+                                            statusColor = "bg-red-50 text-red-700";
+                                            icon = <XCircle size={18} />;
+                                            break;
+
+                                        default:
+                                            // Fallback for unknown states
+                                            statusText = "Order In Progress";
+                                            statusColor = "bg-gray-50 text-gray-500";
+                                            icon = <RefreshCw size={16} className="animate-spin opacity-50" />;
+                                    }
+
+                                    return (
+                                        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${statusColor} font-bold shadow-sm transition-colors duration-300`}>
+                                            <div className="shrink-0">{icon}</div>
+                                            <span className="text-sm tracking-wide truncate">{statusText}</span>
+                                        </div>
+                                    );
+                                })()}
+                            </motion.div>
+                        </div>
+                    )}
 
 
 
@@ -752,15 +754,15 @@ function OrderTrackingContent() {
                                 </div>
                             )}
 
-                            {/* MAP CONTAINER - Pointer events disabled when collapsed to allow page scroll */}
-                            <div className={`w-full h-full ${!isMapExpanded ? 'pointer-events-none' : ''}`}>
-                                <LiveTrackingMap {...mapLocations} mapRef={mapRef} isInteractive={isMapExpanded} />
+                            {/* MAP CONTAINER - Always interactive now */}
+                            <div className="w-full h-full">
+                                <LiveTrackingMap {...mapLocations} mapRef={mapRef} isInteractive={true} />
                             </div>
 
                             {/* EXPAND / COLLAPSE BUTTON - pointer-events-auto needed explicitly since parent might propagate none? No, siblings are fine, but good practice */}
                             <Button
                                 onClick={() => setIsMapExpanded(!isMapExpanded)}
-                                className="absolute bottom-4 right-4 z-10 bg-white text-gray-800 shadow-xl rounded-full p-3 h-12 w-12 hover:bg-gray-50 border border-gray-100 pointer-events-auto"
+                                className={`absolute z-10 bg-white text-gray-800 shadow-xl rounded-full p-3 h-12 w-12 hover:bg-gray-50 border border-gray-100 pointer-events-auto transition-all duration-300 ${isMapExpanded ? 'top-6 right-6' : 'bottom-4 right-4'}`}
                             >
                                 {isMapExpanded ? <X size={24} /> : <Maximize size={24} />}
                             </Button>

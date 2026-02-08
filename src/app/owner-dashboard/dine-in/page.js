@@ -1585,12 +1585,35 @@ const DineInPageContent = () => {
         }
     }, [handleApiCall]);
 
-    // Use adaptive polling for impersonation/employee modes
+    // Adaptive Polling for data
     usePolling(fetchData, {
         interval: 15000,
         enabled: !!(impersonatedOwnerId || employeeOfOwnerId),
         deps: [impersonatedOwnerId, employeeOfOwnerId]
     });
+
+    // 🔄 SYNC LOGIC: Handle data drift detected by GET Endpoint
+    useEffect(() => {
+        if (allData?.driftedTableIds?.length > 0) {
+            console.warn("⚠️ Data drift detected by server. Triggering sync for tables:", allData.driftedTableIds);
+
+            const syncTables = async () => {
+                try {
+                    await handleApiCall('PATCH', {
+                        action: 'sync_tables',
+                        tableIds: allData.driftedTableIds
+                    }, '/api/owner/dine-in-tables');
+
+                    // Refresh data after sync
+                    fetchData(true);
+                } catch (err) {
+                    console.error("Failed to sync tables:", err);
+                }
+            };
+
+            syncTables();
+        }
+    }, [allData?.driftedTableIds, fetchData]);
 
     useEffect(() => {
         const fetchAndSetRestaurantDetails = async () => {

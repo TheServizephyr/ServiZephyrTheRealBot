@@ -22,6 +22,23 @@ const generateSecureToken = async (firestore, customerPhone) => {
 };
 
 
+
+// 🔒 ATOMIC TOKEN GENERATOR
+// Uses a transaction to safely increment the counter without race conditions
+const getNextToken = async (firestore, vendorRef) => {
+    return await firestore.runTransaction(async (t) => {
+        const doc = await t.get(vendorRef);
+        if (!doc.exists) throw new Error("Vendor not found");
+
+        const lastToken = doc.data().lastOrderToken || 0;
+        const newToken = lastToken + 1;
+
+        t.update(vendorRef, { lastOrderToken: newToken });
+        return newToken;
+    });
+};
+
+
 async function makeRazorpayRequest(options, payload) {
     return new Promise((resolve, reject) => {
         const req = https.request(options, (res) => {
@@ -64,6 +81,8 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
         await firestore.runTransaction(async (transaction) => {
             console.log(`[Webhook RZP] Starting Firestore transaction for split payment.`);
             const splitDoc = await transaction.get(splitRef);
+            // ... existing code ...
+
             if (!splitDoc.exists) {
                 console.error(`[Webhook RZP] CRITICAL: Split session ${splitId} not found in Firestore. Cannot process payment.`);
                 return;
@@ -461,14 +480,13 @@ export async function POST(req) {
             let dineInToken = null;
             if (isStreetVendorOrder) {
                 const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
-                const vendorDoc = await vendorRef.get();
-                if (vendorDoc.exists) {
-                    const vendorData = vendorDoc.data();
-                    const lastToken = vendorData.lastOrderToken || 0;
-                    const newTokenNumber = lastToken + 1;
+                try {
+                    // 🔒 ATOMIC INCREMENT (P1 Fix)
+                    const newTokenNumber = await getNextToken(firestore, vendorRef);
                     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
                     dineInToken = `${String(newTokenNumber)}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
-                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
+                } catch (e) {
+                    console.error("[Webhook RZP] Failed to generate atomic token:", e);
                 }
             }
 

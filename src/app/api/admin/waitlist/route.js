@@ -5,6 +5,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = await getFirestore();
 
         // Fetch waitlist entries sorted by creation date (newest first)

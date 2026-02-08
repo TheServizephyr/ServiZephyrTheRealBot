@@ -47,3 +47,47 @@ export async function checkRateLimit(restaurantId, limitPerMinute = 50) {
         return { allowed: true };
     });
 }
+
+/**
+ * Check if IP has exceeded rate limit
+ * @param {string} ip - Client IP
+ * @param {number} limitPerMinute - Max requests per minute
+ * @returns {Promise<{allowed: boolean}>}
+ */
+export async function checkIpRateLimit(ip, limitPerMinute = 20) {
+    const firestore = await getFirestore();
+
+    // Generate minute key
+    const now = new Date();
+    const minuteKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const docId = `ip_${ip.replace(/[:.]/g, '_')}_${minuteKey}`;
+    const ref = firestore.collection('rate_limits').doc(docId);
+
+    return await firestore.runTransaction(async (transaction) => {
+        const snap = await transaction.get(ref);
+
+        if (!snap.exists) {
+            transaction.set(ref, {
+                ip,
+                minute: minuteKey,
+                count: 1,
+                createdAt: FieldValue.serverTimestamp(),
+            });
+            return { allowed: true };
+        }
+
+        const currentCount = snap.data().count;
+
+        if (currentCount >= limitPerMinute) {
+            console.log(`[Rate Limit] IP ${ip} exceeded ${limitPerMinute}/min (current: ${currentCount})`);
+            return { allowed: false };
+        }
+
+        transaction.update(ref, {
+            count: FieldValue.increment(1),
+        });
+
+        return { allowed: true };
+    });
+}

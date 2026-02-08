@@ -3,14 +3,18 @@ import axios from 'axios';
 import { getFirestore } from '@/lib/firebase-admin';
 
 // PhonePe API Configuration
-const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox";
-const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || "M23Z4Z8YT4OW5_2511281822";
-const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || "MzY4MjkwYzctZGM3Mi00NDBjLWJjYjQtNzYyMjY5YWRkNDc0";
+// PhonePe API Configuration
+const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL;
+const CLIENT_ID = process.env.PHONEPE_CLIENT_ID;
+const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET;
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || "1";
-const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token";
+const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL;
 
 export async function POST(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const adminDb = await getFirestore();
         const { orderId, amount, reason } = await req.json();
 

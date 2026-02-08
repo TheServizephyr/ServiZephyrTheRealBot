@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = await getFirestore();
 
         // 1. Pending Approvals from both collections
@@ -23,21 +26,21 @@ export async function GET(req) {
         // 3. Total Users
         const totalUsersSnap = await firestore.collection('users').count().get();
         const totalUsers = totalUsersSnap.data().count;
-        
+
         // 4. Today's metrics
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         const todayOrdersSnap = await firestore.collection('orders').where('orderDate', '>=', today).get();
         const todayOrders = todayOrdersSnap.size;
         const todayRevenue = todayOrdersSnap.docs.reduce((sum, doc) => sum + (doc.data().totalAmount || 0), 0);
-        
+
         // 5. Recent Signups
         const recentUsersSnap = await firestore.collection('users').orderBy('createdAt', 'desc').limit(4).get();
         const recentSignups = recentUsersSnap.docs.map(doc => {
             const data = doc.data();
             const signupTime = data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString();
-            
+
             let userType = 'User';
             if (data.businessType === 'restaurant') {
                 userType = 'Restaurant';
@@ -65,12 +68,12 @@ export async function GET(req) {
             startOfDay.setHours(0, 0, 0, 0);
             const endOfDay = new Date(date);
             endOfDay.setHours(23, 59, 59, 999);
-            
+
             const daySnap = await firestore.collection('orders')
                 .where('orderDate', '>=', startOfDay)
                 .where('orderDate', '<=', endOfDay)
                 .count().get();
-            
+
             weeklyOrderData.push({ day, orders: daySnap.data().count });
         }
 

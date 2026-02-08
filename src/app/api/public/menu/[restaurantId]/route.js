@@ -94,9 +94,9 @@ export async function GET(req, { params }) {
                     headers: {
                         'X-Cache': 'HIT',
                         'X-Menu-Version': menuVersion.toString(),
-                        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
+                        // CDN Cache: Fresh for 60s, serve stale for 10m
+                        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
+                        'Vary': 'Accept-Encoding'
                     }
                 });
             }
@@ -241,9 +241,9 @@ export async function GET(req, { params }) {
                 'X-Menu-Version': menuVersion.toString(),
                 'X-Debug-Source-Collection': collectionName,
                 'X-Debug-DB-IsOpen': String(businessData.isOpen),
-                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                'Pragma': 'no-cache',
-                'Expires': '0'
+                // CDN Cache: Fresh for 60s, serve stale for 10m
+                'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
+                'Vary': 'Accept-Encoding'
             }
         });
 

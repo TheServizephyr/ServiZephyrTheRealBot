@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
+import { usePolling } from '@/lib/usePolling';
 
 const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), {
     ssr: false,
@@ -91,18 +92,19 @@ export default function RiderTrackPage() {
 
     useEffect(() => {
         if (isUserLoading) return;
-        if (!user) router.push('/rider-auth');
-        else {
+        if (!user) {
+            router.push('/rider-auth');
+        } else {
             fetchData();
-            // Polling every 60s (was 30s) + Visibility Check to save costs
-            const interval = setInterval(() => {
-                if (document.visibilityState === 'visible') {
-                    fetchData(true);
-                }
-            }, 60000);
-            return () => clearInterval(interval);
         }
     }, [user, isUserLoading, router, fetchData]);
+
+    // Use adaptive polling for location tracking
+    usePolling(() => fetchData(true), {
+        interval: 60000,
+        enabled: !!user && !isUserLoading,
+        deps: [user]
+    });
 
     const handleMarkDelivered = async (orderId) => {
         setMarkingOrderId(orderId);

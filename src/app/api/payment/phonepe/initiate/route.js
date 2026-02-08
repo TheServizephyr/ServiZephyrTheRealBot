@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import { checkIpRateLimit } from '@/lib/rateLimiter';
+import { getClientIP } from '@/lib/audit-logger';
 
 // PhonePe API Configuration - Read from env (NO fallbacks to sandbox)
 // Updated: 17-Dec-2024 - Production URLs
@@ -11,6 +13,12 @@ const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL;
 
 export async function POST(req) {
     try {
+        const ip = getClientIP(req);
+        const rateLimit = await checkIpRateLimit(ip, 10); // 10 requests per minute
+        if (!rateLimit.allowed) {
+            return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+        }
+
         const { amount, orderId, customerPhone } = await req.json();
 
         // Debug: Log which config is being used

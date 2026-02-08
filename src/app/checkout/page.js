@@ -1307,21 +1307,25 @@ const CheckoutPageInternal = () => {
 
                         {/* ADDRESS SECTION */}
                         {deliveryType === 'delivery' && (
-                            <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
+                            <div
+                                className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm cursor-pointer hover:border-primary/50 transition-colors"
+                                onClick={() => setIsAddressSelectorOpen(true)}
+                            >
                                 <div className="flex items-center gap-2 mb-3">
                                     <MapPin className="h-4 w-4 text-primary" />
                                     <h3 className="font-bold text-sm uppercase text-muted-foreground">Delivering To</h3>
                                 </div>
                                 {selectedAddress ? (
-                                    <div className="bg-muted/30 p-3 rounded-md">
+                                    <div className="bg-muted/30 p-3 rounded-md pointer-events-none">
                                         <p className="font-semibold text-sm">{selectedAddress.name}{selectedAddress.label && <span className="font-normal text-muted-foreground"> ({selectedAddress.label})</span>}</p>
                                         <p className="text-xs text-muted-foreground mt-1">{selectedAddress.full}</p>
                                         <p className="text-xs text-muted-foreground">Ph: {selectedAddress.phone}</p>
                                         <Button
                                             variant="link"
                                             size="sm"
-                                            className="p-0 h-auto mt-2 text-primary"
-                                            onClick={() => {
+                                            className="p-0 h-auto mt-2 text-primary pointer-events-auto"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
                                                 setIsAddressSelectorOpen(true);
                                             }}
                                         >
@@ -1333,8 +1337,11 @@ const CheckoutPageInternal = () => {
                                         <p className="text-sm text-muted-foreground mb-2">No address selected</p>
                                         <Button
                                             variant="outline"
-                                            className="w-full"
-                                            onClick={handleAddNewAddress}
+                                            className="w-full pointer-events-auto"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleAddNewAddress();
+                                            }}
                                         >
                                             <PlusCircle className="mr-2 h-4 w-4" /> Add Address
                                         </Button>
@@ -1787,7 +1794,7 @@ const CheckoutPageInternal = () => {
                                 initial={{ y: '-100%' }}
                                 animate={{ y: 0 }}
                                 exit={{ y: '-100%' }}
-                                transition={{ type: 'spring', damping: 30, stiffness: 250 }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 300, mass: 0.8 }}
                                 drag="y"
                                 dragConstraints={{ top: -1000, bottom: 0 }}
                                 dragElastic={{ top: 0.1, bottom: 0.05 }}
@@ -1796,10 +1803,10 @@ const CheckoutPageInternal = () => {
                                         window.history.back();
                                     }
                                 }}
-                                className="fixed top-0 left-0 right-0 h-screen bg-background z-[100] flex flex-col overflow-hidden shadow-2xl"
+                                className="fixed top-0 left-0 right-0 h-screen bg-background z-[100] flex flex-col overflow-hidden shadow-2xl pb-10"
                             >
-                                {/* Header */}
-                                <div className="p-4 border-b border-border flex items-center justify-between bg-background z-10 shadow-sm shrink-0">
+                                {/* Header - Draggable */}
+                                <div className="p-4 border-b border-border flex items-center justify-between bg-background z-10 shadow-sm shrink-0 cursor-grab active:cursor-grabbing touch-none select-none">
                                     <h2 className="text-lg font-bold">Select a Location</h2>
                                     <Button
                                         variant="ghost"
@@ -1810,9 +1817,9 @@ const CheckoutPageInternal = () => {
                                     </Button>
                                 </div>
 
-                                {/* Content */}
+                                {/* Content - Scrollable */}
                                 <div className="flex-1 overflow-y-auto p-4 bg-muted/5 overscroll-contain">
-                                    <div className="max-w-3xl mx-auto">
+                                    <div className="max-w-3xl mx-auto pb-safe">
                                         {/* Address Selection List Component */}
                                         <AddressSelectionList
                                             addresses={userAddresses}
@@ -1826,9 +1833,12 @@ const CheckoutPageInternal = () => {
                                         />
 
                                         {/* Drag Handle Indicator - Pull Up to Close */}
-                                        <div className="w-full flex flex-col items-center justify-center py-8 opacity-40 space-y-2 pointer-events-none mt-4">
-                                            <ChevronUp size={16} className="animate-bounce" />
-                                            <span className="text-xs font-medium uppercase tracking-widest">Pull up to close</span>
+                                        <div
+                                            className="w-full flex flex-col items-center justify-center py-8 opacity-60 space-y-2 cursor-grab active:cursor-grabbing touch-none select-none mt-4 bg-transparent"
+                                            onClick={() => window.history.back()}
+                                        >
+                                            <ChevronUp size={24} className="animate-bounce text-primary" />
+                                            <span className="text-xs font-bold uppercase tracking-widest text-primary/80">Slide Up to Close</span>
                                         </div>
                                     </div>
                                 </div>

@@ -31,6 +31,9 @@ function generateDisplayId(prefix, timestamp) {
 
 export async function GET(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = await getFirestore();
         const batchSize = 100; // Process in chunks if needed, but for now simple loop with Promise.all for batch commits
         const writeStats = { users: 0, restaurants: 0, shops: 0, vendors: 0 };

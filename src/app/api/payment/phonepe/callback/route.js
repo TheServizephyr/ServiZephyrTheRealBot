@@ -27,8 +27,8 @@ export async function POST(req) {
 
         if (receivedHash !== expectedAuthHash) {
             console.error("[PhonePe Webhook] Authorization failed");
-            console.error("[PhonePe Webhook] Expected:", expectedAuthHash);
-            console.error("[PhonePe Webhook] Received:", receivedHash);
+            // console.error("[PhonePe Webhook] Expected:", expectedAuthHash); // REDACTED FOR SECURITY
+            // console.error("[PhonePe Webhook] Received:", receivedHash); // REDACTED FOR SECURITY
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 

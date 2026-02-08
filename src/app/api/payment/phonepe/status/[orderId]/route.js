@@ -1,15 +1,24 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import { checkIpRateLimit } from '@/lib/rateLimiter';
+import { getClientIP } from '@/lib/audit-logger';
 
 // PhonePe API Configuration
-const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox";
-const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || "M23Z4Z8YT4OW5_2511281822";
-const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || "MzY4MjkwYzctZGM3Mi00NDBjLWJjYjQtNzYyMjY5YWRkNDc0";
+// PhonePe API Configuration
+const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL;
+const CLIENT_ID = process.env.PHONEPE_CLIENT_ID;
+const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET;
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || "1";
-const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token";
+const PHONEPE_AUTH_URL = process.env.PHONEPE_AUTH_URL;
 
 export async function GET(req, { params }) {
     try {
+        const ip = getClientIP(req);
+        const rateLimit = await checkIpRateLimit(ip, 30); // 30 requests per minute
+        if (!rateLimit.allowed) {
+            return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+        }
+
         const { orderId } = params;
 
         if (!orderId) {
@@ -51,7 +60,8 @@ export async function GET(req, { params }) {
 
         // Update Firestore if payment is successful
         if (paymentState === 'COMPLETED' || paymentState === 'PAYMENT_SUCCESS') {
-            const { adminDb } = await import('@/lib/firebase-admin');
+            const { getFirestore } = await import('@/lib/firebase-admin');
+            const adminDb = await getFirestore();
             const orderRef = adminDb.collection('orders').doc(orderId);
             const orderDoc = await orderRef.get();
 
