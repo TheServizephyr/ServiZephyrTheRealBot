@@ -113,7 +113,7 @@ const ConversationItem = ({ conversation, active, onClick }) => {
 
 
 
-const MessageBubble = React.memo(({ message }) => {
+const MessageBubbleComponent = ({ message }) => {
     const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
     const isOwner = message.sender === 'owner';
     const isSystem = message.sender === 'system';
@@ -245,7 +245,10 @@ const MessageBubble = React.memo(({ message }) => {
             </div>
         </div>
     );
-});
+};
+
+const MessageBubble = React.memo(MessageBubbleComponent);
+MessageBubble.displayName = 'MessageBubble';
 
 // Add display name for ESLint
 MessageBubble.displayName = 'MessageBubble';
