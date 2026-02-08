@@ -247,6 +247,9 @@ const MessageBubble = React.memo(({ message }) => {
     );
 });
 
+// Add display name for ESLint
+MessageBubble.displayName = 'MessageBubble';
+
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) => (
     <Dialog open={isOpen} onOpenChange={onClose}>

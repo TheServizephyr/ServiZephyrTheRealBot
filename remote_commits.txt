@@ -1,0 +1,101 @@
+Commit: 09a5e093
+Author: Utkarsh <utkarshp2003@gmail.com>
+Date: 2026-02-08
+Subject: Fix: Resolve ESLint violations and implement missing handlers in street-vendor profile
+
+Files Changed:
+
+M	src/app/checkout/page.js
+M	src/app/order/[restaurantId]/page.js
+M	src/app/owner-dashboard/connections/page.js
+M	src/app/owner-dashboard/delivery-settings/page.js
+M	src/app/owner-dashboard/delivery/page.js
+M	src/app/owner-dashboard/layout.js
+M	src/app/owner-dashboard/live-orders/page.js
+M	src/app/owner-dashboard/profile/page.js
+M	src/app/owner-dashboard/settings/page.js
+M	src/app/rider-dashboard/track/page.js
+M	src/app/street-vendor-dashboard/layout.js
+M	src/app/street-vendor-dashboard/menu/page.js
+M	src/app/street-vendor-dashboard/profile/page.js
+M	src/app/track/delivery/[orderId]/page.js
+M	src/app/track/dine-in/page.js
+M	src/components/OwnerDashboard/MenuTable.js
+M	src/components/RefundDialog.js
+
+Commit: 4adff06d
+Author: Utkarsh <utkarshp2003@gmail.com>
+Date: 2026-02-08
+Subject: fix: resolve unescaped entities in JSX across various pages
+
+Files Changed:
+
+M	src/app/about/page.js
+M	src/app/cart/page.js
+M	src/app/complete-profile/page.js
+M	src/app/contact/page.js
+M	src/app/customer-dashboard/community/page.js
+M	src/app/customer-dashboard/discover/page.js
+M	src/app/customer-dashboard/orders/page.js
+M	src/app/customer-dashboard/page.js
+M	src/app/employee-dashboard/page.js
+M	src/app/join-waitlist/page.js
+M	src/app/join/[inviteCode]/page.js
+M	src/app/login/page.js
+M	src/app/owner-dashboard/dine-in/page.js
+M	src/app/owner-dashboard/layout.js
+M	src/app/owner-dashboard/live-orders/page.js
+M	src/app/owner-dashboard/menu/page.js
+M	src/app/owner-dashboard/page.js
+M	src/app/owner-dashboard/settings/page.js
+M	src/app/page.js
+M	src/app/privacy/page.js
+M	src/app/split-pay/[splitId]/page.js
+M	src/app/street-vendor-dashboard/menu/page.js
+M	src/app/street-vendor-dashboard/profile/page.js
+M	src/app/terms-and-conditions/page.js
+
+Commit: 6b4b80ce
+Author: Utkarsh <utkarshp2003@gmail.com>
+Date: 2026-02-08
+Subject: Merge branch 'security-audit-fixes'
+
+Files Changed:
+
+Commit: 417f8c15
+Author: Utkarsh <utkarshp2003@gmail.com>
+Date: 2026-02-08
+Subject: Security: PhonePe Auth hardening, Table API soft-delete consistency, and transactional Rate Limiter
+
+Files Changed:
+
+M	next.config.js
+M	src/app/api/admin/listings/route.js
+M	src/app/api/admin/mailbox/route.js
+M	src/app/api/admin/migrate-custom-categories/cleanup/route.js
+M	src/app/api/admin/migrate-delivery-settings/cleanup/route.js
+M	src/app/api/admin/restaurants/route.js
+M	src/app/api/admin/retry-webhook/route.js
+M	src/app/api/admin/users/route.js
+M	src/app/api/order/active/route.js
+M	src/app/api/order/cancel/route.js
+M	src/app/api/order/mark-paid/route.js
+M	src/app/api/order/settle-payment/route.js
+M	src/app/api/order/status/[orderId]/route.js
+M	src/app/api/order/update/route.js
+M	src/app/api/owner/dine-in-tables/route.js
+M	src/app/api/owner/menu/route.js
+M	src/app/api/owner/orders/route.js
+M	src/app/api/owner/tables/route.js
+M	src/app/api/payment/create-split-order/route.js
+M	src/app/api/payment/phonepe/callback/route.js
+M	src/app/api/payment/phonepe/status/[orderId]/route.js
+M	src/app/api/payment/phonepe/token/route.js
+M	src/app/api/public/menu/[restaurantId]/route.js
+M	src/app/api/webhooks/razorpay/route.js
+M	src/app/track/[orderId]/page.js
+M	src/app/track/delivery/[orderId]/page.js
+M	src/app/track/dine-in/[orderId]/page.js
+M	src/lib/firebase-admin.js
+M	src/lib/rateLimiter.js
+M	src/lib/verify-owner-with-audit.js
