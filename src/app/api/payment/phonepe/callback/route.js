@@ -2,15 +2,22 @@ import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 
-// PhonePe Webhook Credentials (set these in Vercel environment variables)
-const WEBHOOK_USERNAME = process.env.PHONEPE_WEBHOOK_USERNAME || "servizephyr_webhook";
-const WEBHOOK_PASSWORD = process.env.PHONEPE_WEBHOOK_PASSWORD || "your_secure_password_here";
+// PhonePe Webhook Credentials
+const WEBHOOK_USERNAME = process.env.PHONEPE_WEBHOOK_USERNAME;
+const WEBHOOK_PASSWORD = process.env.PHONEPE_WEBHOOK_PASSWORD;
 
-// Generate expected authorization hash
-const expectedAuthHash = crypto
-    .createHash('sha256')
-    .update(`${WEBHOOK_USERNAME}:${WEBHOOK_PASSWORD}`)
-    .digest('hex');
+if (!WEBHOOK_USERNAME || !WEBHOOK_PASSWORD) {
+    console.error("[PhonePe Webhook] CRITICAL: Missing webhook credentials in environment variables.");
+}
+
+// Generate expected authorization hash (lazy initialize to allow build time safe-fail)
+const getExpectedHash = () => {
+    if (!WEBHOOK_USERNAME || !WEBHOOK_PASSWORD) return null;
+    return crypto
+        .createHash('sha256')
+        .update(`${WEBHOOK_USERNAME}:${WEBHOOK_PASSWORD}`)
+        .digest('hex');
+};
 
 export async function POST(req) {
     try {
@@ -24,11 +31,10 @@ export async function POST(req) {
 
         // Remove "SHA256 " prefix if present and compare
         const receivedHash = authHeader.replace(/^SHA256\s+/i, '').trim();
+        const expectedAuthHash = getExpectedHash();
 
-        if (receivedHash !== expectedAuthHash) {
-            console.error("[PhonePe Webhook] Authorization failed");
-            // console.error("[PhonePe Webhook] Expected:", expectedAuthHash); // REDACTED FOR SECURITY
-            // console.error("[PhonePe Webhook] Received:", receivedHash); // REDACTED FOR SECURITY
+        if (!expectedAuthHash || receivedHash !== expectedAuthHash) {
+            console.error("[PhonePe Webhook] Authorization failed (Invalid credentials or missing config)");
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -36,7 +42,17 @@ export async function POST(req) {
 
         // Step 2: Parse Webhook Payload
         const body = await req.json();
-        console.log("[PhonePe Webhook] Received event:", JSON.stringify(body, null, 2));
+
+        // 🔐 LOG REDACTION (PII/Sensitive Data)
+        const redactedBody = { ...body };
+        if (redactedBody.payload) {
+            redactedBody.payload = {
+                ...redactedBody.payload,
+                paymentDetails: redactedBody.payload.paymentDetails ? "[REDACTED]" : undefined,
+                instrumentTargetId: redactedBody.payload.instrumentTargetId ? "[REDACTED]" : undefined
+            };
+        }
+        console.log("[PhonePe Webhook] Received event:", JSON.stringify(redactedBody, null, 2));
 
         const { event, payload } = body;
 
@@ -177,14 +193,13 @@ async function handleOrderCompleted(payload) {
         const currentStatus = orderDoc.data().status;
         console.log(`[PhonePe Webhook] Processing regular order ${merchantOrderId}, current status: ${currentStatus}`);
 
-        await orderRef.update({
+        const updateData = {
             paymentStatus: 'paid',
             paymentMethod: 'phonepe',
             phonePeOrderId: orderId,
             phonePeTransactionId: paymentDetails?.[0]?.transactionId || null,
             phonePePaymentMode: paymentDetails?.[0]?.paymentMode || null,
             paidAmount: amount / 100, // Convert paise to rupees
-            status: 'pending', // Set to pending so it appears on vendor dashboard
             paymentDetails: FieldValue.arrayUnion({
                 method: 'phonepe',
                 amount: amount / 100,
@@ -194,8 +209,23 @@ async function handleOrderCompleted(payload) {
                 timestamp: new Date()
             }),
             updatedAt: new Date()
-        });
-        console.log(`[PhonePe Webhook] Order ${merchantOrderId} updated from ${currentStatus} to PENDING with PAID status`);
+        };
+
+        // ⛨️ STATE MACHINE GUARD (P1): Only set to pending if it's currently in a pre-processing state.
+        // Forward-only transition: If order is already being processed or finished, DON'T regress to 'pending'.
+        const processingOrFinalStatuses = [
+            'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'dispatched',
+            'on_the_way', 'reached_restaurant', 'picked_up', 'delivery_attempted',
+            'failed_delivery', 'returned_to_restaurant', 'delivered', 'rejected',
+            'cancelled', 'served', 'paid'
+        ];
+
+        if (!processingOrFinalStatuses.includes(currentStatus)) {
+            updateData.status = 'pending';
+        }
+
+        await orderRef.update(updateData);
+        console.log(`[PhonePe Webhook] Order ${merchantOrderId} updated to PAID (Status: ${updateData.status || currentStatus})`);
     } else {
         console.warn(`[PhonePe Webhook] Order ${merchantOrderId} not found in Firestore`);
     }

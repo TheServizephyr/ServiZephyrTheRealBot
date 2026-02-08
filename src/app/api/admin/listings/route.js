@@ -5,7 +5,7 @@ import { getFirestore, getAuth } from '@/lib/firebase-admin';
 
 async function fetchCollection(firestore, collectionName) {
     const snapshot = await firestore.collection(collectionName).get();
-    const auth = getAuth();
+    const auth = await getAuth();
 
     const promises = snapshot.docs.map(async (doc) => {
         const data = doc.data();

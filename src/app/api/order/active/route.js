@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getFirestore, verifyIdToken } from '@/lib/firebase-admin';
+import { getFirestore, verifyIdToken, verifyAndGetUid } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
 import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
 
@@ -54,26 +54,22 @@ export async function GET(req) {
                     const decodedToken = await verifyIdToken(idToken);
                     const loggedInUid = decodedToken.uid;
 
-                    // Allow if logged-in user matches target (or no target specific restriction?)
-                    // If ref is provided, it must match loggedInUid OR loggedInUid is admin/owner (not handled here)
-                    // Simplification: If logged in, we trust they own the UID derived from Ref if it matches, 
-                    // OR if they are querying their own data.
-
+                    // STRICT IDENTITY CHECK: Logged-in user must match target (customer or phone)
                     if (targetCustomerId && loggedInUid === targetCustomerId) {
                         isAuthorized = true;
-                    } else if (!targetCustomerId && !targetPhone) {
-                        // Just querying my own active order? (Not common in this specific API structure, but safety)
-                        // logic below uses userId variable, needs to be set.
-                    } else if (targetCustomerId && loggedInUid !== targetCustomerId) {
-                        // Mismatch logged in VS ref
-                        console.warn(`[API /order/active] User ${loggedInUid} tried accessing ref ${targetCustomerId}`);
-                        // But wait, if they clicked a guest link, they might want to claim it? 
-                        // For ACTIVE order viewing, stricter is better.
-                        // But if migration happened, ref=UID and loggedIn=UID.
+                    } else if (targetPhone) {
+                        // Resolve phone to UID/GuestID to verify
+                        const profileResult = await getOrCreateGuestProfile(firestore, targetPhone);
+                        if (loggedInUid === profileResult.userId) {
+                            isAuthorized = true;
+                        }
                     }
 
-                    if (loggedInUid) isAuthorized = true; // Trust logged in user for now (ref obfuscation provides 2nd layer)
-                    console.log(`[API /order/active] ✅ Authorized via Auth Header (UID: ${loggedInUid})`);
+                    if (isAuthorized) {
+                        console.log(`[API /order/active] ✅ Authorized via Auth Header (UID: ${loggedInUid})`);
+                    } else {
+                        console.warn(`[API /order/active] ❌ Auth Header UID ${loggedInUid} does not match target ${targetCustomerId || targetPhone}`);
+                    }
 
                 } catch (e) {
                     console.warn(`[API /order/active] Invalid Auth Token:`, e.message);

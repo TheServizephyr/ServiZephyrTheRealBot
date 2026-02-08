@@ -25,13 +25,13 @@ import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
  * @param {Object} metadata - Additional metadata to log (optional)
  * @returns {Object} - { uid, businessId, businessSnap, collectionName, isAdmin, isImpersonating }
  */
-export async function verifyOwnerWithAudit(req, action, metadata = {}) {
+export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevoked = false) {
     // 1. REQUEST-LEVEL CACHING: Reuse context if already resolved in this request
     // We attach it to the 'req' object as it persists through the life of the API call.
     if (!req._ownerContextPromise) {
         req._ownerContextPromise = (async () => {
             const firestore = await getFirestore();
-            const uid = await verifyAndGetUid(req);
+            const uid = await verifyAndGetUid(req, checkRevoked);
 
             const userDoc = await firestore.collection('users').doc(uid).get();
             if (!userDoc.exists) {
@@ -47,6 +47,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}) {
             const employeeOfOwnerId = url.searchParams.get('employee_of');
             const sessionExpiry = url.searchParams.get('session_expiry');
 
+            let employeeAccessResult = null;
             let targetOwnerId = uid;
             let isImpersonating = false;
 
@@ -57,24 +58,14 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}) {
                 targetOwnerId = impersonatedOwnerId;
                 isImpersonating = true;
             } else if (employeeOfOwnerId) {
-                const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
-                if (!accessResult.authorized) {
+                employeeAccessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
+                if (!employeeAccessResult.authorized) {
                     throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
                 }
                 targetOwnerId = employeeOfOwnerId;
             } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
                 throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
             }
-
-            // Calculate effective caller role (for RBAC)
-            let callerRole = userRole;
-            if (employeeOfOwnerId) {
-                // If it's employee access, the verifyEmployeeAccess logic should have run
-                // We'll re-run or better yet, store it during resolution.
-            }
-
-            // Actually, let's do it properly inside the promise logic.
-            // I'll re-insert the resolution logic with callerRole support.
 
             // --- RESOLVE BUSINESS ---
             const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
@@ -85,9 +76,8 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}) {
 
                     // Determine callerRole
                     let effectiveCallerRole = userRole;
-                    if (employeeOfOwnerId) {
-                        const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
-                        effectiveCallerRole = accessResult.employeeRole || userRole;
+                    if (employeeOfOwnerId && employeeAccessResult) {
+                        effectiveCallerRole = employeeAccessResult.employeeRole || userRole;
                     }
 
                     return {
@@ -98,7 +88,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}) {
                         isAdmin: userRole === 'admin',
                         isImpersonating,
                         userData,
-                        callerRole: effectiveCallerRole, // ✅ ADDED
+                        callerRole: effectiveCallerRole,
                         adminId: isImpersonating ? uid : null,
                         adminEmail: isImpersonating ? userData.email : null
                     };

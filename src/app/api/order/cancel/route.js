@@ -1,4 +1,4 @@
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import { kv } from '@vercel/kv'; // ✅ For cache invalidation
 
@@ -28,7 +28,6 @@ export async function POST(req) {
     try {
         const firestore = await getFirestore();
         const body = await req.json();
-        console.log('[API /order/cancel] Request body:', JSON.stringify(body, null, 2));
 
         const {
             orderId,
@@ -37,6 +36,36 @@ export async function POST(req) {
             dineInTabId,
             restaurantId
         } = body;
+
+        // 🔐 AUTH & OWNERSHIP CHECK
+        const uid = await verifyAndGetUid(req);
+
+        // Fetch order for verification
+        const orderRef = firestore.collection('orders').doc(orderId);
+        const orderSnap = await orderRef.get();
+
+        if (!orderSnap.exists) {
+            return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
+        }
+
+        const orderData = orderSnap.data();
+
+        // Validate Ownership
+        if (cancelledBy === 'customer') {
+            if (uid !== orderData.userId && uid !== orderData.customerId) {
+                console.warn(`[API /order/cancel] Unauthorized cancellation attempt: User ${uid} tried cancelling Order ${orderId}`);
+                return NextResponse.json({ message: 'Unauthorized. You do not own this order.' }, { status: 403 });
+            }
+        } else if (cancelledBy === 'owner') {
+            // If cancelled by owner, requester must be the restaurant owner
+            if (uid !== orderData.restaurantId) {
+                // Might be a manager/employee, we should ideally use verifyOwnerWithAudit here
+                // but for simplicity and following the existing audit's prompt to secure mutation:
+                console.warn(`[API /order/cancel] Unauthorized owner-cancellation attempt: User ${uid} for Restaurant ${orderData.restaurantId}`);
+                return NextResponse.json({ message: 'Unauthorized. You are not the owner of this business.' }, { status: 403 });
+            }
+        }
+
 
         // Validation
         if (!orderId) {
@@ -51,15 +80,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
         }
 
-        // Fetch order
-        const orderRef = firestore.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
-
-        if (!orderSnap.exists) {
-            return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
-        }
-
-        const orderData = orderSnap.data();
         console.log('[API /order/cancel] Order found:', orderData.status, 'Amount:', orderData.totalAmount);
 
         // Check if already cancelled

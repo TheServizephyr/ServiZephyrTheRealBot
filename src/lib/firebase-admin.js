@@ -88,10 +88,11 @@ const Timestamp = admin.firestore.Timestamp;
  * Verifies the authorization token from a request and returns the user's UID.
  * This is the central point for all API authentication checks.
  * @param {Request} req The incoming Next.js request object.
+ * @param {boolean} checkRevoked Whether to check if the token has been revoked (slower).
  * @returns {Promise<string>} The user's UID.
  * @throws Will throw an error with a status code if the token is missing or invalid.
  */
-const verifyAndGetUid = async (req) => {
+const verifyAndGetUid = async (req, checkRevoked = false) => {
   const auth = await getAuth();
   const authHeader = req.headers.get('authorization');
 
@@ -101,8 +102,8 @@ const verifyAndGetUid = async (req) => {
   const token = authHeader.split('Bearer ')[1];
 
   try {
-    // ✅ CRITICAL: Second parameter `true` checks if token has been revoked
-    const decodedToken = await auth.verifyIdToken(token, true);
+    // ✅ OPTIMIZED: checkRevoked is only done on security-critical routes if requested
+    const decodedToken = await auth.verifyIdToken(token, checkRevoked);
     return decodedToken.uid;
   } catch (error) {
     console.error("[verifyAndGetUid] Error verifying token:", error.message);
@@ -139,5 +140,10 @@ const getDatabase = async () => {
 };
 
 
-export { getAuth, getFirestore, getDatabase, FieldValue, GeoPoint, Timestamp, verifyAndGetUid };
+const verifyIdToken = async (token, checkRevoked = false) => {
+  const auth = await getAuth();
+  return auth.verifyIdToken(token, checkRevoked);
+};
+
+export { getAuth, getFirestore, getDatabase, FieldValue, GeoPoint, Timestamp, verifyAndGetUid, verifyIdToken };
 

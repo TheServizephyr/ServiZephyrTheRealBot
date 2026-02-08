@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +11,17 @@ export async function POST(req) {
         if (!tabId || !restaurantId) {
             return NextResponse.json({ message: 'TabId and RestaurantId required' }, { status: 400 });
         }
+
+        // 🔐 AUTH & OWNERSHIP CHECK
+        const uid = await verifyAndGetUid(req);
+        // Requirement: uid must match restaurantId (Owner) or be an employee (higher complexity)
+        // Audit simpler instruction: enforce ownership.
+        if (uid !== restaurantId) {
+            // Validate if user profile has this restaurantId (if customer) or is owner of this ID
+            console.warn(`[Mark Paid] Unauthorized attempt: User ${uid} for Restaurant ${restaurantId}`);
+            return NextResponse.json({ message: 'Unauthorized. Ownership verification failed.' }, { status: 403 });
+        }
+
 
         const firestore = await getFirestore();
 

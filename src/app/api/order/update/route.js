@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 /**
  * PATCH /api/order/update
@@ -18,6 +18,10 @@ export async function PATCH(req) {
                 { status: 400 }
             );
         }
+
+        // 🔐 AUTH & OWNERSHIP CHECK
+        const uid = await verifyAndGetUid(req);
+
 
         console.log('[API][PATCH /order/update] Updating payment status:', {
             orderId,
@@ -49,6 +53,11 @@ export async function PATCH(req) {
             // Update single order
             const orderDoc = await firestore.collection('orders').doc(orderId).get();
             if (orderDoc.exists) {
+                const orderData = orderDoc.data();
+                // Ownership check
+                if (uid !== orderData.userId && uid !== orderData.customerId && uid !== orderData.restaurantId) {
+                    return NextResponse.json({ message: 'Unauthorized. You do not own this order.' }, { status: 403 });
+                }
                 ordersToUpdate = [orderDoc];
             }
         }

@@ -298,7 +298,10 @@ function OrderTrackingContent() {
 
         try {
             // Use currentOrderId instead of paramOrderId
-            const res = await fetch(`/api/order/status/${currentOrderId}`);
+            // FIXED: Pass token to API for auth check
+            const queryParams = new URLSearchParams();
+            if (sessionToken) queryParams.set('token', sessionToken);
+            const res = await fetch(`/api/order/status/${currentOrderId}?${queryParams.toString()}`);
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to fetch order status.');

@@ -109,7 +109,7 @@ export async function PATCH(req) {
 
         await userRef.update({ status });
 
-        const auth = getAuth();
+        const auth = await getAuth();
         await auth.updateUser(userId, {
             disabled: status === 'Blocked'
         });

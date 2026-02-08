@@ -46,8 +46,10 @@ export async function GET(req) {
         let actualTableId = null;
 
         tablesSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.isDeleted) return; // Skip deleted tables
             if (doc.id.toLowerCase() === tableId.toLowerCase()) {
-                matchedTable = doc.data();
+                matchedTable = data;
                 actualTableId = doc.id;
             }
         });
@@ -141,6 +143,8 @@ export async function POST(req) {
 
         let actualTableId = null;
         tablesSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.isDeleted) return;
             if (doc.id.toLowerCase() === tableId.toLowerCase()) {
                 actualTableId = doc.id;
             }
@@ -233,6 +237,8 @@ export async function PATCH(req) {
 
         let actualTableId = null;
         tablesSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.isDeleted) return; // Skip deleted tables
             if (doc.id.toLowerCase() === tableId.toLowerCase()) {
                 actualTableId = doc.id;
             }

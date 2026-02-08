@@ -8,16 +8,16 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 export async function POST(req) {
     try {
         const body = await req.json();
-        
+
         const { grandTotal, totalAmount, subtotal, splitCount, baseOrderId, restaurantId } = body;
-        
+
         const finalAmount = grandTotal ?? totalAmount;
 
         if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
             console.error("CRITICAL: Razorpay credentials are not configured.");
             return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
         }
-        
+
         const razorpay = new Razorpay({
             key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
             key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -27,8 +27,8 @@ export async function POST(req) {
         if (splitCount && baseOrderId && restaurantId && finalAmount) {
             const firestore = await getFirestore();
             const amountPerShare = Math.round((finalAmount / splitCount) * 100); // Amount in paise
-            
-            const splitId = `split_${baseOrderId}`;
+
+            const splitId = `split_${nanoid(16)}`;
             const splitRef = firestore.collection('split_payments').doc(splitId);
 
             const shares = [];
@@ -59,7 +59,7 @@ export async function POST(req) {
                 shares,
                 status: 'pending',
                 createdAt: FieldValue.serverTimestamp(),
-                isPublic: true 
+                isPublic: true
             };
             await splitRef.set(firestorePayload);
 
@@ -67,7 +67,7 @@ export async function POST(req) {
         }
 
         // --- Fallback for simple order creation (as it was before) ---
-        
+
         const amountForSimpleOrder = subtotal !== undefined ? subtotal : finalAmount;
 
         if (!amountForSimpleOrder || amountForSimpleOrder < 1) {

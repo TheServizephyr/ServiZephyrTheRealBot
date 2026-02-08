@@ -21,7 +21,11 @@ export default async function TrackingRouter({ params, searchParams }) {
     try {
         // Fetch order data to determine tracking flow
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const res = await fetch(`${baseUrl}/api/order/status/${orderId}`, {
+        // Pass token to API for auth check
+        const queryParams = new URLSearchParams();
+        if (token) queryParams.set('token', token);
+
+        const res = await fetch(`${baseUrl}/api/order/status/${orderId}?${queryParams.toString()}`, {
             cache: 'no-store',
             headers: {
                 'Content-Type': 'application/json'
