@@ -4,8 +4,11 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req) {
+export async function POST(req) {
     try {
+        const { verifyAdmin } = await import('@/lib/verify-admin');
+        await verifyAdmin(req);
+
         const firestore = await getFirestore();
         const results = {
             cleaned: 0,

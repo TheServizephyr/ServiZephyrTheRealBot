@@ -126,7 +126,12 @@ function DineInTrackingContent() {
         try {
             // Cache-busting: Add timestamp to prevent stale data
             const cacheBuster = `?t=${Date.now()}`;
-            const res = await fetch(`/api/order/status/${orderId}${cacheBuster}`, {
+            // FIXED: Pass token to API for auth check
+            const queryParams = new URLSearchParams();
+            if (sessionToken) queryParams.set('token', sessionToken);
+            const tokenParam = sessionToken ? `&${queryParams.toString()}` : '';
+
+            const res = await fetch(`/api/order/status/${orderId}${cacheBuster}${tokenParam}`, {
                 cache: 'no-store' // Disable Next.js caching
             });
             if (!res.ok) {

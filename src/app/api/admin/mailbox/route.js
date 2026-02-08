@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { checkIpRateLimit } from '@/lib/rateLimiter';
+import { getClientIP } from '@/lib/audit-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +35,12 @@ export async function GET(req) {
 // POST a new error report
 export async function POST(req) {
     try {
+        const ip = getClientIP(req);
+        const rateLimit = await checkIpRateLimit(ip, 5); // Max 5 reports per minute
+        if (!rateLimit.allowed) {
+            return NextResponse.json({ message: "Too many reports. Please wait." }, { status: 429 });
+        }
+
         const firestore = await getFirestore();
         const body = await req.json();
 

@@ -59,10 +59,10 @@ const nextConfig = {
   reactStrictMode: true,
   // 🟢 FORCE BUILD SUCCESS: Ignore ESLint and TS errors during build
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
 };
 

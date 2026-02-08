@@ -8,7 +8,7 @@ import { nanoid } from 'nanoid';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
-    console.log(`[Webhook RZP] generateSecureToken for phone: ${customerPhone}`);
+    console.log(`[Webhook RZP] generateSecureToken for identifier (Redacted)`);
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);

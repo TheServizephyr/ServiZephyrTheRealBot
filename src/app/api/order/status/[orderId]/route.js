@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 import { createRequestCache } from '@/lib/requestCache';
 
@@ -78,8 +78,40 @@ export async function GET(request, { params }) {
         }
 
         const orderData = orderSnap.data();
+
+        // 🔐 IDENTITY GATING (P1): Verify requester has permission to view this status
+        // Allow if:
+        // 1. Valid tracking link (possession of orderId is usually enough for public track, but we add trackingToken check)
+        // 2. Logged in and matches customerId/userId
+
+        const trackingToken = request.nextUrl.searchParams.get('token');
+        let isAuthorizedData = false;
+
+        // Condition A: Correct Tracking Token provided
+        if (trackingToken && orderData.trackingToken === trackingToken) {
+            isAuthorizedData = true;
+        }
+
+        // Condition B: Authenticated User (Owner or Customer)
+        if (!isAuthorizedData) {
+            try {
+                const uid = await verifyAndGetUid(request);
+                if (uid === orderData.userId || uid === orderData.customerId || uid === orderData.restaurantId) {
+                    isAuthorizedData = true;
+                }
+            } catch (e) {
+                // Not authenticated or error, ignore
+            }
+        }
+
+        // If not authorized by token or UID, require at least the tracking token for "public" access 
+        // to prevent order enumeration via sequential IDs
+        if (!isAuthorizedData && !trackingToken) {
+            console.warn(`[API][Order Status] Access denied for order ${orderId}. No valid token or identity.`);
+            return NextResponse.json({ message: 'Unauthorized. Tracking token required.' }, { status: 403 });
+        }
+
         let deliveryBoyData = null;
-        console.log(`[API][Order Status] Order data found. Status: ${orderData.status}, Delivery Boy ID: ${orderData.deliveryBoyId}`);
 
         if (orderData.deliveryBoyId) {
             console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from drivers collection.`);

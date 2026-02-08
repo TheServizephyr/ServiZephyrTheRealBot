@@ -16,6 +16,14 @@ let tokenCache = {
 
 export async function GET(req) {
     try {
+        // 🔐 SECURITY LOCKDOWN: Prevents leakage of gateway tokens to client
+        // This endpoint should only be accessed by server-side processes
+        const internalSecret = req.headers.get('x-internal-secret');
+        if (internalSecret !== process.env.INTERNAL_API_SECRET) {
+            console.error("[PhonePe Token] Unauthorized access attempt - Secret mismatch");
+            return NextResponse.json({ success: false, error: "Unauthorized. Internal access only." }, { status: 403 });
+        }
+
         // Check if cached token is still valid
         const now = Math.floor(Date.now() / 1000);
         if (tokenCache.access_token && tokenCache.expires_at && tokenCache.expires_at > now + 60) {

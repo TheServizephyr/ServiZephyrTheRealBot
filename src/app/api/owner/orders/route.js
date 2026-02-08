@@ -170,7 +170,7 @@ export async function GET(req) {
 export async function PATCH(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, businessSnap, uid, callerRole } = await verifyOwnerWithAudit(req, 'update_orders_patch');
+        const { businessId, businessSnap, uid, callerRole } = await verifyOwnerWithAudit(req, 'update_orders_patch', {}, true);
         const userRole = callerRole;
 
         const {
@@ -203,7 +203,6 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'No Order IDs provided.' }, { status: 400 });
         }
 
-        console.log(`[API][PATCH /orders] Pre-fetching ${allTargetIds.length} orders in parallel for business ${businessId}...`);
         const orderSnaps = await Promise.all(
             allTargetIds.map(id => firestore.collection('orders').doc(id).get())
         );
@@ -383,8 +382,6 @@ export async function PATCH(req) {
             }
         }
 
-        // --- 5. Commit Batch & Fire Side Effects ---
-        console.log(`[API][PATCH /orders] Committing batch for ${allTargetIds.length} operations...`);
         await batch.commit();
 
         // CRITICAL: Await side effects to prevent Vercel execution freeze

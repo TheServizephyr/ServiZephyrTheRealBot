@@ -14,17 +14,18 @@ import { validatePriceChange, extractPortions } from '@/lib/security/validation-
 // (Logic moved inside methods below)
 
 export async function GET(req) {
-    console.log("[API LOG] GET /api/owner/menu: Request received.");
     try {
         const firestore = await getFirestore();
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(req, 'view_menu');
-        console.log(`[API LOG] GET /api/owner/menu: Verified access for business ${businessId}.`);
+
 
         // (Audit logging handled by verifyOwnerWithAudit internally for impersonation)
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         const menuSnap = await menuRef.orderBy('order', 'asc').get();
-        console.log(`[API LOG] GET /api/owner/menu: Fetched ${menuSnap.size} items from menu subcollection.`);
+        // ✅ SOFT-DELETE: Filter items in JS to avoid index dependency
+        const activeDocs = menuSnap.docs.filter(doc => doc.data().isDeleted !== true);
+
 
         let menuData = {};
         const businessData = businessSnap.data();
@@ -62,7 +63,7 @@ export async function GET(req) {
             menuData[key] = [];
         });
 
-        menuSnap.docs.forEach(doc => {
+        activeDocs.forEach(doc => {
             const item = doc.data();
             const categoryKey = item.categoryId || 'general';
             if (!menuData[categoryKey]) {
@@ -82,12 +83,11 @@ export async function GET(req) {
 
 
 export async function POST(req) {
-    console.log("[API LOG] POST /api/owner/menu: Request received.");
     try {
         const firestore = await getFirestore();
-        console.log("[API LOG] Firebase Admin SDK initialized for POST.");
 
-        const { businessId, collectionName, uid, callerRole } = await verifyOwnerWithAudit(req, 'manage_menu_post');
+
+        const { businessId, collectionName, uid, callerRole } = await verifyOwnerWithAudit(req, 'manage_menu_post', {}, true);
         const userRole = callerRole; // Use the actual role of the caller (owner/manager/etc)
         console.log(`[API LOG] POST /api/owner/menu: Owner verified for business ID: ${businessId} in collection ${collectionName}. Caller role: ${userRole}`);
 
@@ -265,9 +265,8 @@ export async function POST(req) {
             console.log(`[API LOG] POST /api/owner/menu: New item with ID ${newItemId} added to batch:`, JSON.stringify({ ...finalItem, id: newItemId, order: maxOrder + 1 }));
         }
 
-        console.log("[API LOG] POST /api/owner/menu: Committing batch...");
         await batch.commit();
-        console.log("[API LOG] POST /api/owner/menu: Batch commit successful!");
+
 
         // Increment menuVersion for automatic cache invalidation
         console.log(`[Menu API] 🔄 Incrementing menuVersion for businessId: ${businessId}`);
@@ -300,7 +299,7 @@ export async function DELETE(req) {
     console.log("[API LOG] DELETE /api/owner/menu: Request received.");
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName, callerRole } = await verifyOwnerWithAudit(req, 'delete_menu_item');
+        const { businessId, collectionName, callerRole } = await verifyOwnerWithAudit(req, 'delete_menu_item', {}, true);
         const userRole = callerRole;
 
         // 🔐 RBAC: Only Owner can delete menu items
@@ -314,10 +313,14 @@ export async function DELETE(req) {
             return NextResponse.json({ message: 'Item ID is required.' }, { status: 400 });
         }
 
-        console.log(`[API LOG] DELETE /api/owner/menu: Deleting item ${itemId} from ${collectionName}/${businessId}/menu.`);
+        console.log(`[API LOG] DELETE /api/owner/menu: Soft-deleting item ${itemId} from ${collectionName}/${businessId}/menu.`);
         const itemRef = firestore.collection(collectionName).doc(businessId).collection('menu').doc(itemId);
-        await itemRef.delete();
-        console.log(`[API LOG] DELETE /api/owner/menu: Item deleted successfully.`);
+        // ✅ SOFT-DELETE: Mark as isDeleted instead of physical deletion
+        await itemRef.update({
+            isDeleted: true,
+            deletedAt: FieldValue.serverTimestamp()
+        });
+        console.log(`[API LOG] DELETE /api/owner/menu: Item soft-deleted successfully.`);
 
         // Increment menuVersion for automatic cache invalidation
         try {
@@ -344,7 +347,7 @@ export async function PATCH(req) {
     console.log("[API LOG] PATCH /api/owner/menu: Request received.");
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName, callerRole, uid } = await verifyOwnerWithAudit(req, 'update_menu_patch');
+        const { businessId, collectionName, callerRole, uid } = await verifyOwnerWithAudit(req, 'update_menu_patch', {}, true);
         const userRole = callerRole;
         const { itemIds, action, updates } = await req.json();
         console.log("[API LOG] PATCH /api/owner/menu: Body:", { itemIds, action, updates, userRole });
@@ -429,7 +432,11 @@ export async function PATCH(req) {
         itemIds.forEach(itemId => {
             const itemRef = menuRef.doc(itemId);
             if (action === 'delete') {
-                batch.delete(itemRef);
+                // ✅ SOFT-DELETE: Mark as isDeleted instead of physical deletion
+                batch.update(itemRef, {
+                    isDeleted: true,
+                    deletedAt: FieldValue.serverTimestamp()
+                });
             } else if (action === 'outOfStock') {
                 batch.update(itemRef, { isAvailable: false });
             }

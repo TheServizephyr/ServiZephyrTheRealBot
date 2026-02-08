@@ -181,15 +181,14 @@ export async function POST(req) {
                 retryCount: FieldValue.increment(1),
                 lastTriedAt: FieldValue.serverTimestamp(),
                 resolvedAt: FieldValue.serverTimestamp(),
-                resolvedBy: decodedToken.uid
+                resolvedBy: uid
             });
 
             console.log(`[Admin Retry] Webhook ${webhookId} resolved successfully`);
 
             return NextResponse.json({
                 message: 'Webhook retried and resolved successfully',
-                status: 'resolved',
-                orderId: notes?.orderId
+                orderId: notes?.orderId || null
             });
 
         } catch (retryError) {

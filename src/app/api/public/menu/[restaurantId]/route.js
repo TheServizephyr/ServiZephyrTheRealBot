@@ -4,7 +4,7 @@ import { getFirestore } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
 
 export async function GET(req, { params }) {
     const { restaurantId } = params;

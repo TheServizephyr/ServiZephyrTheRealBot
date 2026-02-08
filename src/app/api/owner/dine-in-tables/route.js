@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { subDays } from 'date-fns';
 
 // Helper function to get business reference from authenticated request
-async function getBusinessRef(req) {
-    const { businessSnap } = await verifyOwnerWithAudit(req, 'manage_dine_in_tables');
+async function getBusinessRef(req, checkRevoked = false) {
+    const { businessSnap } = await verifyOwnerWithAudit(req, 'manage_dine_in_tables', {}, checkRevoked);
     if (!businessSnap || !businessSnap.exists) {
         throw new Error('Business not found');
     }
@@ -24,6 +24,9 @@ export async function GET(req) {
 
         tablesSnap.forEach(doc => {
             const data = doc.data();
+            // [SOFT DELETE CHECK] Skip deleted tables
+            if (data.isDeleted) return;
+
             tableMap.set(doc.id, {
                 id: doc.id,
                 ...data,
@@ -331,35 +334,8 @@ export async function GET(req) {
             }
         });
 
-        // 6.5. Self-Healing: Update DB if calculated state/pax differs from DB
-        // This fixes "Occupied" ghost state when orders are cancelled externally
-        const tablesToUpdate = [];
-        tableMap.forEach(table => {
-            const stateChanged = table.state !== table._db_state;
-            // Only update pax if state also changed or pax diff is significant, 
-            // OR if strictly occupied/available mismatch (occupied but pax 0, or available but pax > 0)
-            const paxChanged = table.current_pax !== table._db_pax;
-
-            if (stateChanged || (paxChanged && table.state === 'occupied')) {
-                tablesToUpdate.push({
-                    ref: businessRef.collection('tables').doc(table.id),
-                    data: {
-                        current_pax: table.current_pax,
-                        state: table.state,
-                        lastSyncedAt: FieldValue.serverTimestamp() // Audit trail
-                    }
-                });
-            }
-        });
-
-        if (tablesToUpdate.length > 0) {
-            console.log(`[Dine-In API] Self-healing ${tablesToUpdate.length} tables in background...`);
-            const batch = firestore.batch();
-            tablesToUpdate.forEach(t => batch.update(t.ref, t.data));
-
-            // Background execution
-            batch.commit().catch(e => console.error("[Dine-In API] Background self-heal failed:", e));
-        }
+        // REMOVED Self-Healing writes from GET path for better method separation.
+        // Self-healing should ideally happen in a PATCH or as a background job triggered separately.
 
         const finalTablesData = Array.from(tableMap.values());
 
@@ -386,7 +362,7 @@ export async function POST(req) {
     const body = await req.json();
 
     try {
-        const businessRef = await getBusinessRef(req);
+        const businessRef = await getBusinessRef(req, true); // Security: destructive action
         if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.', status: 404 });
 
         if (body.action === 'create_tab') {
@@ -452,7 +428,7 @@ export async function POST(req) {
 export async function PATCH(req) {
     const firestore = await getFirestore();
     try {
-        const businessRef = await getBusinessRef(req);
+        const businessRef = await getBusinessRef(req, true); // Security: destructive action
         const body = await req.json();
         const { tableId, action, tabId, paymentMethod, paxCount, newTableId, newCapacity } = body;
 
@@ -637,7 +613,7 @@ export async function PATCH(req) {
 export async function DELETE(req) {
     const firestore = await getFirestore();
     try {
-        const businessRef = await getBusinessRef(req);
+        const businessRef = await getBusinessRef(req, true); // Security: destructive action
         const { tableId } = await req.json();
         if (!tableId) return NextResponse.json({ message: 'Table ID is required.' }, { status: 400 });
 
@@ -656,45 +632,46 @@ export async function DELETE(req) {
             }, { status: 400 });
         }
 
-        // CRITICAL: Cleanup all associated data before deleting table
-        console.log(`[API DELETE] Cleaning up all data for table ${tableId}`);
+        // [SOFT DELETE IMPLEMENTATION]
+        // Instead of hard deleting, we mark as isDeleted = true
+        console.log(`[API DELETE] Soft-deleting table ${tableId}`);
 
-        // 1. Delete ALL tabs (active and inactive) for this table
+        const batch = firestore.batch();
+
+        // 1. Close (archive) any inactive/background tabs, but DO NOT DELETE
         const allTabsQuery = await businessRef.collection('dineInTabs')
             .where('tableId', '==', tableId)
             .get();
 
-        const tabIds = allTabsQuery.docs.map(doc => doc.id);
-        console.log(`[API DELETE] Found ${tabIds.length} tabs to delete:`, tabIds);
-
-        const batch = firestore.batch();
+        // We only close them if they aren't already closed, to keep data clean
         allTabsQuery.docs.forEach(doc => {
-            batch.delete(doc.ref);
+            if (doc.data().status !== 'closed') {
+                batch.update(doc.ref, {
+                    status: 'closed',
+                    closedAt: FieldValue.serverTimestamp(),
+                    note: 'Table deleted'
+                });
+            }
         });
 
-        // 2. Delete ALL orders associated with this table
-        const ordersQuery = await firestore.collection('orders')
-            .where('restaurantId', '==', businessRef.id)
-            .where('tableId', '==', tableId)
-            .get();
+        // 2. Orders: DO NOT DELETE. They adhere to audit logs.
+        // We leave them as is. They will be accessible via Order History.
 
-        console.log(`[API DELETE] Found ${ordersQuery.size} orders to delete`);
-        ordersQuery.docs.forEach(doc => {
-            batch.delete(doc.ref);
-        });
-
-        // 3. Delete the table document itself
+        // 3. Mark the table document as isDeleted
         const tableRef = businessRef.collection('tables').doc(tableId);
-        batch.delete(tableRef);
+        batch.update(tableRef, {
+            isDeleted: true,
+            deletedAt: FieldValue.serverTimestamp()
+        });
 
-        // Commit all deletions in one transaction
+        // Commit all updates
         await batch.commit();
 
-        console.log(`[API DELETE] Successfully deleted table ${tableId} and all associated data`);
+        console.log(`[API DELETE] Successfully soft-deleted table ${tableId}`);
         return NextResponse.json({
             message: 'Table deleted successfully.',
-            deletedTabs: tabIds.length,
-            deletedOrders: ordersQuery.size
+            deletedTabs: 0, // No longer deleting tabs
+            deletedOrders: 0 // No longer deleting orders
         }, { status: 200 });
     } catch (error) {
         console.error("[API dine-in-tables] CRITICAL DELETE ERROR:", error);

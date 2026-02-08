@@ -4,7 +4,7 @@ import { getFirestore, getAuth } from '@/lib/firebase-admin';
 
 async function fetchCollection(firestore, collectionName) {
     const snapshot = await firestore.collection(collectionName).get();
-    const auth = getAuth();
+    const auth = await getAuth();
 
     const promises = snapshot.docs.map(async (doc) => {
         const data = doc.data();
@@ -60,7 +60,7 @@ export async function GET(req) {
         const { verifyAdmin } = await import('@/lib/verify-admin');
         await verifyAdmin(req);
 
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
 
         const [restaurants, shops, streetVendors] = await Promise.all([
             fetchCollection(firestore, 'restaurants'),
@@ -98,7 +98,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Invalid status provided' }, { status: 400 });
         }
 
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         let collectionName;
         if (businessType === 'restaurant') {
             collectionName = 'restaurants';
