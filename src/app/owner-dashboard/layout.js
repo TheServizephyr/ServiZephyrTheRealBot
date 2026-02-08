@@ -39,7 +39,7 @@ function FeatureLockScreen({ remark, featureId }) {
       {remark && (
         <div className="mt-4 p-4 bg-muted/50 rounded-lg w-full max-w-md">
           <p className="font-semibold">Admin Remark:</p>
-          <p className="text-muted-foreground italic">"{remark}"</p>
+          <p className="text-muted-foreground italic">&quot;{remark}&quot;</p>
         </div>
       )}
       <div className="mt-6 pt-6 border-t border-border w-full max-w-md">

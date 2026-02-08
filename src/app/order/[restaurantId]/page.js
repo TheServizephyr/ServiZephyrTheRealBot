@@ -507,7 +507,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                     >
                                         <QrCode className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
                                         <div>
-                                            <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
+                                            <h4 className="font-bold text-lg text-foreground">I&apos;m at the Restaurant</h4>
                                             <p className="text-sm text-muted-foreground">Scan the QR code on your table.</p>
                                         </div>
                                     </button>
@@ -646,8 +646,8 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                         <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - (tableStatus?.current_pax || 0)} className="mt-1" />
                                     </div>
                                     <div>
-                                        <Label>What's a name for your tab?</Label>
-                                        <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
+                                        <Label>What&apos;s a name for your tab?</Label>
+                                        <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan&apos;s Group" className="mt-1" />
                                     </div>
                                     <Button onClick={handleStartTab} className="w-full">{isEditing ? 'Save Changes' : 'Start Ordering'}</Button>
                                 </div>
@@ -2472,7 +2472,7 @@ const OrderPageInternal = () => {
 
                                     {/* Title */}
                                     <h2 className="text-2xl font-bold text-foreground">
-                                        We're Currently Closed
+                                        We&apos;re Currently Closed
                                     </h2>
 
                                     {/* Message */}
@@ -2484,7 +2484,7 @@ const OrderPageInternal = () => {
                                     {/* Decorative element */}
                                     <div className="pt-4 flex items-center gap-2 text-sm text-muted-foreground">
                                         <Clock className="w-4 h-4" />
-                                        <span>We'll be back soon!</span>
+                                        <span>We&apos;ll be back soon!</span>
                                     </div>
                                 </div>
                             </div>

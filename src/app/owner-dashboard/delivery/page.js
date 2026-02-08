@@ -75,7 +75,7 @@ const InviteRiderModal = ({ isOpen, setIsOpen, onInvite }) => {
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="email" className="text-right">Rider's Email</Label>
+                        <Label htmlFor="email" className="text-right">Rider&apos;s Email</Label>
                         <input id="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="rider@example.com" className="col-span-3 p-2 border rounded-md bg-input border-border" />
                     </div>
                     {modalError && <p className="text-destructive text-center text-sm">{modalError}</p>}
@@ -224,7 +224,7 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
         <div className="mt-8 space-y-6">
             <h2 className="text-2xl font-bold tracking-tight">Delivery Analytics Hub</h2>
             <section>
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><BarChartIcon /> Team's Weekly Performance</h3>
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><BarChartIcon /> Team&apos;s Weekly Performance</h3>
                 <div className="bg-card border border-border rounded-xl p-5 h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={weeklyData}>

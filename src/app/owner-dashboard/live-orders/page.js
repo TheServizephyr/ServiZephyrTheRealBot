@@ -774,7 +774,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             {/* Special Note */}
             {order.notes && (
                 <div className="bg-yellow-500/5 border-l-4 border-yellow-500 p-3 text-xs italic text-yellow-600/90 font-medium rounded-r-lg">
-                    "{order.notes}"
+                    &quot;{order.notes}&quot;
                 </div>
             )}
 

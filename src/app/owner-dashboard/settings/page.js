@@ -151,7 +151,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                    <Label htmlFor="delete-confirm" className="font-semibold">To confirm, please type "DELETE" in the box below.</Label>
+                    <Label htmlFor="delete-confirm" className="font-semibold">To confirm, please type &quot;DELETE&quot; in the box below.</Label>
                     <input
                         id="delete-confirm"
                         type="text"

@@ -512,7 +512,7 @@ function OrderTrackingContent() {
                         Order Cancelled
                     </h2>
                     <p className="mt-2 text-gray-600 max-w-md">
-                        We're sorry, your order could not be processed.
+                        We&apos;re sorry, your order could not be processed.
                     </p>
                     <p className="mt-4 text-sm font-semibold bg-red-100 text-red-700 p-3 rounded-md max-w-md">
                         Reason: {orderData?.order?.rejectionReason || orderData?.order?.cancellationReason || 'Not specified'}
@@ -794,7 +794,7 @@ function OrderTrackingContent() {
                                     <span className="text-xl">⚠️</span>
                                     <div>
                                         <p className="font-bold">Signal Lost</p>
-                                        <p className="text-xs opacity-80 mt-0.5">Rider's location isn't updating. Don't worry, they are moving!</p>
+                                        <p className="text-xs opacity-80 mt-0.5">Rider&apos;s location isn&apos;t updating. Don&apos;t worry, they are moving!</p>
                                     </div>
                                 </div>
                             )}

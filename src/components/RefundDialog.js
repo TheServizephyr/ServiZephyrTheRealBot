@@ -414,7 +414,7 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                             </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">
-                            Amount will be credited to customer's account in 5-7 working days
+                            Amount will be credited to customer&apos;s account in 5-7 working days
                         </p>
                     </div>
 

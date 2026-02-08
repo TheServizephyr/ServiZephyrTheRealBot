@@ -184,7 +184,7 @@ function DeliverySettingsPageContent() {
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2"><Settings /> Road Distance Factor (Optional)</CardTitle>
-                        <CardDescription>Adjust aerial distance to estimate real road distance based on your area's road network.</CardDescription>
+                        <CardDescription>Adjust aerial distance to estimate real road distance based on your area&apos;s road network.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="p-4 bg-muted/50 rounded-lg space-y-3">

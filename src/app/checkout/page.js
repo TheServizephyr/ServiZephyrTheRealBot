@@ -1214,10 +1214,10 @@ const CheckoutPageInternal = () => {
                 <div className="mt-6 p-4 border border-yellow-500/30 rounded-lg bg-yellow-500/5">
                     <p className="text-xs font-semibold text-yellow-400 mb-2">⚠️ Refund & Cancellation Policy</p>
                     <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
-                        <li><span className="font-semibold">Vendor Discretion:</span> Refunds are processed at the vendor's sole discretion based on the cancellation reason.</li>
+                        <li><span className="font-semibold">Vendor Discretion:</span> Refunds are processed at the vendor&apos;s sole discretion based on the cancellation reason.</li>
                         <li><span className="font-semibold">Fake/Fraudulent Orders:</span> Orders placed with wrong details, duplicate orders, or customer-initiated cancellations may not be eligible for refund.</li>
                         <li><span className="font-semibold">Processing Time:</span> Approved refunds take 5-7 business days to reflect in your account.</li>
-                        <li><span className="font-semibold">ServiZephyr's Role:</span> We facilitate the transaction but do not interfere in refund decisions. Please contact the vendor directly for refund concerns.</li>
+                        <li><span className="font-semibold">ServiZephyr&apos;s Role:</span> We facilitate the transaction but do not interfere in refund decisions. Please contact the vendor directly for refund concerns.</li>
                     </ul>
                 </div>
             </div >

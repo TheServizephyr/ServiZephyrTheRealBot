@@ -536,7 +536,7 @@ ${placeholderText}
                             <li>Paste the prompt, and then paste ${instructionsText} where it says \`${placeholderText}\`.</li>
                             <li>The AI will generate a JSON array. Copy the entire JSON code.</li>
                             <li>Paste the copied JSON code into the text area on this page.</li>
-                            <li>Click "Upload & Save Items".</li>
+                            <li>Click &quot;Upload &amp; Save Items&quot;.</li>
                         </ol>
                         <div className="p-4 bg-muted rounded-lg">
                             <div className="flex justify-between items-center mb-2">

@@ -38,7 +38,7 @@ function FeatureLockScreen({ remark, featureId }) {
       {remark && (
         <div className="mt-4 p-4 bg-muted/50 rounded-lg w-full max-w-md">
           <p className="font-semibold">Admin Remark:</p>
-          <p className="text-muted-foreground italic">"{remark}"</p>
+          <p className="text-muted-foreground italic">&quot;{remark}&quot;</p>
         </div>
       )}
       <div className="mt-6 pt-6 border-t border-border w-full max-w-md">
@@ -289,7 +289,7 @@ function OwnerDashboardContent({ children }) {
           <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
             <AlertTriangle className="h-16 w-16 text-red-500" />
             <h2 className="mt-6 text-2xl font-bold">Could Not Verify Status</h2>
-            <p className="mt-2 max-w-md text-muted-foreground">We couldn't verify your restaurant's status. This could be a temporary issue. Please refresh or contact support.</p>
+            <p className="mt-2 max-w-md text-muted-foreground">We couldn&apos;t verify your restaurant&apos;s status. This could be a temporary issue. Please refresh or contact support.</p>
             <div className="mt-6 flex gap-4">
               <Button onClick={() => window.location.reload()} variant="default">Refresh</Button>
               <Button variant="default" onClick={() => router.push('/contact')}>Contact Support</Button>

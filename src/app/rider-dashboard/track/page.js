@@ -218,7 +218,7 @@ export default function RiderTrackPage() {
                             <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-full">
                                 <CheckCircle size={48} className="text-green-500 mb-4" />
                                 <h2 className="text-xl font-bold">All Deliveries Complete!</h2>
-                                <p>You have no active orders. Your status has been set to "Online".</p>
+                                <p>You have no active orders. Your status has been set to &quot;Online&quot;.</p>
                             </div>
                         )}
                     </div>

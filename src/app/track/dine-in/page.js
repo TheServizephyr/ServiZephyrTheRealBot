@@ -40,7 +40,7 @@ const StatusTimeline = ({ currentStatus }) => {
                         <div className="flex flex-col items-center text-center w-20">
                             <motion.div
                                 className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isError ? 'bg-destructive border-destructive text-destructive-foreground' :
-                                        isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
+                                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
                                     }`}
                                 animate={{ scale: isCurrent ? 1.1 : 1 }}
                                 transition={{ type: 'spring' }}
@@ -48,7 +48,7 @@ const StatusTimeline = ({ currentStatus }) => {
                                 {icon}
                             </motion.div>
                             <p className={`mt-2 text-xs font-semibold ${isError ? 'text-destructive' :
-                                    isCompleted ? 'text-foreground' : 'text-muted-foreground'
+                                isCompleted ? 'text-foreground' : 'text-muted-foreground'
                                 }`}>
                                 {isError ? statusConfig[currentStatus].title : title}
                             </p>
@@ -216,7 +216,7 @@ function DineInTrackingContent() {
                 <div className="w-full max-w-2xl mx-auto mt-8 flex-grow">
                     <div className="bg-card border border-border rounded-lg p-6 text-center">
                         <h3 className="font-bold text-lg">Fun Fact while you wait</h3>
-                        <p className="text-muted-foreground mt-2 italic">"The world's most expensive pizza costs $12,000 and takes 72 hours to make."</p>
+                        <p className="text-muted-foreground mt-2 italic">&quot;The world&apos;s most expensive pizza costs $12,000 and takes 72 hours to make.&quot;</p>
                     </div>
                 </div>
             </main>

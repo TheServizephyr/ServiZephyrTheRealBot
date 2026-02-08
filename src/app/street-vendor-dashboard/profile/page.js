@@ -104,7 +104,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
-                        <Label htmlFor="delete-confirm" className="font-semibold">To confirm, please type "DELETE" in the box below.</Label>
+                        <Label htmlFor="delete-confirm" className="font-semibold">To confirm, please type &quot;DELETE&quot; in the box below.</Label>
                         <input
                             id="delete-confirm"
                             type="text"
@@ -278,6 +278,85 @@ function VendorProfilePageContent() {
 
     // NOTE: Main ImageUpload handles logo. Banner needs manual handling below since it's an array?
     // Actually, reused ImageUpload below for Banner too effectively.
+
+    const handlePaymentToggle = (type, value) => {
+        setEditedUser(prev => ({ ...prev, [type]: value }));
+    };
+
+    const handleSave = async (section) => {
+        const currentUser = getAuth().currentUser;
+        if (!currentUser || !editedUser) return;
+
+        let payload = {};
+        if (section === 'profile') {
+            payload = {
+                name: editedUser.name,
+                restaurantName: editedUser.restaurantName,
+                phone: editedUser.phone,
+            };
+        } else if (section === 'media') {
+            payload = {
+                logoUrl: editedUser.logoUrl,
+                bannerUrls: editedUser.bannerUrls,
+            };
+        } else if (section === 'payment') {
+            payload = {
+                isOpen: editedUser.isOpen,
+                dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
+                dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
+            };
+        } else if (section === 'charges') {
+            payload = {
+                gstEnabled: editedUser.gstEnabled,
+                gstRate: editedUser.gstRate,
+                gstMinAmount: editedUser.gstMinAmount,
+                convenienceFeeEnabled: editedUser.convenienceFeeEnabled,
+                convenienceFeeRate: editedUser.convenienceFeeRate,
+                convenienceFeePaidBy: editedUser.convenienceFeePaidBy,
+                convenienceFeeLabel: editedUser.convenienceFeeLabel,
+                packagingChargeEnabled: editedUser.packagingChargeEnabled,
+                packagingChargeAmount: editedUser.packagingChargeAmount,
+            };
+        }
+
+        try {
+            const idToken = await currentUser.getIdToken();
+            let url = '/api/owner/settings';
+            if (impersonatedOwnerId) {
+                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            } else if (employeeOfOwnerId) {
+                url += `?employee_of=${employeeOfOwnerId}`;
+            }
+
+            const response = await fetch(url, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to update settings');
+            }
+
+            const updatedUser = await response.json();
+            setUser(updatedUser);
+            setEditedUser(updatedUser);
+
+            if (section === 'profile') setIsEditingProfile(false);
+            if (section === 'media') setIsEditingMedia(false);
+            if (section === 'payment') setIsEditingPayment(false);
+            if (section === 'charges') setIsEditingCharges(false);
+
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Settings updated successfully.' });
+        } catch (error) {
+            console.error("Error saving data:", error);
+            setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+        }
+    };
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8 overflow-x-hidden max-w-full">
@@ -494,7 +573,7 @@ function VendorProfilePageContent() {
                                         placeholder="2.5"
                                     />
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        Recommended: 2-3% to cover Razorpay's fees
+                                        Recommended: 2-3% to cover Razorpay&apos;s fees
                                     </p>
                                 </div>
                                 <div>
@@ -516,7 +595,7 @@ function VendorProfilePageContent() {
                                             disabled={!isEditingCharges}
                                             className="flex-1"
                                         >
-                                            I'll Absorb
+                                            I&apos;ll Absorb
                                         </Button>
                                     </div>
                                     {editedUser.convenienceFeePaidBy === 'customer' && (

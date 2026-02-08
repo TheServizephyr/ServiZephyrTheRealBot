@@ -7,11 +7,11 @@ import { Switch } from "@/components/ui/switch";
 import styles from "./OwnerDashboard.module.css";
 
 const VegNonVegIcon = ({ isVeg }) => {
-  return (
-    <div className={`flex items-center justify-center w-5 h-5 border rounded-sm ${isVeg ? 'border-green-500' : 'border-red-500'}`}>
-      <div className={`w-3 h-3 rounded-full ${isVeg ? 'bg-green-500' : 'bg-red-500'}`}></div>
-    </div>
-  );
+    return (
+        <div className={`flex items-center justify-center w-5 h-5 border rounded-sm ${isVeg ? 'border-green-500' : 'border-red-500'}`}>
+            <div className={`w-3 h-3 rounded-full ${isVeg ? 'bg-green-500' : 'bg-red-500'}`}></div>
+        </div>
+    );
 };
 
 export default function MenuTable({ dishes, onDelete, onToggle, onUpdate }) {
@@ -30,7 +30,7 @@ export default function MenuTable({ dishes, onDelete, onToggle, onUpdate }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
         >
-            <div className={styles.tableWrapper} style={{maxHeight: 'calc(100vh - 250px)'}}>
+            <div className={styles.tableWrapper} style={{ maxHeight: 'calc(100vh - 250px)' }}>
                 <table className={styles.table}>
                     <thead>
                         <tr>
@@ -46,7 +46,7 @@ export default function MenuTable({ dishes, onDelete, onToggle, onUpdate }) {
                         {dishes.length === 0 ? (
                             <tr>
                                 <td colSpan="6" className="text-center p-8 text-gray-500">
-                                    No dishes on the menu. Click "Add New Dish" to start.
+                                    No dishes on the menu. Click &quot;Add New Dish&quot; to start.
                                 </td>
                             </tr>
                         ) : (
@@ -69,7 +69,7 @@ export default function MenuTable({ dishes, onDelete, onToggle, onUpdate }) {
                                             />
                                             <div>
                                                 <p className="font-semibold text-gray-800">{dish.name}</p>
-                                                <p className="text-xs text-gray-500 truncate" style={{maxWidth: '250px'}}>{dish.description}</p>
+                                                <p className="text-xs text-gray-500 truncate" style={{ maxWidth: '250px' }}>{dish.description}</p>
                                             </div>
                                         </div>
                                     </td>
