@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { subDays } from 'date-fns';
-import { verifyTabIntegrity, areAllOrdersPaid } from '@/lib/tab-helpers';
 
 // Helper function to get business reference from authenticated request
 async function getBusinessRef(req) {
@@ -502,30 +501,8 @@ export async function PATCH(req) {
                 return NextResponse.json({ message: 'Tab ID is required for clear_tab action.' }, { status: 400 });
             }
 
-            // ✅ PHASE 1 INTEGRATION: Verify integrity before clearing
-            try {
-                const { isValid, mismatch } = await verifyTabIntegrity(tabId);
-                if (!isValid) {
-                    console.warn(`[Clear Tab] Tab ${tabId} had mismatch of ₹${mismatch}, auto-corrected`);
-                }
-            } catch (integrityErr) {
-                console.warn('[Clear Tab] Integrity check failed:', integrityErr.message);
-                // Continue with clearing even if check fails
-            }
-
-            // ✅ PHASE 1 INTEGRATION: Check all orders paid
-            try {
-                const allPaid = await areAllOrdersPaid(tabId);
-                if (!allPaid) {
-                    return NextResponse.json(
-                        { error: 'Cannot clear tab: Some orders are not paid yet' },
-                        { status: 400 }
-                    );
-                }
-            } catch (paidCheckErr) {
-                console.warn('[Clear Tab] Payment check failed:', paidCheckErr.message);
-                // Continue cautiously
-            }
+            // Optional validation checks removed (tab-helpers not implemented yet)
+            // TODO: Add integrity check and payment validation in future
 
             // Find all orders with this dineInTabId and mark them as 'picked_up' to exclude from active tabs
             const ordersQuery = await firestore.collection('orders')
