@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -805,6 +805,13 @@ const OrderPageInternal = () => {
     const [userAddresses, setUserAddresses] = useState([]);
     const [addressLoading, setAddressLoading] = useState(false);
 
+    // NEW: Delivery Distance Validation
+    const [deliveryValidation, setDeliveryValidation] = useState(null);
+    const [isValidatingDelivery, setIsValidatingDelivery] = useState(false);
+
+    // NEW: Ref to track if we've attempted auto-open (prevents multiple triggers)
+    const hasAttemptedAutoOpen = useRef(false);
+
     // FETCH ADDRESSES FOR DRAWER
     useEffect(() => {
         const loadAddresses = async () => {
@@ -815,6 +822,30 @@ const OrderPageInternal = () => {
             }
         }
     }, [isAddressSelectorOpen]);
+
+    // Handler to close address selector with validation
+    const handleCloseAddressSelector = () => {
+        // Simple check: Only prevent close if this is first-time WhatsApp delivery AND no address saved ANYWHERE
+        const savedLocation = localStorage.getItem('customerLocation');
+        const hasAnyAddress = savedLocation || customerLocation?.lat;
+        const isFromWhatsApp = !!ref || !!phone;
+        const isFirstTimeDelivery = isFromWhatsApp && deliveryType === 'delivery' && !hasAnyAddress;
+
+        if (isFirstTimeDelivery) {
+            console.log('[Address Selector] ⚠️ First-time user must select address');
+            setInfoDialog({
+                isOpen: true,
+                title: 'Warning: Address Required', // InfoDialog detects "warning" in title!
+                message: 'Please select a delivery address to continue. We need it to calculate charges and verify delivery availability.'
+            });
+            return;
+        }
+
+        // Otherwise allow close
+        console.log('[Address Selector] ✅ Closing (address exists or not required)');
+        setIsAddressSelectorOpen(false);
+    };
+
 
     const handleOpenAddressDrawer = async () => {
         setIsAddressSelectorOpen(true);
@@ -853,12 +884,46 @@ const OrderPageInternal = () => {
         }
     };
 
-    const handleSelectNewAddress = (addr) => {
+    const handleSelectNewAddress = async (addr) => {
         // Update Local State
         setCustomerLocation(addr);
         // Persist
         localStorage.setItem('customerLocation', JSON.stringify(addr));
         setIsAddressSelectorOpen(false);
+
+        // ✅ NEW: Calculate delivery distance and validate
+        if (addr.lat && addr.lng && restaurantData?.coordinates) {
+            setIsValidatingDelivery(true);
+            try {
+                const response = await fetch('/api/delivery/calculate-charge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        restaurantId,
+                        addressLat: addr.lat,
+                        addressLng: addr.lng,
+                        subtotal: subtotal // cart subtotal
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    setDeliveryValidation(result);
+
+                    // Update delivery charge in parent state if needed
+                    if (result.allowed && result.charge !== undefined) {
+                        // Delivery charge can be updated here if tracked in state
+                        console.log(`[Delivery Validation] Charge: ₹${result.charge}, Distance: ${result.roadDistance}km`);
+                    }
+                } else {
+                    console.error('[Delivery Validation] API error');
+                }
+            } catch (error) {
+                console.error('[Delivery Validation] Failed:', error);
+            } finally {
+                setIsValidatingDelivery(false);
+            }
+        }
     };
 
     useEffect(() => {
@@ -1566,6 +1631,63 @@ const OrderPageInternal = () => {
         }
     }, [isTokenValid, restaurantId, tableIdFromUrl]);
 
+    // ✅ Auto-open address selector for WhatsApp users (EXACTLY ONCE on first load)
+    // Placed HERE after deliveryType state is loaded from cart
+    useEffect(() => {
+        // Skip if we've already attempted auto-open in this component lifecycle
+        if (hasAttemptedAutoOpen.current) {
+            console.log('[Auto-Open] Already attempted - skipping');
+            return;
+        }
+
+        // ⏳ Wait for token validation and data load
+        if (!isTokenValid || loading) {
+            console.log('[Auto-Open] Waiting for data load...');
+            return;
+        }
+
+        // Access customerLocation
+        const savedLocation = localStorage.getItem('customerLocation');
+        const hasSelectedAddress = savedLocation ? JSON.parse(savedLocation)?.lat : false;
+        const isFromWhatsApp = !!ref || !!phone;
+
+        // ✅ Use deliveryType from STATE (not localStorage!)
+        const currentDeliveryType = deliveryType;
+
+        // Check if we've already auto-opened in a previous session
+        const autoOpenFlag = localStorage.getItem(`addressAutoOpened_${restaurantId}`);
+        const hasAlreadyAutoOpened = autoOpenFlag === 'true';
+
+        console.log('[Auto-Open] 🔍 Checking:', {
+            isTokenValid,
+            loading,
+            isFromWhatsApp,
+            hasSelectedAddress,
+            deliveryTypeState: currentDeliveryType,
+            hasAlreadyAutoOpened
+        });
+
+        // Auto-open ONLY if: WhatsApp user + No address + delivery type + NOT already opened
+        if (isFromWhatsApp && !hasSelectedAddress && currentDeliveryType === 'delivery' && !hasAlreadyAutoOpened) {
+            // Mark that we've attempted (prevents re-runs)
+            hasAttemptedAutoOpen.current = true;
+
+            // Delay to let page fully render
+            setTimeout(() => {
+                console.log('[Auto-Open] ✅ OPENING address selector!');
+                localStorage.setItem(`addressAutoOpened_${restaurantId}`, 'true');
+                handleOpenAddressDrawer();
+            }, 800);
+        } else {
+            console.log('[Auto-Open] ❌ NOT opening:', {
+                reason: !isFromWhatsApp ? 'Not WhatsApp' :
+                    hasSelectedAddress ? 'Has address' :
+                        currentDeliveryType !== 'delivery' ? `Wrong type: ${currentDeliveryType}` :
+                            hasAlreadyAutoOpened ? 'Already opened' : 'Unknown'
+            });
+        }
+    }, [ref, phone, restaurantId, isTokenValid, loading, deliveryType]);
+
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
 
@@ -2038,7 +2160,7 @@ const OrderPageInternal = () => {
 
                 {/* Back Button Handler Effect */}
                 {isAddressSelectorOpen && (
-                    <BackButtonHandler onClose={() => setIsAddressSelectorOpen(false)} />
+                    <BackButtonHandler onClose={handleCloseAddressSelector} />
                 )}
 
                 <header>
@@ -2094,6 +2216,37 @@ const OrderPageInternal = () => {
                                 Sorry, {restaurantData.name} is currently closed and not accepting orders. Please check back later or contact the restaurant for more information.
                             </AlertDescription>
                         </Alert>
+                    )}
+
+                    {/* ✅ NEW: Delivery Distance Validation Status */}
+                    {deliveryType === 'delivery' && deliveryValidation && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mb-4"
+                        >
+                            <Alert className={deliveryValidation.allowed ? "border-green-500 bg-green-500/10" : "border-red-500 bg-red-500/10"}>
+                                {deliveryValidation.allowed ? (
+                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                ) : (
+                                    <AlertCircle className="h-4 w-4 text-red-500" />
+                                )}
+                                <AlertTitle className={deliveryValidation.allowed ? "text-green-500 font-bold" : "text-red-500 font-bold"}>
+                                    {deliveryValidation.allowed ? "✓ Delivery Available" : "✗ Delivery Not Available"}
+                                </AlertTitle>
+                                <AlertDescription className={deliveryValidation.allowed ? "text-green-400" : "text-red-400"}>
+                                    {deliveryValidation.allowed ? (
+                                        <div className="space-y-1">
+                                            <p>📍 Distance: {deliveryValidation.roadDistance} km {deliveryValidation.roadFactor > 1 && `(${deliveryValidation.aerialDistance}km aerial × ${deliveryValidation.roadFactor})`}</p>
+                                            <p>💰 Delivery Charge: ₹{deliveryValidation.charge}</p>
+                                            {deliveryValidation.reason && <p className="text-xs mt-1 italic">{deliveryValidation.reason}</p>}
+                                        </div>
+                                    ) : (
+                                        <p>{deliveryValidation.message}</p>
+                                    )}
+                                </AlertDescription>
+                            </Alert>
+                        </motion.div>
                     )}
 
                     {/* NEW: Cleaning Info Banner - When seats available but cleaning pending */}

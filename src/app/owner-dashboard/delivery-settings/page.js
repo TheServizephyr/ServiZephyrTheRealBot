@@ -26,6 +26,10 @@ function DeliverySettingsPageContent() {
         deliveryFixedFee: 30,
         deliveryPerKmFee: 5,
         deliveryFreeThreshold: 500,
+        // NEW: Road factor & free zone
+        roadDistanceFactor: 1.0,
+        freeDeliveryRadius: 0,
+        freeDeliveryMinOrder: 0,
     });
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -53,6 +57,10 @@ function DeliverySettingsPageContent() {
                     deliveryFixedFee: data.deliveryFixedFee,
                     deliveryPerKmFee: data.deliveryPerKmFee,
                     deliveryFreeThreshold: data.deliveryFreeThreshold,
+                    // NEW: Road factor & free zone
+                    roadDistanceFactor: data.roadDistanceFactor || 1.0,
+                    freeDeliveryRadius: data.freeDeliveryRadius || 0,
+                    freeDeliveryMinOrder: data.freeDeliveryMinOrder || 0,
                 });
             } catch (error) {
                 setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load settings: ${error.message}` });
@@ -83,6 +91,10 @@ function DeliverySettingsPageContent() {
                 deliveryFixedFee: Number(settings.deliveryFixedFee),
                 deliveryPerKmFee: Number(settings.deliveryPerKmFee),
                 deliveryFreeThreshold: Number(settings.deliveryFreeThreshold),
+                // NEW: Road factor & free zone
+                roadDistanceFactor: Number(settings.roadDistanceFactor),
+                freeDeliveryRadius: Number(settings.freeDeliveryRadius),
+                freeDeliveryMinOrder: Number(settings.freeDeliveryMinOrder),
             };
 
             const response = await fetch('/api/owner/delivery-settings', {
@@ -163,6 +175,103 @@ function DeliverySettingsPageContent() {
                             step={1}
                             className="mt-4"
                         />
+                    </CardContent>
+                </Card>
+            </motion.div>
+
+            {/* NEW: Road Distance Factor (Optional) */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.15 }}>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Settings /> Road Distance Factor (Optional)</CardTitle>
+                        <CardDescription>Adjust aerial distance to estimate real road distance based on your area's road network.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                                <strong>What is this?</strong> Aerial distance is shorter than actual road distance. Set a multiplier to account for detours:
+                            </p>
+                            <ul className="text-xs text-muted-foreground space-y-1 pl-4">
+                                <li>• <strong>1.0</strong> = Use aerial distance only (no adjustment)</li>
+                                <li>• <strong>1.2-1.4</strong> = Normal city with straight roads</li>
+                                <li>• <strong>1.5-1.7</strong> = Dense area with many turns</li>
+                                <li>• <strong>1.8-2.0</strong> = Very complex road network</li>
+                            </ul>
+                        </div>
+                        <div className="space-y-3">
+                            <Label htmlFor="road-factor">
+                                Multiplier: <span className="font-bold text-primary text-lg">{settings.roadDistanceFactor.toFixed(1)}x</span>
+                                {settings.roadDistanceFactor === 1.0 && <span className="text-xs text-muted-foreground ml-2">(Disabled - using aerial distance)</span>}
+                            </Label>
+                            <Slider
+                                id="road-factor"
+                                value={[settings.roadDistanceFactor]}
+                                onValueChange={(val) => handleSettingChange('roadDistanceFactor', val[0])}
+                                min={1.0}
+                                max={2.0}
+                                step={0.1}
+                                className="mt-2"
+                            />
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>1.0x (Off)</span>
+                                <span>2.0x (Max)</span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </motion.div>
+
+            {/* NEW: Free Delivery Zone */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.17 }}>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Truck /> Free Delivery Zone (Optional)</CardTitle>
+                        <CardDescription>Offer free delivery within a specific radius for orders above a minimum amount.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="space-y-3">
+                            <Label htmlFor="free-zone-radius">
+                                Free Zone Radius: <span className="font-bold text-primary text-lg">{settings.freeDeliveryRadius} km</span>
+                                {settings.freeDeliveryRadius === 0 && <span className="text-xs text-muted-foreground ml-2">(Disabled)</span>}
+                            </Label>
+                            <Slider
+                                id="free-zone-radius"
+                                value={[settings.freeDeliveryRadius]}
+                                onValueChange={(val) => handleSettingChange('freeDeliveryRadius', val[0])}
+                                min={0}
+                                max={settings.deliveryRadius[0]}
+                                step={0.5}
+                                className="mt-2"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Customers within this radius get free delivery (if they meet minimum order)
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <Label htmlFor="free-zone-min">
+                                Minimum Order for Free Delivery: <span className="font-bold text-primary text-lg">₹{settings.freeDeliveryMinOrder}</span>
+                            </Label>
+                            <Input
+                                id="free-zone-min"
+                                type="number"
+                                value={settings.freeDeliveryMinOrder}
+                                onChange={(e) => handleSettingChange('freeDeliveryMinOrder', Number(e.target.value))}
+                                placeholder="e.g., 199"
+                                min="0"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Orders ≥ this amount within free zone get zero delivery charge
+                            </p>
+                        </div>
+
+                        {settings.freeDeliveryRadius > 0 && settings.freeDeliveryMinOrder > 0 && (
+                            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                                <p className="text-sm text-green-600 dark:text-green-400">
+                                    ✓ Free delivery active: Within <strong>{settings.freeDeliveryRadius}km</strong> for orders ≥<strong>₹{settings.freeDeliveryMinOrder}</strong>
+                                </p>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </motion.div>

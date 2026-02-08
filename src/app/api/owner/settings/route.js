@@ -148,6 +148,10 @@ export async function GET(req) {
                 deliveryFreeThreshold: fallback('deliveryFreeThreshold', 500),
                 deliveryRadius: fallback('deliveryRadius', 5),
                 deliveryEnabled: fallback('deliveryEnabled', true),
+                // NEW: Road factor & free delivery zone
+                roadDistanceFactor: fallback('roadDistanceFactor', 1.0),
+                freeDeliveryRadius: fallback('freeDeliveryRadius', 0),
+                freeDeliveryMinOrder: fallback('freeDeliveryMinOrder', 0),
                 pickupEnabled: fallback('pickupEnabled', true),
                 dineInEnabled: fallback('dineInEnabled', true),
             };
@@ -214,6 +218,10 @@ export async function GET(req) {
             deliveryFixedFee: fallback('deliveryFixedFee', 30),
             deliveryPerKmFee: fallback('deliveryPerKmFee', 5),
             deliveryFreeThreshold: fallback('deliveryFreeThreshold', 500),
+            // NEW: Road factor & free delivery zone
+            roadDistanceFactor: fallback('roadDistanceFactor', 1.0),
+            freeDeliveryRadius: fallback('freeDeliveryRadius', 0),
+            freeDeliveryMinOrder: fallback('freeDeliveryMinOrder', 0),
             // Other Settings
             pickupEnabled: fallback('pickupEnabled', false),
             dineInEnabled: fallback('dineInEnabled', true),
@@ -358,7 +366,9 @@ export async function PATCH(req) {
         const deliveryFields = [
             'deliveryEnabled', 'deliveryRadius', 'deliveryFeeType',
             'deliveryFixedFee', 'deliveryPerKmFee', 'deliveryFreeThreshold',
-            'deliveryOnlinePaymentEnabled', 'deliveryCodEnabled'
+            'deliveryOnlinePaymentEnabled', 'deliveryCodEnabled',
+            // NEW: Road factor & free delivery zone
+            'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder'
         ];
 
         const deliveryUpdates = {};
@@ -408,6 +418,10 @@ export async function PATCH(req) {
             deliveryFreeThreshold: fallback('deliveryFreeThreshold', 500),
             deliveryOnlinePaymentEnabled: fallback('deliveryOnlinePaymentEnabled', true),
             deliveryCodEnabled: fallback('deliveryCodEnabled', true),
+            // NEW: Road factor & free delivery zone
+            roadDistanceFactor: fallback('roadDistanceFactor', 1.0),
+            freeDeliveryRadius: fallback('freeDeliveryRadius', 0),
+            freeDeliveryMinOrder: fallback('freeDeliveryMinOrder', 0),
             // Other
             pickupEnabled: fallback('pickupEnabled', false),
             dineInEnabled: fallback('dineInEnabled', true),

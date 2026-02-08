@@ -1,4 +1,17 @@
+import { NextResponse } from 'next/server';
+import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { subDays } from 'date-fns';
+import { verifyTabIntegrity, areAllOrdersPaid } from '@/lib/tab-helpers';
+
+// Helper function to get business reference from authenticated request
+async function getBusinessRef(req) {
+    const { businessSnap } = await verifyOwnerWithAudit(req, 'manage_dine_in_tables');
+    if (!businessSnap || !businessSnap.exists) {
+        throw new Error('Business not found');
+    }
+    return businessSnap.ref;
+}
 
 export async function GET(req) {
     const firestore = await getFirestore();
