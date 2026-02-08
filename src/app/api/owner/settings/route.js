@@ -188,6 +188,11 @@ export async function GET(req) {
         // This block is for authenticated owner dashboard queries.
         const { uid, userData, businessData, businessId, businessRef } = await verifyUserAndGetData(req);
 
+        // 🚨 CRITICAL: Check if business exists
+        if (!businessRef) {
+            throw { message: 'Business not found for this user.', status: 404 };
+        }
+
         // FETCH DELIVERY SETTINGS FROM SUB-COLLECTION
         const deliveryConfigSnap = await businessRef.collection('delivery_settings').doc('config').get();
         const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
@@ -382,10 +387,16 @@ export async function PATCH(req) {
         });
 
         if (hasDeliveryUpdates) {
+            if (!businessRef) {
+                throw { message: 'Business not found. Cannot update delivery settings.', status: 404 };
+            }
             await businessRef.collection('delivery_settings').doc('config').set(deliveryUpdates, { merge: true });
         }
 
         if (Object.keys(businessUpdateData).length > 0) {
+            if (!businessRef) {
+                throw { message: 'Business not found. Cannot update settings.', status: 404 };
+            }
             await businessRef.update(businessUpdateData);
             console.log(`[Settings API] ✅ Settings updated for ${businessId}`);
         }

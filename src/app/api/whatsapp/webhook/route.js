@@ -285,19 +285,38 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             case 'track': {
                 console.log(`[Webhook WA] 'track' action initiated for ${customerPhone}.`);
 
-                // ✅ SIMPLIFIED: Send order page link with ref instead of tracking page
-                // This avoids composite index issues and provides consistent UX
+                // Get user ID (UID if logged-in, guest ID if not)
                 const { userId } = await getOrCreateGuestProfile(firestore, customerPhone);
 
-                // Obfuscate user ID for secure link
-                const publicRef = obfuscateGuestId(userId);
+                const ordersRef = firestore.collection('orders');
+                const q = ordersRef.where('userId', '==', userId).orderBy('orderDate', 'desc').limit(1);
+                const querySnapshot = await q.get();
 
-                // Send order page link (same as "Order Food" but they can see their last order there)
-                const businessId = business.id;
-                const link = `https://servizephyr.com/order/${businessId}?ref=${publicRef}`;
+                if (querySnapshot.empty) {
+                    console.log(`[Webhook WA] No recent orders found for userId ${userId}.`);
+                    const collectionName = business.ref.parent.id;
+                    await sendSystemMessage(fromNumber, `You don't have any recent orders to track.`, botPhoneNumberId, business.id, business.data.name, collectionName);
+                } else {
+                    const latestOrderDoc = querySnapshot.docs[0];
+                    const latestOrder = latestOrderDoc.data();
 
-                const collectionName = business.ref.parent.id;
-                await sendSystemMessage(fromNumber, `Here is your personal link to view and track your orders:\\n\\n${link}\\n\\nYou can see your order history and track active orders from this link.`, botPhoneNumberId, business.id, business.data.name, collectionName);
+                    if (!latestOrder.trackingToken) {
+                        console.error(`[Webhook WA] CRITICAL: Tracking token missing for latest order ${latestOrderDoc.id} of userId ${userId}.`);
+                        const collectionName = business.ref.parent.id;
+                        await sendSystemMessage(fromNumber, `We couldn't find tracking information for your last order. Please contact support.`, botPhoneNumberId, business.id, business.data.name, collectionName);
+                        return;
+                    }
+                    const orderId = latestOrderDoc.id;
+                    const token = latestOrder.trackingToken;
+                    console.log(`[Webhook WA] Found latest order ${orderId} with tracking token for userId ${userId}.`);
+
+                    const trackingPath = latestOrder.deliveryType === 'dine-in' ? 'dine-in/' : '';
+                    const link = `https://servizephyr.com/track/${trackingPath}${orderId}?token=${token}`;
+
+                    const displayOrderId = latestOrder.customerOrderId ? `#${latestOrder.customerOrderId}` : `#${orderId.substring(0, 8)}`;
+                    const collectionName = business.ref.parent.id;
+                    await sendSystemMessage(fromNumber, `Here is the tracking link for your latest order (${displayOrderId}):\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
+                }
                 break;
             }
             case 'help': {

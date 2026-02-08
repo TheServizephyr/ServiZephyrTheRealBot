@@ -1793,6 +1793,16 @@ const OrderPageInternal = () => {
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
+        // 🚨 CRITICAL: Block adding to cart if delivery not allowed
+        if (deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
+            setInfoDialog({
+                isOpen: true,
+                title: '🚫 Delivery Not Available',
+                message: deliveryValidation.message || 'Your selected address is beyond our delivery range. Please select a different address or choose pickup/dine-in.'
+            });
+            return; // Block add to cart
+        }
+
         const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => `${a.name}x${a.quantity}`).sort().join('-')}`;
         setCart(currentCart => {
             const existingItemIndex = currentCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
@@ -1804,7 +1814,7 @@ const OrderPageInternal = () => {
                 return [...currentCart, { ...item, cartItemId, portion, selectedAddOns, totalPrice, quantity: 1 }];
             }
         });
-    }, []);
+    }, [deliveryType, deliveryValidation]);
 
     const handleIncrement = (item) => {
         // NEW: Block item selection for dine-in if details not provided
