@@ -21,13 +21,13 @@ export default function ContactPage() {
         >
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">Let's Connect</span>
+            <span className="text-sm font-medium text-primary">Let&apos;s Connect</span>
           </div>
           <h1 className="font-headline text-5xl sm:text-6xl font-bold tracking-tighter mb-4 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
             Get in Touch
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Have questions or want to partner with us? We're here to help elevate your restaurant experience.
+            Have questions or want to partner with us? We&apos;re here to help elevate your restaurant experience.
           </p>
         </motion.div>
 
@@ -141,7 +141,7 @@ export default function ContactPage() {
             </div>
           </div>
           <p className="text-center text-muted-foreground mt-6 max-w-2xl mx-auto">
-            Together, we're building the future of restaurant management with cutting-edge AI technology and seamless automation.
+            Together, we&apos;re building the future of restaurant management with cutting-edge AI technology and seamless automation.
           </p>
         </motion.div>
 

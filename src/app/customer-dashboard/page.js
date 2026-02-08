@@ -188,7 +188,7 @@ function CustomerHubContent() {
                         </Button>
                         <div className="p-4 text-center">
                             <h3 className="text-lg font-bold mb-2">Scan Menu QR</h3>
-                            <p className="text-sm text-muted-foreground mb-4">Point your camera at the vendor's QR code</p>
+                            <p className="text-sm text-muted-foreground mb-4">Point your camera at the vendor&apos;s QR code</p>
                             <div id="reader" className="w-full"></div>
                         </div>
                     </div>
@@ -229,7 +229,7 @@ function CustomerHubContent() {
                                     </div>
                                 ) : hubData?.quickReorder && (
                                     <>
-                                        <p className="text-lg">Time for your favorite <span className="font-bold text-foreground">'{hubData.quickReorder.dishName}'</span> from <span className="font-bold text-foreground">{hubData.quickReorder.restaurantName}</span>?</p>
+                                        <p className="text-lg">Time for your favorite <span className="font-bold text-foreground">&apos;{hubData.quickReorder.dishName}&apos;</span> from <span className="font-bold text-foreground">{hubData.quickReorder.restaurantName}</span>?</p>
                                         <button onClick={() => handleNavigation(hubData.quickReorder.restaurantId)} className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90">
                                             Re-order Now <ArrowRight size={16} />
                                         </button>

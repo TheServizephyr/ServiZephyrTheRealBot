@@ -291,7 +291,7 @@ function LoginPageContent() {
 
                     {/* Info Text */}
                     <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                        By continuing, you agree to ServiZephyr's{" "}
+                        By continuing, you agree to ServiZephyr&apos;s{" "}
                         <a href="/terms-and-conditions" className="text-purple-600 hover:underline">
                             Terms of Service
                         </a>{" "}

@@ -499,7 +499,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     <DialogHeader>
                         <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
                         <DialogDescription>
-                            {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you're done."}
+                            {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you&apos;re done."}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
@@ -530,7 +530,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             )}
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="tags" className="text-right">Tags</Label>
-                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef&apos;s Special" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Image</Label>
@@ -736,7 +736,7 @@ ${placeholderText}
                             <li>Paste the prompt, and then paste ${instructionsText} where it says \`${placeholderText}\`.</li>
                             <li>The AI will generate a JSON array. Copy the entire JSON code.</li>
                             <li>Paste the copied JSON code into the text area on this page.</li>
-                            <li>Click "Upload & Save Items".</li>
+                            <li>Click &quot;Upload &amp; Save Items&quot;.</li>
                         </ol>
                         <div className="p-4 bg-muted rounded-lg">
                             <div className="flex justify-between items-center mb-2">

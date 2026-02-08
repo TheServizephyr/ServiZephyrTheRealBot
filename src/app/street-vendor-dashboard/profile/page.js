@@ -29,7 +29,106 @@ const uploadToStorage = async (file, path) => {
 
 export const dynamic = 'force-dynamic';
 
-// ... (Sub-components remain same) ...
+const SectionCard = ({ title, description, children, footer, action }) => (
+    <motion.div
+        className="bg-card border border-border rounded-xl overflow-hidden"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+    >
+        <div className="p-6 border-b border-border flex items-center justify-between gap-4">
+            <div>
+                <h2 className="text-xl font-bold text-foreground">{title}</h2>
+                {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
+            </div>
+            {action && <div>{action}</div>}
+        </div>
+        <div className="p-6">
+            {children}
+        </div>
+        {footer && <div className="p-6 bg-muted/30 border-t border-border">{footer}</div>}
+    </motion.div>
+);
+
+const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
+    const [confirmationText, setConfirmationText] = useState("");
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const isDeleteDisabled = confirmationText !== "DELETE";
+
+    const handleDelete = async () => {
+        try {
+            const user = getAuth().currentUser;
+            if (user) {
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(user, provider);
+
+                const idToken = await user.getIdToken(true);
+                const response = await fetch('/api/user/delete', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${idToken}` }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || "Failed to delete account.");
+                }
+
+                setInfoDialog({ isOpen: true, title: 'Success', message: 'Account deleted successfully.' });
+                setTimeout(() => window.location.href = "/", 2000);
+            }
+        } catch (error) {
+            console.error("Error deleting account:", error);
+            const errorMessage = error.code === 'auth/popup-closed-by-user'
+                ? 'Re-authentication cancelled. Account not deleted.'
+                : `Failed to delete account: ${error.message}`;
+            setInfoDialog({ isOpen: true, title: 'Error', message: errorMessage });
+        } finally {
+            setIsOpen(false);
+        }
+    };
+
+    return (
+        <>
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                <DialogContent className="sm:max-w-md bg-destructive/10 border-destructive text-foreground backdrop-blur-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl text-destructive-foreground">Permanently Delete Account</DialogTitle>
+                        <DialogDescription className="text-destructive-foreground/80">
+                            This is a security-sensitive action. You will be asked to sign in with Google again to confirm your identity.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Label htmlFor="delete-confirm" className="font-semibold">To confirm, please type "DELETE" in the box below.</Label>
+                        <input
+                            id="delete-confirm"
+                            type="text"
+                            value={confirmationText}
+                            onChange={(e) => setConfirmationText(e.target.value)}
+                            className="mt-2 w-full p-2 border rounded-md bg-background border-destructive/50 text-foreground focus:ring-destructive"
+                            placeholder="DELETE"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+                        <Button
+                            variant="destructive"
+                            disabled={isDeleteDisabled}
+                            onClick={handleDelete}
+                        >
+                            Re-authenticate & Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+};
 
 const ImageUpload = ({ label, currentImage, onFileSelect, isEditing, folderPath }) => {
     const fileInputRef = React.useRef(null);

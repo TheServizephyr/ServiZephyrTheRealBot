@@ -304,7 +304,7 @@ export default function SplitPayPage() {
                                 )}
                             </motion.div>
                         )}
-                        <h2 className="text-xl font-bold pt-4">Friends' Shares</h2>
+                        <h2 className="text-xl font-bold pt-4">Friends&apos; Shares</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {friendShares.map(share => (
                                 <ShareCard key={share.shareId} share={{ ...share, splitId }} isInitiator={false} />

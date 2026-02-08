@@ -184,13 +184,13 @@ const HistoryModal = ({ tableHistory, onClose }) => {
 
 
 const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
-    if (!order || !restaurant) return null;
-
     const allItems = useMemo(() => {
-        return Object.values(order.orders || {});
-    }, [order.orders]);
+        return Object.values(order?.orders || {});
+    }, [order?.orders]);
 
-    const totalBill = useMemo(() => Object.values(order.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order.orders]);
+    const totalBill = useMemo(() => Object.values(order?.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order?.orders]);
+
+    if (!order || !restaurant) return null;
 
 
     return (

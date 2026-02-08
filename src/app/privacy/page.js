@@ -7,9 +7,9 @@ export default function PrivacyPolicy() {
         <h1 className="font-headline text-4xl sm:text-5xl font-bold tracking-tighter mb-8 text-center">Privacy Policy</h1>
         <div className="prose prose-lg dark:prose-invert mx-auto text-muted-foreground">
           <p>Last Updated: October 11, 2025</p>
-          
-          <p>ServiZephyr ("us", "we", or "our") takes your privacy seriously. This Privacy Policy explains what information we collect and how we use it.</p>
-          
+
+          <p>ServiZephyr (&quot;us&quot;, &quot;we&quot;, or &quot;our&quot;) takes your privacy seriously. This Privacy Policy explains what information we collect and how we use it.</p>
+
           <h2>1. What Information Do We Collect?</h2>
           <ul>
             <li><strong>Personal Information:</strong> When you place an order, we collect your name, phone number, and delivery address.</li>
@@ -20,7 +20,7 @@ export default function PrivacyPolicy() {
           <h2>2. How Do We Use Your Information?</h2>
           <ul>
             <li>To process your orders and forward them to our restaurant partners.</li>
-            <li>To send you order status updates (like "Order Confirmed", "Out for Delivery") on WhatsApp.</li>
+            <li>To send you order status updates (like &quot;Order Confirmed&quot;, &quot;Out for Delivery&quot;) on WhatsApp.</li>
             <li>To provide you with customer support.</li>
             <li>To improve and personalize our services.</li>
             <li>With your permission, to inform you about new offers and promotions.</li>

@@ -338,7 +338,7 @@ function PageContent() {
           <StatCard isLoading={loading} title="Total Orders" value={dashboardData?.stats.orders || 0} icon={Hash} change={dashboardData?.stats.ordersChange || 0} />
           <StatCard isLoading={loading} title="New Customers" value={dashboardData?.stats.newCustomers || 0} icon={Users} change={dashboardData?.stats.newCustomersChange || 0} />
           <StatCard isLoading={loading} title="Average Order Value" value={dashboardData?.stats.avgOrderValue || 0} icon={ListFilter} change={dashboardData?.stats.avgOrderValueChange || 0} isCurrency />
-          <StatCard isLoading={loading} title="Today's Rejections" value={dashboardData?.stats.todayRejections || 0} icon={Ban} isRejection={true} />
+          <StatCard isLoading={loading} title="Today&apos;s Rejections" value={dashboardData?.stats.todayRejections || 0} icon={Ban} isRejection={true} />
         </div>
 
         {/* Live Feed and Sales Chart */}

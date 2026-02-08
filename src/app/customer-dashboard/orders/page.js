@@ -29,7 +29,7 @@ const OrderCard = ({ order }) => {
     const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
 
     return (
-        <motion.div 
+        <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-card border border-border rounded-xl p-4"
@@ -75,10 +75,10 @@ export default function MyOrdersPage() {
 
         setLoading(true);
         setError(null);
-        
+
         // **THE FIX:** Remove the orderBy from the Firestore query
         const q = query(
-            collection(db, "orders"), 
+            collection(db, "orders"),
             where("customerId", "==", user.uid)
         );
 
@@ -87,7 +87,7 @@ export default function MyOrdersPage() {
             querySnapshot.forEach((doc) => {
                 customerOrders.push({ id: doc.id, ...doc.data() });
             });
-            
+
             // **THE FIX:** Sort the orders on the client-side after fetching
             customerOrders.sort((a, b) => {
                 const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
@@ -109,31 +109,31 @@ export default function MyOrdersPage() {
     return (
         <div className="p-4 md:p-6 space-y-6">
             <header className="flex items-center gap-4">
-                 <Button variant="ghost" size="icon" onClick={() => router.push('/customer-dashboard/profile')}><ArrowLeft/></Button>
-                 <div>
+                <Button variant="ghost" size="icon" onClick={() => router.push('/customer-dashboard/profile')}><ArrowLeft /></Button>
+                <div>
                     <h1 className="text-3xl font-bold tracking-tight">My Orders</h1>
                     <p className="text-muted-foreground mt-1">A history of all your past and current orders.</p>
-                 </div>
+                </div>
             </header>
 
             {loading ? (
-                <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary h-12 w-12"/></div>
+                <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary h-12 w-12" /></div>
             ) : error ? (
-                 <div className="text-center py-20 text-destructive border-2 border-dashed border-destructive/30 rounded-xl">
+                <div className="text-center py-20 text-destructive border-2 border-dashed border-destructive/30 rounded-xl">
                     <p className="mt-4 font-semibold">Error loading orders</p>
                     <p className="text-sm">{error}</p>
                 </div>
             ) : orders.length > 0 ? (
-                 <div className="space-y-4">
+                <div className="space-y-4">
                     {orders.map(order => (
                         <OrderCard key={order.id} order={order} />
                     ))}
-                 </div>
+                </div>
             ) : (
                 <div className="text-center py-20 text-muted-foreground border-2 border-dashed border-border rounded-xl">
                     <ShoppingBag size={48} className="mx-auto" />
                     <p className="mt-4 font-semibold">No Orders Yet</p>
-                    <p className="text-sm">You haven't placed any orders. Let's change that!</p>
+                    <p className="text-sm">You haven&apos;t placed any orders. Let&apos;s change that!</p>
                 </div>
             )}
         </div>

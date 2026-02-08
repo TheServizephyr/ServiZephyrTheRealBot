@@ -380,7 +380,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 </select>
                             </div>
                             {showNewCategory && (<div><Label>New Category Name</Label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full p-2 bg-input border border-border rounded-md" /></div>)}
-                            <div><Label>Tags (comma-separated)</Label><input value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="w-full p-2 bg-input border border-border rounded-md" /></div>
+                            <div><Label>Tags (comma-separated)</Label><input value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef&apos;s Special" className="w-full p-2 bg-input border border-border rounded-md" /></div>
                             <div>
                                 <Label>Image</Label>
                                 <div className="mt-2 flex items-center gap-4">

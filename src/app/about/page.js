@@ -40,7 +40,7 @@ export default function AboutPage() {
                         <h2 className="text-3xl font-bold">Our Vision</h2>
                     </div>
                     <p className="text-lg text-muted-foreground leading-relaxed">
-                        Our mission is to provide the restaurant industry with a digital ecosystem that doesn't just process orders, but transforms the entire dining experience. We're combining cutting-edge technology with simplicity to boost both efficiency and sales for restaurants of all sizes.
+                        Our mission is to provide the restaurant industry with a digital ecosystem that doesn&apos;t just process orders, but transforms the entire dining experience. We&apos;re combining cutting-edge technology with simplicity to boost both efficiency and sales for restaurants of all sizes.
                     </p>
                 </motion.div>
 
@@ -145,7 +145,7 @@ export default function AboutPage() {
                                 <p className="text-primary font-semibold mb-4">Co-Founder & CEO</p>
 
                                 <p className="text-muted-foreground leading-relaxed mb-6">
-                                    Ashwani leads ServiZephyr's Technical Architecture and Marketing Strategy. He oversees everything from product development to market positioning, ensuring the software remains scalable, fast, and aligned with modern industry standards.
+                                    Ashwani leads ServiZephyr&apos;s Technical Architecture and Marketing Strategy. He oversees everything from product development to market positioning, ensuring the software remains scalable, fast, and aligned with modern industry standards.
                                 </p>
 
                                 {/* Social Links Placeholder */}
@@ -213,7 +213,7 @@ export default function AboutPage() {
                 >
                     <h2 className="text-3xl font-bold text-center mb-6">Our Commitment</h2>
                     <p className="text-lg text-muted-foreground leading-relaxed text-center max-w-4xl mx-auto">
-                        We're providing restaurants with the tools they need to survive and thrive in the modern age. Our commitment goes beyond just software – we're your partner in digital growth, helping you build stronger customer relationships and drive sustainable business success.
+                        We&apos;re providing restaurants with the tools they need to survive and thrive in the modern age. Our commitment goes beyond just software – we&apos;re your partner in digital growth, helping you build stronger customer relationships and drive sustainable business success.
                     </p>
                 </motion.div>
 

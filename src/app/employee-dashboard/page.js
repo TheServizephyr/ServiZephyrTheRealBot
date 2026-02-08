@@ -125,7 +125,7 @@ export default function EmployeeDashboardHome() {
                             <span className="text-green-400 font-bold">✓</span>
                         </div>
                         <div>
-                            <p className="text-muted-foreground text-xs">Today's Orders</p>
+                            <p className="text-muted-foreground text-xs">Today&apos;s Orders</p>
                             <p className="text-foreground font-semibold">-</p>
                         </div>
                     </div>

@@ -1343,7 +1343,7 @@ export default function LiveOrdersPage() {
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Live Order Management</h1>
-                    <p className="text-muted-foreground mt-1 text-sm md:text-base">A real-time, intelligent view of your kitchen's pulse.</p>
+                    <p className="text-muted-foreground mt-1 text-sm md:text-base">A real-time, intelligent view of your kitchen&apos;s pulse.</p>
                 </div>
                 <div className="flex items-center gap-4 w-full md:w-auto">
                     <div className="relative flex-grow md:flex-grow-0">

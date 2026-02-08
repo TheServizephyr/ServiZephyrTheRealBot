@@ -715,7 +715,7 @@ function SettingsPageContent() {
                                         placeholder={user.botDisplayNumber ? 'Auto-filled on connection' : 'e.g., 919876543210'}
                                     />
                                     {!user.botDisplayNumber && (
-                                        <p className="text-xs text-muted-foreground mt-1">If this field is empty, please enter your bot's display number (e.g., 919876543210) once and save.</p>
+                                        <p className="text-xs text-muted-foreground mt-1">If this field is empty, please enter your bot&apos;s display number (e.g., 919876543210) once and save.</p>
                                     )}
                                 </div>
                                 <div>
@@ -901,7 +901,7 @@ function SettingsPageContent() {
                     </SectionCard>
                     <SectionCard
                         title="Media & Branding"
-                        description="Upload your restaurant's logo and banner images."
+                        description="Upload your restaurant&apos;s logo and banner images."
                         footer={
                             <div className="flex justify-end gap-3">
                                 {isEditingMedia ? (

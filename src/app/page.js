@@ -389,9 +389,9 @@ export default function Home() {
           variants={sectionVariants}
         >
           <div className="container mx-auto px-4">
-            <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">The Command Center You've Always Wanted</h2>
+            <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">The Command Center You&apos;ve Always Wanted</h2>
             <p className="mx-auto mb-16 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
-              Stop guessing, start growing. Our dashboard gives you a bird's-eye view of your entire operation, with actionable insights to boost your bottom line.
+              Stop guessing, start growing. Our dashboard gives you a bird&apos;s-eye view of your entire operation, with actionable insights to boost your bottom line.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -517,12 +517,12 @@ export default function Home() {
                 <FeatureCard
                   icon={<Rocket />}
                   title="WhatsApp Marketing"
-                  description="Send promotions, new menu alerts, and festival offers directly to your customers' phones."
+                  description="Send promotions, new menu alerts, and festival offers directly to your customers&apos; phones."
                   benefits={["Highest open rates in the industry", "Run targeted campaigns for specific customer segments", "Drive repeat business effectively"]}
                 />
                 <FeatureCard
                   icon={<Star />}
-                  title="Feedback & Reviews"
+                  title="Feedback &amp; Reviews"
                   description="Automatically request feedback after every order to improve your service and build social proof."
                   benefits={["Address issues proactively", "Understand customer satisfaction", "Encourage positive online reviews"]}
                 />
@@ -548,7 +548,7 @@ export default function Home() {
         >
           <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Features That No One Else Offers</h2>
           <p className="mx-auto mb-16 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
-            We've built tools with cutting-edge technology to solve the real-world problems of your business.
+            We&apos;ve built tools with cutting-edge technology to solve the real-world problems of your business.
           </p>
           <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
             <UniqueFeatureCard
@@ -586,7 +586,7 @@ export default function Home() {
               Built for Street Vendors <ShoppingBag className="h-10 w-10 md:h-12 md:w-12 text-primary" />
             </h2>
             <p className="mx-auto mb-12 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
-              From chai stalls to food trucks, we've built features specifically for street food heroes.
+              From chai stalls to food trucks, we&apos;ve built features specifically for street food heroes.
             </p>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -603,7 +603,7 @@ export default function Home() {
               <FeatureCard
                 icon={<Clock />}
                 title="Pre-Order Management"
-                description="Customers order in advance, you prepare when ready, they collect when it's done."
+                description="Customers order in advance, you prepare when ready, they collect when it&apos;s done."
                 benefits={[
                   "Reduce wait times",
                   "Better kitchen planning",
@@ -786,7 +786,7 @@ export default function Home() {
               <AccordionItem value="item-3">
                 <AccordionTrigger className="text-foreground">Can I easily change my menu?</AccordionTrigger>
                 <AccordionContent>
-                  Yes, absolutely. From your dashboard, you can add new items, change their prices, or mark an item as "out of stock" anytime, from anywhere. Everything updates in real-time.
+                  Yes, absolutely. From your dashboard, you can add new items, change their prices, or mark an item as &quot;out of stock&quot; anytime, from anywhere. Everything updates in real-time.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-4">

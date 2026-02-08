@@ -70,8 +70,8 @@ export default function JoinWaitlistPage() {
                     transition={{ type: 'spring', stiffness: 260, damping: 20 }}
                 >
                     <CheckCircle className="mx-auto h-20 w-20 text-green-500 mb-6" />
-                    <h1 className="text-3xl font-bold text-foreground">You're on the list!</h1>
-                    <p className="text-muted-foreground mt-4">Thank you for joining the ServiZephyr waitlist. We're excited to have you on board and will notify you as soon as we're ready for you.</p>
+                    <h1 className="text-3xl font-bold text-foreground">You&apos;re on the list!</h1>
+                    <p className="text-muted-foreground mt-4">Thank you for joining the ServiZephyr waitlist. We&apos;re excited to have you on board and will notify you as soon as we&apos;re ready for you.</p>
                     <Link href="/">
                         <button className="mt-8 bg-primary text-primary-foreground font-bold py-3 px-8 rounded-lg text-lg hover:bg-primary/90 transition-transform transform hover:scale-105">
                             Back to Home
@@ -105,7 +105,7 @@ export default function JoinWaitlistPage() {
                             <input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
                         </div>
                     </div>
-                     <div>
+                    <div>
                         <label className="block text-sm font-medium text-muted-foreground mb-1" htmlFor="businessName">Business Name</label>
                         <div className="relative">
                             <Store className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -119,14 +119,14 @@ export default function JoinWaitlistPage() {
                             <input type="tel" name="phone" id="phone" value={formData.phone} onChange={handleChange} required placeholder="10-digit number" className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
                         </div>
                     </div>
-                     <div>
+                    <div>
                         <label className="block text-sm font-medium text-muted-foreground mb-1" htmlFor="email">Email Address (Optional)</label>
                         <div className="relative">
                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                             <input type="email" name="email" id="email" value={formData.email} onChange={handleChange} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
                         </div>
                     </div>
-                     <div>
+                    <div>
                         <label className="block text-sm font-medium text-muted-foreground mb-1" htmlFor="address">Business Address</label>
                         <div className="relative">
                             <MapPin className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
@@ -139,7 +139,7 @@ export default function JoinWaitlistPage() {
                             <AlertTriangle size={16} /> {error}
                         </div>
                     )}
-                    
+
                     <button
                         type="submit"
                         disabled={loading}

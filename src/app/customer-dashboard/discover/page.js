@@ -168,7 +168,7 @@ export default function DiscoverPage() {
                 {loading ? (
                     <div className="w-full h-full bg-muted flex flex-col items-center justify-center">
                         <Loader2 className="animate-spin text-primary h-12 w-12" />
-                        <p className="mt-4 text-muted-foreground">Finding what's near you...</p>
+                        <p className="mt-4 text-muted-foreground">Finding what&apos;s near you...</p>
                     </div>
                 ) : error ? (
                     <div className="w-full h-full bg-muted flex flex-col items-center justify-center text-center p-4">

@@ -268,7 +268,7 @@ export default function JoinPage() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-                        You're Invited! 🎉
+                        You&apos;re Invited! 🎉
                     </h1>
                     <p className="text-slate-500 dark:text-slate-400">
                         Join the team at <strong className="text-yellow-500">{inviteData?.outletName}</strong>

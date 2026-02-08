@@ -427,7 +427,7 @@ const CartPageInternal = () => {
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
                 <ShoppingCart size={48} className="mb-4" />
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
-                <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
+                <p className="mt-2">Looks like you haven&apos;t added anything to your cart yet.</p>
                 <Button onClick={handleGoBack} className="mt-6">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Menu
                 </Button>
@@ -555,7 +555,7 @@ const CartPageInternal = () => {
                                     className={cn("flex items-center", notes.includes("Don't send cutlery.") && "bg-primary/20 text-primary border-primary")}
                                 >
                                     <Utensils className="mr-2 h-4 w-4" />
-                                    Don't send cutlery
+                                    Don&apos;t send cutlery
                                 </Button>
                             </div>
                         </div>
