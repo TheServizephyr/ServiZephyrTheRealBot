@@ -309,8 +309,8 @@ export async function PATCH(req) {
                             }));
                         }
 
-                        // B. Auto-Close Restaurant on Rejection
-                        if (newStatus === 'rejected') {
+                        // B. Auto-Close Restaurant on Rejection (Only if reason matches)
+                        if (newStatus === 'rejected' && rejectionReason === 'restaurant_closed') {
                             const bizCollection = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
                             effects.push(firestore.collection(bizCollection).doc(businessId).update({ isOpen: false }));
                             effects.push(sendRestaurantStatusChangeNotification({
