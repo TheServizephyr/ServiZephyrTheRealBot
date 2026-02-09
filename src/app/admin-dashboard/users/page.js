@@ -3,6 +3,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -116,7 +117,15 @@ export default function AdminUsersPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/users');
+      // Attach Firebase ID token for admin-protected endpoints
+      const currentUser = auth.currentUser;
+      const headers = {};
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
+      const res = await fetch('/api/admin/users', { headers });
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.message || 'Failed to fetch users');
@@ -136,9 +145,17 @@ export default function AdminUsersPage() {
 
   const handleUpdateStatus = async (userId, newStatus) => {
     try {
+      // Attach Firebase ID token for admin-protected endpoints
+      const currentUser = auth.currentUser;
+      const headers = { 'Content-Type': 'application/json' };
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ userId, status: newStatus })
       });
       if (!res.ok) {

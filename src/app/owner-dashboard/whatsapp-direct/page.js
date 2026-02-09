@@ -727,6 +727,13 @@ function WhatsAppDirectPageContent() {
         deps: [fetchConversations]
     });
 
+    // Initial fetch to clear loading state
+    useEffect(() => {
+        if (auth.currentUser) {
+            fetchConversations();
+        }
+    }, [fetchConversations]);
+
     // Clear messages when switching conversations
     useEffect(() => {
         if (!activeConversation) {

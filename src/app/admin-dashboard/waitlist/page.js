@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -16,7 +17,15 @@ export default function WaitlistPage() {
     const fetchWaitlist = async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/admin/waitlist');
+            // Attach Firebase ID token for admin-protected endpoints
+            const currentUser = auth.currentUser;
+            const headers = {};
+            if (currentUser) {
+                const idToken = await currentUser.getIdToken();
+                headers.Authorization = `Bearer ${idToken}`;
+            }
+
+            const res = await fetch('/api/admin/waitlist', { headers });
             if (!res.ok) {
                 const errorData = await res.json();
                 throw new Error(errorData.message || 'Failed to fetch waitlist');

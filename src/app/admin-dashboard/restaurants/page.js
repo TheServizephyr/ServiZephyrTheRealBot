@@ -5,6 +5,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw, ShieldCheck, Edit, Store, ShoppingCart } from 'lucide-react';
+import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw, ShieldCheck, Edit, Store, ShoppingCart, BarChart3, TrendingUp } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +26,158 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import InfoDialog from '@/components/InfoDialog';
+import { format } from 'date-fns';
 
+const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && restaurant) {
+      fetchAnalytics();
+    }
+  }, [isOpen, restaurant]);
+
+  const fetchAnalytics = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const currentUser = auth.currentUser;
+      const headers = {};
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
+      const res = await fetch(`/api/admin/listing-analytics?id=${restaurant.id}&type=${restaurant.businessType}`, { headers });
+      if (!res.ok) throw new Error('Failed to fetch analytics');
+      const data = await res.json();
+      setAnalytics(data.analytics);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Analytics: {restaurant?.name}</DialogTitle>
+          <DialogDescription>Performance metrics and customer insights</DialogDescription>
+        </DialogHeader>
+
+        {loading && (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {error && (
+          <div className="text-center p-4 text-destructive bg-destructive/10 rounded">
+            Error: {error}
+          </div>
+        )}
+
+        {analytics && (
+          <div className="space-y-6">
+            {/* Key Metrics Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Total Orders</p>
+                    <p className="text-2xl font-bold">{analytics.totalOrders}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Customers</p>
+                    <p className="text-2xl font-bold">{analytics.uniqueCustomers}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Total Revenue</p>
+                    <p className="text-2xl font-bold">₹{analytics.totalRevenue.toLocaleString('en-IN')}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Avg Order Value</p>
+                    <p className="text-2xl font-bold">₹{analytics.avgOrderValue.toLocaleString('en-IN')}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Chart */}
+            {analytics.chartData && analytics.chartData.length > 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="font-semibold mb-4">Orders & Revenue (Last 7 Days)</p>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={analytics.chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                        <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                        <YAxis yAxisId="left" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} label={{ value: 'Orders', angle: -90, position: 'insideLeft' }} />
+                        <YAxis yAxisId="right" orientation="right" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} label={{ value: 'Revenue (₹)', angle: 90, position: 'insideRight' }} />
+                        <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
+                        <Line yAxisId="left" type="monotone" dataKey="orders" stroke="hsl(var(--primary))" strokeWidth={2} name="Orders" />
+                        <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--chart-2))" strokeWidth={2} name="Revenue" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Recent Orders */}
+            {analytics.recentOrders && analytics.recentOrders.length > 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="font-semibold mb-4">Recent Orders</p>
+                  <div className="space-y-2">
+                    {analytics.recentOrders.map(order => (
+                      <div key={order.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                        <div>
+                          <p className="font-medium text-sm">{order.customerName}</p>
+                          <p className="text-xs text-muted-foreground">{format(new Date(order.date), 'MMM d, HH:mm')}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs bg-muted px-2 py-1 rounded">{order.itemCount} items</span>
+                          <span className={`text-xs px-2 py-1 rounded ${order.status === 'Delivered' ? 'bg-green-500/10 text-green-600' : order.status === 'Cancelled' ? 'bg-red-500/10 text-red-600' : 'bg-yellow-500/10 text-yellow-600'}`}>
+                            {order.status}
+                          </span>
+                          <span className="font-semibold">₹{order.amount.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Close</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, initialRestrictedFeatures = [] }) => {
   const features = [
@@ -118,7 +271,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, init
 };
 
 
-const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
+const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
   const [isSuspensionModalOpen, setIsSuspensionModalOpen] = useState(false);
 
   const statusClasses = {
@@ -200,6 +353,9 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
                     <Eye className="mr-2 h-4 w-4" /> View as Owner
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onShowAnalytics(restaurant)}>
+                  <BarChart3 className="mr-2 h-4 w-4" /> Analytics
+                </DropdownMenuItem>
                 <DropdownMenuItem className="text-red-500" onClick={() => setIsSuspensionModalOpen(true)}><Pause className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -231,12 +387,22 @@ export default function AdminRestaurantsPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [selectedRestaurant, setSelectedRestaurant] = useState(null);
 
   const fetchRestaurants = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/admin/listings');
+      // Attach Firebase ID token for admin-protected endpoints
+      const currentUser = auth.currentUser;
+      const headers = {};
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
+      const response = await fetch('/api/admin/listings', { headers });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to fetch listings');
@@ -256,9 +422,17 @@ export default function AdminRestaurantsPage() {
 
   const handleUpdateStatus = async (restaurantId, businessType, newStatus, suspensionDetails = {}) => {
     try {
+      // Attach Firebase ID token for admin-protected endpoints
+      const currentUser = auth.currentUser;
+      const headers = { 'Content-Type': 'application/json' };
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
       const res = await fetch('/api/admin/listings', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ restaurantId, businessType, status: newStatus, ...suspensionDetails }),
       });
       if (!res.ok) {
@@ -270,6 +444,11 @@ export default function AdminRestaurantsPage() {
     } catch (err) {
       setInfoDialog({ isOpen: true, title: "Error", message: err.message });
     }
+  };
+
+  const handleShowAnalytics = (restaurant) => {
+    setSelectedRestaurant(restaurant);
+    setAnalyticsOpen(true);
   };
 
   const filteredRestaurants = (status) =>
@@ -304,7 +483,7 @@ export default function AdminRestaurantsPage() {
         </TableRow>
       )
     }
-    return data.map(r => <RestaurantRow key={r.id} restaurant={r} onUpdateStatus={handleUpdateStatus} />);
+    return data.map(r => <RestaurantRow key={r.id} restaurant={r} onUpdateStatus={handleUpdateStatus} onShowAnalytics={handleShowAnalytics} />);
   };
 
   return (
@@ -366,6 +545,13 @@ export default function AdminRestaurantsPage() {
           </CardContent>
         </Card>
       </Tabs>
+      {selectedRestaurant && (
+        <AnalyticsModal
+          isOpen={analyticsOpen}
+          onOpenChange={setAnalyticsOpen}
+          restaurant={selectedRestaurant}
+        />
+      )}
     </motion.div>
   );
 }

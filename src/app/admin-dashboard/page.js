@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { AlertCircle, Store, Users, IndianRupee, ShoppingCart, RefreshCw } from 'lucide-react';
@@ -54,9 +55,20 @@ export default function AdminDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/dashboard-stats');
+      // Attach Firebase ID token for admin-protected endpoints
+      const currentUser = auth.currentUser;
+      const headers = {};
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
+      const res = await fetch('/api/admin/dashboard-stats', { headers });
       if (!res.ok) {
-        throw new Error('Failed to fetch dashboard data');
+        const text = await res.text();
+        let errMsg = 'Failed to fetch dashboard data';
+        try { errMsg = JSON.parse(text).message || errMsg; } catch (e) { errMsg = text || errMsg; }
+        throw new Error(errMsg);
       }
       const result = await res.json();
       setData(result);
