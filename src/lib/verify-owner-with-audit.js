@@ -76,7 +76,11 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
 
                     // Determine callerRole
                     let effectiveCallerRole = userRole;
-                    if (employeeOfOwnerId && employeeAccessResult) {
+                    if (isImpersonating) {
+                        // FIX: When impersonating, the admin acts AS the owner.
+                        // Downstream APIs check if (role === 'owner'), so we must return 'owner'.
+                        effectiveCallerRole = 'owner';
+                    } else if (employeeOfOwnerId && employeeAccessResult) {
                         effectiveCallerRole = employeeAccessResult.employeeRole || userRole;
                     }
 
