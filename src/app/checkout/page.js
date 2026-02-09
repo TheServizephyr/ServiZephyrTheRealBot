@@ -526,7 +526,13 @@ const CheckoutPageInternal = () => {
         appliedCoupons.forEach(coupon => {
             if (currentSubtotal >= coupon.minOrder) {
                 if (coupon.type === 'flat') couponDiscountValue += coupon.value;
-                else if (coupon.type === 'percentage') couponDiscountValue += (currentSubtotal * coupon.value) / 100;
+                else if (coupon.type === 'percentage') {
+                    let discount = (currentSubtotal * coupon.value) / 100;
+                    if (coupon.maxDiscount && discount > coupon.maxDiscount) {
+                        discount = coupon.maxDiscount;
+                    }
+                    couponDiscountValue += discount;
+                }
             }
         });
 
@@ -659,7 +665,7 @@ const CheckoutPageInternal = () => {
             notes: cartData.notes,
             coupon: appliedCoupons.find(c => !c.customerId) || null,
             loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: effectivePaymentMethod,
-            deliveryType: deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
+            deliveryType: deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: tipAmount || 0,
             businessType: cartData.businessType || 'restaurant',
             tableId: (deliveryType === 'dine-in') ? (tableId || cartData.tableId) : null,
             dineInTabId: (deliveryType === 'dine-in') ? (tabId || cartData.dineInTabId) : null,
@@ -802,8 +808,9 @@ const CheckoutPageInternal = () => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             restaurantId,
-                            customerLat: selectedAddress.lat,
-                            customerLng: selectedAddress.lng
+                            addressLat: selectedAddress.lat,
+                            addressLng: selectedAddress.lng,
+                            subtotal: subtotal
                         })
                     });
                     const validationData = await validationRes.json();
@@ -823,7 +830,7 @@ const CheckoutPageInternal = () => {
                     // Update delivery charge from validation
                     if (validationData.charge !== undefined) {
                         orderData.deliveryCharge = validationData.charge;
-                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (cartData.tipAmount || 0);
+                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
 
                     console.log('[Checkout] ✅ Delivery validated:', validationData);

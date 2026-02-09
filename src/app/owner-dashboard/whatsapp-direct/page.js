@@ -114,6 +114,7 @@ const ConversationItem = ({ conversation, active, onClick }) => {
 
 
 const MessageBubbleComponent = ({ message }) => {
+    const [imageError, setImageError] = useState(false);
     const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
     const isOwner = message.sender === 'owner';
     const isSystem = message.sender === 'system';
@@ -139,8 +140,6 @@ const MessageBubbleComponent = ({ message }) => {
     const renderContent = () => {
         // Image
         if (message.type === 'image' && message.mediaUrl) {
-            // eslint-disable-next-line react-hooks/rules-of-hooks
-            const [imageError, setImageError] = useState(false);
 
             if (imageError) {
                 return (

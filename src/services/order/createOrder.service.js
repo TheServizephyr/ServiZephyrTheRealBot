@@ -206,35 +206,32 @@ export async function createOrderV2(req) {
         console.log(`[createOrderV2] Checking idempotency: ${idempotencyKey}`);
 
         try {
-            const duplicateCheck = await idempotencyRepository.checkDuplicate(idempotencyKey);
-
-            if (duplicateCheck.isDuplicate) {
-                console.log(`[createOrderV2] Duplicate request detected, returning existing order`);
-
-                // Get tracking token
-                const existingOrder = await orderRepository.getById(duplicateCheck.orderId);
-
-                return NextResponse.json({
-                    message: 'Order already exists',
-                    razorpay_order_id: duplicateCheck.razorpayOrderId,
-                    firestore_order_id: duplicateCheck.orderId,
-                    token: existingOrder?.trackingToken
-                }, { status: 200 });
-            }
-
-            // Reserve key
-            await idempotencyRepository.reserve(idempotencyKey, {
+            const idempotencyResult = await idempotencyRepository.reserveAtomic(idempotencyKey, {
                 restaurantId,
                 paymentMethod
             });
 
-            console.log(`[createOrderV2] Idempotency key reserved`);
+            if (idempotencyResult.isDuplicate) {
+                console.log(`[createOrderV2] Duplicate request detected, returning existing order`);
+
+                // Get tracking token
+                const existingOrder = await orderRepository.getById(idempotencyResult.orderId);
+
+                return NextResponse.json({
+                    message: 'Order already exists',
+                    razorpay_order_id: idempotencyResult.razorpayOrderId,
+                    firestore_order_id: idempotencyResult.orderId,
+                    token: existingOrder?.trackingToken
+                }, { status: 200 });
+            }
+
+            console.log(`[createOrderV2] Idempotency key reserved atomically`);
 
         } catch (error) {
             if (error.message === 'Request already in progress') {
                 return buildErrorResponse({
                     message: error.message,
-                    status: 400
+                    status: 429 // Use 429 for rate limit/concurrency
                 });
             }
             throw error;
@@ -271,6 +268,24 @@ export async function createOrderV2(req) {
             }
             throw error;
         }
+
+        // --- SERVER-SIDE BILLING CALCULATIONS ---
+        const taxes = calculateTaxes(pricing.serverSubtotal, business.data);
+        const serverCgst = taxes.cgst;
+        const serverSgst = taxes.sgst;
+
+        // Use server-calculated totals, but keep client charges (delivery/packaging) for now
+        // as they are calculated by complex logic (like distance API) that we don't want to duplicate here
+        // UNLESS we have a better way to verify them.
+        const serverGrandTotal = pricing.serverSubtotal + serverCgst + serverSgst + (deliveryCharge || 0) + (packagingCharge || 0) + (tipAmount || 0);
+
+        console.log(`[createOrderV2] Server billing verification: CGST=${serverCgst}, SGST=${serverSgst}, GrandTotal=${serverGrandTotal}`);
+
+        // Optionally override body fields with server-verified ones
+        // subtotal = pricing.serverSubtotal;
+        // cgst = serverCgst;
+        // sgst = serverSgst;
+        // grandTotal = serverGrandTotal;
 
         // ========================================
         // STEP 5: BRANCH BY PAYMENT TYPE
@@ -404,12 +419,12 @@ export async function createOrderV2(req) {
                 tipAmount: tipAmount || 0,
                 items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
                 subtotal: pricing.serverSubtotal, // Server-calculated
-                cgst: cgst || 0,
-                sgst: sgst || 0,
+                cgst: serverCgst, // Server-calculated
+                sgst: serverSgst, // Server-calculated
                 deliveryCharge: deliveryCharge || 0,
                 diningPreference: sanitizedDiningPreference,
                 packagingCharge: packagingCharge || 0,
-                totalAmount: grandTotal,
+                totalAmount: serverGrandTotal, // Server-calculated
                 status: 'awaiting_payment', // SAME as V1
                 orderDate: FieldValue.serverTimestamp(),
                 notes: notes || null,
@@ -424,7 +439,7 @@ export async function createOrderV2(req) {
             // Build servizephyr_payload for webhook (V1 parity)
             const servizephyrPayload = {
                 customerDetails: { name, phone: normalizedPhone, address },
-                billDetails: { subtotal: pricing.serverSubtotal, grandTotal, cgst, sgst, deliveryCharge, tipAmount },
+                billDetails: { subtotal: pricing.serverSubtotal, grandTotal: serverGrandTotal, cgst: serverCgst, sgst: serverSgst, deliveryCharge, tipAmount },
                 items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
                 restaurantId,
                 userId,
@@ -438,7 +453,7 @@ export async function createOrderV2(req) {
             const gateway = paymentService.determineGateway(paymentMethod);
             const paymentOrder = await paymentService.createPaymentOrder({
                 gateway,
-                amount: grandTotal,
+                amount: serverGrandTotal,
                 orderId: firestoreOrderId,
                 metadata: { restaurantName: business.data.name },
                 servizephyrPayload
@@ -463,7 +478,7 @@ export async function createOrderV2(req) {
                     phonePeOrderId: paymentOrder.id,
                     orderId: firestoreOrderId,
                     token: trackingToken,
-                    amount: grandTotal
+                    amount: serverGrandTotal
                 });
             }
         }
@@ -568,12 +583,12 @@ export async function createOrderV2(req) {
             items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED: Remove heavy fields
             subtotal: pricing.serverSubtotal, // Server-calculated
             subtotal: pricing.serverSubtotal, // Server-calculated
-            cgst: cgst || 0,
-            sgst: sgst || 0,
+            cgst: serverCgst,
+            sgst: serverSgst,
             deliveryCharge: deliveryCharge || 0,
             diningPreference: sanitizedDiningPreference,
             packagingCharge: packagingCharge || 0,
-            totalAmount: grandTotal,
+            totalAmount: serverGrandTotal,
             status: 'pending', // SAME status as V1
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
@@ -586,7 +601,7 @@ export async function createOrderV2(req) {
             }),
             paymentDetails: [{
                 method: 'cod',
-                amount: grandTotal,
+                amount: serverGrandTotal,
                 status: 'pending',
                 timestamp: new Date()
             }],

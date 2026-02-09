@@ -8,6 +8,7 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import { recalculateTabTotals, validateTabToken } from '@/lib/dinein-utils';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 import { deobfuscateGuestId } from '@/lib/guest-utils';
+import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from '@/services/order/orderPricing';
 
 const generateSecureToken = async (firestore, identifier) => {
     console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
@@ -502,7 +503,7 @@ export async function createOrderV1(req) {
                     message: 'The selected payment method is not available. Please choose a different payment method.'
                 }, { status: 400 });
             }
-        } else if (paymentMethod === 'online' || paymentMethod === 'split_bill') {
+        } else if (['online', 'split_bill', 'razorpay', 'phonepe'].includes(paymentMethod)) {
             let isOnlineEnabled = false;
 
             if (deliveryType === 'delivery') {
@@ -523,31 +524,119 @@ export async function createOrderV1(req) {
             }
         }
 
-        // Process items to ensure totalPrice is saved and optimize for size
-        const processedItems = items.map(item => {
-            // Ensure totalPrice exists (calculate if missing)
-            let totalPrice = item.totalPrice || item.price || 0;
+        // ========================================
+        // SERVER-SIDE PRICING & VALIDATION (SECURITY)
+        // ========================================
+        console.log(`[API /order/create] Re-calculating pricing on server for ${restaurantId}`);
 
-            // If still 0, calculate from portion + addons
-            if (totalPrice === 0 && item.portion) {
-                totalPrice = item.portion.price || 0;
-
-                // Add addon prices
-                if (item.selectedAddOns && Array.isArray(item.selectedAddOns)) {
-                    item.selectedAddOns.forEach(addon => {
-                        const addonPrice = addon.price || 0;
-                        const addonQty = addon.quantity || 1;
-                        totalPrice += addonPrice * addonQty;
-                    });
-                }
-            }
-
-            // Return optimized item snapshot
-            return optimizeItemSnapshot({
-                ...item,
-                totalPrice: totalPrice
+        let pricing;
+        try {
+            pricing = await calculateServerTotal({
+                restaurantId,
+                items,
+                businessType
             });
-        });
+
+            // Validate against client subtotal (with small tolerance)
+            validatePriceMatch(subtotal, pricing.serverSubtotal);
+            console.log(`[API /order/create] ✅ Price validation passed: ₹${pricing.serverSubtotal}`);
+
+        } catch (error) {
+            console.error(`[API /order/create] ❌ Pricing validation failed:`, error.message);
+            return NextResponse.json({
+                message: error.message || 'Price mismatch detected. Please refresh your cart.',
+                code: error.code || 'PRICE_MISMATCH'
+            }, { status: 400 });
+        }
+
+        // --- COUPON RE-VALIDATION ---
+        let finalDiscount = loyaltyDiscount || 0;
+        let verifiedCoupon = null;
+
+        if (coupon && coupon.id) {
+            console.log(`[API /order/create] Re-validating coupon: ${coupon.id}`);
+            try {
+                const couponRef = firestore.collection(getBusinessCollection(businessType)).doc(restaurantId).collection('coupons').doc(coupon.id);
+                const couponSnap = await couponRef.get();
+
+                if (couponSnap.exists) {
+                    const couponData = couponSnap.data();
+                    const now = new Date();
+                    const expiryDate = couponData.expiryDate?.toDate ? couponData.expiryDate.toDate() : new Date(couponData.expiryDate);
+
+                    // 1. Basic Eligibility Checks
+                    const isExpired = expiryDate < now;
+                    const isBelowMinOrder = pricing.serverSubtotal < (couponData.minOrder || 0);
+                    const isUsageLimitMet = couponData.usageLimit && couponData.timesUsed >= couponData.usageLimit;
+
+                    if (isExpired || isBelowMinOrder || isUsageLimitMet) {
+                        console.warn(`[API /order/create] Coupon ${coupon.code} invalid: Expired=${isExpired}, MinOrder=${isBelowMinOrder}, LimitMet=${isUsageLimitMet}`);
+                    } else {
+                        // 2. Calculate Discount
+                        let discountAmount = 0;
+                        if (couponData.type === 'flat') {
+                            discountAmount = Number(couponData.value) || 0;
+                        } else if (couponData.type === 'percentage') {
+                            discountAmount = (pricing.serverSubtotal * (Number(couponData.value) || 0)) / 100;
+                            if (couponData.maxDiscount && discountAmount > couponData.maxDiscount) {
+                                discountAmount = couponData.maxDiscount;
+                            }
+                        } else if (couponData.type === 'free_delivery') {
+                            // Handled in delivery charge logic below if applicable
+                            console.log("[API /order/create] Free delivery coupon detected");
+                        }
+
+                        finalDiscount += discountAmount;
+                        verifiedCoupon = { ...couponData, id: couponSnap.id };
+                        console.log(`[API /order/create] ✅ Coupon ${couponData.code} validated. Discount: ₹${discountAmount}`);
+                    }
+                }
+            } catch (err) {
+                console.error("[API /order/create] Coupon validation error (non-fatal):", err);
+            }
+        }
+
+        // --- RE-CALCULATE FINALS ---
+        const netSubtotal = Math.max(0, pricing.serverSubtotal - finalDiscount);
+
+        // Use server-side tax calculation
+        const taxes = calculateTaxes(netSubtotal, businessData);
+        const serverCgst = taxes.cgst;
+        const serverSgst = taxes.sgst;
+
+        // Delivery Charge Logic (Simple server-side enforcement)
+        let finalDeliveryCharge = deliveryCharge || 0;
+        if (verifiedCoupon && verifiedCoupon.type === 'free_delivery') {
+            finalDeliveryCharge = 0;
+        } else if (businessData.freeDeliveryThreshold && pricing.serverSubtotal >= businessData.freeDeliveryThreshold) {
+            finalDeliveryCharge = 0;
+        }
+
+        const serverGrandTotal = netSubtotal + serverCgst + serverSgst + finalDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0);
+
+        console.log(`[API /order/create] Server Finals:`);
+        console.log(`  Subtotal: ₹${pricing.serverSubtotal}`);
+        console.log(`  Discount: ₹${finalDiscount}`);
+        console.log(`  Tax: ₹${taxes.totalTax}`);
+        console.log(`  Delivery: ₹${finalDeliveryCharge}`);
+        console.log(`  Calculated Grand Total: ₹${serverGrandTotal} (Client Expected: ₹${grandTotal})`);
+
+        // Validate Grand Total (small tolerance for rounding)
+        if (Math.abs(serverGrandTotal - grandTotal) > 2) {
+            console.error(`[API /order/create] ❌ Grand Total mismatch! Server: ${serverGrandTotal}, Client: ${grandTotal}`);
+            // We could block here, but often small rounding differences occur. 
+            // In a strict financial system, we should override with server totals.
+        }
+
+        // OVERRIDE WITH SERVER VALUES
+        subtotal = pricing.serverSubtotal;
+        cgst = serverCgst;
+        sgst = serverSgst;
+        deliveryCharge = finalDeliveryCharge;
+        grandTotal = serverGrandTotal;
+        coupon = verifiedCoupon;
+
+        const processedItems = pricing.validatedItems.map(item => optimizeItemSnapshot(item));
 
         // --- Post-paid Dine-In ---
         console.log(`[API /order/create] 🔍 Checking dine-in conditions: deliveryType='${deliveryType}', dineInModel='${businessData.dineInModel}'`);
@@ -1283,3 +1372,37 @@ export async function createOrderV1(req) {
     }
 }
 
+// --- HELPERS ---
+function getBusinessCollection(businessType) {
+    const map = {
+        'restaurant': 'restaurants',
+        'shop': 'shops',
+        'street-vendor': 'street_vendors',
+        'street_vendor': 'street_vendors',
+    };
+    return map[businessType] || 'restaurants';
+}
+
+const optimizeItemSnapshot = (item) => {
+    if (!item) return item;
+    return {
+        id: item.id,
+        name: item.name,
+        categoryId: item.categoryId || 'general',
+        isVeg: !!item.isVeg,
+        price: item.serverVerifiedPrice || item.price || 0,
+        quantity: item.quantity || 1,
+        selectedAddOns: item.selectedAddOns ? item.selectedAddOns.map(addon => ({
+            name: addon.name,
+            price: addon.price || 0,
+            quantity: addon.quantity || 1
+        })) : [],
+        totalPrice: item.serverVerifiedTotal || item.totalPrice || 0,
+        cartItemId: item.cartItemId || null,
+        isAddon: !!item.isAddon,
+        portion: item.portion ? {
+            name: item.portion.name,
+            price: item.portion.price || 0
+        } : null
+    };
+};

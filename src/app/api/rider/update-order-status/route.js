@@ -14,7 +14,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
         }
 
-        const validStatuses = ['ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'delivered', 'delivery_failed'];
+        const validStatuses = ['ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'delivered', 'failed_delivery'];
         if (!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided for rider update.' }, { status: 400 });
         }
@@ -105,7 +105,7 @@ export async function PATCH(req) {
         // 2. Check if the rider has any other 'on_the_way' orders
         const otherOrdersQuery = firestore.collection('orders')
             .where('deliveryBoyId', '==', uid)
-            .where('status', 'in', ['on_the_way', 'dispatched']);
+            .where('status', 'in', ['ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'reached_restaurant', 'picked_up', 'delivery_attempted']);
 
         const otherOrdersSnapshot = await otherOrdersQuery.get();
 

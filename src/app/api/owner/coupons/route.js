@@ -52,7 +52,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
         const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
         if (!query.empty) {
             const doc = query.docs[0];
-            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin', businessData: doc.data() };
+            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin', businessData: doc.data(), userRole };
         }
     }
 

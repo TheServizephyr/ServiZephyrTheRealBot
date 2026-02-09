@@ -114,10 +114,18 @@ export async function POST(req) {
         let permanentMediaUrl = null;
         if (storagePath) {
             try {
+                // SECURITY: Validate that storagePath belongs to this business
+                const restaurantId = businessDoc.id;
+                const expectedPrefix = `business_media/MESSAGE_MEDIA/${restaurantId}/`;
+
+                if (!storagePath.startsWith(expectedPrefix)) {
+                    console.error(`[Messages API] SECURITY ALERT: Attempt to access unauthorized path: ${storagePath} for business ${restaurantId}`);
+                    throw { message: 'Access Denied: Unauthorized storage path.', status: 403 };
+                }
+
                 // Determine which URL param was sent
                 const originalUrl = imageUrl || videoUrl || documentUrl || audioUrl;
                 if (originalUrl) {
-                    // FIX: Use project ID properly
                     const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'studio-6552995429-8bffe';
                     const bucketName = `${projectId}.firebasestorage.app`;
                     const bucket = getStorage().bucket(bucketName);
@@ -131,7 +139,8 @@ export async function POST(req) {
                 }
             } catch (error) {
                 console.error("[Messages API] Failed to make file public:", error);
-                // Fallback to original URL (signed) if makePublic fail
+                if (error.status === 403) throw error; // Re-throw security errors
+                // Fallback to original URL (signed) if makePublic fails for other reasons
             }
         }
 
