@@ -188,7 +188,7 @@ export async function POST(req) {
         }
 
         await batch.commit();
-        console.log(`[Bulk Upload] Successfully added ${allItems.length} items and ${newCategories.length} new categories`);
+        console.log(`[Bulk Upload] Successfully added ${allItems.length} items and ${newCategoriesToAdd.length} new categories`);
 
         // Increment menuVersion for automatic cache invalidation
         try {
@@ -203,7 +203,7 @@ export async function POST(req) {
 
         return NextResponse.json({
             message: `Successfully added ${allItems.length} items to your menu!`,
-            categoriesAdded: newCategories.length
+            categoriesAdded: newCategoriesToAdd.length
         }, { status: 201 });
 
     } catch (error) {

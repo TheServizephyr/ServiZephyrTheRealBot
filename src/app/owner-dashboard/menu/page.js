@@ -21,6 +21,7 @@ import imageCompression from 'browser-image-compression';
 import { useUser } from '@/firebase';
 import { validatePriceChange } from '@/lib/priceValidation';
 import PriceChangeConfirmationDialog from '@/components/PriceChangeConfirmationDialog';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -653,7 +654,7 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog 
     const categoryExample = isShop ? "'electronics'" : "'main-course'";
     const defaultCategory = isShop ? "general" : "main-course";
 
-    const aiPrompt = `You are an expert data extractor. Convert the following ${contextType} text into a structured JSON array. Each object in the array must strictly follow this format:
+    const aiPrompt = `You are an expert data extractor. Convert the following ${contextType} text (or content from the provided image) into a structured JSON array. Each object in the array must strictly follow this format:
 {
   "name": "string (${itemName})",
   "description": "string (Optional item description)",
@@ -681,6 +682,7 @@ Important Rules:
 - If a category is not obvious, use a sensible default like '${defaultCategory}'.
 - The 'isVeg' flag is more for restaurants; for shops, you can default it to true.
 - The 'imageUrl' is optional. If not present, the system will use a placeholder.
+- **INTELLIGENT ADD-ONS (STRICT):** You may create 'addOnGroups' by associating other items present in the menu (e.g., "Breads" as add-ons for "Curries"). However, **DO NOT invent items** (like "Coke" or "Cheese") if they are not explicitly listed in the source text/image.
 - The final output must be ONLY the JSON array, with no extra text or explanations.
 
 Here is the text:
@@ -795,6 +797,15 @@ export default function MenuPage() {
         newPrice: 0,
         itemName: '',
         severity: 'warning',
+        onConfirm: null
+    });
+
+    const [confirmationDialog, setConfirmationDialog] = useState({
+        isOpen: false,
+        title: '',
+        description: '',
+        variant: 'default',
+        confirmText: 'Confirm',
         onConfirm: null
     });
 
@@ -954,21 +965,28 @@ export default function MenuPage() {
         setIsModalOpen(true);
     };
 
-    const handleDeleteItem = async (itemId) => {
-        if (window.confirm(`Are you sure you want to delete this item?`)) {
-            try {
-                await handleApiCall('/api/owner/menu', 'DELETE', { itemId });
-                toast({
-                    title: "Success",
-                    description: "Item deleted successfully!",
-                    variant: "default",
-                });
-                await fetchMenu();
-            } catch (error) {
-                console.error("Error deleting item:", error);
-                setInfoDialog({ isOpen: true, title: 'Error', message: "Could not delete item. " + error.message });
+    const handleDeleteItem = (itemId) => {
+        setConfirmationDialog({
+            isOpen: true,
+            title: "Delete Item",
+            description: "Are you sure you want to delete this item? This action cannot be undone.",
+            variant: "destructive",
+            confirmText: "Delete",
+            onConfirm: async () => {
+                try {
+                    await handleApiCall('/api/owner/menu', 'DELETE', { itemId });
+                    toast({
+                        title: "Success",
+                        description: "Item deleted successfully!",
+                        variant: "default",
+                    });
+                    await fetchMenu();
+                } catch (error) {
+                    console.error("Error deleting item:", error);
+                    setInfoDialog({ isOpen: true, title: 'Error', message: "Could not delete item. " + error.message });
+                }
             }
-        }
+        });
     };
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
@@ -991,40 +1009,54 @@ export default function MenuPage() {
         }
     };
 
-    const handleBulkDelete = async () => {
-        if (window.confirm(`Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`)) {
-            try {
-                await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'delete' });
-                toast({
-                    title: "Success",
-                    description: `${selectedItems.length} items deleted successfully!`,
-                    variant: "default",
-                });
-                setSelectedItems([]);
-                await fetchMenu();
-            } catch (error) {
-                console.error("Error bulk deleting items:", error);
-                setInfoDialog({ isOpen: true, title: 'Error', message: "Could not delete items. " + error.message });
+    const handleBulkDelete = () => {
+        setConfirmationDialog({
+            isOpen: true,
+            title: "Bulk Delete Items",
+            description: `Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`,
+            variant: "destructive",
+            confirmText: "Delete All",
+            onConfirm: async () => {
+                try {
+                    await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'delete' });
+                    toast({
+                        title: "Success",
+                        description: `${selectedItems.length} items deleted successfully!`,
+                        variant: "default",
+                    });
+                    setSelectedItems([]);
+                    await fetchMenu();
+                } catch (error) {
+                    console.error("Error bulk deleting items:", error);
+                    setInfoDialog({ isOpen: true, title: 'Error', message: "Could not delete items. " + error.message });
+                }
             }
-        }
+        });
     };
 
-    const handleBulkOutOfStock = async () => {
-        if (window.confirm(`Are you sure you want to mark ${selectedItems.length} items as out of stock?`)) {
-            try {
-                await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'outOfStock' });
-                toast({
-                    title: "Success",
-                    description: `${selectedItems.length} items marked as out of stock!`,
-                    variant: "default",
-                });
-                setSelectedItems([]);
-                await fetchMenu();
-            } catch (error) {
-                console.error("Error marking items out of stock:", error);
-                setInfoDialog({ isOpen: true, title: 'Error', message: "Could not update items. " + error.message });
+    const handleBulkOutOfStock = () => {
+        setConfirmationDialog({
+            isOpen: true,
+            title: "Mark Out of Stock",
+            description: `Are you sure you want to mark ${selectedItems.length} items as out of stock?`,
+            variant: "default",
+            confirmText: "Confirm",
+            onConfirm: async () => {
+                try {
+                    await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'outOfStock' });
+                    toast({
+                        title: "Success",
+                        description: `${selectedItems.length} items marked as out of stock!`,
+                        variant: "default",
+                    });
+                    setSelectedItems([]);
+                    await fetchMenu();
+                } catch (error) {
+                    console.error("Error marking items out of stock:", error);
+                    setInfoDialog({ isOpen: true, title: 'Error', message: "Could not update items. " + error.message });
+                }
             }
-        }
+        });
     };
 
     const pageTitle = businessType === 'shop' ? 'Item Catalog' : 'Menu Management';
@@ -1120,6 +1152,16 @@ export default function MenuPage() {
                 newPrice={priceChangeDialog.newPrice}
                 itemName={priceChangeDialog.itemName}
                 severity={priceChangeDialog.severity}
+            />
+
+            <ConfirmationDialog
+                isOpen={confirmationDialog.isOpen}
+                onClose={() => setConfirmationDialog({ ...confirmationDialog, isOpen: false })}
+                onConfirm={confirmationDialog.onConfirm}
+                title={confirmationDialog.title}
+                description={confirmationDialog.description}
+                variant={confirmationDialog.variant}
+                confirmText={confirmationDialog.confirmText}
             />
 
             {/* Search & Bulk Actions Bar */}
