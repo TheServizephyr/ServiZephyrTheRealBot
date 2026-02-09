@@ -31,6 +31,7 @@ const OwnerLocationPage = () => {
 
     const [mapCenter, setMapCenter] = useState({ lat: 27.1751, lng: 78.0421 }); // Default Agra
     const [addressDetails, setAddressDetails] = useState(null);
+    const [savedLocation, setSavedLocation] = useState(null); // NEW: Store initial saved location
     const [fullAddress, setFullAddress] = useState('');
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -64,6 +65,10 @@ const OwnerLocationPage = () => {
                 const data = await res.json();
                 if (data.address && data.address.latitude && data.address.longitude) {
                     const { latitude, longitude, ...addr } = data.address;
+
+                    // NEW: Set the Saved Location for display
+                    setSavedLocation(data.address);
+
                     const coords = { lat: latitude, lng: longitude };
                     setMapCenter(coords);
                     setAddressDetails({
@@ -155,7 +160,10 @@ const OwnerLocationPage = () => {
     };
 
     const handleMapIdle = (coords) => {
-        setMapCenter(coords);
+        // FIX: Do NOT update mapCenter state here.
+        // Updating state triggers re-render -> passes new 'center' prop to GoogleMap -> triggers map.setCenter -> triggers 'idle' -> Loop.
+        // The map is already at 'coords' because the user dragged it. We just need to reverse geocode.
+
         if (geocodeTimeoutRef.current) {
             clearTimeout(geocodeTimeoutRef.current);
         }
@@ -281,6 +289,21 @@ const OwnerLocationPage = () => {
                     />
                 </div>
                 <div className="w-full md:w-1/3 md:max-w-md flex-shrink-0 bg-card border-t md:border-t-0 md:border-l border-border p-4 space-y-4 overflow-y-auto">
+
+                    {/* NEW: Current Saved Location Display */}
+                    {savedLocation && (
+                        <div className="bg-muted/30 p-4 rounded-lg border border-border mb-4">
+                            <h3 className="font-semibold flex items-center gap-2 mb-2 text-primary">
+                                <Building size={18} /> Current Registered Location
+                            </h3>
+                            <p className="text-sm font-medium">{savedLocation.full || `${savedLocation.street}, ${savedLocation.city}`}</p>
+                            <div className="mt-2 text-xs text-muted-foreground grid grid-cols-2 gap-2">
+                                <p><span className="font-semibold">Lat:</span> {savedLocation.latitude?.toFixed(6)}</p>
+                                <p><span className="font-semibold">Lng:</span> {savedLocation.longitude?.toFixed(6)}</p>
+                            </div>
+                        </div>
+                    )}
+
                     <Button
                         variant="secondary"
                         className="w-full h-12 shadow-lg flex items-center gap-2"
