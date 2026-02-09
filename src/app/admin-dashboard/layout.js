@@ -191,6 +191,9 @@ function AdminLayoutContent({ children }) {
                 <SidebarLink href="/admin-dashboard/mailbox" icon={Mail} isCollapsed={isCollapsed}>
                   Mailbox
                 </SidebarLink>
+                <SidebarLink href="/admin-dashboard/whatsapp-direct" icon={MessageSquare} isCollapsed={isCollapsed}>
+                  WhatsApp Direct
+                </SidebarLink>
                 <SidebarLink href="/admin-dashboard/community" icon={MessageSquare} isCollapsed={isCollapsed}>
                   Community
                 </SidebarLink>
