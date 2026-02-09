@@ -3,7 +3,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -19,6 +19,10 @@ export const dynamic = 'force-dynamic';
 
 function DeliverySettingsPageContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
+
     const [settings, setSettings] = useState({
         deliveryEnabled: true,
         deliveryRadius: [5],
@@ -45,7 +49,13 @@ function DeliverySettingsPageContent() {
                     return;
                 }
                 const idToken = await user.getIdToken();
-                const res = await fetch('/api/owner/delivery-settings', {
+
+                const queryParams = new URLSearchParams();
+                if (impersonatedOwnerId) queryParams.set('impersonate_owner_id', impersonatedOwnerId);
+                if (employeeOfOwnerId) queryParams.set('employee_of', employeeOfOwnerId);
+                const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+                const res = await fetch(`/api/owner/delivery-settings${queryString}`, {
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
                 if (!res.ok) throw new Error("Failed to load settings.");
@@ -97,7 +107,12 @@ function DeliverySettingsPageContent() {
                 freeDeliveryMinOrder: Number(settings.freeDeliveryMinOrder),
             };
 
-            const response = await fetch('/api/owner/delivery-settings', {
+            const queryParams = new URLSearchParams();
+            if (impersonatedOwnerId) queryParams.set('impersonate_owner_id', impersonatedOwnerId);
+            if (employeeOfOwnerId) queryParams.set('employee_of', employeeOfOwnerId);
+            const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+            const response = await fetch(`/api/owner/delivery-settings${queryString}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',

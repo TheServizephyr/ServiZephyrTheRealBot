@@ -516,18 +516,49 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
 
 
     const actionConfig = {
-        'pending': { text: 'Confirm Order', icon: Check, action: () => onNext(nextStatus), permission: PERMISSIONS.UPDATE_ORDER_STATUS },
-        'confirmed': { text: 'Start Preparing', icon: CookingPot, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_PREPARING },
+        'pending': {
+            text: 'Confirm Order',
+            icon: Check,
+            action: () => onNext(nextStatus),
+            permission: PERMISSIONS.UPDATE_ORDER_STATUS,
+            className: "bg-green-600 hover:bg-green-700 text-white shadow-sm" // ✅ Confirm: Green
+        },
+        'confirmed': {
+            text: 'Start Preparing',
+            icon: CookingPot,
+            action: () => onNext(nextStatus),
+            permission: PERMISSIONS.MARK_ORDER_PREPARING,
+            className: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm" // ✅ Prepare: Blue
+        },
         'preparing': isPickup
-            ? { text: 'Ready for Pickup', icon: PackageCheck, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_READY }
-            : { text: 'Assign Rider', icon: Bike, action: () => onAssignClick([order]), permission: PERMISSIONS.ASSIGN_RIDER }, // ✅ Changed text
+            ? {
+                text: 'Ready for Pickup',
+                icon: PackageCheck,
+                action: () => onNext(nextStatus),
+                permission: PERMISSIONS.MARK_ORDER_READY,
+                className: "bg-purple-600 hover:bg-purple-700 text-white shadow-sm" // ✅ Pickup: Purple  
+            }
+            : {
+                text: 'Assign Rider',
+                icon: Bike,
+                action: () => onAssignClick([order]),
+                permission: PERMISSIONS.ASSIGN_RIDER,
+                className: "bg-orange-500 hover:bg-orange-600 text-white shadow-sm" // ✅ Rider: Orange
+            },
         'ready_for_pickup': {
-            text: isPickup ? 'Mark as Picked Up' : 'Mark Out for Delivery', // ✅ Dynamic text
+            text: isPickup ? 'Mark as Picked Up' : 'Mark Out for Delivery',
             icon: isPickup ? PartyPopper : Bike,
             action: () => onNext(nextStatus),
-            permission: PERMISSIONS.MARK_ORDER_SERVED
+            permission: PERMISSIONS.MARK_ORDER_SERVED,
+            className: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm" // ✅ Final: Indigo
         },
-        'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus), permission: PERMISSIONS.MARK_ORDER_SERVED },
+        'dispatched': {
+            text: 'Mark Delivered',
+            icon: PartyPopper,
+            action: () => onNext(nextStatus),
+            permission: PERMISSIONS.MARK_ORDER_SERVED,
+            className: "bg-green-600 hover:bg-green-700 text-white shadow-sm" // ✅ Delivered: Green
+        },
     };
 
     const action = actionConfig[status];
@@ -544,41 +575,47 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     const hasAccess = impersonatedOwnerId || hasPermission(userRole, action.permission || PERMISSIONS.UPDATE_ORDER_STATUS);
 
     return (
-        <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
-            {hasAccess && (
-                <Button
-                    onClick={action.action}
-                    size="sm"
-                    className="bg-primary hover:bg-primary/90 h-9 flex-grow"
-                >
-                    <ActionIcon size={16} className="mr-2" />
-                    {action.text}
-                </Button>
-            )}
-            <div className="flex gap-2">
+        <div className="flex flex-col gap-2 w-full">
+            <div className="flex gap-2 w-full"> {/* Row for primary actions */}
+                {hasAccess && (
+                    <Button
+                        onClick={action.action}
+                        size="sm"
+                        className={cn("h-10 flex-1 font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]", action.className || "bg-primary hover:bg-primary/90")}
+                    >
+                        <ActionIcon size={18} className="mr-2" />
+                        {action.text}
+                    </Button>
+                )}
+
                 {isConfirmable && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.CANCEL_ORDER)) && (
                     <Button
                         onClick={() => onRejectClick(order)}
                         variant="destructive"
                         size="sm"
-                        className="h-9 flex-1"
+                        className="h-10 flex-1 font-semibold bg-red-500 hover:bg-red-600 text-white shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                        <X size={16} className="mr-2" />
+                        <X size={18} className="mr-2" />
                         Reject
                     </Button>
                 )}
-                <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
-                    <Printer size={16} />
+            </div>
+
+            {/* Admin/Extra Actions Row */}
+            <div className="flex justify-between items-center px-1">
+                <Button onClick={onPrintClick} variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground h-8 px-2">
+                    <Printer size={14} className="mr-2" /> Print Bill
                 </Button>
+
                 {prevStatus && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS)) && (
                     <Button
                         onClick={() => onRevert(prevStatus)}
                         variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        size="sm"
+                        className="text-muted-foreground hover:text-foreground h-8 px-2"
                         title={`Revert to ${prevStatus}`}
                     >
-                        <Undo2 size={16} />
+                        <Undo2 size={14} className="mr-2" /> Revert
                     </Button>
                 )}
             </div>
@@ -882,15 +919,15 @@ export default function LiveOrdersPage() {
                 if (userDoc.exists()) {
                     const role = userDoc.data().role;
                     console.log(`[LiveOrders] User role fetched: ${role}`);
+                    // Only default to owner if document exists (legacy owners often lack role field)
                     setUserRole(role || 'owner');
                 } else {
-                    console.warn("[LiveOrders] User document not found, defaulting to 'owner'");
-                    setUserRole('owner'); // Default to owner if doc missing (likely checks passed)
+                    console.warn("[LiveOrders] User document not found. Access restricted.");
+                    setUserRole(null);
                 }
             } catch (err) {
                 console.error("Error fetching user role:", err);
-                // Fallback to owner on error to avoid blocking UI (backend will secure)
-                setUserRole('owner');
+                setUserRole(null);
             }
         };
         fetchRole();
