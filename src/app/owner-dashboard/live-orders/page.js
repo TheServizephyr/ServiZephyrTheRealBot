@@ -745,15 +745,15 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             </div>
 
             {/* Info Sections */}
-            <div className="bg-muted/30 p-3 rounded-xl border border-border/50 space-y-2.5">
+            <div
+                className="bg-muted/30 p-3 rounded-xl border border-border/50 space-y-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => onDetailClick(order.id, order.customerId)}
+            >
                 <div className="flex gap-2.5 items-start">
                     <User size={14} className="text-primary mt-0.5 shrink-0" />
                     <div>
                         <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Customer</span>
-                        <div
-                            className="text-sm font-medium leading-tight hover:text-primary cursor-pointer hover:underline decoration-dashed underline-offset-2"
-                            onClick={() => onDetailClick(order.id, order.customerId)}
-                        >
+                        <div className="text-sm font-medium leading-tight">
                             {order.customerName || order.customer || 'Guest'} <span className="text-muted-foreground">• {order.customerPhone}</span>
                         </div>
                     </div>
