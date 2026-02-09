@@ -8,6 +8,7 @@ import { useReactToPrint } from 'react-to-print';
 import BillToPrint from '@/components/BillToPrint';
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
+import { formatSafeDate } from '@/lib/safeDateFormat';
 
 // Reusable Print Dialog
 export default function PrintOrderDialog({ isOpen, onClose, order, restaurant }) {
@@ -45,7 +46,7 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 .align('left').bold(true)
                 .text(`Order: ${order.id}`).newline()
                 .bold(false)
-                .text(`Date: ${order.orderDate?.seconds ? new Date(order.orderDate.seconds * 1000).toLocaleString('en-IN') : new Date().toLocaleString()}`)
+                .text(`Date: ${formatSafeDate(order.orderDate || order.createdAt)}`)
                 .newline()
                 .text('--------------------------------').newline();
 
@@ -63,9 +64,26 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 .align('right');
 
             const subtotal = (order.items || []).reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            // You might need to fetch tax details if they are in the order object
             const tax = order.tax || 0;
-            const grandTotal = order.totalAmount || (subtotal + tax);
+            const cgst = tax / 2;
+            const sgst = tax / 2;
+            const packing = order.packagingCharge || 0;
+            const delivery = order.deliveryCharge || 0;
+            const platform = order.platformFee || 0;
+            const tip = order.tip || 0;
+            const discount = order.discount || 0;
+            const grandTotal = order.totalAmount || (subtotal + tax + packing + delivery + platform + tip - discount);
+
+            encoder.text(`Subtotal: ${subtotal}`).newline();
+
+            if (discount > 0) encoder.text(`Discount: -${discount}`).newline();
+            if (packing > 0) encoder.text(`Packing: ${packing}`).newline();
+            if (platform > 0) encoder.text(`Platform Fee: ${platform}`).newline();
+            if (delivery > 0) encoder.text(`Delivery: ${delivery}`).newline();
+            if (tip > 0) encoder.text(`Tip: ${tip}`).newline();
+
+            if (cgst > 0) encoder.text(`CGST (2.5%): ${cgst}`).newline();
+            if (sgst > 0) encoder.text(`SGST (2.5%): ${sgst}`).newline();
 
             encoder.bold(true).size('large')
                 .text(`TOTAL: ${grandTotal}`).newline()
@@ -111,7 +129,12 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                                     subtotal: (order.items || []).reduce((sum, i) => sum + (i.price * i.quantity), 0),
                                     grandTotal: order.totalAmount,
                                     cgst: (order.tax || 0) / 2,
-                                    sgst: (order.tax || 0) / 2
+                                    sgst: (order.tax || 0) / 2,
+                                    packagingCharge: order.packagingCharge || 0,
+                                    deliveryCharge: order.deliveryCharge || 0,
+                                    platformFee: order.platformFee || 0,
+                                    tip: order.tip || 0,
+                                    discount: order.discount || 0
                                 }}
                             />
                         </div>

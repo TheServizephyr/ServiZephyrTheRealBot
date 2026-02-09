@@ -26,6 +26,18 @@ export function safeToDate(dateValue) {
             return isValidDate(dateValue) ? dateValue : null;
         }
 
+        // Handle object with seconds/nanoseconds (e.g., serialized Firestore Timestamp)
+        if (dateValue && typeof dateValue === 'object') {
+            if (typeof dateValue.seconds === 'number') {
+                const date = new Date(dateValue.seconds * 1000);
+                return isValidDate(date) ? date : null;
+            }
+            if (typeof dateValue._seconds === 'number') {
+                const date = new Date(dateValue._seconds * 1000);
+                return isValidDate(date) ? date : null;
+            }
+        }
+
         // Handle string or number (timestamp)
         const date = new Date(dateValue);
         return isValidDate(date) ? date : null;

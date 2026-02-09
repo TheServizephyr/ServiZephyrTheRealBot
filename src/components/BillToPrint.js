@@ -2,6 +2,7 @@
 'use client';
 
 import React from 'react';
+import { formatSafeDate } from '@/lib/safeDateFormat';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -71,7 +72,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 <p><strong>Bill To:</strong> {finalCustomerDetails.name}</p>
                 {finalCustomerDetails.phone && <p><strong>Phone:</strong> {finalCustomerDetails.phone}</p>}
                 {finalCustomerDetails.address && <p><strong>Address:</strong> {finalCustomerDetails.address}</p>}
-                <p><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')} - {new Date().toLocaleTimeString('en-IN')}</p>
+                <p><strong>Date:</strong> {formatSafeDate(order.orderDate || order.createdAt)}</p>
                 {order.id && <p><strong>Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 
@@ -103,28 +104,54 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
             </table>
 
             <div className="text-xs border-t-2 border-dashed border-black pt-2 mt-2">
-                <div className="flex justify-between">
+                <div className="flex justify-between font-semibold">
                     <span>Subtotal</span>
                     <span>{formatCurrency(finalBillDetails.subtotal)}</span>
                 </div>
                 {finalBillDetails.discount > 0 && (
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-green-700">
                         <span>Discount</span>
                         <span>- {formatCurrency(finalBillDetails.discount)}</span>
                     </div>
                 )}
-                <div className="flex justify-between">
-                    <span>CGST (2.5%)</span>
-                    <span>+ {formatCurrency(finalBillDetails.cgst)}</span>
-                </div>
-                <div className="flex justify-between">
-                    <span>SGST (2.5%)</span>
-                    <span>+ {formatCurrency(finalBillDetails.sgst)}</span>
-                </div>
+
+                {/* NEW: Extra Charges */}
+                {finalBillDetails.packagingCharge > 0 && (
+                    <div className="flex justify-between">
+                        <span>Packaging Charge</span>
+                        <span>+ {formatCurrency(finalBillDetails.packagingCharge)}</span>
+                    </div>
+                )}
+                {finalBillDetails.platformFee > 0 && (
+                    <div className="flex justify-between">
+                        <span>Platform Fee</span>
+                        <span>+ {formatCurrency(finalBillDetails.platformFee)}</span>
+                    </div>
+                )}
                 {finalBillDetails.deliveryCharge > 0 && (
                     <div className="flex justify-between">
                         <span>Delivery Charge</span>
                         <span>+ {formatCurrency(finalBillDetails.deliveryCharge)}</span>
+                    </div>
+                )}
+                {finalBillDetails.tip > 0 && (
+                    <div className="flex justify-between">
+                        <span>Tip</span>
+                        <span>+ {formatCurrency(finalBillDetails.tip)}</span>
+                    </div>
+                )}
+
+                {/* Taxes - Only show if > 0 */}
+                {finalBillDetails.cgst > 0 && (
+                    <div className="flex justify-between">
+                        <span>CGST (2.5%)</span>
+                        <span>+ {formatCurrency(finalBillDetails.cgst)}</span>
+                    </div>
+                )}
+                {finalBillDetails.sgst > 0 && (
+                    <div className="flex justify-between">
+                        <span>SGST (2.5%)</span>
+                        <span>+ {formatCurrency(finalBillDetails.sgst)}</span>
                     </div>
                 )}
             </div>
