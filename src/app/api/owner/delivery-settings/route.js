@@ -84,6 +84,10 @@ export async function GET(req) {
                 deliveryFreeThreshold: parentData.deliveryFreeThreshold ?? 500,
                 deliveryOnlinePaymentEnabled: parentData.deliveryOnlinePaymentEnabled ?? true,
                 deliveryCodEnabled: parentData.deliveryCodEnabled ?? true,
+                // NEW: Road factor & free zone
+                roadDistanceFactor: parentData.roadDistanceFactor ?? 1.0,
+                freeDeliveryRadius: parentData.freeDeliveryRadius ?? 0,
+                freeDeliveryMinOrder: parentData.freeDeliveryMinOrder ?? 0,
             };
         }
 
@@ -104,7 +108,9 @@ export async function PATCH(req) {
         const allowedFields = [
             'deliveryEnabled', 'deliveryRadius', 'deliveryFeeType',
             'deliveryFixedFee', 'deliveryPerKmFee', 'deliveryFreeThreshold',
-            'deliveryOnlinePaymentEnabled', 'deliveryCodEnabled'
+            'deliveryOnlinePaymentEnabled', 'deliveryCodEnabled',
+            // NEW: Road factor & free zone
+            'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder'
         ];
 
         const cleanUpdates = {};

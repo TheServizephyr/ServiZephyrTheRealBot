@@ -90,14 +90,14 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
 
     // ✅ UNIVERSAL FREE ZONE - Works with ALL charge types!
     // Check if customer is in free delivery zone AND meets minimum order
+    // NOTE: Check if settings exist, allowing 0 as valid value
     if (
-        settings.freeDeliveryRadius &&
-        settings.freeDeliveryMinOrder &&
+        settings.freeDeliveryRadius > 0 &&
         roadDistance <= settings.freeDeliveryRadius &&
-        subtotal >= settings.freeDeliveryMinOrder
+        (settings.freeDeliveryMinOrder === undefined || settings.freeDeliveryMinOrder === null || subtotal >= settings.freeDeliveryMinOrder)
     ) {
         charge = 0;
-        reason = `Free delivery within ${settings.freeDeliveryRadius}km for orders ≥₹${settings.freeDeliveryMinOrder}`;
+        reason = `Free delivery within ${settings.freeDeliveryRadius}km for orders ≥₹${settings.freeDeliveryMinOrder || 0}`;
     }
     // Apply charge type if not in free zone
     else if (settings.deliveryChargeType === 'fixed') {

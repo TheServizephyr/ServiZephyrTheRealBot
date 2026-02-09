@@ -11,7 +11,20 @@ export async function POST(req) {
         const body = await req.json();
         const { phone, guestId: explicitGuestId, ref, token } = body || {};
 
-        // CRITICAL: UID-FIRST PRIORITY
+        // CRITICAL CHANGE: If ref is provided, prioritize it over logged-in UID
+        // This ensures WhatsApp capability URLs work correctly even when user is logged in
+        let refId = null;
+        if (ref) {
+            console.log(`[API /customer/lookup] 🔓 Attempting to deobfuscate ref...`);
+            refId = deobfuscateGuestId(ref);
+            if (refId) {
+                console.log(`[API /customer/lookup] ✅ Deobfuscated ref to userId: ${refId}`);
+            } else {
+                console.warn(`[API /customer/lookup] ⚠️ Failed to deobfuscate ref: ${ref}`);
+            }
+        }
+
+        // CRITICAL: UID-FIRST PRIORITY (only if NO ref provided)
         // Check if user is logged in via Authorization header
         const authHeader = req.headers.get('authorization');
         let loggedInUid = null;
@@ -27,13 +40,33 @@ export async function POST(req) {
             }
         }
 
-        // If user is logged in, fetch from users collection (ignore ref/guest)
-        if (loggedInUid) {
-            console.log(`[API /customer/lookup] Fetching from users collection: ${loggedInUid}`);
-            const userDoc = await firestore.collection('users').doc(loggedInUid).get();
+        // PRIORITY LOGIC:
+        // 1. If ref provided → use refId (WhatsApp capability URL)
+        // 2. Else if logged in → use loggedInUid
+        const targetUserId = refId || loggedInUid;
 
+        if (targetUserId) {
+            console.log(`[API /customer/lookup] � Target User: ${targetUserId} (source: ${refId ? 'ref' : 'auth'})`);
+
+            // Try guest_profiles first
+            const guestDoc = await firestore.collection('guest_profiles').doc(targetUserId).get();
+            if (guestDoc.exists) {
+                const guestData = guestDoc.data();
+                console.log(`[API /customer/lookup] ✅ Guest profile found with ${guestData.addresses?.length || 0} addresses`);
+                return NextResponse.json({
+                    name: guestData.name || 'Guest',
+                    phone: guestData.phone || '',
+                    addresses: guestData.addresses || [],
+                    isVerified: false,
+                    isGuest: true
+                }, { status: 200 });
+            }
+
+            // Fallback to users collection
+            const userDoc = await firestore.collection('users').doc(targetUserId).get();
             if (userDoc.exists) {
                 const userData = userDoc.data();
+                console.log(`[API /customer/lookup] ✅ User found. Addresses: ${userData.addresses?.length || 0}`);
                 return NextResponse.json({
                     name: userData.name || 'User',
                     phone: userData.phone || '',
@@ -41,31 +74,10 @@ export async function POST(req) {
                     isVerified: true,
                     isGuest: false
                 }, { status: 200 });
-            } else {
-                console.warn(`[API /customer/lookup] User doc not found: ${loggedInUid}`);
-                return NextResponse.json({ message: 'User not found.' }, { status: 404 });
             }
-        }
 
-        // --- GUEST FLOW (only if not logged in) ---
-        // 1. Check for Secure Session Cookie
-        const cookieStore = cookies();
-        const sessionCookie = cookieStore.get('auth_guest_session');
-        let guestId = sessionCookie?.value || explicitGuestId;
-
-        // 2. If ref provided, deobfuscate it to get the intended userId (GuestID or UID)
-        // CRITICAL: URL Ref should take priority over stale cookies
-        let refId = null;
-        if (ref) {
-            console.log(`[API /customer/lookup] 🔓 Attempting to deobfuscate ref...`);
-            refId = deobfuscateGuestId(ref);
-            if (refId) {
-                console.log(`[API /customer/lookup] ✅ Deobfuscated ref to userId: ${refId}`);
-                // If ref is present, use it as the primary ID (override stale cookie)
-                guestId = refId;
-            } else {
-                console.warn(`[API /customer/lookup] ⚠️ Failed to deobfuscate ref: ${ref}`);
-            }
+            console.warn(`[API /customer/lookup] ❌ Profile not found: ${targetUserId}`);
+            return NextResponse.json({ message: 'User not found.' }, { status: 404 });
         }
 
         console.log(`[API /customer/lookup] 📊 State: GuestID=${guestId ? 'Yes' : 'No'}, Phone=${phone ? 'Yes' : 'No'}, Ref=${ref ? 'Yes' : 'No'}`);

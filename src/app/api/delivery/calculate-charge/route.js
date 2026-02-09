@@ -31,9 +31,17 @@ export async function POST(req) {
         }
 
         const restaurantData = restaurantSnap.data();
-        const coordinates = restaurantData.coordinates || {};
 
-        if (!coordinates.lat || !coordinates.lng) {
+        // ✅ FIXED: Support all possible coordinate field structures
+        // Priority: coordinates.lat/lng → address.latitude/longitude → businessAddress.latitude/longitude
+        const restaurantLat = restaurantData.coordinates?.lat || restaurantData.address?.latitude || restaurantData.businessAddress?.latitude;
+        const restaurantLng = restaurantData.coordinates?.lng || restaurantData.address?.longitude || restaurantData.businessAddress?.longitude;
+
+        console.log('[API /delivery/calculate-charge] 📍 Restaurant:', { lat: restaurantLat, lng: restaurantLng });
+        console.log('[API /delivery/calculate-charge] 📍 Customer:', { lat: addressLat, lng: addressLng });
+
+        if (!restaurantLat || !restaurantLng) {
+            console.error('[API /delivery/calculate-charge] ❌ Restaurant coordinates not found');
             return NextResponse.json(
                 { error: 'Restaurant coordinates not configured' },
                 { status: 400 }
@@ -42,23 +50,34 @@ export async function POST(req) {
 
         // Calculate aerial distance
         const aerialDistance = calculateHaversineDistance(
-            coordinates.lat,
-            coordinates.lng,
+            restaurantLat,
+            restaurantLng,
             addressLat,
             addressLng
         );
 
-        // Get delivery settings
+        // ✅ CRITICAL: Read delivery settings from subcollection (where owner dashboard saves them)
+        const deliveryConfigSnap = await restaurantRef.collection('delivery_settings').doc('config').get();
+        const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
+
+        console.log('[API /delivery/calculate-charge] 📋 Delivery Config from subcollection:', deliveryConfig);
+
+        // Fallback helper: subcollection → restaurant doc → default
+        const getSetting = (key, defaultVal) => deliveryConfig[key] ?? restaurantData[key] ?? defaultVal;
+
+        // Get delivery settings - use migrated field names with subcollection priority
         const settings = {
-            deliveryRadius: restaurantData.deliveryRadius || 10, // default 10km
-            deliveryChargeType: restaurantData.deliveryChargeType || 'fixed',
-            fixedCharge: restaurantData.fixedCharge || 0,
-            perKmCharge: restaurantData.perKmCharge || 0,
-            freeDeliveryThreshold: restaurantData.freeDeliveryThreshold || 0,
-            freeDeliveryRadius: restaurantData.freeDeliveryRadius || 0,
-            freeDeliveryMinOrder: restaurantData.freeDeliveryMinOrder || 0,
-            roadDistanceFactor: restaurantData.roadDistanceFactor || 1.0, // optional, defaults to 1.0 (no adjustment)
+            deliveryRadius: getSetting('deliveryRadius', 10),
+            deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
+            fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
+            perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
+            freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
+            freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
+            freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
+            roadDistanceFactor: getSetting('roadDistanceFactor', 1.3), // default 1.3 (road ~30% longer)
         };
+
+        console.log('[API /delivery/calculate-charge] ⚙️ Final Settings:', settings);
 
         // Calculate delivery charge and validate
         const result = calculateDeliveryCharge(aerialDistance, subtotal, settings);

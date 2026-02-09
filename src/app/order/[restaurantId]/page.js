@@ -848,6 +848,7 @@ const OrderPageInternal = () => {
 
 
     const handleOpenAddressDrawer = async () => {
+        console.log('[handleOpenAddressDrawer] 🚀 CALLED');
         setIsAddressSelectorOpen(true);
         setAddressLoading(true);
 
@@ -857,8 +858,8 @@ const OrderPageInternal = () => {
             const lookupPayload = {};
             if (phone) lookupPayload.phone = phone;
             if (ref) lookupPayload.ref = ref;
-            // Also supports logged in user via header automatically if auth token available (handled in fetchWithRetry or similar if using useUser)
-            // But here we are in OrderPageInternal, maybe use 'auth.currentUser'
+
+            console.log('[handleOpenAddressDrawer] 📋 Payload:', lookupPayload, 'auth.currentUser:', auth.currentUser ? 'YES' : 'NO');
 
             // Simpler: Call lookup just like checkout
             const headers = { 'Content-Type': 'application/json' };
@@ -867,63 +868,84 @@ const OrderPageInternal = () => {
             }
 
             if (Object.keys(lookupPayload).length > 0 || auth.currentUser) {
+                console.log('[handleOpenAddressDrawer] ✅ Calling /api/customer/lookup...');
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers,
                     body: JSON.stringify(lookupPayload)
                 });
+                console.log('[handleOpenAddressDrawer] 📡 Response status:', res.status);
                 if (res.ok) {
                     const data = await res.json();
+                    console.log('[handleOpenAddressDrawer] ✅ Addresses received:', data.addresses?.length || 0);
                     setUserAddresses(data.addresses || []);
+                } else {
+                    console.error('[handleOpenAddressDrawer] ❌ API error:', res.status);
                 }
+            } else {
+                console.warn('[handleOpenAddressDrawer] ⚠️ NO lookup - no payload & no auth');
             }
         } catch (e) {
-            console.error("Failed to load addresses", e);
+            console.error("[handleOpenAddressDrawer] Failed to load addresses", e);
         } finally {
             setAddressLoading(false);
         }
     };
 
-    const handleSelectNewAddress = async (addr) => {
-        // Update Local State
-        setCustomerLocation(addr);
-        // Persist
-        localStorage.setItem('customerLocation', JSON.stringify(addr));
-        setIsAddressSelectorOpen(false);
+    // ✅ NEW: Reusable validation function (separated from UI logic)
+    const validateDelivery = async (addr, currentSubtotal) => {
+        // ✅ FIXED: Support both latitude/longitude AND lat/lng
+        const customerLat = addr.latitude || addr.lat;
+        const customerLng = addr.longitude || addr.lng;
 
-        // ✅ NEW: Calculate delivery distance and validate
-        if (addr.lat && addr.lng && restaurantData?.coordinates) {
+        // ✅ FIXED: Restaurant coordinates - check all possible field structures
+        const restaurantLat = restaurantData?.coordinates?.lat || restaurantData?.address?.latitude || restaurantData?.businessAddress?.latitude;
+        const restaurantLng = restaurantData?.coordinates?.lng || restaurantData?.address?.longitude || restaurantData?.businessAddress?.longitude;
+
+        if (customerLat && customerLng && restaurantLat && restaurantLng) {
             setIsValidatingDelivery(true);
             try {
+                const payload = {
+                    restaurantId,
+                    addressLat: customerLat,
+                    addressLng: customerLng,
+                    subtotal: currentSubtotal // Use passed subtotal which might be newer than state
+                };
+
                 const response = await fetch('/api/delivery/calculate-charge', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        restaurantId,
-                        addressLat: addr.lat,
-                        addressLng: addr.lng,
-                        subtotal: subtotal // cart subtotal
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 if (response.ok) {
                     const result = await response.json();
                     setDeliveryValidation(result);
 
-                    // Update delivery charge in parent state if needed
                     if (result.allowed && result.charge !== undefined) {
-                        // Delivery charge can be updated here if tracked in state
-                        console.log(`[Delivery Validation] Charge: ₹${result.charge}, Distance: ${result.roadDistance}km`);
+                        console.log(`[Delivery Validation] 💵 Charge updated: ₹${result.charge} (Subtotal: ₹${currentSubtotal})`);
                     }
-                } else {
-                    console.error('[Delivery Validation] API error');
                 }
             } catch (error) {
-                console.error('[Delivery Validation] Failed:', error);
+                console.error('[Delivery Validation] ❌ Failed:', error);
             } finally {
                 setIsValidatingDelivery(false);
             }
         }
+    };
+
+    // Moved useEffect to later in file after cart initialization
+
+    const handleSelectNewAddress = async (addr) => {
+        console.log('[handleSelectNewAddress] 📍 Address selected:', addr);
+
+        // Update Local State
+        setCustomerLocation(addr);
+        localStorage.setItem('customerLocation', JSON.stringify(addr));
+        setIsAddressSelectorOpen(false);
+
+        // Call validation with current subtotal
+        await validateDelivery(addr, subtotal);
     };
 
     useEffect(() => {
@@ -1132,6 +1154,30 @@ const OrderPageInternal = () => {
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
     const [isEditingModal, setIsEditingModal] = useState(false);
+
+    // ✅ NEW: Effect to re-validate when cart/subtotal changes (relocated here)
+    useEffect(() => {
+        if (deliveryType === 'delivery' && customerLocation) {
+            // Calculate subtotal locally to avoid dependency ordering issues
+            const currentSubtotal = cart.reduce((total, item) => {
+                // Base price * quantity
+                let itemTotal = (parseFloat(item.price) || 0) * (item.quantity || 1);
+
+                // Addons
+                if (item.selectedAddons && Array.isArray(item.selectedAddons)) {
+                    const addonsCost = item.selectedAddons.reduce((sum, addon) => sum + ((parseFloat(addon.price) || 0) * (item.quantity || 1)), 0);
+                    itemTotal += addonsCost;
+                }
+
+                return total + itemTotal;
+            }, 0);
+
+            const timer = setTimeout(() => {
+                validateDelivery(customerLocation, currentSubtotal);
+            }, 500); // Debounce
+            return () => clearTimeout(timer);
+        }
+    }, [cart, deliveryType, customerLocation?.id]); // Re-run if cart, delivery mode, or address changes
 
     useEffect(() => {
         const verifySession = async () => {
@@ -2248,7 +2294,11 @@ const OrderPageInternal = () => {
                                     {deliveryValidation.allowed ? (
                                         <div className="space-y-1">
                                             <p>📍 Distance: {deliveryValidation.roadDistance} km {deliveryValidation.roadFactor > 1 && `(${deliveryValidation.aerialDistance}km aerial × ${deliveryValidation.roadFactor})`}</p>
-                                            <p>💰 Delivery Charge: ₹{deliveryValidation.charge}</p>
+                                            {subtotal > 0 ? (
+                                                <p>💰 Delivery Charge: ₹{deliveryValidation.charge}</p>
+                                            ) : (
+                                                <p className="text-xs italic opacity-80">Add items to see final delivery charge</p>
+                                            )}
                                             {deliveryValidation.reason && <p className="text-xs mt-1 italic">{deliveryValidation.reason}</p>}
                                         </div>
                                     ) : (

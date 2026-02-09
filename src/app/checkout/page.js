@@ -159,6 +159,50 @@ const CheckoutPageInternal = () => {
         toast({ title: "Item Updated", description: "Your changes have been saved." });
     };
 
+    // ✅ NEW: Dynamic Delivery Validation
+    const [deliveryValidation, setDeliveryValidation] = useState(null);
+    const [isValidatingDelivery, setIsValidatingDelivery] = useState(false);
+
+    const validateDelivery = async (addr, currentSubtotal) => {
+        if (!addr || !addr.lat || !addr.lng || !restaurantId) return;
+
+        setIsValidatingDelivery(true);
+        console.log('[Checkout] 🚚 Validating delivery for:', addr.label, 'Subtotal:', currentSubtotal);
+
+        try {
+            const payload = {
+                restaurantId,
+                addressLat: addr.lat, // FIXED: API expects addressLat
+                addressLng: addr.lng, // FIXED: API expects addressLng
+                subtotal: currentSubtotal
+            };
+
+            const response = await fetch('/api/delivery/calculate-charge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('[Checkout] ✅ Delivery Validation Result:', result);
+                setDeliveryValidation(result);
+
+                if (!result.allowed) {
+                    setError(result.message || "Delivery not available at this location.");
+                } else {
+                    setError(''); // Clear error if valid
+                }
+            }
+        } catch (error) {
+            console.error('[Checkout] ❌ Delivery Validation Failed:', error);
+        } finally {
+            setIsValidatingDelivery(false);
+        }
+    };
+
+    // Moved useEffect to later in file after deliveryType initialization
+
 
 
 
@@ -508,14 +552,28 @@ const CheckoutPageInternal = () => {
 
     const diningPreference = cartData?.diningPreference || 'dine-in';
 
+    // ✅ TRIGGER VALIDATION: When Address or Subtotal changes
+    useEffect(() => {
+        if (deliveryType === 'delivery' && selectedAddress) {
+            const currentSubtotal = cart.reduce((total, item) => {
+                return total + (item.totalPrice || (item.price || 0) * (item.quantity || 1));
+            }, 0);
+
+            const timer = setTimeout(() => {
+                validateDelivery(selectedAddress, currentSubtotal);
+            }, 500); // 500ms debounce
+            return () => clearTimeout(timer);
+        }
+    }, [deliveryType, selectedAddress, cart]); // Depend on cart to recalc subtotal
+
 
 
     // ... (Price calculation unchanged) ...
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount, isDeliveryFree } = useMemo(() => {
         // ... (Same logic as before) ...
         // Re-implementing logic to ensure no regression as I replaced a huge chunk
         const currentSubtotal = cart.reduce((sum, item) => sum + (item.totalPrice || (item.price || 0) * (item.quantity || 1)), 0);
-        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false };
+        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false, isDeliveryFree: false };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
         const isFreeDeliveryApplied = appliedCoupons.some(c => c.type === 'free_delivery' && currentSubtotal >= c.minOrder);
@@ -550,7 +608,26 @@ const CheckoutPageInternal = () => {
         // ========== END BUNDLING FEATURE ==========
 
         // ========== BUNDLING FEATURE: Removed isSmartBundlingEligible from condition ==========
-        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree) ? 0 : (cartData.deliveryCharge || 0);
+
+        let deliveryCharge = 0;
+
+        console.log('[Checkout Debug] Calculating Delivery Charge. Validation:', deliveryValidation);
+        console.log('[Checkout Debug] isFreeDeliveryApplied:', isFreeDeliveryApplied);
+
+        if (isStreetVendor || deliveryType !== 'delivery') {
+            deliveryCharge = 0;
+        } else if (isFreeDeliveryApplied) {
+            // Coupon overrides everything
+            deliveryCharge = 0;
+        } else if (deliveryValidation && deliveryValidation.charge !== undefined) {
+            // Use validated dynamic charge (handles distance & free limits)
+            deliveryCharge = deliveryValidation.charge;
+            console.log('[Checkout Debug] Using Dynamic Charge:', deliveryCharge);
+        } else {
+            // Fallback to static charge (or cart setting)
+            deliveryCharge = (isDeliveryFree) ? 0 : (cartData.deliveryCharge || 0);
+            console.log('[Checkout Debug] Using Static/Fallback Charge:', deliveryCharge);
+        }
 
         // Calculate Tip from State
         let currentTip = selectedTipAmount;
@@ -592,9 +669,10 @@ const CheckoutPageInternal = () => {
             grandTotal: finalGrandTotal,
             packagingCharge: internalPackagingCharge,
             isSmartBundlingEligible: isSmartBundlingEligibleValue,
-            tipAmount: tip
+            tipAmount: tip,
+            isDeliveryFree: isDeliveryFree
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation]);
 
     const maxSavings = useMemo(() => {
         if (!cartData?.availableCoupons?.length) return 0;
@@ -1602,11 +1680,21 @@ const CheckoutPageInternal = () => {
                                     </div>
                                     {/* DELIVERY CHARGE ROW */}
                                     {((finalDeliveryCharge > 0) || (deliveryType === 'delivery')) && (
-                                        <div className="flex justify-between text-sm">
-                                            <span>Delivery Fee</span>
-                                            <span className={finalDeliveryCharge === 0 ? "text-green-600 font-bold" : ""}>
-                                                {finalDeliveryCharge === 0 ? "FREE" : `₹${finalDeliveryCharge.toFixed(2)}`}
-                                            </span>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="flex items-center gap-2">
+                                                    Delivery Fee
+                                                    {isValidatingDelivery && <Loader2 className="h-3 w-3 animate-spin" />}
+                                                </span>
+                                                <span className={isDeliveryFree ? "text-green-600 font-bold" : ""}>
+                                                    {isValidatingDelivery ? 'Checking...' : (isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`)}
+                                                </span>
+                                            </div>
+                                            {deliveryValidation && deliveryValidation.allowed && !isValidatingDelivery && (
+                                                <div className="text-xs text-muted-foreground text-right">
+                                                    {deliveryValidation.roadDistance} km • {deliveryValidation.charge === 0 ? 'Free Delivery Zone' : 'Standard Charge'}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     {/* RIDER TIP ROW - from tip selection grid */}
