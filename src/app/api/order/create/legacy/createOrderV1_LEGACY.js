@@ -1170,7 +1170,7 @@ export async function createOrderV1(req) {
 
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
-        const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
+        finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
 
         const pointsEarned = Math.floor(subtotal / 100) * 10;
         const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
