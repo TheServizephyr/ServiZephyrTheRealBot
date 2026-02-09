@@ -188,10 +188,9 @@ const CheckoutPageInternal = () => {
                 console.log('[Checkout] ✅ Delivery Validation Result:', result);
                 setDeliveryValidation(result);
 
+                // ✅ NON-BLOCKING: Just log, don't prevent order
                 if (!result.allowed) {
-                    setError(result.message || "Delivery not available at this location.");
-                } else {
-                    setError(''); // Clear error if valid
+                    console.warn('[Checkout] ⚠️ Address beyond delivery range, but allowing order:', result.message);
                 }
             }
         } catch (error) {
@@ -876,7 +875,7 @@ const CheckoutPageInternal = () => {
                 return;
             }
 
-
+            /* ⚠️ TEMPORARILY DISABLED - Blocking orders
             // 🚨 CRITICAL: Validate delivery distance BEFORE creating order
             if (deliveryType === 'delivery' && selectedAddress) {
                 console.log('[Checkout] Validating delivery distance...');
@@ -923,6 +922,7 @@ const CheckoutPageInternal = () => {
                     return;
                 }
             }
+            */
 
             // NEW ORDER CREATION (original flow)
             console.log(`[Checkout Page] Sending order to /api/order/create. PaymentMethod: ${paymentMethod}, ExistingOrderId: ${orderData.existingOrderId}`);
