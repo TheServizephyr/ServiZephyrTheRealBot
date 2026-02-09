@@ -5,91 +5,9 @@ import { getAuth, getFirestore, verifyAndGetUid, FieldValue } from '@/lib/fireba
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { kv } from '@vercel/kv';
-import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
+import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 
 export const dynamic = 'force-dynamic';
-
-async function verifyUserAndGetData(req) {
-    const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req); // Use central helper
-
-    // Get URL params
-    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-
-    const adminUserDoc = await firestore.collection('users').doc(uid).get();
-    if (!adminUserDoc.exists) {
-        throw { message: 'User profile not found.', status: 404 };
-    }
-
-    const adminUserData = adminUserDoc.data();
-
-    let finalUserId = uid;
-
-    // --- ADMIN IMPERSONATION ---
-    if (adminUserData.role === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
-        finalUserId = impersonatedOwnerId;
-    }
-    // --- EMPLOYEE ACCESS (SECURE) ---
-    else if (employeeOfOwnerId) {
-        const accessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, adminUserData);
-        if (!accessResult.authorized) {
-            console.warn(`[SECURITY] Blocked unauthorized employee_of access: ${uid} -> ${employeeOfOwnerId}`);
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-        console.log(`[API Employee Access] ${uid} (${accessResult.employeeRole}) accessing ${employeeOfOwnerId}'s settings`);
-        finalUserId = employeeOfOwnerId;
-    }
-
-    const userRef = firestore.collection('users').doc(finalUserId);
-    const userDoc = await userRef.get();
-
-    if (!userDoc.exists) {
-        throw { message: "User profile not found.", status: 404 };
-    }
-
-    const userData = userDoc.data();
-    let businessData = null;
-    let businessRef = null;
-    let businessId = null;
-
-    const isOwnerRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userData.role);
-    const isAdminImpersonating = adminUserData.role === 'admin' && impersonatedOwnerId;
-    const isEmployeeAccessing = !!employeeOfOwnerId;
-
-    if (isOwnerRole || isAdminImpersonating || isEmployeeAccessing) {
-        // --- START FIX: Role-based collection search ---
-        let collectionsToTry = [];
-        const userBusinessType = userData.businessType; // e.g., 'restaurant', 'shop', 'street-vendor'
-
-        if (userBusinessType === 'restaurant') {
-            collectionsToTry = ['restaurants'];
-        } else if (userBusinessType === 'shop') {
-            collectionsToTry = ['shops'];
-        } else if (userBusinessType === 'street-vendor') {
-            collectionsToTry = ['street_vendors'];
-        } else {
-            // Fallback for older data or generic 'owner' roles
-            collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-        }
-        // --- END FIX ---
-
-        for (const collectionName of collectionsToTry) {
-            const businessesQuery = await firestore.collection(collectionName).where('ownerId', '==', finalUserId).limit(1).get();
-            if (!businessesQuery.empty) {
-                const businessDoc = businessesQuery.docs[0];
-                businessRef = businessDoc.ref;
-                businessData = businessDoc.data();
-                businessId = businessDoc.id;
-                break; // Found the business, stop searching
-            }
-        }
-    }
-
-    return { uid: finalUserId, userRef, userData, businessRef, businessData, businessId };
-}
 
 export async function GET(req) {
     try {
@@ -186,12 +104,11 @@ export async function GET(req) {
         }
 
         // This block is for authenticated owner dashboard queries.
-        const { uid, userData, businessData, businessId, businessRef } = await verifyUserAndGetData(req);
-
-        // 🚨 CRITICAL: Check if business exists
-        if (!businessRef) {
-            throw { message: 'Business not found for this user.', status: 404 };
-        }
+        // Use standard verifyOwnerWithAudit for robust impersonation handling
+        const context = await verifyOwnerWithAudit(req, 'view_settings');
+        const { uid, userData, businessSnap, businessId } = context;
+        const businessRef = businessSnap.ref;
+        const businessData = businessSnap.data();
 
         // FETCH DELIVERY SETTINGS FROM SUB-COLLECTION
         const deliveryConfigSnap = await businessRef.collection('delivery_settings').doc('config').get();
@@ -264,7 +181,14 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const { userRef, userData, businessRef, businessData, businessId } = await verifyUserAndGetData(req);
+        // Use standard verifyOwnerWithAudit for robust impersonation handling
+        const context = await verifyOwnerWithAudit(req, 'update_settings');
+        const { uid, userData, businessSnap, businessId } = context;
+        const businessRef = businessSnap.ref;
+        const businessData = businessSnap.data();
+
+        const firestore = await getFirestore();
+        const userRef = firestore.collection('users').doc(uid);
 
         const updates = await req.json();
 
@@ -402,7 +326,13 @@ export async function PATCH(req) {
         }
 
 
-        const { userData: finalUserData, businessData: finalBusinessData, businessId: finalBusinessId } = await verifyUserAndGetData(req);
+        // Re-fetch final data for response
+        // Optimization: reusing context is risky if updates changed something critical (rare), but safe to reuse ID/Ref
+        const finalBusinessSnap = await businessRef.get();
+        const finalBusinessData = finalBusinessSnap.data();
+        const finalUserDataSnap = await userRef.get(); // Re-fetch user data
+        const finalUserData = finalUserDataSnap.data();
+        const finalBusinessId = businessId;
 
         // Fetch fresh delivery config
         const deliveryConfigSnap = await businessRef.collection('delivery_settings').doc('config').get();

@@ -67,22 +67,25 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
 
     itemsSnapshot.forEach(doc => {
         const itemData = doc.data();
-        const categoryId = itemData.categoryId;
+        const rawCategoryId = itemData.categoryId; // Keep raw for reference if needed
 
-        if (!categoryId) {
+        if (!rawCategoryId) {
             console.warn(`[OrderPricing] Item ${doc.id} has no categoryId, skipping`);
             return;
         }
 
+        // ✅ FIX: Normalize category ID to lowercase for case-insensitive grouping
+        const normalizedCategoryId = rawCategoryId.toLowerCase().trim();
+
         // Group items by categoryId
-        if (!categoriesMap.has(categoryId)) {
-            categoriesMap.set(categoryId, {
-                id: categoryId,
+        if (!categoriesMap.has(normalizedCategoryId)) {
+            categoriesMap.set(normalizedCategoryId, {
+                id: rawCategoryId, // Store original ID
                 items: []
             });
         }
 
-        categoriesMap.get(categoryId).items.push({
+        categoriesMap.get(normalizedCategoryId).items.push({
             ...itemData,
             id: doc.id
         });
@@ -135,10 +138,14 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
  * @returns {Promise<number>} Validated item price
  */
 async function validateAndCalculateItemPrice(item, categoriesMap) {
-    // Find category
-    const category = categoriesMap.get(item.categoryId);
+    // Find category (Case-Insensitive)
+    const normalizedReqCategoryId = item.categoryId?.toLowerCase().trim();
+    const category = categoriesMap.get(normalizedReqCategoryId);
 
     if (!category) {
+        // Debug: Log available keys
+        const availableCategories = Array.from(categoriesMap.keys()).join(', ');
+        console.warn(`[OrderPricing] Category mismatch. Looking for '${normalizedReqCategoryId}', Available: [${availableCategories}]`);
         throw new PricingError(`Category "${item.categoryId}" not found in menu`);
     }
 

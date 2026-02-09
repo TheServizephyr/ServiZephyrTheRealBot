@@ -541,10 +541,11 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     }
     const ActionIcon = action.icon;
     const isConfirmable = status === 'pending';
+    const hasAccess = impersonatedOwnerId || hasPermission(userRole, action.permission || PERMISSIONS.UPDATE_ORDER_STATUS);
 
     return (
         <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
-            {hasPermission(userRole, action.permission || PERMISSIONS.UPDATE_ORDER_STATUS) && (
+            {hasAccess && (
                 <Button
                     onClick={action.action}
                     size="sm"
@@ -555,7 +556,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                 </Button>
             )}
             <div className="flex gap-2">
-                {isConfirmable && hasPermission(userRole, PERMISSIONS.CANCEL_ORDER) && (
+                {isConfirmable && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.CANCEL_ORDER)) && (
                     <Button
                         onClick={() => onRejectClick(order)}
                         variant="destructive"
@@ -569,7 +570,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                 <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
                     <Printer size={16} />
                 </Button>
-                {prevStatus && hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS) && (
+                {prevStatus && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS)) && (
                     <Button
                         onClick={() => onRevert(prevStatus)}
                         variant="ghost"
@@ -879,10 +880,17 @@ export default function LiveOrdersPage() {
             try {
                 const userDoc = await getDoc(doc(db, 'users', user.uid));
                 if (userDoc.exists()) {
-                    setUserRole(userDoc.data().role || 'owner'); // Default to owner if role missing (owner docs sometimes lack role field)
+                    const role = userDoc.data().role;
+                    console.log(`[LiveOrders] User role fetched: ${role}`);
+                    setUserRole(role || 'owner');
+                } else {
+                    console.warn("[LiveOrders] User document not found, defaulting to 'owner'");
+                    setUserRole('owner'); // Default to owner if doc missing (likely checks passed)
                 }
             } catch (err) {
                 console.error("Error fetching user role:", err);
+                // Fallback to owner on error to avoid blocking UI (backend will secure)
+                setUserRole('owner');
             }
         };
         fetchRole();

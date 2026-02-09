@@ -315,11 +315,8 @@ export async function DELETE(req) {
 
         console.log(`[API LOG] DELETE /api/owner/menu: Soft-deleting item ${itemId} from ${collectionName}/${businessId}/menu.`);
         const itemRef = firestore.collection(collectionName).doc(businessId).collection('menu').doc(itemId);
-        // ✅ SOFT-DELETE: Mark as isDeleted instead of physical deletion
-        await itemRef.update({
-            isDeleted: true,
-            deletedAt: FieldValue.serverTimestamp()
-        });
+        // ✅ HARD-DELETE: Physically remove document as per user request
+        await itemRef.delete();
         console.log(`[API LOG] DELETE /api/owner/menu: Item soft-deleted successfully.`);
 
         // Increment menuVersion for automatic cache invalidation
@@ -432,11 +429,8 @@ export async function PATCH(req) {
         itemIds.forEach(itemId => {
             const itemRef = menuRef.doc(itemId);
             if (action === 'delete') {
-                // ✅ SOFT-DELETE: Mark as isDeleted instead of physical deletion
-                batch.update(itemRef, {
-                    isDeleted: true,
-                    deletedAt: FieldValue.serverTimestamp()
-                });
+                // ✅ HARD-DELETE: Physically remove document as per user request
+                batch.delete(itemRef);
             } else if (action === 'outOfStock') {
                 batch.update(itemRef, { isAvailable: false });
             }

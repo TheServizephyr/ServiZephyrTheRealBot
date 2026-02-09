@@ -47,12 +47,26 @@ const generateSecureToken = async (firestore, identifier) => {
  * Please check `src/services/orderService.js` for the current logic.
  * Modifications here may not affect the live system if the feature flag is ON.
  */
+// Wrapper for direct API calls (V1 Legacy Endpoint)
 export async function createOrderV1(req) {
-    console.log("[API /order/create] POST request received.");
+    console.log("[API /order/create] POST request received (V1 Wrapper).");
     try {
         const firestore = await getFirestore();
         const body = await req.json();
-        console.log("[API /order/create] Request body parsed:", JSON.stringify(body, null, 2));
+        return await processOrderV1(body, firestore);
+    } catch (error) {
+        console.error("[API /order/create] Wrapper Error:", error);
+        return NextResponse.json({ message: `Wrapper Error: ${error.message}` }, { status: 500 });
+    }
+}
+
+// Core V1 Processing Logic (accepts parsed body for V2 delegation)
+export async function processOrderV1(body, firestore) {
+    console.log("[API /order/create] Processing V1 Order Logic...");
+    try {
+        // const firestore = await getFirestore(); // Passed as ARG
+        // const body = await req.json(); // Passed as ARG
+        console.log("[API /order/create] Request body parsed (delegated):", JSON.stringify(body, null, 2));
 
         let {
             name, address, phone, restaurantId, items, notes,
@@ -442,20 +456,51 @@ export async function createOrderV1(req) {
         let collectionName;
 
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        const cleanRestaurantId = restaurantId?.trim();
+        console.log(`[API /order/create] Lookup business ID: '${cleanRestaurantId}' (Original: '${restaurantId}')`);
+
         for (const name of collectionsToTry) {
-            const docRef = firestore.collection(name).doc(restaurantId);
+            const docRef = firestore.collection(name).doc(cleanRestaurantId);
             const docSnap = await docRef.get();
             if (docSnap.exists) {
                 businessRef = docRef;
                 collectionName = name;
                 console.log(`[API /order/create] Found business in collection: ${collectionName}`);
                 break;
+            } else {
+                console.log(`[API /order/create] Not found in ${name}`);
             }
         }
 
         if (!businessRef) {
-            console.error(`[API /order/create] Business not found with ID: ${restaurantId}`);
-            return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
+            console.warn(`[API /order/create] Direct business lookup failed for ID: ${cleanRestaurantId}. Checking if this is an Owner UID...`);
+
+            // Fallback: Check if the ID is actually an Owner UID in the 'users' collection
+            const userDoc = await firestore.collection('users').doc(cleanRestaurantId).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                if (userData.role === 'owner' && userData.businessId) {
+                    console.log(`[API /order/create] Resolved Owner UID to Business ID: ${userData.businessId}`);
+                    // Recursive lookup with the correct Business ID
+                    // (We can't recurse easily here, so just repeat the loop for the new ID)
+                    const realBusinessId = userData.businessId;
+                    for (const name of collectionsToTry) {
+                        const docRef = firestore.collection(name).doc(realBusinessId);
+                        const docSnap = await docRef.get();
+                        if (docSnap.exists) {
+                            businessRef = docRef;
+                            collectionName = name;
+                            console.log(`[API /order/create] Found business via Owner UID in: ${collectionName}`);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!businessRef) {
+            console.error(`[API /order/create] Business not found (after owner lookup) with ID: ${cleanRestaurantId}`);
+            return NextResponse.json({ message: `This business does not exist (ID: ${cleanRestaurantId}).` }, { status: 404 });
         }
 
         const businessDoc = await businessRef.get();

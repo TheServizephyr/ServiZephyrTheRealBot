@@ -21,7 +21,7 @@ import { nanoid } from 'nanoid';
 import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 
 // V1 Fallback for online payments (not tested in V2)
-import { createOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
+import { createOrderV1, processOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
 import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
 
@@ -163,8 +163,8 @@ export async function createOrderV2(req) {
             paymentMethod === 'phonepe';
 
         if (isOnlinePayment) {
-            console.log('[createOrderV2] 🔄 Online payment → Using V1 (not tested in V2)');
-            return await createOrderV1(req);
+            console.log('[createOrderV2] 🔄 Online payment → Using V1 (Body passed directly)');
+            return await processOrderV1(body, firestore);
         }
 
         console.log('[createOrderV2] ✅ COD/Cash/Counter → Using V2 (tested)');
@@ -245,7 +245,7 @@ export async function createOrderV2(req) {
         let pricing;
         try {
             pricing = await calculateServerTotal({
-                restaurantId,
+                restaurantId: business.id, // ✅ FIX: Use resolved Business ID (not slug/ownerId)
                 items,
                 businessType: business.type
             });
@@ -411,7 +411,7 @@ export async function createOrderV2(req) {
                 customerAddress: address?.full || null,
                 customerPhone: normalizedPhone,
                 customerLocation: customerLocation,
-                restaurantId: restaurantId,
+                restaurantId: business.id, // ✅ FIX: Use resolved Business ID
                 restaurantName: business.data.name,
                 businessType: business.type,
                 deliveryType,
@@ -441,7 +441,7 @@ export async function createOrderV2(req) {
                 customerDetails: { name, phone: normalizedPhone, address },
                 billDetails: { subtotal: pricing.serverSubtotal, grandTotal: serverGrandTotal, cgst: serverCgst, sgst: serverSgst, deliveryCharge, tipAmount },
                 items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
-                restaurantId,
+                restaurantId: business.id, // ✅ FIX
                 userId,
                 businessType: business.type,
                 deliveryType,
@@ -509,7 +509,7 @@ export async function createOrderV2(req) {
                     // Check for existing orders with this tabId to reuse token
                     const existingOrdersSnapshot = await firestore
                         .collection('orders')
-                        .where('restaurantId', '==', restaurantId)
+                        .where('restaurantId', '==', restaurantId) // Can keep search on restaurantId as long as consistent
                         .where('dineInTabId', '==', dineInTabId)
                         .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
                         .limit(1)
@@ -573,7 +573,7 @@ export async function createOrderV2(req) {
             customerAddress: address?.full || null,
             customerPhone: normalizedPhone,
             customerLocation: customerLocation,
-            restaurantId: restaurantId,
+            restaurantId: business.id, // ✅ FIX: Use resolved Business ID
             restaurantName: business.data.name,
             businessType: business.type,
             deliveryType,
