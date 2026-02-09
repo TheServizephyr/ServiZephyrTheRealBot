@@ -182,8 +182,8 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker,routes`}
-          strategy="beforeInteractive"
+          src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker,routes&loading=async`}
+          strategy="afterInteractive"
         />
         <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 

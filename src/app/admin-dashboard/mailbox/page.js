@@ -1,5 +1,5 @@
 
-'use client';
+"use client";
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import InfoDialog from '@/components/InfoDialog';
+import { auth } from '@/lib/firebase';
 
 const ReportRow = ({ report, onUpdateStatus }) => {
     const [expanded, setExpanded] = useState(false);
@@ -162,11 +163,21 @@ export default function MailboxPage() {
     const fetchReports = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const res = await fetch('/api/admin/mailbox');
+            // Include Firebase ID token for admin-protected endpoints
+            const currentUser = auth.currentUser;
+            let headers = {};
+            if (currentUser) {
+                const idToken = await currentUser.getIdToken();
+                headers.Authorization = `Bearer ${idToken}`;
+            }
+
+            const res = await fetch('/api/admin/mailbox', { headers });
 
             if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.message || 'Failed to fetch reports.');
+                const text = await res.text();
+                let errorData = {};
+                try { errorData = JSON.parse(text); } catch (e) { errorData = { message: text }; }
+                throw new Error(errorData.message || `Failed to fetch reports (${res.status})`);
             }
             const data = await res.json();
             setReports(data.reports || []);
