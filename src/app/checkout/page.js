@@ -215,14 +215,15 @@ const CheckoutPageInternal = () => {
             newCart.splice(index, 1);
         } else {
             item.quantity = newQuantity;
-            // Recalculate totalPrice if unit price is available
-            if (item.price) {
-                item.totalPrice = item.price * newQuantity;
-            } else if (item.totalPrice) {
-                // Fallback: If only totalPrice exists and price is missing (edge case), derive price
-                const unitPrice = item.totalPrice / (item.quantity - delta);
-                item.totalPrice = unitPrice * newQuantity;
-            }
+            // FIXED: Do NOT update item.totalPrice here! 
+            // item.totalPrice represents the UNIT PRICE (Base + Addons) coming from OrderPage/CartPage.
+            // If we multiply it here, it becomes Line Total, breaking the consistency.
+            // Only update if we strictly know we are recalculating unit price (not doing that here).
+
+            // Legacy cleanup: ensure we don't carry over bad data if previously corrupted
+            // if (item.price && item.totalPrice && item.totalPrice > item.price * 2 && newQuantity === 1) { 
+            //    // Heuristic: If totalPrice was incorrectly scaled previously? Hard to know.
+            // }
             newCart[index] = item;
         }
 
@@ -551,7 +552,10 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         if (deliveryType === 'delivery' && selectedAddress) {
             const currentSubtotal = cart.reduce((total, item) => {
-                return total + (item.totalPrice || (item.price || 0) * (item.quantity || 1));
+                // FIXED: correct calculation (Unit Price * Quantity)
+                // item.totalPrice is Unit Price (Base + Addons + Portion)
+                const unitPrice = item.totalPrice || item.price || 0;
+                return total + (unitPrice * (item.quantity || 1));
             }, 0);
 
             const timer = setTimeout(() => {
@@ -567,7 +571,12 @@ const CheckoutPageInternal = () => {
     const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount, isDeliveryFree } = useMemo(() => {
         // ... (Same logic as before) ...
         // Re-implementing logic to ensure no regression as I replaced a huge chunk
-        const currentSubtotal = cart.reduce((sum, item) => sum + (item.totalPrice || (item.price || 0) * (item.quantity || 1)), 0);
+        // FIXED: correct calculation (Unit Price * Quantity)
+        const currentSubtotal = cart.reduce((sum, item) => {
+            const unitPrice = item.totalPrice || item.price || 0;
+            return sum + (unitPrice * (item.quantity || 1));
+        }, 0);
+
         if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false, isDeliveryFree: false };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
