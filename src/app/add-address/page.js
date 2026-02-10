@@ -49,6 +49,7 @@ const AddAddressPageInternal = () => {
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
+    const [permissionError, setPermissionError] = useState(null); // NEW: Persistent permission error
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const [recipientName, setRecipientName] = useState('');
@@ -70,6 +71,7 @@ const AddAddressPageInternal = () => {
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
         geocodeTimeoutRef.current = setTimeout(async () => {
             setLoading(true); setError('');
+            // Note: We do NOT clear permissionError here, so it persists until manual retry
             try {
                 const res = await fetch(`/api/public/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
                 const data = await res.json();
@@ -96,17 +98,35 @@ const AddAddressPageInternal = () => {
     const handleMapIdle = useCallback((coords) => reverseGeocode(coords), [reverseGeocode]);
 
     const getCurrentGeolocation = useCallback(() => {
-        setLoading(true); setError('Fetching your location...');
+        setLoading(true);
+        setError('Fetching your location...');
+        setPermissionError(null); // Clear previous permission errors on retry
+
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
                 setMapCenter(coords); reverseGeocode(coords); setError('');
             },
             (err) => {
-                setError('Could not get your location. Please search manually or allow location access.');
                 setLoading(false);
+                let message = "Could not fetch location. Please search manually.";
+                let isPermIssue = false;
+
+                if (err.code === 1) {
+                    message = "Location access blocked. Please enable permissions in your browser settings to use current location.";
+                    isPermIssue = true;
+                } else if (err.code === 3) {
+                    message = "Location request timed out. Please check signal or retry.";
+                    isPermIssue = true;
+                }
+
+                if (isPermIssue) {
+                    setPermissionError(message); // Persist this!
+                } else {
+                    setError(message);
+                }
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
         );
     }, [reverseGeocode]);
 
@@ -267,7 +287,7 @@ const AddAddressPageInternal = () => {
 
     return (
         <div className="h-screen w-screen flex flex-col bg-background text-foreground">
-            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '', type: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft /></Button>
                 <h1 className="text-xl font-bold">Add Address Details</h1>
@@ -275,11 +295,18 @@ const AddAddressPageInternal = () => {
 
             <div className="flex-grow flex flex-col md:flex-row">
                 <div className="md:w-1/2 h-64 md:h-full flex-shrink-0 relative">
+                    {/* Show Loading Overlay over map while fetching location */}
+                    {loading && (
+                        <div className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+                            <GoldenCoinSpinner />
+                            <p className="mt-4 font-semibold text-lg animate-pulse">Fetching your location...</p>
+                        </div>
+                    )}
                     <GoogleMap center={mapCenter} onIdle={handleMapIdle} />
                 </div>
 
                 <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
-                    <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-foreground hover:bg-muted" onClick={getCurrentGeolocation} disabled={loading && error.includes('Fetching')}>
+                    <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading && error.includes('Fetching')}>
                         {(loading && error.includes('Fetching')) ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>
                     {loading && !addressDetails ? (

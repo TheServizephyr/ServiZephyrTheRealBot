@@ -234,14 +234,15 @@ const CheckoutPageInternal = () => {
             newCart.splice(index, 1);
         } else {
             item.quantity = newQuantity;
-            // Recalculate totalPrice if unit price is available
-            if (item.price) {
-                item.totalPrice = item.price * newQuantity;
-            } else if (item.totalPrice) {
-                // Fallback: If only totalPrice exists and price is missing (edge case), derive price
-                const unitPrice = item.totalPrice / (item.quantity - delta);
-                item.totalPrice = unitPrice * newQuantity;
-            }
+            // FIXED: Do NOT update item.totalPrice here! 
+            // item.totalPrice represents the UNIT PRICE (Base + Addons) coming from OrderPage/CartPage.
+            // If we multiply it here, it becomes Line Total, breaking the consistency.
+            // Only update if we strictly know we are recalculating unit price (not doing that here).
+
+            // Legacy cleanup: ensure we don't carry over bad data if previously corrupted
+            // if (item.price && item.totalPrice && item.totalPrice > item.price * 2 && newQuantity === 1) { 
+            //    // Heuristic: If totalPrice was incorrectly scaled previously? Hard to know.
+            // }
             newCart[index] = item;
         }
 
@@ -269,7 +270,7 @@ const CheckoutPageInternal = () => {
     const handleAddNewAddress = () => {
         const params = new URLSearchParams(searchParams.toString());
         const currentParamsString = params.toString();
-        router.push(`/add-address?${currentParamsString}&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
+        router.push(`/add-address?${currentParamsString}&useCurrent=true&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
     };
 
     const handleUseCurrentLocation = () => {
@@ -573,7 +574,9 @@ const CheckoutPageInternal = () => {
 
     const currentSubtotal = useMemo(() => {
         return cart.reduce((total, item) => {
-            return total + (item.totalPrice || (item.price || 0) * (item.quantity || 1));
+            const unitPrice = item.totalPrice ?? item.price ?? 0;
+            const quantity = item.quantity ?? 1;
+            return total + (unitPrice * quantity);
         }, 0);
     }, [cart]);
 
