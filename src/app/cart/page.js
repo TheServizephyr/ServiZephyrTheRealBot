@@ -74,24 +74,11 @@ const CartPageInternal = () => {
 
     // Verify dine-in session
     useEffect(() => {
-        const verifyToken = async () => {
-            if (!tableId) {
-                setTokenError("Invalid dine-in session. Please scan the QR code again.");
-                setLoadingPage(false);
-                return;
-            }
-
-            console.log("[Cart Page] ✅ Dine-in session valid. Table ID:", tableId);
-            setIsTokenValid(true);
-        };
-
-        if (!restaurantId) {
-            router.push('/');
-            return;
-        }
-
-        verifyToken();
-    }, [tableId, restaurantId, router]);
+        // RELAXED SESSION CHECK: Don't hard-block if no session info is found
+        // This allows users to view their cart even if they took a indirect link.
+        setIsTokenValid(true);
+        setTokenError(null);
+    }, []);
 
     // Load cart data
     useEffect(() => {

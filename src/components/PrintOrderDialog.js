@@ -136,17 +136,27 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
         try {
             setStatus('Connecting to printer...');
             let device = usbDevice;
-            if (!device || !device.opened) {
+
+            // If we have a stored device, check if it's still open
+            if (device && !device.opened) {
+                console.log('[Printer] Stored device closed, resetting...');
+                device = null;
+                setUsbDevice(null);
+            }
+
+            if (!device) {
                 try {
-                    device = await connectPrinter();
+                    // Pass setStatus to connectPrinter to show granular steps
+                    device = await connectPrinter(setStatus);
                     setUsbDevice(device);
                 } catch (err) {
-                    setStatus('Connection cancelled');
+                    console.error('[Printer] Connection error:', err);
+                    setStatus(err.message.includes('No device selected') ? 'Connection cancelled' : err.message);
                     return;
                 }
             }
 
-            setStatus('Printing...');
+            setStatus('Preparing data...');
             const encoder = new EscPosEncoder();
 
             // Header
@@ -215,11 +225,13 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 .newline().newline().newline()
                 .cut();
 
-            await printData(device, encoder.encode());
+            await printData(device, encoder.encode(), setStatus);
             setStatus('Sent to Thermal Printer ✅');
         } catch (error) {
-            console.error(error);
+            console.error('[Printer] Print error:', error);
             setStatus(`Error: ${error.message}`);
+            // If print fails, reset device state to force re-discovery
+            setUsbDevice(null);
         }
     };
 

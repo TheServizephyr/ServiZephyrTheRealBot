@@ -62,23 +62,9 @@ const AddAddressPageInternal = () => {
     const useCurrent = searchParams.get('useCurrent') === 'true';
 
     useEffect(() => {
-        const verifySession = async () => {
-            // SIMPLIFIED: Trust tableId, user login, or ref presence
-            if (tableId || user || ref) {
-                setIsTokenValid(true);
-                return;
-            }
-
-            if (!isUserLoading) {
-                setTokenError("No valid session. Please start order from WhatsApp or log in.");
-                setLoading(false);
-            }
-        };
-
-        if (!isUserLoading) {
-            verifySession();
-        }
-    }, [tableId, phone, token, user, isUserLoading]);
+        // REMOVED SESSION VALIDATION: Allow adding addresses for all users (guests/logged-in/redirected)
+        setIsTokenValid(true);
+    }, []);
 
     const reverseGeocode = useCallback(async (coords) => {
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);

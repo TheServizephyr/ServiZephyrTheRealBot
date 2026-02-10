@@ -316,14 +316,10 @@ const CheckoutPageInternal = () => {
 
             console.log(`[Checkout Page] Checks: isDineIn=${isDineIn}, WS=${isWhatsAppSession}, Ref=${!!ref}`);
 
-            if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder || isWhatsAppSession) {
-                console.log("[Checkout Page] Session validated (Direct).");
-                setIsTokenValid(true);
-            } else {
-                if (!isUserLoading) {
-                    setTokenError("No session information found."); setLoading(false); return;
-                }
-            }
+            // RELAXED SESSION CHECK: Don't hard-block if no session info is found
+            // (Strict validation still happens at the API level during Checkout/Order creation).
+            setIsTokenValid(true);
+            setTokenError(null);
 
             // REMOVED: detailsConfirmed logic - unified checkout shows all sections at once
 

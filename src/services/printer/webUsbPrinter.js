@@ -1,39 +1,98 @@
-export const connectPrinter = async () => {
+export const connectPrinter = async (onStatus = () => { }) => {
     try {
-        // Request device (filters can be added, but empty allows user to pick any)
+        onStatus('Requesting device...');
         const device = await navigator.usb.requestDevice({ filters: [] });
 
+        onStatus('Opening device...');
         await device.open();
+
         if (device.configuration === null) {
+            onStatus('Selecting configuration...');
             await device.selectConfiguration(1);
         }
 
-        await device.claimInterface(0); // Usually interface 0 for printers
+        onStatus('Searching for printer interface...');
+        // FIND PRINTER INTERFACE (Class 7)
+        const interfaces = device.configuration.interfaces;
+        let printerInterface = null;
+        let interfaceNumber = 0;
+
+        for (const iface of interfaces) {
+            const alternate = iface.alternates[0];
+            if (alternate.interfaceClass === 7) {
+                printerInterface = iface;
+                interfaceNumber = iface.interfaceNumber;
+                break;
+            }
+        }
+
+        if (!printerInterface) {
+            console.warn('[WebUSB] Printer class interface not detected, falling back to interface 0');
+            interfaceNumber = 0;
+        }
+
+        onStatus(`Claiming interface ${interfaceNumber}...`);
+        try {
+            await device.claimInterface(interfaceNumber);
+        } catch (claimErr) {
+            console.error('[WebUSB] Claim interface failed:', claimErr);
+            if (claimErr.name === 'SecurityError' || claimErr.message.includes('access denied')) {
+                throw new Error('Access Denied: Another app/driver is using the printer. On Windows, you might need "WinUSB" driver (via Zadig).');
+            }
+            throw claimErr;
+        }
+
+        onStatus('Ready to print');
         return device;
     } catch (error) {
-        console.error('Connection failed:', error);
+        console.error('[WebUSB] Connection failed:', error);
+        if (error.name === 'NotFoundError') throw new Error('No device selected');
+        if (error.name === 'SecurityError') throw new Error('Permission denied by browser');
         throw error;
     }
 };
 
-export const printData = async (device, data) => {
+export const printData = async (device, data, onStatus = () => { }) => {
     try {
         if (!device || !device.opened) {
             throw new Error('Device not connected');
         }
 
-        // Find OUT endpoint
-        // Usually Endpoint 1 or 2. We search for 'out' direction.
-        const interface0 = device.configuration.interfaces[0];
-        const endpoints = interface0.alternates[0].endpoints;
-        const outEndpoint = endpoints.find(e => e.direction === 'out');
+        onStatus('Finalizing connection...');
+        // SEARCH FOR OUT ENDPOINT
+        // We look for the first 'out' direction endpoint in the claimed interface
+        const interfaces = device.configuration.interfaces;
+        let outEndpoint = null;
 
-        if (!outEndpoint) {
-            throw new Error('No OUT endpoint found');
+        for (const iface of interfaces) {
+            // Check if this interface is claimed/available
+            // Note: In typical WebUSB flow, we assume the shared device object has the state
+            const alternate = iface.alternates[0];
+            const foundOut = alternate.endpoints.find(e => e.direction === 'out' && e.type === 'bulk');
+            if (foundOut) {
+                outEndpoint = foundOut;
+                console.log(`[WebUSB] Found Bulk OUT endpoint: ${outEndpoint.endpointNumber} on interface ${iface.interfaceNumber}`);
+                break;
+            }
         }
 
-        const endpointNumber = outEndpoint.endpointNumber;
-        await device.transferOut(endpointNumber, data);
+        if (!outEndpoint) {
+            // Fallback: try any 'out' endpoint
+            for (const iface of interfaces) {
+                const alternate = iface.alternates[0];
+                const foundOut = alternate.endpoints.find(e => e.direction === 'out');
+                if (foundOut) {
+                    outEndpoint = foundOut;
+                    break;
+                }
+            }
+        }
+
+        if (!outEndpoint) {
+            throw new Error('No valid OUT endpoint found on this printer.');
+        }
+
+        await device.transferOut(outEndpoint.endpointNumber, data);
 
     } catch (error) {
         console.error('Print failed:', error);
