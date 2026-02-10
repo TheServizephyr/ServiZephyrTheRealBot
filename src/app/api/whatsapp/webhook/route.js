@@ -289,7 +289,14 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 const { userId } = await getOrCreateGuestProfile(firestore, customerPhone);
 
                 const ordersRef = firestore.collection('orders');
-                const q = ordersRef.where('userId', '==', userId).orderBy('orderDate', 'desc').limit(1);
+                // CRITICAL FIX: Use existing composite index (restaurantId + userId + orderDate DESC)
+                // without this filter, it requires a missing index (userId + orderDate DESC)
+                const q = ordersRef
+                    .where('restaurantId', '==', business.id)
+                    .where('userId', '==', userId)
+                    .orderBy('orderDate', 'desc')
+                    .limit(1);
+
                 const querySnapshot = await q.get();
 
                 if (querySnapshot.empty) {
