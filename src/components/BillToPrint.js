@@ -61,6 +61,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         padding: 0;
                         background: white;
                     }
+                    /* Root receipt styling */
                     #bill-print-root {
                         width: 100%;
                         max-width: 79mm; /* Force receipt width even on A4 */
@@ -68,8 +69,53 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         padding: 2mm; 
                         font-family: 'Courier New', monospace;
                         font-size: 13px; /* Slightly larger for clarity */
-                        color: black;
+                        color: #000000 !important;
                         line-height: 1.2;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                        -webkit-font-smoothing: antialiased;
+                        text-rendering: optimizeLegibility;
+                    }
+
+                    /* Force all text to pure black and bold for printers with weak toner/ink */
+                    #bill-print-root, #bill-print-root * {
+                        color: #000000 !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                        font-weight: 700 !important;
+                        text-shadow: none !important;
+                    }
+
+                    /* Make table headers and cells bolder and ensure alignment stays intact */
+                    #bill-print-root table th,
+                    #bill-print-root table td {
+                        color: #000000 !important;
+                        font-weight: 700 !important;
+                        border-color: #000000 !important;
+                    }
+
+                    /* Use solid strong borders for better printer rendering */
+                    #bill-print-root .border-dashed,
+                    #bill-print-root .border-dotted,
+                    #bill-print-root .divide-dotted,
+                    #bill-print-root .divide-dashed {
+                        border-style: solid !important;
+                        border-color: #000000 !important;
+                    }
+
+                    /* Increase contrast for totals and ensure grand total prints very dark */
+                    #bill-print-root .text-green-600,
+                    #bill-print-root .text-green-700,
+                    #bill-print-root .grand-total-amount {
+                        color: #000000 !important;
+                        font-weight: 800 !important;
+                    }
+
+                    /* Extra specific rule for grand total to make it bolder/darker */
+                    #bill-print-root .grand-total-amount {
+                        font-weight: 900 !important;
+                        color: #000000 !important;
+                        -webkit-font-smoothing: antialiased !important;
                     }
                 }
             `}</style>
@@ -211,7 +257,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
 
             <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
                 <span>GRAND TOTAL</span>
-                <span className="text-green-600">{formatCurrency(finalBillDetails.grandTotal)}</span>
+                <span className="text-green-600 grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
             <div className="text-center mt-4 pt-2 border-t border-dashed border-black">
