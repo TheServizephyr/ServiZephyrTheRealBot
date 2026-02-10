@@ -165,6 +165,7 @@ export async function GET(req) {
             convenienceFeeLabel: businessData?.convenienceFeeLabel || 'Payment Processing Fee',
             packagingChargeEnabled: businessData?.packagingChargeEnabled || false,
             packagingChargeAmount: businessData?.packagingChargeAmount || 0,
+            gstPercentage: businessData?.gstPercentage || businessData?.gstRate || 0,
             businessId: businessId,
             merchantId: businessData?.merchantId || '',
             customerId: userData?.customerId || '',
@@ -268,7 +269,10 @@ export async function PATCH(req) {
 
         // Add-on Charges Configuration
         if (updates.gstEnabled !== undefined) businessUpdateData.gstEnabled = updates.gstEnabled;
-        if (updates.gstPercentage !== undefined) businessUpdateData.gstPercentage = updates.gstPercentage;
+        if (updates.gstPercentage !== undefined) {
+            businessUpdateData.gstPercentage = updates.gstPercentage;
+            businessUpdateData.gstRate = updates.gstPercentage; // Sync for backward compatibility
+        }
         if (updates.gstMinAmount !== undefined) businessUpdateData.gstMinAmount = updates.gstMinAmount;
         if (updates.convenienceFeeEnabled !== undefined) businessUpdateData.convenienceFeeEnabled = updates.convenienceFeeEnabled;
         if (updates.convenienceFeeRate !== undefined) businessUpdateData.convenienceFeeRate = updates.convenienceFeeRate;

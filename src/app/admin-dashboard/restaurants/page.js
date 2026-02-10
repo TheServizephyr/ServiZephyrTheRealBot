@@ -181,13 +181,20 @@ const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
 
 const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, initialRestrictedFeatures = [] }) => {
   const features = [
-    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'coupons', label: 'Coupon & Offer Hub' },
+    { id: 'dashboard', label: 'Dashboard (ServiZephyr)' },
     { id: 'live-orders', label: 'Live Order Management' },
     { id: 'menu', label: 'Menu/Item Management' },
+    { id: 'dine-in', label: 'Dine-In Management' },
+    { id: 'employees', label: 'Team/Staff Management' },
+    { id: 'whatsapp-direct', label: 'WhatsApp Direct' },
     { id: 'analytics', label: 'Analytics & Reports' },
     { id: 'customers', label: 'Customer Hub' },
     { id: 'delivery', label: 'Delivery Management' },
-    { id: 'coupons', label: 'Coupon & Offer Hub' },
+    { id: 'qr', label: 'QR Code Management' },
+    { id: 'location', label: 'Location/Address Settings' },
+    { id: 'connections', label: 'WhatsApp/Bot Connections' },
+    { id: 'settings', label: 'Store Settings' },
   ];
   const [selectedFeatures, setSelectedFeatures] = useState([]);
   const [remark, setRemark] = useState("");
