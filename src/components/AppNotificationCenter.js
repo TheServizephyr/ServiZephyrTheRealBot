@@ -7,7 +7,7 @@ import { APP_NOTIFICATION_EVENT } from '@/lib/appNotifications';
 import { cn } from '@/lib/utils';
 
 const MAX_KEEP_MS = 24 * 60 * 60 * 1000;
-const MAX_RING_MS = 2 * 60 * 1000;
+const MAX_RING_MS = 1 * 60 * 1000;
 const LONG_VIBRATION_PATTERN = [700, 220, 700, 220, 1200];
 
 function now() {
@@ -187,7 +187,12 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             });
 
             const soundPath = payload.sound;
-            startVibrationLoop();
+            const isWhatsAppSound = typeof soundPath === 'string' && soundPath.includes('notification-whatsapp-message');
+            if (isWhatsAppSound) {
+                triggerVibration();
+            } else {
+                startVibrationLoop();
+            }
 
             // If app is in background, also raise OS-level local notification (requires permission).
             if (typeof document !== 'undefined' && document.hidden && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
@@ -218,51 +223,154 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
 
             try {
                 stopAlarm();
-                startVibrationLoop();
+                if (!isWhatsAppSound) {
+                    startVibrationLoop();
+                }
                 audioRef.current.src = soundPath;
                 audioRef.current.load();
                 audioRef.current.muted = false;
                 audioRef.current.volume = 1;
-                audioRef.current.loop = true;
+                audioRef.current.loop = !isWhatsAppSound;
                 audioRef.current.play().then(() => {
                     setIsAlarmPlaying(true);
-                    stopTimerRef.current = setTimeout(() => {
-                        stopAlarm();
-                    }, MAX_RING_MS);
-                }).catch(() => {
-                    try {
-                        // Second attempt with fresh Audio() instance for stricter autoplay/decode paths.
-                        const fallbackAudio = new Audio(soundPath);
-                        fallbackAudio.loop = true;
-                        fallbackAudio.volume = 1;
-                        fallbackAudioRef.current = fallbackAudio;
-                        fallbackAudio.play().then(() => {
-                            setIsAlarmPlaying(true);
-                            stopTimerRef.current = setTimeout(() => {
-                                stopAlarm();
-                            }, MAX_RING_MS);
-                        }).catch(() => {
-                            // Browser blocked autoplay / decode issue -> fallback alarm
-                            startFallbackBeep();
-                            setIsAlarmPlaying(true);
-                            stopTimerRef.current = setTimeout(() => {
-                                stopAlarm();
-                            }, MAX_RING_MS);
-                        });
-                    } catch (_) {
-                        startFallbackBeep();
-                        setIsAlarmPlaying(true);
+                    if (isWhatsAppSound) {
+                        audioRef.current.onended = () => {
+                            setIsAlarmPlaying(false);
+                            audioRef.current.onended = null;
+                        };
+                    } else {
                         stopTimerRef.current = setTimeout(() => {
                             stopAlarm();
                         }, MAX_RING_MS);
                     }
+                }).catch(() => {
+                    try {
+                        // Second attempt with fresh Audio() instance for stricter autoplay/decode paths.
+                        const fallbackAudio = new Audio(soundPath);
+                        fallbackAudio.loop = !isWhatsAppSound;
+                        fallbackAudio.volume = 1;
+                        fallbackAudioRef.current = fallbackAudio;
+                        fallbackAudio.play().then(() => {
+                            setIsAlarmPlaying(true);
+                            if (isWhatsAppSound) {
+                                fallbackAudio.onended = () => {
+                                    setIsAlarmPlaying(false);
+                                    fallbackAudio.onended = null;
+                                };
+                            } else {
+                                stopTimerRef.current = setTimeout(() => {
+                                    stopAlarm();
+                                }, MAX_RING_MS);
+                            }
+                        }).catch(() => {
+                            // Browser blocked autoplay / decode issue -> fallback alarm
+                            if (isWhatsAppSound) {
+                                try {
+                                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                                    if (AudioCtx) {
+                                        const ctx = new AudioCtx();
+                                        const oscillator = ctx.createOscillator();
+                                        const gain = ctx.createGain();
+                                        oscillator.type = 'sine';
+                                        oscillator.frequency.value = 880;
+                                        gain.gain.value = 0.25;
+                                        oscillator.connect(gain);
+                                        gain.connect(ctx.destination);
+                                        oscillator.start();
+                                        setTimeout(() => {
+                                            oscillator.stop();
+                                            ctx.close();
+                                        }, 250);
+                                    }
+                                } catch (_) {
+                                    // ignore
+                                }
+                            } else {
+                                startFallbackBeep();
+                            }
+                            setIsAlarmPlaying(true);
+                            if (isWhatsAppSound) {
+                                stopTimerRef.current = setTimeout(() => {
+                                    stopAlarm();
+                                }, 1500);
+                            } else {
+                                stopTimerRef.current = setTimeout(() => {
+                                    stopAlarm();
+                                }, MAX_RING_MS);
+                            }
+                        });
+                    } catch (_) {
+                        if (isWhatsAppSound) {
+                            try {
+                                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                                if (AudioCtx) {
+                                    const ctx = new AudioCtx();
+                                    const oscillator = ctx.createOscillator();
+                                    const gain = ctx.createGain();
+                                    oscillator.type = 'sine';
+                                    oscillator.frequency.value = 880;
+                                    gain.gain.value = 0.25;
+                                    oscillator.connect(gain);
+                                    gain.connect(ctx.destination);
+                                    oscillator.start();
+                                    setTimeout(() => {
+                                        oscillator.stop();
+                                        ctx.close();
+                                    }, 250);
+                                }
+                            } catch (_) {
+                                // ignore
+                            }
+                        } else {
+                            startFallbackBeep();
+                        }
+                        setIsAlarmPlaying(true);
+                        if (isWhatsAppSound) {
+                            stopTimerRef.current = setTimeout(() => {
+                                stopAlarm();
+                            }, 1500);
+                        } else {
+                            stopTimerRef.current = setTimeout(() => {
+                                stopAlarm();
+                            }, MAX_RING_MS);
+                        }
+                    }
                 });
             } catch (_) {
-                startFallbackBeep();
+                if (isWhatsAppSound) {
+                    try {
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (AudioCtx) {
+                            const ctx = new AudioCtx();
+                            const oscillator = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            oscillator.type = 'sine';
+                            oscillator.frequency.value = 880;
+                            gain.gain.value = 0.25;
+                            oscillator.connect(gain);
+                            gain.connect(ctx.destination);
+                            oscillator.start();
+                            setTimeout(() => {
+                                oscillator.stop();
+                                ctx.close();
+                            }, 250);
+                        }
+                    } catch (_) {
+                        // ignore
+                    }
+                } else {
+                    startFallbackBeep();
+                }
                 setIsAlarmPlaying(true);
-                stopTimerRef.current = setTimeout(() => {
-                    stopAlarm();
-                }, MAX_RING_MS);
+                if (isWhatsAppSound) {
+                    stopTimerRef.current = setTimeout(() => {
+                        stopAlarm();
+                    }, 1500);
+                } else {
+                    stopTimerRef.current = setTimeout(() => {
+                        stopAlarm();
+                    }, MAX_RING_MS);
+                }
             }
         };
 
