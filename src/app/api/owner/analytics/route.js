@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { PERMISSIONS } from '@/lib/permissions';
 import { format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,10 @@ export async function GET(req) {
         // Use centralized resolver with request-level caching
         const { businessId: restaurantId, businessSnap, collectionName } = await verifyOwnerWithAudit(
             req,
-            'view_analytics'
+            'view_analytics',
+            {},
+            false,
+            PERMISSIONS.VIEW_ANALYTICS
         );
         const restaurantData = businessSnap.data();
         const businessType = restaurantData.businessType || collectionName.slice(0, -1);

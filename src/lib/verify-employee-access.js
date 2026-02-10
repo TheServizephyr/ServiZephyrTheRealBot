@@ -47,6 +47,8 @@ export async function verifyEmployeeAccess(requesterId, targetOwnerId, userData)
             authorized: true,
             reason: 'employee_access',
             employeeRole: matchingOutlet.employeeRole,
+            permissions: matchingOutlet.permissions || [],
+            customAllowedPages: matchingOutlet.customAllowedPages || null,
             outletId: matchingOutlet.outletId,
             outletName: matchingOutlet.outletName,
         };

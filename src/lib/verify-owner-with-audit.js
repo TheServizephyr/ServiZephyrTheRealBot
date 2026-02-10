@@ -6,6 +6,7 @@
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
+import { PERMISSIONS, getPermissionsForRole } from '@/lib/permissions';
 
 /**
  * Verify owner/admin and get business with audit logging support
@@ -14,6 +15,7 @@ import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
  * @param {Request} req - Next.js request object
  * @param {string} action - Action being performed (e.g., 'view_orders', 'update_settings')
  * @param {Object} metadata - Additional metadata to log (optional)
+ * @param {string|string[]|null} requiredPermissions - Required RBAC permission(s). Any one is enough.
  * @returns {Object} - { uid, businessId, businessSnap, collectionName, isAdmin, isImpersonating }
  */
 /**
@@ -23,9 +25,10 @@ import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
  * @param {Request} req - Next.js request object
  * @param {string} action - Action being performed (e.g., 'view_orders', 'update_settings')
  * @param {Object} metadata - Additional metadata to log (optional)
+ * @param {string|string[]|null} requiredPermissions - Required RBAC permission(s). Any one is enough.
  * @returns {Object} - { uid, businessId, businessSnap, collectionName, isAdmin, isImpersonating }
  */
-export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevoked = false) {
+export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevoked = false, requiredPermissions = null) {
     // 1. REQUEST-LEVEL CACHING: Reuse context if already resolved in this request
     // We attach it to the 'req' object as it persists through the life of the API call.
     if (!req._ownerContextPromise) {
@@ -86,12 +89,21 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
 
                     // Determine callerRole
                     let effectiveCallerRole = userRole;
+                    let effectiveCallerPermissions = [];
                     if (isImpersonating) {
                         // FIX: When impersonating, the admin acts AS the owner.
                         // Downstream APIs check if (role === 'owner'), so we must return 'owner'.
                         effectiveCallerRole = 'owner';
+                        effectiveCallerPermissions = Object.values(PERMISSIONS);
                     } else if (employeeOfOwnerId && employeeAccessResult) {
                         effectiveCallerRole = employeeAccessResult.employeeRole || userRole;
+                        // Prefer explicit per-employee permissions stored in linkedOutlets.
+                        // Fallback to role defaults for backward compatibility.
+                        effectiveCallerPermissions = (employeeAccessResult.permissions && employeeAccessResult.permissions.length > 0)
+                            ? employeeAccessResult.permissions
+                            : getPermissionsForRole(effectiveCallerRole);
+                    } else {
+                        effectiveCallerPermissions = Object.values(PERMISSIONS);
                     }
 
                     return {
@@ -103,6 +115,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                         isImpersonating,
                         userData,
                         callerRole: effectiveCallerRole,
+                        callerPermissions: effectiveCallerPermissions,
                         adminId: isImpersonating ? uid : null,
                         adminEmail: isImpersonating ? userData.email : null
                     };
@@ -123,6 +136,20 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
 
     // 2. AWAIT RESOLUTION
     const context = await req._ownerContextPromise;
+
+    // 2.5 OPTIONAL PERMISSION ENFORCEMENT
+    if (requiredPermissions) {
+        const required = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions];
+        const callerPermissions = context.callerPermissions || [];
+        const hasRequiredPermission = required.some((permission) => callerPermissions.includes(permission));
+
+        if (!hasRequiredPermission) {
+            throw {
+                message: `Access Denied: Missing required permission (${required.join(' OR ')}).`,
+                status: 403
+            };
+        }
+    }
 
     // 3. AUDIT LOGGING (Always run per check if impersonating)
     if (context.isImpersonating && action) {

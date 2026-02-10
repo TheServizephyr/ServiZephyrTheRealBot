@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { PERMISSIONS } from '@/lib/permissions';
 import { subDays } from 'date-fns';
 
 // Helper function to get business reference from authenticated request
 async function getBusinessRef(req, checkRevoked = false) {
-    const { businessSnap } = await verifyOwnerWithAudit(req, 'manage_dine_in_tables', {}, checkRevoked);
+    const { businessSnap } = await verifyOwnerWithAudit(
+        req,
+        'manage_dine_in_tables',
+        {},
+        checkRevoked,
+        PERMISSIONS.MANAGE_DINE_IN
+    );
     if (!businessSnap || !businessSnap.exists) {
         throw new Error('Business not found');
     }
@@ -15,7 +22,13 @@ async function getBusinessRef(req, checkRevoked = false) {
 export async function GET(req) {
     const firestore = await getFirestore();
     try {
-        const { businessId, businessSnap } = await verifyOwnerWithAudit(req, 'fetch_dine_in_tables');
+        const { businessId, businessSnap } = await verifyOwnerWithAudit(
+            req,
+            'fetch_dine_in_tables',
+            {},
+            false,
+            [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN]
+        );
         const businessRef = businessSnap.ref;
 
         // 1. Fetch ALL tables from the `/tables` subcollection. This is our source of truth.

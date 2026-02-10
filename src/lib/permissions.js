@@ -31,7 +31,6 @@ export const PERMISSIONS = {
     MARK_ORDER_READY: 'mark_order_ready',
     MARK_ORDER_PREPARING: 'mark_order_preparing',
     CANCEL_ORDER: 'cancel_order',
-    CANCEL_ORDER: 'cancel_order',
     REFUND_ORDER: 'refund_order',
     MARK_ORDER_SERVED: 'mark_order_served',
 

@@ -4,10 +4,20 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, getDatabase, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer, sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import Razorpay from 'razorpay';
 
 
 // (Redundant verifyOwnerAndGetBusiness removed in favor of verifyOwnerWithAudit)
+
+const OWNER_LIKE_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
+
+function callerHasPermission(callerRole, callerPermissions, permission) {
+    if (!permission) return false;
+    if (OWNER_LIKE_ROLES.has(callerRole)) return true;
+    if (Array.isArray(callerPermissions) && callerPermissions.includes(permission)) return true;
+    return hasPermission(callerRole, permission);
+}
 
 
 export async function GET(req) {
@@ -19,11 +29,15 @@ export async function GET(req) {
         const orderId = searchParams.get('id');
         const customerId = searchParams.get('customerId');
 
-        const { uid, businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(
+        const { uid, businessId, businessSnap, collectionName, callerRole, callerPermissions } = await verifyOwnerWithAudit(
             req,
             orderId ? 'view_order_details' : 'view_orders',
             orderId ? { orderId, customerId } : { customerId }
         );
+
+        if (!callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_ORDERS)) {
+            return NextResponse.json({ message: 'Access Denied: You cannot view orders.' }, { status: 403 });
+        }
 
         if (orderId) {
             const orderRef = firestore.collection('orders').doc(orderId);
@@ -170,7 +184,7 @@ export async function GET(req) {
 export async function PATCH(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, businessSnap, uid, callerRole } = await verifyOwnerWithAudit(req, 'update_orders_patch', {}, true);
+        const { businessId, businessSnap, uid, callerRole, callerPermissions } = await verifyOwnerWithAudit(req, 'update_orders_patch', {}, true);
         const userRole = callerRole;
 
         const {
@@ -196,6 +210,14 @@ export async function PATCH(req) {
         // 🔧 FIX: Map frontend action to backend flag
         const effectiveIsCashRefund = isCashRefund || action === 'markCashRefunded';
         const effectiveCashRefundIds = cashRefundOrderIds.length > 0 ? cashRefundOrderIds : finalIdsToUpdate;
+
+        // Permission guard for payment/refund mutations
+        if (paymentStatus && !callerHasPermission(userRole, callerPermissions, PERMISSIONS.PROCESS_PAYMENT)) {
+            return NextResponse.json({ message: 'Access Denied: You cannot update payment status.' }, { status: 403 });
+        }
+        if (effectiveIsCashRefund && !callerHasPermission(userRole, callerPermissions, PERMISSIONS.REFUND_ORDER)) {
+            return NextResponse.json({ message: 'Access Denied: You cannot mark refunds.' }, { status: 403 });
+        }
 
         // 1. Gather all unique IDs to pre-fetch in parallel
         const allTargetIds = [...new Set([...finalIdsToUpdate, ...cashRefundOrderIds])];
@@ -239,6 +261,21 @@ export async function PATCH(req) {
 
         // --- 4. Handle Order Status Update (Main Flow) ---
         if (newStatus && finalIdsToUpdate.length > 0) {
+            let requiredPermission = PERMISSIONS.UPDATE_ORDER_STATUS;
+            if (newStatus === 'rejected') {
+                requiredPermission = PERMISSIONS.CANCEL_ORDER;
+            } else if (newStatus === 'preparing') {
+                requiredPermission = PERMISSIONS.MARK_ORDER_PREPARING;
+            } else if (newStatus === 'ready_for_pickup' || newStatus === 'Ready') {
+                requiredPermission = deliveryBoyId ? PERMISSIONS.ASSIGN_RIDER : PERMISSIONS.MARK_ORDER_READY;
+            }
+
+            if (!callerHasPermission(userRole, callerPermissions, requiredPermission)) {
+                return NextResponse.json({
+                    message: `Access Denied: Missing permission '${requiredPermission}'.`
+                }, { status: 403 });
+            }
+
             const validStatuses = [
                 "pending", "confirmed", "preparing", "dispatched",
                 "reached_restaurant", "picked_up", "on_the_way",

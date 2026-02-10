@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export async function GET(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'view_delivery_dashboard');
+        const { businessId, collectionName } = await verifyOwnerWithAudit(
+            req,
+            'view_delivery_dashboard',
+            {},
+            false,
+            PERMISSIONS.VIEW_DELIVERY
+        );
 
         const boysRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys');
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
@@ -217,7 +224,13 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'add_delivery_boy');
+        const { businessId, collectionName } = await verifyOwnerWithAudit(
+            req,
+            'add_delivery_boy',
+            {},
+            false,
+            PERMISSIONS.MANAGE_DELIVERY
+        );
         const { boy } = await req.json();
 
         if (!boy || !boy.name || !boy.phone) {
@@ -251,7 +264,13 @@ export async function POST(req) {
 export async function PATCH(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'update_delivery_boy');
+        const { businessId, collectionName } = await verifyOwnerWithAudit(
+            req,
+            'update_delivery_boy',
+            {},
+            false,
+            PERMISSIONS.MANAGE_DELIVERY
+        );
         const { boy } = await req.json();
 
         if (!boy || !boy.id) {
@@ -278,7 +297,13 @@ export async function PATCH(req) {
 export async function DELETE(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'delete_delivery_boy');
+        const { businessId, collectionName } = await verifyOwnerWithAudit(
+            req,
+            'delete_delivery_boy',
+            {},
+            false,
+            PERMISSIONS.MANAGE_DELIVERY
+        );
         const { searchParams } = new URL(req.url);
         const boyId = searchParams.get('id');
 

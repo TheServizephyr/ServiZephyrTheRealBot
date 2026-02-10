@@ -583,14 +583,33 @@ const StreetVendorDashboardContent = () => {
             try {
                 const userDoc = await getDoc(doc(db, 'users', user.uid));
                 if (userDoc.exists()) {
-                    setUserRole(userDoc.data().role || 'owner');
+                    const userData = userDoc.data();
+                    let effectiveRole = userData.role || 'owner';
+
+                    // Employee access uses `employee_of` owner context.
+                    if (employeeOfOwnerId) {
+                        const storedRole = localStorage.getItem('employeeRole');
+                        if (storedRole) {
+                            effectiveRole = storedRole;
+                        } else {
+                            const linkedOutlets = userData.linkedOutlets || [];
+                            const matchedOutlet = linkedOutlets.find(
+                                (o) => o.ownerId === employeeOfOwnerId && o.status === 'active'
+                            );
+                            if (matchedOutlet?.employeeRole) {
+                                effectiveRole = matchedOutlet.employeeRole;
+                            }
+                        }
+                    }
+
+                    setUserRole(effectiveRole);
                 }
             } catch (err) {
                 console.error("Error fetching user role:", err);
             }
         };
         fetchRole();
-    }, [user]);
+    }, [user, employeeOfOwnerId]);
     const [date, setDate] = useState(null);
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);

@@ -119,17 +119,17 @@ function OwnerDashboardContent({ children }) {
               }
             } else {
               console.error('[Layout] No matching outlet');
-              setUserRole('manager');
+              setUserRole(null);
               localStorage.removeItem('customAllowedPages');
             }
           } else {
             console.error('[Layout] User doc not found');
-            setUserRole('manager');
+            setUserRole(null);
             localStorage.removeItem('customAllowedPages');
           }
         } catch (err) {
           console.error('[Layout] Firestore error:', err);
-          setUserRole('manager');
+          setUserRole(null);
           localStorage.removeItem('customAllowedPages');
         }
       } else {

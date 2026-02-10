@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,13 @@ export async function GET(req) {
         const firestore = await getFirestore();
 
         // Use centralized resolver with request-level caching
-        const { uid: ownerId } = await verifyOwnerWithAudit(req, 'view_connections');
+        const { uid: ownerId } = await verifyOwnerWithAudit(
+            req,
+            'view_connections',
+            {},
+            false,
+            PERMISSIONS.VIEW_SETTINGS
+        );
 
         const restaurantsQuery = await firestore.collection('restaurants')
             .where('ownerId', '==', ownerId)

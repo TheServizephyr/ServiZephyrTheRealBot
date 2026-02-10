@@ -6,6 +6,7 @@ import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { kv } from '@vercel/kv';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,7 +107,13 @@ export async function GET(req) {
         // This block is for authenticated owner dashboard queries.
         // Use standard verifyOwnerWithAudit for robust impersonation handling
         console.log(`[API /settings] Verifying owner...`);
-        const context = await verifyOwnerWithAudit(req, 'view_settings');
+        const context = await verifyOwnerWithAudit(
+            req,
+            'view_settings',
+            {},
+            false,
+            PERMISSIONS.VIEW_SETTINGS
+        );
         const { uid, userData, businessSnap, businessId } = context;
         console.log(`[API /settings] Owner verified: ${uid} for business ${businessId}`);
         const businessRef = businessSnap.ref;
@@ -185,7 +192,13 @@ export async function GET(req) {
 export async function PATCH(req) {
     try {
         // Use standard verifyOwnerWithAudit for robust impersonation handling
-        const context = await verifyOwnerWithAudit(req, 'update_settings');
+        const context = await verifyOwnerWithAudit(
+            req,
+            'update_settings',
+            {},
+            false,
+            [PERMISSIONS.MANAGE_SETTINGS, PERMISSIONS.MANAGE_OUTLET_SETTINGS]
+        );
         const { uid, userData, businessSnap, businessId } = context;
         const businessRef = businessSnap.ref;
         const businessData = businessSnap.data();
