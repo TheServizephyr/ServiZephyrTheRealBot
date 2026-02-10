@@ -28,6 +28,7 @@ function DeliverySettingsPageContent() {
         deliveryRadius: [5],
         deliveryFeeType: 'fixed',
         deliveryFixedFee: 30,
+        deliveryBaseDistance: 0,
         deliveryPerKmFee: 5,
         deliveryFreeThreshold: 500,
         // NEW: Road factor & free zone
@@ -62,19 +63,27 @@ function DeliverySettingsPageContent() {
                 });
                 if (!res.ok) throw new Error("Failed to load settings.");
                 const data = await res.json();
+                const toNum = (value, fallback = 0) => {
+                    const n = Number(value);
+                    return Number.isFinite(n) ? n : fallback;
+                };
                 setSettings({
                     deliveryEnabled: data.deliveryEnabled,
-                    deliveryRadius: [data.deliveryRadius],
-                    deliveryFeeType: data.deliveryFeeType,
-                    deliveryFixedFee: data.deliveryFixedFee,
-                    deliveryPerKmFee: data.deliveryPerKmFee,
-                    deliveryFreeThreshold: data.deliveryFreeThreshold,
+                    deliveryRadius: [toNum(data.deliveryRadius, 5)],
+                    deliveryFeeType: data.deliveryFeeType || 'fixed',
+                    deliveryFixedFee: toNum(data.deliveryFixedFee, 30),
+                    deliveryBaseDistance: toNum(data.deliveryBaseDistance, 0),
+                    deliveryPerKmFee: toNum(data.deliveryPerKmFee, 5),
+                    deliveryFreeThreshold: toNum(data.deliveryFreeThreshold, 500),
                     // NEW: Road factor & free zone
-                    roadDistanceFactor: data.roadDistanceFactor || 1.0,
-                    freeDeliveryRadius: data.freeDeliveryRadius || 0,
-                    freeDeliveryMinOrder: data.freeDeliveryMinOrder || 0,
+                    roadDistanceFactor: toNum(data.roadDistanceFactor, 1.0),
+                    freeDeliveryRadius: toNum(data.freeDeliveryRadius, 0),
+                    freeDeliveryMinOrder: toNum(data.freeDeliveryMinOrder, 0),
                     // NEW: Tiered charges
-                    deliveryTiers: data.deliveryTiers || [],
+                    deliveryTiers: (data.deliveryTiers || []).map(t => ({
+                        minOrder: toNum(t?.minOrder, 0),
+                        fee: toNum(t?.fee, 0),
+                    })),
                 });
             } catch (error) {
                 setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load settings: ${error.message}` });
@@ -98,19 +107,25 @@ function DeliverySettingsPageContent() {
             if (!user) throw new Error("Not authenticated.");
             const idToken = await user.getIdToken();
 
+            const toNum = (value, fallback = 0) => {
+                const n = Number(value);
+                return Number.isFinite(n) ? n : fallback;
+            };
+
             const payload = {
                 deliveryEnabled: settings.deliveryEnabled,
-                deliveryRadius: settings.deliveryRadius[0],
+                deliveryRadius: toNum(settings.deliveryRadius[0], 5),
                 deliveryFeeType: settings.deliveryFeeType,
-                deliveryFixedFee: Number(settings.deliveryFixedFee),
-                deliveryPerKmFee: Number(settings.deliveryPerKmFee),
-                deliveryFreeThreshold: Number(settings.deliveryFreeThreshold),
+                deliveryFixedFee: toNum(settings.deliveryFixedFee, 0),
+                deliveryBaseDistance: toNum(settings.deliveryBaseDistance, 0),
+                deliveryPerKmFee: toNum(settings.deliveryPerKmFee, 0),
+                deliveryFreeThreshold: toNum(settings.deliveryFreeThreshold, 0),
                 // NEW: Road factor & free zone
-                roadDistanceFactor: Number(settings.roadDistanceFactor),
-                freeDeliveryRadius: Number(settings.freeDeliveryRadius),
-                freeDeliveryMinOrder: Number(settings.freeDeliveryMinOrder),
+                roadDistanceFactor: toNum(settings.roadDistanceFactor, 1.0),
+                freeDeliveryRadius: toNum(settings.freeDeliveryRadius, 0),
+                freeDeliveryMinOrder: toNum(settings.freeDeliveryMinOrder, 0),
                 // NEW: Tiered charges
-                deliveryTiers: settings.deliveryTiers.map(t => ({ minOrder: Number(t.minOrder), fee: Number(t.fee) })),
+                deliveryTiers: settings.deliveryTiers.map(t => ({ minOrder: toNum(t.minOrder, 0), fee: toNum(t.fee, 0) })),
             };
 
             const queryParams = new URLSearchParams();

@@ -9,6 +9,7 @@ import { recalculateTabTotals, validateTabToken } from '@/lib/dinein-utils';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 import { deobfuscateGuestId } from '@/lib/guest-utils';
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from '@/services/order/orderPricing';
+import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 
 const generateSecureToken = async (firestore, identifier) => {
     console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
@@ -31,6 +32,11 @@ const generateSecureToken = async (firestore, identifier) => {
     await authTokenRef.set(data);
     console.log(`[API /order/create] Token generated: ${token}`);
     return token;
+};
+
+const toFiniteNumber = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
 };
 
 
@@ -445,6 +451,13 @@ export async function processOrderV1(body, firestore) {
             console.error("[API /order/create] Validation Error: Full, structured address required for delivery.");
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
+        if (deliveryType === 'delivery') {
+            const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
+            const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
+            if (customerLat === null || customerLng === null) {
+                return NextResponse.json({ message: 'A valid delivery location is required for delivery orders.' }, { status: 400 });
+            }
+        }
 
         const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
         if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
@@ -595,7 +608,10 @@ export async function processOrderV1(body, firestore) {
         }
 
         // --- COUPON RE-VALIDATION ---
-        let finalDiscount = loyaltyDiscount || 0;
+        let finalDiscount = 0;
+        if (Number(loyaltyDiscount) > 0) {
+            console.warn('[API /order/create] Ignoring client-provided loyaltyDiscount; server side validation required.');
+        }
         let verifiedCoupon = null;
 
         if (coupon && coupon.id) {
@@ -649,11 +665,67 @@ export async function processOrderV1(body, firestore) {
         const serverCgst = taxes.cgst;
         const serverSgst = taxes.sgst;
 
-        // Delivery Charge Logic (Simple server-side enforcement)
-        let finalDeliveryCharge = deliveryCharge || 0;
+        // Delivery charge/range is always re-validated on server for delivery orders.
+        let finalDeliveryCharge = 0;
+        if (deliveryType === 'delivery') {
+            const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
+            const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
+            const restaurantLat = toFiniteNumber(
+                businessData.coordinates?.lat ??
+                businessData.address?.latitude ??
+                businessData.businessAddress?.latitude
+            );
+            const restaurantLng = toFiniteNumber(
+                businessData.coordinates?.lng ??
+                businessData.address?.longitude ??
+                businessData.businessAddress?.longitude
+            );
+
+            if (customerLat === null || customerLng === null || restaurantLat === null || restaurantLng === null) {
+                return NextResponse.json(
+                    { message: 'Unable to validate delivery location for this order.' },
+                    { status: 400 }
+                );
+            }
+
+            const settings = {
+                deliveryEnabled: getSetting('deliveryEnabled', true),
+                deliveryRadius: getSetting('deliveryRadius', 10),
+                deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
+                fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
+                perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
+                baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
+                freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
+                freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
+                freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
+                roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
+                deliveryTiers: getSetting('deliveryTiers', []),
+            };
+
+            if (settings.deliveryEnabled === false) {
+                return NextResponse.json({ message: 'Delivery is currently disabled for this restaurant.' }, { status: 400 });
+            }
+
+            const aerialDistance = calculateHaversineDistance(
+                restaurantLat,
+                restaurantLng,
+                customerLat,
+                customerLng
+            );
+
+            const deliveryResult = calculateDeliveryCharge(aerialDistance, pricing.serverSubtotal, settings);
+            if (!deliveryResult.allowed) {
+                return NextResponse.json(
+                    { message: deliveryResult.message || 'Address is outside delivery range.' },
+                    { status: 400 }
+                );
+            }
+
+            finalDeliveryCharge = Number(deliveryResult.charge) || 0;
+        }
+
+        // Coupon-level free delivery override is applied after server distance/range validation.
         if (verifiedCoupon && verifiedCoupon.type === 'free_delivery') {
-            finalDeliveryCharge = 0;
-        } else if (businessData.freeDeliveryThreshold && pricing.serverSubtotal >= businessData.freeDeliveryThreshold) {
             finalDeliveryCharge = 0;
         }
 

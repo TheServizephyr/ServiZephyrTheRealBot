@@ -19,6 +19,93 @@ function callerHasPermission(callerRole, callerPermissions, permission) {
     return hasPermission(callerRole, permission);
 }
 
+const VALID_STATUSES = new Set([
+    'pending',
+    'confirmed',
+    'preparing',
+    'prepared',
+    'ready_for_pickup',
+    'dispatched',
+    'reached_restaurant',
+    'picked_up',
+    'on_the_way',
+    'delivery_attempted',
+    'failed_delivery',
+    'returned_to_restaurant',
+    'delivered',
+    'rejected',
+    'ready',
+    'Ready',
+]);
+
+function getAllowedNextStatuses(orderData = {}) {
+    const isPickup = orderData.deliveryType === 'pickup';
+    const isDelivery = orderData.deliveryType === 'delivery';
+
+    if (isPickup) {
+        return {
+            pending: new Set(['confirmed', 'rejected']),
+            confirmed: new Set(['preparing']),
+            preparing: new Set(['ready_for_pickup']),
+            ready_for_pickup: new Set(['picked_up']),
+        };
+    }
+
+    if (isDelivery) {
+        return {
+            pending: new Set(['confirmed', 'rejected']),
+            confirmed: new Set(['preparing']),
+            preparing: new Set(['prepared']),
+            prepared: new Set(['ready_for_pickup']),
+            ready_for_pickup: new Set(['dispatched']),
+            dispatched: new Set(['delivered']),
+        };
+    }
+
+    // Dine-in / other internal flows remain backward-compatible.
+    return {
+        pending: new Set(['confirmed', 'rejected']),
+        confirmed: new Set(['preparing']),
+        preparing: new Set(['ready', 'ready_for_pickup']),
+        ready: new Set(['delivered']),
+    };
+}
+
+function canTransition(orderData, fromStatus, toStatus) {
+    if (fromStatus === toStatus) return true;
+    if (toStatus === 'rejected') return fromStatus === 'pending';
+    const allowedNextStatuses = getAllowedNextStatuses(orderData);
+    return !!allowedNextStatuses[fromStatus]?.has(toStatus);
+}
+
+function redactOrderForViewer(orderData = {}, canViewCustomerDetails = true, canViewPaymentDetails = true) {
+    const redacted = { ...orderData };
+
+    if (!canViewCustomerDetails) {
+        delete redacted.customerName;
+        delete redacted.customerPhone;
+        delete redacted.customerAddress;
+        delete redacted.customerId;
+        delete redacted.userId;
+        delete redacted.customer;
+    }
+
+    if (!canViewPaymentDetails) {
+        delete redacted.paymentDetails;
+        delete redacted.paymentMethod;
+        delete redacted.paymentStatus;
+        delete redacted.subtotal;
+        delete redacted.cgst;
+        delete redacted.sgst;
+        delete redacted.deliveryCharge;
+        delete redacted.discount;
+        delete redacted.totalAmount;
+        delete redacted.amount;
+    }
+
+    return redacted;
+}
+
 
 export async function GET(req) {
     try {
@@ -57,10 +144,14 @@ export async function GET(req) {
             }
 
             const businessData = businessSnap.data();
+            const canViewCustomerDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_CUSTOMERS);
+            const canViewPaymentDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_PAYMENTS);
+
+            const redactedOrderData = redactOrderForViewer(orderData, canViewCustomerDetails, canViewPaymentDetails);
 
             // If customerId is provided, fetch customer details as well
             let customerData = null;
-            if (customerId) {
+            if (customerId && canViewCustomerDetails) {
                 const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
                 const customerRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers').doc(customerId);
                 const customerSnap = await customerRef.get();
@@ -70,11 +161,19 @@ export async function GET(req) {
             }
 
 
-            return NextResponse.json({ order: orderData, restaurant: businessData, customer: customerData }, { status: 200 });
+            return NextResponse.json({
+                order: redactedOrderData,
+                restaurant: businessData,
+                customer: customerData,
+                canViewCustomerDetails,
+                canViewPaymentDetails,
+            }, { status: 200 });
         }
 
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
+        const canViewCustomerDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_CUSTOMERS);
+        const canViewPaymentDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_PAYMENTS);
 
         const ordersRef = firestore.collection('orders');
         // Exclude orders with status 'awaiting_payment' (payment not completed yet)
@@ -114,7 +213,7 @@ export async function GET(req) {
                     ...item,
                     qty: item.quantity || item.qty,
                 }));
-                return {
+                return redactOrderForViewer({
                     id: doc.id,
                     ...data,
                     items: itemsWithQty,
@@ -122,7 +221,7 @@ export async function GET(req) {
                     customer: data.customerName,
                     amount: data.totalAmount,
                     statusHistory,
-                };
+                }, canViewCustomerDetails, canViewPaymentDetails);
             });
 
             return NextResponse.json({ orders }, { status: 200 });
@@ -161,7 +260,7 @@ export async function GET(req) {
             }));
 
 
-            return {
+            return redactOrderForViewer({
                 id: doc.id,
                 ...data,
                 items: itemsWithQty,
@@ -169,7 +268,7 @@ export async function GET(req) {
                 customer: data.customerName,
                 amount: data.totalAmount,
                 statusHistory,
-            };
+            }, canViewCustomerDetails, canViewPaymentDetails);
         });
 
         return NextResponse.json({ orders }, { status: 200 });
@@ -266,6 +365,8 @@ export async function PATCH(req) {
                 requiredPermission = PERMISSIONS.CANCEL_ORDER;
             } else if (newStatus === 'preparing') {
                 requiredPermission = PERMISSIONS.MARK_ORDER_PREPARING;
+            } else if (newStatus === 'prepared') {
+                requiredPermission = PERMISSIONS.MARK_ORDER_READY;
             } else if (newStatus === 'ready_for_pickup' || newStatus === 'Ready') {
                 requiredPermission = deliveryBoyId ? PERMISSIONS.ASSIGN_RIDER : PERMISSIONS.MARK_ORDER_READY;
             }
@@ -276,14 +377,14 @@ export async function PATCH(req) {
                 }, { status: 403 });
             }
 
-            const validStatuses = [
-                "pending", "confirmed", "preparing", "dispatched",
-                "reached_restaurant", "picked_up", "on_the_way",
-                "delivery_attempted", "failed_delivery", "returned_to_restaurant",
-                "delivered", "rejected", "ready_for_pickup", "Ready"
-            ];
-            if (!validStatuses.includes(newStatus)) {
+            if (!VALID_STATUSES.has(newStatus)) {
                 return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
+            }
+
+            if (deliveryBoyId && newStatus !== 'ready_for_pickup') {
+                return NextResponse.json({
+                    message: 'Rider can only be assigned while moving order to ready_for_pickup.'
+                }, { status: 400 });
             }
 
             // Optional Rider Capacity Check (Only if assigning rider)
@@ -306,6 +407,20 @@ export async function PATCH(req) {
                 if (!orderSnap || orderSnap.data().restaurantId !== businessId) continue;
 
                 const orderData = orderSnap.data();
+                const currentStatus = orderData.status;
+
+                if (!canTransition(orderData, currentStatus, newStatus)) {
+                    return NextResponse.json({
+                        message: `Invalid status transition for order ${id}: ${currentStatus} -> ${newStatus}.`
+                    }, { status: 400 });
+                }
+
+                if (newStatus === 'ready_for_pickup' && orderData.deliveryType === 'delivery' && !deliveryBoyId) {
+                    return NextResponse.json({
+                        message: 'Delivery orders require rider assignment before moving to ready_for_pickup.'
+                    }, { status: 400 });
+                }
+
                 const updateData = {
                     status: newStatus,
                     statusHistory: FieldValue.arrayUnion({

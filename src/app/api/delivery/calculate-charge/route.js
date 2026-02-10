@@ -7,13 +7,20 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 
+function toFiniteNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
 export async function POST(req) {
     try {
         const body = await req.json();
         const { restaurantId, addressLat, addressLng, subtotal } = body;
-        const subtotalNum = parseFloat(subtotal) || 0;
+        const subtotalNum = Number(subtotal) || 0;
+        const addressLatNum = toFiniteNumber(addressLat);
+        const addressLngNum = toFiniteNumber(addressLng);
 
-        if (!restaurantId || !addressLat || !addressLng || subtotal === undefined) {
+        if (!restaurantId || addressLatNum === null || addressLngNum === null || subtotal === undefined) {
             return NextResponse.json(
                 { error: 'Missing required fields: restaurantId, addressLat, addressLng, subtotal' },
                 { status: 400 }
@@ -35,13 +42,21 @@ export async function POST(req) {
 
         // ✅ FIXED: Support all possible coordinate field structures
         // Priority: coordinates.lat/lng → address.latitude/longitude → businessAddress.latitude/longitude
-        const restaurantLat = restaurantData.coordinates?.lat || restaurantData.address?.latitude || restaurantData.businessAddress?.latitude;
-        const restaurantLng = restaurantData.coordinates?.lng || restaurantData.address?.longitude || restaurantData.businessAddress?.longitude;
+        const restaurantLat = toFiniteNumber(
+            restaurantData.coordinates?.lat ??
+            restaurantData.address?.latitude ??
+            restaurantData.businessAddress?.latitude
+        );
+        const restaurantLng = toFiniteNumber(
+            restaurantData.coordinates?.lng ??
+            restaurantData.address?.longitude ??
+            restaurantData.businessAddress?.longitude
+        );
 
         console.log('[API /delivery/calculate-charge] 📍 Restaurant:', { lat: restaurantLat, lng: restaurantLng });
-        console.log('[API /delivery/calculate-charge] 📍 Customer:', { lat: addressLat, lng: addressLng });
+        console.log('[API /delivery/calculate-charge] 📍 Customer:', { lat: addressLatNum, lng: addressLngNum });
 
-        if (!restaurantLat || !restaurantLng) {
+        if (restaurantLat === null || restaurantLng === null) {
             console.error('[API /delivery/calculate-charge] ❌ Restaurant coordinates not found');
             return NextResponse.json(
                 { error: 'Restaurant coordinates not configured' },
@@ -53,8 +68,8 @@ export async function POST(req) {
         const aerialDistance = calculateHaversineDistance(
             restaurantLat,
             restaurantLng,
-            addressLat,
-            addressLng
+            addressLatNum,
+            addressLngNum
         );
 
         // ✅ CRITICAL: Read delivery settings from subcollection (where owner dashboard saves them)
@@ -68,6 +83,7 @@ export async function POST(req) {
 
         // Get delivery settings - use migrated field names with subcollection priority
         const settings = {
+            deliveryEnabled: getSetting('deliveryEnabled', true),
             deliveryRadius: getSetting('deliveryRadius', 10),
             deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
             fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
@@ -76,11 +92,24 @@ export async function POST(req) {
             freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
             freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
             freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
-            roadDistanceFactor: getSetting('roadDistanceFactor', 1.3), // default 1.3 (road ~30% longer)
+            roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
             deliveryTiers: getSetting('deliveryTiers', []),
         };
 
         console.log('[API /delivery/calculate-charge] ⚙️ Settings:', JSON.stringify(settings));
+
+        if (settings.deliveryEnabled === false) {
+            return NextResponse.json({
+                success: true,
+                allowed: false,
+                charge: 0,
+                aerialDistance: 0,
+                roadDistance: 0,
+                roadFactor: settings.roadDistanceFactor,
+                message: 'Delivery is currently disabled for this restaurant.'
+            });
+        }
+
         const result = calculateDeliveryCharge(aerialDistance, subtotalNum, settings);
         console.log('[API /delivery/calculate-charge] 📊 Result:', JSON.stringify(result));
 

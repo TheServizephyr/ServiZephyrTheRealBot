@@ -21,13 +21,14 @@ const statusConfig = {
     paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
     confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1, description: "The restaurant has confirmed your order." },
     preparing: { title: 'Preparing Your Order', icon: <CookingPot size={24} />, step: 2, description: "Your meal is being prepared." },
-    dispatched: { title: 'Rider Assigned', icon: <Bike size={24} />, step: 3, description: "A delivery partner has been assigned to your order." },
-    on_the_way: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 4, description: "Our delivery hero is on their way." },
-    rider_arrived: { title: 'Rider Reached', icon: <MapPin size={24} />, step: 5, description: "Your delivery partner has arrived at your location!" },
-    delivered: { title: 'Delivered', icon: <Home size={24} />, step: 6, description: "Enjoy your meal!" },
-    rejected: { title: 'Order Cancelled', icon: <XCircle size={24} />, step: 6, isError: true, description: "The restaurant could not accept your order." },
-    picked_up: { title: 'Picked Up', icon: <ShoppingBag size={24} />, step: 6, description: "You have picked up your order." },
-    ready_for_pickup: { title: 'Ready for Pickup', icon: <PackageCheck size={24} />, step: 4, description: 'Your order is ready for pickup.' }
+    prepared: { title: 'Order Prepared', icon: <PackageCheck size={24} />, step: 3, description: 'Your order is prepared and waiting for rider assignment.' },
+    dispatched: { title: 'Rider Assigned', icon: <Bike size={24} />, step: 4, description: "A delivery partner has been assigned to your order." },
+    on_the_way: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 5, description: "Our delivery hero is on their way." },
+    rider_arrived: { title: 'Rider Reached', icon: <MapPin size={24} />, step: 6, description: "Your delivery partner has arrived at your location!" },
+    delivered: { title: 'Delivered', icon: <Home size={24} />, step: 7, description: "Enjoy your meal!" },
+    rejected: { title: 'Order Cancelled', icon: <XCircle size={24} />, step: 7, isError: true, description: "The restaurant could not accept your order." },
+    picked_up: { title: 'Picked Up', icon: <ShoppingBag size={24} />, step: 7, description: "You have picked up your order." },
+    ready_for_pickup: { title: 'Ready for Pickup', icon: <PackageCheck size={24} />, step: 5, description: 'Your order is ready for pickup.' }
 };
 
 // Internal Components
@@ -71,6 +72,7 @@ const EnhancedTimeline = ({ currentStatus }) => {
     const steps = [
         { key: 'confirmed', label: 'Order Confirmed', icon: <CheckCircle size={16} /> },
         { key: 'preparing', label: 'Cooking', icon: <CookingPot size={16} /> },
+        { key: 'prepared', label: 'Prepared', icon: <PackageCheck size={16} /> },
         { key: 'dispatched', label: 'Rider Assigned', icon: <Bike size={16} /> },
         { key: 'on_the_way', label: 'Out for Delivery', icon: <Bike size={16} /> },
         { key: 'rider_arrived', label: 'Rider Reached', icon: <MapPin size={16} /> },
@@ -92,31 +94,34 @@ const EnhancedTimeline = ({ currentStatus }) => {
             case 'preparing':
                 return 1; // Cooking
 
+            case 'prepared':
+                return 2; // Food is prepared
+
             // Rider assignment & restaurant pickup (all show as "Rider Assigned")
             case 'ready_for_pickup': // ✅ Added support for new flow
             case 'reached_restaurant':
             case 'picked_up':
-                return 2; // Rider Assigned (rider collecting food)
+                return 3; // Rider Assigned (rider collecting food)
 
             // Delivery in progress
             case 'dispatched': // ✅ MOVED `dispatched` here (Step 3: Out for Delivery)
             case 'on_the_way':
-                return 3; // Out for Delivery (rider clicked START DELIVERY)
+                return 4; // Out for Delivery (rider clicked START DELIVERY)
 
             // Rider reached customer
             case 'rider_arrived':
-                return 4; // Rider Reached (rider clicked REACHED LOCATION)
+                return 5; // Rider Reached (rider clicked REACHED LOCATION)
 
             // Final states
             case 'delivered':
             case 'picked_up_by_customer':
-                return 5; // Delivered
+                return 6; // Delivered
 
             // Error/cancelled states
             case 'rejected':
             case 'cancelled':
             case 'failed_delivery':
-                return 5; // Show as final state
+                return 6; // Show as final state
 
             default:
                 console.warn('[Timeline] Unknown status:', status);
@@ -619,6 +624,12 @@ function OrderTrackingContent() {
                                             statusText = "Preparing Your Food";
                                             statusColor = "bg-orange-50 text-orange-700";
                                             icon = <CookingPot size={18} className="animate-pulse" />;
+                                            break;
+
+                                        case 'prepared':
+                                            statusText = "Order Prepared";
+                                            statusColor = "bg-emerald-50 text-emerald-700";
+                                            icon = <PackageCheck size={18} />;
                                             break;
 
                                         case 'dispatched':

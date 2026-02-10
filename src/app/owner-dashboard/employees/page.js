@@ -466,7 +466,25 @@ function EmployeeCard({ employee, onAction, isPending }) {
 export default function EmployeesPage() {
     const { user } = useFirebase();
     const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+
+    const buildEmployeesApiUrl = useCallback((basePath = '/api/owner/employees', extraParams = {}) => {
+        const url = new URL(basePath, window.location.origin);
+        if (impersonatedOwnerId) {
+            url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.set('employee_of', employeeOfOwnerId);
+        }
+
+        Object.entries(extraParams).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                url.searchParams.set(key, String(value));
+            }
+        });
+
+        return `${url.pathname}${url.search}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const [employees, setEmployees] = useState([]);
     const [pendingInvites, setPendingInvites] = useState([]);
@@ -483,10 +501,7 @@ export default function EmployeesPage() {
 
         try {
             const token = await user.getIdToken();
-            let url = '/api/owner/employees';
-            if (employeeOfOwnerId) {
-                url += `?employee_of=${employeeOfOwnerId}`;
-            }
+            const url = buildEmployeesApiUrl();
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
@@ -507,7 +522,7 @@ export default function EmployeesPage() {
         } finally {
             setLoading(false);
         }
-    }, [user, employeeOfOwnerId]);
+    }, [user, buildEmployeesApiUrl]);
 
     useEffect(() => {
         fetchEmployees();
@@ -519,7 +534,7 @@ export default function EmployeesPage() {
             setActionLoading(true);
 
             const token = await user.getIdToken();
-            const response = await fetch('/api/owner/employees', {
+            const response = await fetch(buildEmployeesApiUrl(), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -578,21 +593,21 @@ export default function EmployeesPage() {
 
             if (action === 'remove' && employee.status === 'pending') {
                 // Cancel pending invite
-                await fetch(`/api/owner/employees?inviteCode=${employee.id}`, {
+                await fetch(buildEmployeesApiUrl('/api/owner/employees', { inviteCode: employee.id }), {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` },
                 });
                 setPendingInvites(prev => prev.filter(p => p.id !== employee.id));
             } else if (action === 'remove') {
                 // Remove active employee
-                await fetch(`/api/owner/employees?employeeId=${employee.userId}`, {
+                await fetch(buildEmployeesApiUrl('/api/owner/employees', { employeeId: employee.userId }), {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` },
                 });
                 setEmployees(prev => prev.filter(e => e.userId !== employee.userId));
             } else {
                 // Update employee status
-                await fetch('/api/owner/employees', {
+                await fetch(buildEmployeesApiUrl(), {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',

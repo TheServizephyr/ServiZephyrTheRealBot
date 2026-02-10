@@ -24,6 +24,7 @@ import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 import { createOrderV1, processOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
 import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
+import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
@@ -92,6 +93,11 @@ const optimizeItemSnapshot = (item) => {
     }
 
     return snapshot;
+};
+
+const toFiniteNumber = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
 };
 
 /**
@@ -277,14 +283,82 @@ export async function createOrderV2(req) {
         const taxes = calculateTaxes(pricing.serverSubtotal, business.data);
         const serverCgst = taxes.cgst;
         const serverSgst = taxes.sgst;
+        const safeDiscount = 0;
+        if (Number(discount) > 0) {
+            console.warn('[createOrderV2] Ignoring client-provided discount; server side discount validation is required.');
+        }
 
-        // Use server-calculated totals, but keep client charges (delivery/packaging) for now
-        // as they are calculated by complex logic (like distance API) that we don't want to duplicate here
-        // UNLESS we have a better way to verify them.
-        // Use server-calculated totals, but include all charges and fees
+        // Re-validate delivery range/charge on server to prevent client tampering.
+        let validatedDeliveryCharge = 0;
+        if (deliveryType === 'delivery') {
+            const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
+            const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
+            const restaurantLat = toFiniteNumber(
+                business.data.coordinates?.lat ??
+                business.data.address?.latitude ??
+                business.data.businessAddress?.latitude
+            );
+            const restaurantLng = toFiniteNumber(
+                business.data.coordinates?.lng ??
+                business.data.address?.longitude ??
+                business.data.businessAddress?.longitude
+            );
+
+            if (!address?.full || customerLat === null || customerLng === null || restaurantLat === null || restaurantLng === null) {
+                await idempotencyRepository.fail(idempotencyKey, new Error('Invalid delivery address coordinates'));
+                return buildErrorResponse({
+                    message: 'A valid delivery address is required.',
+                    status: 400
+                });
+            }
+
+            const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
+            const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
+            const getSetting = (key, fallback) => deliveryConfig[key] ?? business.data[key] ?? fallback;
+
+            const settings = {
+                deliveryEnabled: getSetting('deliveryEnabled', true),
+                deliveryRadius: getSetting('deliveryRadius', 10),
+                deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
+                fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
+                perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
+                baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
+                freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
+                freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
+                freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
+                roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
+                deliveryTiers: getSetting('deliveryTiers', []),
+            };
+
+            if (settings.deliveryEnabled === false) {
+                await idempotencyRepository.fail(idempotencyKey, new Error('Delivery disabled'));
+                return buildErrorResponse({
+                    message: 'Delivery is currently disabled for this restaurant.',
+                    status: 400
+                });
+            }
+
+            const aerialDistance = calculateHaversineDistance(
+                restaurantLat,
+                restaurantLng,
+                customerLat,
+                customerLng
+            );
+            const deliveryResult = calculateDeliveryCharge(aerialDistance, pricing.serverSubtotal, settings);
+            if (!deliveryResult.allowed) {
+                await idempotencyRepository.fail(idempotencyKey, new Error(deliveryResult.message || 'Out of delivery range'));
+                return buildErrorResponse({
+                    message: deliveryResult.message || 'Address is outside delivery range.',
+                    status: 400
+                });
+            }
+
+            validatedDeliveryCharge = Number(deliveryResult.charge) || 0;
+        }
+
         const serverGrandTotal = pricing.serverSubtotal + serverCgst + serverSgst +
-            (deliveryCharge || 0) + (packagingCharge || 0) + (tipAmount || 0) +
-            (platformFee || 0) + (convenienceFee || 0) + (serviceFee || 0) - (discount || 0);
+            validatedDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0) +
+            (platformFee || 0) + (convenienceFee || 0) + (serviceFee || 0) - safeDiscount;
 
         console.log(`[createOrderV2] Server billing verification: CGST=${serverCgst}, SGST=${serverSgst}, GrandTotal=${serverGrandTotal}`);
 
@@ -428,13 +502,13 @@ export async function createOrderV2(req) {
                 subtotal: pricing.serverSubtotal, // Server-calculated
                 cgst: serverCgst, // Server-calculated
                 sgst: serverSgst, // Server-calculated
-                deliveryCharge: deliveryCharge || 0,
+                deliveryCharge: validatedDeliveryCharge,
                 diningPreference: sanitizedDiningPreference,
                 packagingCharge: packagingCharge || 0,
                 platformFee: platformFee || 0,
                 convenienceFee: convenienceFee || 0,
                 serviceFee: serviceFee || 0,
-                discount: discount || 0,
+                discount: safeDiscount,
                 totalAmount: serverGrandTotal, // Server-calculated
                 status: 'awaiting_payment', // SAME as V1
                 orderDate: FieldValue.serverTimestamp(),
@@ -450,7 +524,7 @@ export async function createOrderV2(req) {
             // Build servizephyr_payload for webhook (V1 parity)
             const servizephyrPayload = {
                 customerDetails: { name, phone: normalizedPhone, address },
-                billDetails: { subtotal: pricing.serverSubtotal, grandTotal: serverGrandTotal, cgst: serverCgst, sgst: serverSgst, deliveryCharge, tipAmount },
+                billDetails: { subtotal: pricing.serverSubtotal, grandTotal: serverGrandTotal, cgst: serverCgst, sgst: serverSgst, deliveryCharge: validatedDeliveryCharge, tipAmount },
                 items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
                 restaurantId: business.id, // ✅ FIX
                 userId,
@@ -596,13 +670,13 @@ export async function createOrderV2(req) {
             subtotal: pricing.serverSubtotal, // Server-calculated
             cgst: serverCgst,
             sgst: serverSgst,
-            deliveryCharge: deliveryCharge || 0,
+            deliveryCharge: validatedDeliveryCharge,
             diningPreference: sanitizedDiningPreference,
             packagingCharge: packagingCharge || 0,
             platformFee: platformFee || 0,
             convenienceFee: convenienceFee || 0,
             serviceFee: serviceFee || 0,
-            discount: discount || 0,
+            discount: safeDiscount,
             totalAmount: serverGrandTotal,
             status: 'pending', // SAME status as V1
             orderDate: FieldValue.serverTimestamp(),

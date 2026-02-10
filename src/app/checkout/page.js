@@ -1004,6 +1004,51 @@ const CheckoutPageInternal = () => {
             }
             */
 
+            // Final delivery validation before order create
+            if (deliveryType === 'delivery' && selectedAddress) {
+                try {
+                    const lat = selectedAddress.lat ?? selectedAddress.latitude;
+                    const lng = selectedAddress.lng ?? selectedAddress.longitude;
+
+                    const validationRes = await fetch('/api/delivery/calculate-charge', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            restaurantId,
+                            addressLat: lat,
+                            addressLng: lng,
+                            subtotal
+                        })
+                    });
+                    const validationData = await validationRes.json();
+
+                    if (!validationRes.ok || !validationData.allowed) {
+                        const errorMsg = validationData.message || 'Your address is beyond our delivery range.';
+                        setInfoDialog({
+                            isOpen: true,
+                            title: '🚫 Delivery Not Available',
+                            message: `${errorMsg}\n\nPlease select a different address or choose pickup/dine-in.`
+                        });
+                        setIsProcessingPayment(false);
+                        return;
+                    }
+
+                    if (validationData.charge !== undefined) {
+                        orderData.deliveryCharge = validationData.charge;
+                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (convenienceFee || 0) + (tipAmount || 0);
+                    }
+                } catch (validationErr) {
+                    console.error('[Checkout] Delivery validation error:', validationErr);
+                    setInfoDialog({
+                        isOpen: true,
+                        title: 'Validation Error',
+                        message: 'Could not verify delivery availability. Please try again.'
+                    });
+                    setIsProcessingPayment(false);
+                    return;
+                }
+            }
+
             // NEW ORDER CREATION (original flow)
             console.log(`[Checkout Page] Sending order to /api/order/create. PaymentMethod: ${paymentMethod}, ExistingOrderId: ${orderData.existingOrderId}`);
             const res = await fetch('/api/order/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
@@ -1274,6 +1319,10 @@ const CheckoutPageInternal = () => {
 
         if (deliveryType === 'delivery' && !selectedAddress) {
             setError("Please select or add a delivery address.");
+            return false;
+        }
+        if (deliveryType === 'delivery' && deliveryValidation && deliveryValidation.allowed === false) {
+            setError(deliveryValidation.message || "Your selected address is outside delivery range.");
             return false;
         }
         if (deliveryType === 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {

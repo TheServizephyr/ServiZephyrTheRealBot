@@ -64,35 +64,31 @@ export async function GET(req) {
 
         // Fetch from sub-collection
         const configDoc = await businessRef.collection('delivery_settings').doc('config').get();
+        const parentDoc = await businessRef.get();
+        const parentData = parentDoc.data() || {};
 
-        let settings = {};
-        if (configDoc.exists) {
-            settings = configDoc.data();
-        } else {
-            // Fallback: Read from parent doc if migration hasn't run yet?
-            // Or return defaults. Let's return defaults + parent doc fallback if essential.
-            // For now, assume migration populated it or return defaults.
-            const parentDoc = await businessRef.get();
-            const parentData = parentDoc.data();
+        const defaults = {
+            deliveryEnabled: true,
+            deliveryRadius: 5,
+            deliveryFeeType: 'fixed',
+            deliveryFixedFee: 30,
+            deliveryBaseDistance: 0,
+            deliveryPerKmFee: 5,
+            deliveryFreeThreshold: 500,
+            deliveryOnlinePaymentEnabled: true,
+            deliveryCodEnabled: true,
+            roadDistanceFactor: 1.0,
+            freeDeliveryRadius: 0,
+            freeDeliveryMinOrder: 0,
+            deliveryTiers: [],
+        };
 
-            settings = {
-                deliveryEnabled: parentData.deliveryEnabled ?? true,
-                deliveryRadius: parentData.deliveryRadius ?? 5,
-                deliveryFeeType: parentData.deliveryFeeType ?? 'fixed',
-                deliveryFixedFee: parentData.deliveryFixedFee ?? 30,
-                deliveryPerKmFee: parentData.deliveryPerKmFee ?? 5,
-                deliveryBaseDistance: parentData.deliveryBaseDistance ?? 0, // NEW: Included KM
-                deliveryFreeThreshold: parentData.deliveryFreeThreshold ?? 500,
-                deliveryOnlinePaymentEnabled: parentData.deliveryOnlinePaymentEnabled ?? true,
-                deliveryCodEnabled: parentData.deliveryCodEnabled ?? true,
-                // NEW: Road factor & free zone
-                roadDistanceFactor: parentData.roadDistanceFactor ?? 1.0,
-                freeDeliveryRadius: parentData.freeDeliveryRadius ?? 0,
-                freeDeliveryMinOrder: parentData.freeDeliveryMinOrder ?? 0,
-                // NEW: Tiered charges
-                deliveryTiers: parentData.deliveryTiers ?? [],
-            };
-        }
+        const configData = configDoc.exists ? configDoc.data() || {} : {};
+        const settings = {
+            ...defaults,
+            ...parentData,
+            ...configData,
+        };
 
         return NextResponse.json(settings);
 
@@ -106,6 +102,10 @@ export async function PATCH(req) {
     try {
         const { businessRef, businessId } = await verifyUserAndGetData(req);
         const updates = await req.json();
+        const toFiniteNumber = (value, fallback = 0) => {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : fallback;
+        };
 
         // Whitelist allowed fields to prevent pollution
         const allowedFields = [
@@ -122,6 +122,22 @@ export async function PATCH(req) {
         allowedFields.forEach(field => {
             if (updates[field] !== undefined) cleanUpdates[field] = updates[field];
         });
+
+        // Normalize numeric delivery fields for consistent downstream calculation.
+        if (cleanUpdates.deliveryRadius !== undefined) cleanUpdates.deliveryRadius = toFiniteNumber(cleanUpdates.deliveryRadius, 5);
+        if (cleanUpdates.deliveryFixedFee !== undefined) cleanUpdates.deliveryFixedFee = toFiniteNumber(cleanUpdates.deliveryFixedFee, 0);
+        if (cleanUpdates.deliveryBaseDistance !== undefined) cleanUpdates.deliveryBaseDistance = toFiniteNumber(cleanUpdates.deliveryBaseDistance, 0);
+        if (cleanUpdates.deliveryPerKmFee !== undefined) cleanUpdates.deliveryPerKmFee = toFiniteNumber(cleanUpdates.deliveryPerKmFee, 0);
+        if (cleanUpdates.deliveryFreeThreshold !== undefined) cleanUpdates.deliveryFreeThreshold = toFiniteNumber(cleanUpdates.deliveryFreeThreshold, 0);
+        if (cleanUpdates.roadDistanceFactor !== undefined) cleanUpdates.roadDistanceFactor = Math.max(1.0, toFiniteNumber(cleanUpdates.roadDistanceFactor, 1.0));
+        if (cleanUpdates.freeDeliveryRadius !== undefined) cleanUpdates.freeDeliveryRadius = toFiniteNumber(cleanUpdates.freeDeliveryRadius, 0);
+        if (cleanUpdates.freeDeliveryMinOrder !== undefined) cleanUpdates.freeDeliveryMinOrder = toFiniteNumber(cleanUpdates.freeDeliveryMinOrder, 0);
+        if (Array.isArray(cleanUpdates.deliveryTiers)) {
+            cleanUpdates.deliveryTiers = cleanUpdates.deliveryTiers.map(t => ({
+                minOrder: toFiniteNumber(t?.minOrder, 0),
+                fee: toFiniteNumber(t?.fee, 0),
+            }));
+        }
 
         cleanUpdates.updatedAt = new Date();
 

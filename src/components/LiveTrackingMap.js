@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, onMapLoad }) => {
     const map = useMap();
+    const routeLinesRef = useRef([]);
 
     const toLatLngLiteral = (loc) => {
         if (!loc) return null;
@@ -24,9 +25,39 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const customerLatLngs = useMemo(() =>
         (customerLocations || [])
             .map(loc => ({ ...toLatLngLiteral(loc), id: loc.id }))
-            .filter(loc => loc.lat && loc.lng),
+            .filter(loc => typeof loc.lat === 'number' && typeof loc.lng === 'number'),
         [customerLocations]
     );
+
+    const getCurvedPath = (start, end, curveIntensity = 0.32, points = 24) => {
+        const dx = end.lng - start.lng;
+        const dy = end.lat - start.lat;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (!distance) return [start, end];
+
+        // Perpendicular offset for a smooth arc
+        const nx = -dy / distance;
+        const ny = dx / distance;
+        const offset = distance * curveIntensity;
+
+        // Use opposite bend direction for the arc
+        const control = {
+            lat: (start.lat + end.lat) / 2 - ny * offset,
+            lng: (start.lng + end.lng) / 2 - nx * offset,
+        };
+
+        const path = [];
+        for (let i = 0; i <= points; i++) {
+            const t = i / points;
+            // Quadratic Bezier interpolation
+            const oneMinusT = 1 - t;
+            path.push({
+                lat: oneMinusT * oneMinusT * start.lat + 2 * oneMinusT * t * control.lat + t * t * end.lat,
+                lng: oneMinusT * oneMinusT * start.lng + 2 * oneMinusT * t * control.lng + t * t * end.lng,
+            });
+        }
+        return path;
+    };
 
     // Auto-fit bounds to show all markers
     useEffect(() => {
@@ -45,6 +76,48 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
             }
         }
     }, [restaurantLatLng, customerLatLngs, riderLatLng, map]);
+
+    // Draw curved dashed connector between restaurant and customer points
+    useEffect(() => {
+        if (!map || !window.google) return;
+
+        // Clear previous lines
+        routeLinesRef.current.forEach(line => line.setMap(null));
+        routeLinesRef.current = [];
+
+        if (!restaurantLatLng || customerLatLngs.length === 0) return;
+
+        const dashSymbol = {
+            path: 'M 0,-1 0,1',
+            strokeOpacity: 1,
+            scale: 3,
+        };
+
+        customerLatLngs.forEach((customerPoint) => {
+            const path = getCurvedPath(restaurantLatLng, customerPoint);
+            const connector = new window.google.maps.Polyline({
+                path,
+                geodesic: false,
+                strokeColor: '#111111',
+                strokeOpacity: 0,
+                strokeWeight: 3,
+                icons: [{
+                    icon: dashSymbol,
+                    offset: '0',
+                    repeat: '14px',
+                }],
+                zIndex: 1,
+            });
+
+            connector.setMap(map);
+            routeLinesRef.current.push(connector);
+        });
+
+        return () => {
+            routeLinesRef.current.forEach(line => line.setMap(null));
+            routeLinesRef.current = [];
+        };
+    }, [map, restaurantLatLng, customerLatLngs]);
 
     useEffect(() => {
         if (map && onMapLoad) {
@@ -78,10 +151,10 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
             {customerLatLngs.map(loc => (
                 <AdvancedMarker key={loc.id} position={loc} title="Customer">
                     <div style={markerContainerStyle}>
-                        🤵
-                    </div>
-                </AdvancedMarker>
-            ))}
+                    🤵
+                </div>
+            </AdvancedMarker>
+        ))}
             {riderLatLng && (
                 <AdvancedMarker position={riderLatLng} title="Delivery Partner">
                     <div style={{ fontSize: '2.5rem' }}>🛵</div>

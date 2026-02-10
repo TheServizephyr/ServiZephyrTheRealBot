@@ -32,6 +32,7 @@ const statusConfig = {
     'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
     'confirmed': { color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
     'preparing': { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+    'prepared': { color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
     'ready_for_pickup': { color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
     'dispatched': { color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' },
     'delivered': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
@@ -39,8 +40,8 @@ const statusConfig = {
     'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
-// ✅ FIX: Added 'ready_for_pickup' to delivery flow (Rider Assigned stage)
-const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'dispatched', 'delivered'];
+// Delivery flow now includes explicit kitchen-ready stage.
+const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'prepared', 'ready_for_pickup', 'dispatched', 'delivered'];
 const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
 
@@ -306,11 +307,11 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, initialSelectedOrders, ri
     const [markAsActive, setMarkAsActive] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Filter relevant orders: status 'preparing' and deliveryType 'delivery'
+    // Filter relevant orders: status 'prepared' and deliveryType 'delivery'
     // Also include currently selected orders even if status changed (edge case)
     const assignableOrders = useMemo(() => {
         return allOrders.filter(o =>
-            (o.status === 'preparing' || o.status === 'ready_for_pickup' || initialSelectedOrders.some(iso => iso.id === o.id)) &&
+            (o.status === 'prepared' || o.status === 'ready_for_pickup' || initialSelectedOrders.some(iso => iso.id === o.id)) &&
             o.deliveryType === 'delivery'
         );
     }, [allOrders, initialSelectedOrders]);
@@ -539,12 +540,19 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                 className: "bg-purple-600 hover:bg-purple-700 text-white shadow-sm" // ✅ Pickup: Purple  
             }
             : {
-                text: 'Assign Rider',
-                icon: Bike,
-                action: () => onAssignClick([order]),
-                permission: PERMISSIONS.ASSIGN_RIDER,
-                className: "bg-orange-500 hover:bg-orange-600 text-white shadow-sm" // ✅ Rider: Orange
+                text: 'Mark Prepared',
+                icon: PackageCheck,
+                action: () => onNext(nextStatus),
+                permission: PERMISSIONS.MARK_ORDER_READY,
+                className: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
             },
+        'prepared': {
+            text: 'Assign Rider',
+            icon: Bike,
+            action: () => onAssignClick([order]),
+            permission: PERMISSIONS.ASSIGN_RIDER,
+            className: "bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
+        },
         'ready_for_pickup': {
             text: isPickup ? 'Mark as Picked Up' : 'Mark Out for Delivery',
             icon: isPickup ? PartyPopper : Bike,
@@ -638,8 +646,11 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
     );
 };
 
-const OrderDetailModal = ({ isOpen, onClose, data }) => {
-    const { order, restaurant, customer } = data || {};
+const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
+    const { order, restaurant, customer, canViewCustomerDetails, canViewPaymentDetails } = data || {};
+    const isChefRole = (userRole || '').toLowerCase() === 'chef';
+    const showCustomerDetails = !isChefRole && canViewCustomerDetails !== false;
+    const showPaymentDetails = !isChefRole && canViewPaymentDetails !== false;
 
     if (!isOpen || !order) {
         return null;
@@ -657,34 +668,48 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
                 <div className="grid md:grid-cols-2 gap-6 py-4 max-h-[70vh] overflow-y-auto">
                     <div className="space-y-4">
                         <h4 className="font-semibold flex items-center gap-2"><User size={16} /> Customer Details</h4>
-                        <div className="p-4 bg-muted rounded-lg">
-                            <p><strong>Name:</strong> {order.customerName}</p>
-                            <p><strong>Phone:</strong> {order.customerPhone}</p>
-                            <p><strong>Address:</strong> {
-                                typeof order.customerAddress === 'string'
-                                    ? order.customerAddress
-                                    : (order.customerAddress?.street || order.customerAddress?.formattedAddress || 'N/A')
-                            }</p>
-                        </div>
-                        {customer && (
-                            <div className="p-4 bg-blue-500/10 rounded-lg">
-                                <h5 className="font-semibold text-blue-400">Customer Insights</h5>
-                                <p><strong>Total Orders:</strong> {customer.totalOrders || 0}</p>
-                                <p><strong>Total Spend:</strong> ₹{customer.totalSpend?.toFixed(2) || '0.00'}</p>
-                                <p><strong>Loyalty Points:</strong> {customer.loyaltyPoints || 0}</p>
+                        {showCustomerDetails ? (
+                            <>
+                                <div className="p-4 bg-muted rounded-lg">
+                                    <p><strong>Name:</strong> {order.customerName}</p>
+                                    <p><strong>Phone:</strong> {order.customerPhone}</p>
+                                    <p><strong>Address:</strong> {
+                                        typeof order.customerAddress === 'string'
+                                            ? order.customerAddress
+                                            : (order.customerAddress?.street || order.customerAddress?.formattedAddress || 'N/A')
+                                    }</p>
+                                </div>
+                                {customer && (
+                                    <div className="p-4 bg-blue-500/10 rounded-lg">
+                                        <h5 className="font-semibold text-blue-400">Customer Insights</h5>
+                                        <p><strong>Total Orders:</strong> {customer.totalOrders || 0}</p>
+                                        <p><strong>Total Spend:</strong> ₹{customer.totalSpend?.toFixed(2) || '0.00'}</p>
+                                        <p><strong>Loyalty Points:</strong> {customer.loyaltyPoints || 0}</p>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="p-4 bg-muted rounded-lg text-sm text-muted-foreground">
+                                Customer details are hidden for your role.
                             </div>
                         )}
                     </div>
                     <div className="space-y-4">
                         <h4 className="font-semibold flex items-center gap-2"><IndianRupee size={16} /> Payment Details</h4>
-                        <div className="p-4 bg-muted rounded-lg">
-                            <p><strong>Payment Method:</strong> <span className="font-mono p-1 rounded bg-background text-sm">{order.paymentDetails?.method || 'N/A'}</span></p>
-                            <p><strong>Subtotal:</strong> ₹{order.subtotal?.toFixed(2)}</p>
-                            {order.discount > 0 && <p className="text-green-500"><strong>Discount:</strong> - ₹{order.discount?.toFixed(2)}</p>}
-                            <p><strong>GST:</strong> ₹{(order.cgst + order.sgst).toFixed(2)}</p>
-                            <p><strong>Delivery Charge:</strong> ₹{order.deliveryCharge?.toFixed(2)}</p>
-                            <p className="font-bold text-lg border-t border-dashed mt-2 pt-2"><strong>Grand Total:</strong> ₹{order.totalAmount?.toFixed(2)}</p>
-                        </div>
+                        {showPaymentDetails ? (
+                            <div className="p-4 bg-muted rounded-lg">
+                                <p><strong>Payment Method:</strong> <span className="font-mono p-1 rounded bg-background text-sm">{order.paymentDetails?.method || 'N/A'}</span></p>
+                                <p><strong>Subtotal:</strong> ₹{order.subtotal?.toFixed(2)}</p>
+                                {order.discount > 0 && <p className="text-green-500"><strong>Discount:</strong> - ₹{order.discount?.toFixed(2)}</p>}
+                                <p><strong>GST:</strong> ₹{(order.cgst + order.sgst).toFixed(2)}</p>
+                                <p><strong>Delivery Charge:</strong> ₹{order.deliveryCharge?.toFixed(2)}</p>
+                                <p className="font-bold text-lg border-t border-dashed mt-2 pt-2"><strong>Grand Total:</strong> ₹{order.totalAmount?.toFixed(2)}</p>
+                            </div>
+                        ) : (
+                            <div className="p-4 bg-muted rounded-lg text-sm text-muted-foreground">
+                                Payment details are hidden for your role.
+                            </div>
+                        )}
                     </div>
                     <div className="md:col-span-2">
                         <h4 className="font-semibold flex items-center gap-2 mb-2"><ShoppingBag size={16} /> Items Ordered</h4>
@@ -746,9 +771,13 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
 const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelected }) => {
     const isPaidOnline = (order.paymentMethod === 'razorpay' || order.paymentMethod === 'phonepe' || order.paymentMethod === 'online') && order.paymentStatus === 'paid';
     const isCOD = !isPaidOnline;
+    const canAssignFromCard = actionButtonProps?.impersonatedOwnerId || hasPermission(actionButtonProps?.userRole, PERMISSIONS.ASSIGN_RIDER);
+    const isChefRole = (actionButtonProps?.userRole || '').toLowerCase() === 'chef';
+    const customerDisplayName = isChefRole ? 'Customer Hidden' : (order.customerName || order.customer || 'Guest');
+    const customerDisplayPhone = isChefRole ? '' : (order.customerPhone || '');
 
-    // Show checkbox only for 'preparing' delivery orders
-    const showCheckbox = order.status === 'preparing' && order.deliveryType === 'delivery';
+    // Show checkbox only for rider-assignable delivery orders
+    const showCheckbox = canAssignFromCard && order.status === 'prepared' && order.deliveryType === 'delivery';
 
     return (
         <motion.div
@@ -792,16 +821,18 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             </div>
 
             {/* Payment Status Badges */}
-            <div className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border w-fit",
-                isPaidOnline ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-orange-500/10 text-orange-500 border-orange-500/20"
-            )}>
-                {isPaidOnline ? (
-                    <><Check size={12} className="stroke-[3]" /> PAID ONLINE</>
-                ) : (
-                    <><Wallet size={12} className="stroke-[3]" /> PAY ON DELIVERY (COD)</>
-                )}
-            </div>
+            {!isChefRole && (
+                <div className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border w-fit",
+                    isPaidOnline ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                )}>
+                    {isPaidOnline ? (
+                        <><Check size={12} className="stroke-[3]" /> PAID ONLINE</>
+                    ) : (
+                        <><Wallet size={12} className="stroke-[3]" /> PAY ON DELIVERY (COD)</>
+                    )}
+                </div>
+            )}
 
             {/* Info Sections */}
             <div
@@ -813,11 +844,12 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                     <div>
                         <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Customer</span>
                         <div className="text-sm font-medium leading-tight">
-                            {order.customerName || order.customer || 'Guest'} <span className="text-muted-foreground">• {order.customerPhone}</span>
+                            {customerDisplayName}
+                            {customerDisplayPhone ? <span className="text-muted-foreground"> • {customerDisplayPhone}</span> : null}
                         </div>
                     </div>
                 </div>
-                {order.customerAddress && (
+                {!isChefRole && order.customerAddress && (
                     <div className="flex gap-2.5 items-start">
                         <MapPin size={14} className="text-primary mt-0.5 shrink-0" />
                         <div>
@@ -871,13 +903,24 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             {/* Bill Summary */}
             <div className="border-t border-border pt-4 mt-auto flex justify-between items-end">
                 <div>
-                    <span className={cn(
-                        "block text-[10px] font-bold uppercase tracking-wider mb-0.5",
-                        isCOD ? "text-orange-500" : "text-muted-foreground"
-                    )}>
-                        {isCOD ? "Collect Cash" : "Total Amount"}
-                    </span>
-                    <span className="text-2xl font-black tracking-tight">₹{Math.round(order.totalAmount || 0)}</span>
+                    {isChefRole ? (
+                        <>
+                            <span className="block text-[10px] font-bold uppercase tracking-wider mb-0.5 text-muted-foreground">
+                                Payment
+                            </span>
+                            <span className="text-lg font-extrabold tracking-tight text-muted-foreground">Hidden</span>
+                        </>
+                    ) : (
+                        <>
+                            <span className={cn(
+                                "block text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                                isCOD ? "text-orange-500" : "text-muted-foreground"
+                            )}>
+                                {isCOD ? "Collect Cash" : "Total Amount"}
+                            </span>
+                            <span className="text-2xl font-black tracking-tight">₹{Math.round(order.totalAmount || 0)}</span>
+                        </>
+                    )}
                 </div>
                 <div className={cn(
                     "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground",
@@ -919,6 +962,14 @@ export default function LiveOrdersPage() {
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [userRole, setUserRole] = useState(null);
     const [viewMode, setViewMode] = useState('grid'); // 'list' or 'grid'
+    const normalizedRole = (userRole || '').toLowerCase();
+    const isChefRole = normalizedRole === 'chef';
+    const isManagerRole = normalizedRole === 'manager';
+    const isOwnerLikeRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor', 'admin'].includes(normalizedRole);
+    const canAssignRider = isOwnerLikeRole || isManagerRole || hasPermission(normalizedRole, PERMISSIONS.ASSIGN_RIDER);
+    const availableTabs = isChefRole
+        ? ['Confirmed', 'Preparing', 'Prepared']
+        : ['All', 'New', 'Confirmed', 'Preparing', 'Prepared', 'Dispatched'];
 
     // Detect mobile and force grid view
     useEffect(() => {
@@ -931,6 +982,12 @@ export default function LiveOrdersPage() {
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
+
+    useEffect(() => {
+        if (!availableTabs.includes(activeFilter)) {
+            setActiveFilter(availableTabs[0]);
+        }
+    }, [activeFilter, availableTabs]);
 
     // Print Modal State
     const [printModalData, setPrintModalData] = useState({ isOpen: false, order: null });
@@ -1111,7 +1168,7 @@ export default function LiveOrdersPage() {
 
                 // Real-time listener for ACTIVE orders only (Bandwidth Optimization)
                 // Filter: Only active statuses.
-                const activeStatuses = ['pending', 'placed', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived'];
+                const activeStatuses = ['pending', 'placed', 'accepted', 'confirmed', 'preparing', 'prepared', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived'];
 
                 console.log('[LiveOrders] Setting up optimized query for active orders...');
                 const ordersQuery = query(
@@ -1337,11 +1394,17 @@ export default function LiveOrdersPage() {
     const filteredAndSortedOrders = useMemo(() => {
         let sortableItems = [...orders];
 
+        if (isChefRole) {
+            const chefVisibleStatuses = new Set(['confirmed', 'preparing', 'prepared']);
+            sortableItems = sortableItems.filter(order => chefVisibleStatuses.has(order.status));
+        }
+
         const filterMap = {
             'All': () => true,
             'New': order => order.status === 'pending',
             'Confirmed': order => order.status === 'confirmed',
             'Preparing': order => order.status === 'preparing',
+            'Prepared': order => order.status === 'prepared',
             'Dispatched': order => order.status === 'dispatched' || order.status === 'ready_for_pickup',
             'Delivered': order => order.status === 'delivered' || order.status === 'picked_up',
             'Rejected': order => order.status === 'rejected',
@@ -1382,7 +1445,7 @@ export default function LiveOrdersPage() {
             return 0;
         });
         return sortableItems;
-    }, [orders, sortConfig, activeFilter, searchQuery]);
+    }, [orders, sortConfig, activeFilter, searchQuery, isChefRole]);
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
@@ -1406,6 +1469,7 @@ export default function LiveOrdersPage() {
                 isOpen={detailModalData.isOpen}
                 onClose={() => setDetailModalData({ isOpen: false, data: null })}
                 data={detailModalData.data}
+                userRole={userRole}
             />
 
             {assignModalData.isOpen && (
@@ -1490,22 +1554,25 @@ export default function LiveOrdersPage() {
             </div>
 
             <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
-                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 md:grid-cols-5 h-auto p-1 bg-muted">
-                    <TabsTrigger value="All">All</TabsTrigger>
-                    <TabsTrigger value="New">New</TabsTrigger>
-                    <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
-                    <TabsTrigger value="Preparing">Preparing</TabsTrigger>
-                    <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>
+                <TabsList className={cn(
+                    "grid w-full h-auto p-1 bg-muted",
+                    isChefRole ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-6"
+                )}>
+                    {availableTabs.includes('All') && <TabsTrigger value="All">All</TabsTrigger>}
+                    {availableTabs.includes('New') && <TabsTrigger value="New">New</TabsTrigger>}
+                    {availableTabs.includes('Confirmed') && <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>}
+                    {availableTabs.includes('Preparing') && <TabsTrigger value="Preparing">Preparing</TabsTrigger>}
+                    {availableTabs.includes('Prepared') && <TabsTrigger value="Prepared">Prepared</TabsTrigger>}
+                    {availableTabs.includes('Dispatched') && <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>}
                 </TabsList>
             </Tabs>
 
-            {selectedOrders.length > 0 && (
+            {canAssignRider && selectedOrders.length > 0 && (
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="bg-primary/10 border border-primary/30 rounded-lg p-3 flex items-center justify-between mb-4"
                 >
-                    <p className="font-semibold text-primary">{selectedOrders.length} order(s) selected for batching.</p>
                     <p className="font-semibold text-primary">{selectedOrders.length} order(s) selected for batching.</p>
                     <Button size="sm" onClick={handleAssignSelected}>
                         <Bike size={16} className="mr-2" /> Assign Selected
@@ -1587,7 +1654,7 @@ export default function LiveOrdersPage() {
                                             className="hover:bg-muted/50"
                                         >
                                             <td className="p-4 w-12 align-top">
-                                                {order.status === 'preparing' && order.deliveryType !== 'pickup' && order.deliveryType !== 'dine-in' && (
+                                                {canAssignRider && order.status === 'prepared' && order.deliveryType !== 'pickup' && order.deliveryType !== 'dine-in' && (
                                                     <Checkbox
                                                         checked={selectedOrders.includes(order.id)}
                                                         onCheckedChange={() => handleSelectOrder(order.id)}
@@ -1602,7 +1669,7 @@ export default function LiveOrdersPage() {
                                                     className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
                                                     title="View Customer & Order Details"
                                                 >
-                                                    {order.customer}
+                                                    {isChefRole ? 'Customer Hidden' : (order.customer || order.customerName || 'Guest')}
                                                 </div>
                                                 <div className="mt-1 flex items-center gap-2">
                                                     {order.deliveryType === 'delivery' && (

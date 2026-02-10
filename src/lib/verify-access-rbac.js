@@ -38,6 +38,7 @@ export async function verifyAccessWithRBAC(req, requiredPermission = null, optio
 
     // Admin impersonation support (from existing system)
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = url.searchParams.get('employee_of');
 
     // Get user document
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -57,6 +58,10 @@ export async function verifyAccessWithRBAC(req, requiredPermission = null, optio
         return await verifyOwnerAccess(firestore, impersonatedOwnerId, requestedOutletId, requiredPermission, true, uid);
     }
 
+    if (userRole === 'admin') {
+        throw { message: 'Admin access to this endpoint requires impersonate_owner_id.', status: 403 };
+    }
+
     // ============================================
     // CASE 2: User is an Owner (old or new system)
     // ============================================
@@ -69,7 +74,14 @@ export async function verifyAccessWithRBAC(req, requiredPermission = null, optio
     // CASE 3: User is an Employee (new RBAC system)
     // ============================================
     if (userRole === 'employee' || (userData.linkedOutlets && userData.linkedOutlets.length > 0)) {
-        return await verifyEmployeeAccess(firestore, uid, userData, requestedOutletId, requiredPermission);
+        return await verifyEmployeeAccess(
+            firestore,
+            uid,
+            userData,
+            requestedOutletId,
+            requiredPermission,
+            employeeOfOwnerId
+        );
     }
 
     // ============================================
@@ -139,11 +151,19 @@ function buildOwnerContext(docSnap, collectionName, ownerId, isImpersonating, ad
 // EMPLOYEE ACCESS VERIFICATION
 // ============================================
 
-async function verifyEmployeeAccess(firestore, uid, userData, requestedOutletId, requiredPermission) {
+async function verifyEmployeeAccess(firestore, uid, userData, requestedOutletId, requiredPermission, targetOwnerId = null) {
     const linkedOutlets = userData.linkedOutlets || [];
 
     if (linkedOutlets.length === 0) {
         throw { message: 'No outlets linked to this employee.', status: 403 };
+    }
+
+    const scopedOutlets = targetOwnerId
+        ? linkedOutlets.filter(o => o.ownerId === targetOwnerId)
+        : linkedOutlets;
+
+    if (scopedOutlets.length === 0) {
+        throw { message: 'Access denied. You are not linked to this owner.', status: 403 };
     }
 
     // Find the relevant outlet
@@ -151,13 +171,16 @@ async function verifyEmployeeAccess(firestore, uid, userData, requestedOutletId,
 
     if (requestedOutletId) {
         // Specific outlet requested
-        linkedOutlet = linkedOutlets.find(o => o.outletId === requestedOutletId);
+        linkedOutlet = scopedOutlets.find(o => o.outletId === requestedOutletId);
         if (!linkedOutlet) {
             throw { message: 'Access denied. You are not linked to this outlet.', status: 403 };
         }
     } else {
         // Use first linked outlet (or active one if stored)
-        linkedOutlet = linkedOutlets.find(o => o.isActive) || linkedOutlets[0];
+        linkedOutlet =
+            scopedOutlets.find(o => o.isActive && o.status === 'active') ||
+            scopedOutlets.find(o => o.status === 'active') ||
+            scopedOutlets[0];
     }
 
     // Check if employee is active

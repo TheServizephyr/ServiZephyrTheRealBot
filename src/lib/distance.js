@@ -69,19 +69,25 @@ function toRadians(degrees) {
  * @returns {object} { allowed, charge, aerialDistance, roadDistance, reason, message }
  */
 export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
+    const toNum = (value, fallback = 0) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+    };
+
     // Apply road distance factor (optional)
-    const roadFactor = settings.roadDistanceFactor || 1.0;
-    const roadDistance = aerialDistance * roadFactor;
+    const roadFactor = Math.max(1.0, toNum(settings.roadDistanceFactor, 1.0));
+    const roadDistance = toNum(aerialDistance, 0) * roadFactor;
+    const deliveryRadius = toNum(settings.deliveryRadius, 10);
 
     // Check if within max delivery radius (using road distance)
-    if (roadDistance > settings.deliveryRadius) {
+    if (roadDistance > deliveryRadius) {
         return {
             allowed: false,
             charge: 0,
             aerialDistance: parseFloat(aerialDistance.toFixed(1)),
             roadDistance: parseFloat(roadDistance.toFixed(1)),
             roadFactor,
-            message: `Delivery not available. You are ${roadDistance.toFixed(1)}km away by road (max: ${settings.deliveryRadius}km)`
+            message: `Delivery not available. You are ${roadDistance.toFixed(1)}km away by road (max: ${deliveryRadius}km)`
         };
     }
 
@@ -91,23 +97,29 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
 
     // 1. UNIVERSAL FREE ZONE (Radius-based)
     // Checking if distance qualifies for automatic free delivery
-    const isWithinFreeRadius = settings.freeDeliveryRadius > 0 && roadDistance <= settings.freeDeliveryRadius;
-    const isFreeMinOrderMet = settings.freeDeliveryMinOrder === undefined || settings.freeDeliveryMinOrder === null || subtotal >= settings.freeDeliveryMinOrder;
+    const freeDeliveryRadius = toNum(settings.freeDeliveryRadius, 0);
+    const freeDeliveryMinOrder = settings.freeDeliveryMinOrder === undefined || settings.freeDeliveryMinOrder === null
+        ? null
+        : toNum(settings.freeDeliveryMinOrder, 0);
+    const subtotalNum = toNum(subtotal, 0);
+    const isWithinFreeRadius = freeDeliveryRadius > 0 && roadDistance <= freeDeliveryRadius;
+    const isFreeMinOrderMet = freeDeliveryMinOrder === null || subtotalNum >= freeDeliveryMinOrder;
 
     const isUniversalFreeZone = isWithinFreeRadius && isFreeMinOrderMet;
 
-    console.log(`[distance.js] 🔍 Calc: d=${roadDistance.toFixed(1)}km, subtotal=${subtotal}, freeRad=${settings.freeDeliveryRadius}, freeMin=${settings.freeDeliveryMinOrder}`);
+    console.log(`[distance.js] 🔍 Calc: d=${roadDistance.toFixed(1)}km, subtotal=${subtotalNum}, freeRad=${freeDeliveryRadius}, freeMin=${freeDeliveryMinOrder}`);
 
     // 2. PRIMARY ENGINE CALCULATION
     if (settings.deliveryChargeType === 'fixed') {
         charge = settings.fixedCharge || 0;
+        charge = toNum(charge, 0);
         reason = charge === 0 ? 'Free delivery (Fixed 0)' : `₹${charge.toFixed(0)} Fixed delivery charge`;
         type = 'fixed';
     } else if (settings.deliveryChargeType === 'per-km') {
         type = 'per-km';
-        const baseFee = parseFloat(settings.fixedCharge) || 0;
-        const includedKm = parseFloat(settings.baseDistance) || 0;
-        const perKmRate = parseFloat(settings.perKmCharge) || 0;
+        const baseFee = toNum(settings.fixedCharge, 0);
+        const includedKm = toNum(settings.baseDistance, 0);
+        const perKmRate = toNum(settings.perKmCharge, 0);
 
         if (roadDistance <= includedKm) {
             charge = baseFee;
@@ -123,20 +135,20 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
         }
     } else if (settings.deliveryChargeType === 'free-over') {
         type = 'threshold';
-        if (subtotal >= settings.freeDeliveryThreshold) {
+        const freeDeliveryThreshold = toNum(settings.freeDeliveryThreshold, 0);
+        if (subtotalNum >= freeDeliveryThreshold) {
             charge = 0;
-            reason = `Free delivery for orders ≥₹${settings.freeDeliveryThreshold}`;
+            reason = `Free delivery for orders ≥₹${freeDeliveryThreshold}`;
         } else {
-            charge = parseFloat(settings.fixedCharge) || 0;
-            reason = `₹${charge.toFixed(0)} fee (Free for orders ≥₹${settings.freeDeliveryThreshold})`;
+            charge = toNum(settings.fixedCharge, 0);
+            reason = `₹${charge.toFixed(0)} fee (Free for orders ≥₹${freeDeliveryThreshold})`;
         }
     } else if (settings.deliveryChargeType === 'tiered') {
         type = 'tiered';
         const tiers = settings.deliveryTiers || [];
-        const subtotalNum = parseFloat(subtotal) || 0;
 
         const sortedTiers = [...tiers]
-            .map(t => ({ minOrder: parseFloat(t.minOrder) || 0, fee: parseFloat(t.fee) || 0 }))
+            .map(t => ({ minOrder: toNum(t.minOrder, 0), fee: toNum(t.fee, 0) }))
             .sort((a, b) => b.minOrder - a.minOrder);
 
         const activeTier = sortedTiers.find(t => subtotalNum >= t.minOrder);
@@ -147,7 +159,7 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
                 ? `Free delivery (Order ≥₹${activeTier.minOrder})`
                 : `₹${activeTier.fee} fee for orders ≥₹${activeTier.minOrder}`;
         } else {
-            charge = parseFloat(settings.fixedCharge) || 0;
+            charge = toNum(settings.fixedCharge, 0);
             reason = `Standard fee ₹${charge.toFixed(0)}`;
         }
     }

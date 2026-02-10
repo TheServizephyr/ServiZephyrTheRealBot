@@ -894,15 +894,28 @@ const OrderPageInternal = () => {
 
     // ✅ NEW: Reusable validation function (separated from UI logic)
     const validateDelivery = async (addr, currentSubtotal) => {
+        const toFiniteNumber = (value) => {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : null;
+        };
+
         // ✅ FIXED: Support both latitude/longitude AND lat/lng
-        const customerLat = addr.latitude || addr.lat;
-        const customerLng = addr.longitude || addr.lng;
+        const customerLat = toFiniteNumber(addr.latitude ?? addr.lat);
+        const customerLng = toFiniteNumber(addr.longitude ?? addr.lng);
 
         // ✅ FIXED: Restaurant coordinates - check all possible field structures
-        const restaurantLat = restaurantData?.coordinates?.lat || restaurantData?.address?.latitude || restaurantData?.businessAddress?.latitude;
-        const restaurantLng = restaurantData?.coordinates?.lng || restaurantData?.address?.longitude || restaurantData?.businessAddress?.longitude;
+        const restaurantLat = toFiniteNumber(
+            restaurantData?.coordinates?.lat ??
+            restaurantData?.address?.latitude ??
+            restaurantData?.businessAddress?.latitude
+        );
+        const restaurantLng = toFiniteNumber(
+            restaurantData?.coordinates?.lng ??
+            restaurantData?.address?.longitude ??
+            restaurantData?.businessAddress?.longitude
+        );
 
-        if (customerLat && customerLng && restaurantLat && restaurantLng) {
+        if (customerLat !== null && customerLng !== null && restaurantLat !== null && restaurantLng !== null) {
             setIsValidatingDelivery(true);
             try {
                 const payload = {
@@ -1158,19 +1171,11 @@ const OrderPageInternal = () => {
     // ✅ NEW: Effect to re-validate when cart/subtotal changes (relocated here)
     useEffect(() => {
         if (deliveryType === 'delivery' && customerLocation) {
-            // Calculate subtotal locally to avoid dependency ordering issues
-            const currentSubtotal = cart.reduce((total, item) => {
-                // Base price * quantity
-                let itemTotal = (parseFloat(item.price) || 0) * (item.quantity || 1);
-
-                // Addons
-                if (item.selectedAddons && Array.isArray(item.selectedAddons)) {
-                    const addonsCost = item.selectedAddons.reduce((sum, addon) => sum + ((parseFloat(addon.price) || 0) * (item.quantity || 1)), 0);
-                    itemTotal += addonsCost;
-                }
-
-                return total + itemTotal;
-            }, 0);
+            // Keep delivery validation subtotal identical to billing subtotal formula.
+            const currentSubtotal = cart.reduce(
+                (total, item) => total + ((Number(item.totalPrice) || 0) * (item.quantity || 1)),
+                0
+            );
 
             const timer = setTimeout(() => {
                 validateDelivery(customerLocation, currentSubtotal);
@@ -1938,6 +1943,15 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
+        if (deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
+            setInfoDialog({
+                isOpen: true,
+                title: '🚫 Delivery Not Available',
+                message: deliveryValidation.message || 'Your selected address is beyond our delivery range. Please select a different address.'
+            });
+            return;
+        }
+
         const params = new URLSearchParams();
         if (restaurantId) params.set('restaurantId', restaurantId);
 
