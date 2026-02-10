@@ -88,6 +88,8 @@ export async function GET(req) {
                 roadDistanceFactor: parentData.roadDistanceFactor ?? 1.0,
                 freeDeliveryRadius: parentData.freeDeliveryRadius ?? 0,
                 freeDeliveryMinOrder: parentData.freeDeliveryMinOrder ?? 0,
+                // NEW: Tiered charges
+                deliveryTiers: parentData.deliveryTiers ?? [],
             };
         }
 
@@ -110,7 +112,9 @@ export async function PATCH(req) {
             'deliveryFixedFee', 'deliveryPerKmFee', 'deliveryFreeThreshold',
             'deliveryOnlinePaymentEnabled', 'deliveryCodEnabled',
             // NEW: Road factor & free zone
-            'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder'
+            'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder',
+            // NEW: Tiered charges
+            'deliveryTiers'
         ];
 
         const cleanUpdates = {};

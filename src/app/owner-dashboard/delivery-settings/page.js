@@ -34,6 +34,8 @@ function DeliverySettingsPageContent() {
         roadDistanceFactor: 1.0,
         freeDeliveryRadius: 0,
         freeDeliveryMinOrder: 0,
+        // NEW: Tiered charges
+        deliveryTiers: [], // Array of { minOrder: number, fee: number }
     });
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -71,6 +73,8 @@ function DeliverySettingsPageContent() {
                     roadDistanceFactor: data.roadDistanceFactor || 1.0,
                     freeDeliveryRadius: data.freeDeliveryRadius || 0,
                     freeDeliveryMinOrder: data.freeDeliveryMinOrder || 0,
+                    // NEW: Tiered charges
+                    deliveryTiers: data.deliveryTiers || [],
                 });
             } catch (error) {
                 setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load settings: ${error.message}` });
@@ -105,6 +109,8 @@ function DeliverySettingsPageContent() {
                 roadDistanceFactor: Number(settings.roadDistanceFactor),
                 freeDeliveryRadius: Number(settings.freeDeliveryRadius),
                 freeDeliveryMinOrder: Number(settings.freeDeliveryMinOrder),
+                // NEW: Tiered charges
+                deliveryTiers: settings.deliveryTiers.map(t => ({ minOrder: Number(t.minOrder), fee: Number(t.fee) })),
             };
 
             const queryParams = new URLSearchParams();
@@ -137,6 +143,28 @@ function DeliverySettingsPageContent() {
     const handleSettingChange = (key, value) => {
         setSettings(prev => ({ ...prev, [key]: value }));
     }
+
+    const addTier = () => {
+        setSettings(prev => ({
+            ...prev,
+            deliveryTiers: [...prev.deliveryTiers, { minOrder: 0, fee: 0 }]
+        }));
+    };
+
+    const removeTier = (index) => {
+        setSettings(prev => ({
+            ...prev,
+            deliveryTiers: prev.deliveryTiers.filter((_, i) => i !== index)
+        }));
+    };
+
+    const updateTier = (index, field, value) => {
+        setSettings(prev => {
+            const newTiers = [...prev.deliveryTiers];
+            newTiers[index] = { ...newTiers[index], [field]: value };
+            return { ...prev, deliveryTiers: newTiers };
+        });
+    };
 
     if (loading) {
         return (
@@ -340,6 +368,71 @@ function DeliverySettingsPageContent() {
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-2 pl-8">Offer free delivery for orders above a certain value.</p>
+                            </div>
+
+                            <div className="p-4 rounded-lg border has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                                <div className="flex items-center justify-between mb-4">
+                                    <Label htmlFor="tiered" className="font-semibold flex items-center gap-3 cursor-pointer">
+                                        <RadioGroupItem value="tiered" id="tiered" />
+                                        Tiered Charges (Advanced)
+                                    </Label>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={addTier}
+                                        disabled={settings.deliveryFeeType !== 'tiered'}
+                                    >
+                                        + Add Rule
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-2 pl-8 mb-4">Set multiple rules based on order amount (e.g. ₹0-200: ₹50, Above ₹500: Free).</p>
+
+                                {settings.deliveryFeeType === 'tiered' && (
+                                    <div className="space-y-3 pl-8">
+                                        {settings.deliveryTiers.length === 0 && (
+                                            <p className="text-sm text-yellow-500 italic">No rules added. Click &quot;Add Rule&quot; to start.</p>
+                                        )}
+                                        {settings.deliveryTiers.map((tier, index) => (
+                                            <div key={index} className="flex items-center gap-4 bg-muted/30 p-3 rounded-lg border border-dashed">
+                                                <div className="flex-1 space-y-1">
+                                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">If Order Is ≥</Label>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-muted-foreground">₹</span>
+                                                        <Input
+                                                            type="number"
+                                                            value={tier.minOrder}
+                                                            onChange={(e) => updateTier(index, 'minOrder', e.target.value)}
+                                                            className="h-8"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="flex-1 space-y-1">
+                                                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Delivery Fee</Label>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-muted-foreground">₹</span>
+                                                        <Input
+                                                            type="number"
+                                                            value={tier.fee}
+                                                            onChange={(e) => updateTier(index, 'fee', e.target.value)}
+                                                            className="h-8"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="mt-5 text-destructive hover:bg-destructive/10"
+                                                    onClick={() => removeTier(index)}
+                                                >
+                                                    <XCircle size={16} />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </RadioGroup>
                     </CardContent>

@@ -75,6 +75,7 @@ export async function POST(req) {
             freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
             freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
             roadDistanceFactor: getSetting('roadDistanceFactor', 1.3), // default 1.3 (road ~30% longer)
+            deliveryTiers: getSetting('deliveryTiers', []),
         };
 
         console.log('[API /delivery/calculate-charge] ⚙️ Final Settings:', settings);

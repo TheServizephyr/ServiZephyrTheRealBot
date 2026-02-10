@@ -115,6 +115,23 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
             charge = settings.fixedCharge || 0;
             reason = 'Standard delivery charge';
         }
+    } else if (settings.deliveryChargeType === 'tiered') {
+        const tiers = settings.deliveryTiers || [];
+        // Find the applicable tier: the one with the highest minOrder that subtotal satisfies
+        const sortedTiers = [...tiers].sort((a, b) => b.minOrder - a.minOrder);
+        const activeTier = sortedTiers.find(t => subtotal >= t.minOrder);
+
+        if (activeTier) {
+            charge = activeTier.fee;
+            reason = activeTier.fee === 0
+                ? `Free delivery for orders ≥₹${activeTier.minOrder}`
+                : `₹${activeTier.fee} fee for orders ≥₹${activeTier.minOrder}`;
+        } else {
+            // If no tier matches (order is less than smallest minOrder), 
+            // fallback to the fixed charge if available
+            charge = settings.fixedCharge || 0;
+            reason = 'Standard delivery charge';
+        }
     }
 
     return {
