@@ -155,7 +155,12 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
 
   const getIsDisabled = (featureId) => {
-    // Only allow essential setup pages for pending/rejected accounts
+    // 1. If suspended, explicitly check restricted features first
+    if (status === 'suspended') {
+      return restrictedFeatures.includes(featureId);
+    }
+
+    // 2. Only allow essential setup pages for pending/rejected accounts
     const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'location', 'profile', 'qr', 'coupons', 'employees', 'my-profile'];
     if (alwaysEnabled.includes(featureId)) {
       return false;
@@ -163,10 +168,6 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
     if (status === 'pending' || status === 'rejected') {
       return true;
-    }
-
-    if (status === 'suspended') {
-      return restrictedFeatures.includes(featureId);
     }
 
     return false;
