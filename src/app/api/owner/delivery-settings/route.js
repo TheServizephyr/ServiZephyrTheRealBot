@@ -126,11 +126,22 @@ export async function PATCH(req) {
 
         await businessRef.collection('delivery_settings').doc('config').set(cleanUpdates, { merge: true });
 
-        // Invalidate menu cache (fees affect cart)
+        // ✅ CRITICAL: Increment menuVersion to invalidate public menu cache
+        // We fetch the current business doc to get the current version
+        const businessSnap = await businessRef.get();
+        const businessData = businessSnap.data() || {};
+
+        await businessRef.update({
+            menuVersion: (businessData.menuVersion || 0) + 1,
+            updatedAt: new Date()
+        });
+
+        // Invalidate menu cache (legacy key)
         try {
             const { kv } = await import('@vercel/kv');
             if (process.env.KV_REST_API_URL) {
                 await kv.del(`menu:${businessId}`);
+                console.log(`[Delivery Settings] 🧹 Invalidated cache for ${businessId}`);
             }
         } catch (e) {
             console.warn("Cache invalidation failed", e);

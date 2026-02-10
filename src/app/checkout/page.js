@@ -572,8 +572,7 @@ const CheckoutPageInternal = () => {
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
         const isFreeDeliveryApplied = appliedCoupons.some(c => c.type === 'free_delivery' && currentSubtotal >= c.minOrder);
-        const isFreeDeliveryThresholdMet = cartData?.deliveryFreeThreshold && currentSubtotal >= cartData.deliveryFreeThreshold;
-        const isDeliveryFree = isFreeDeliveryApplied || isFreeDeliveryThresholdMet;
+        // REMOVED: isFreeDeliveryThresholdMet override. Tiers/API handle this now.
 
         let couponDiscountValue = 0;
         appliedCoupons.forEach(coupon => {
@@ -615,14 +614,20 @@ const CheckoutPageInternal = () => {
             // Coupon overrides everything
             deliveryCharge = 0;
         } else if (deliveryValidation && deliveryValidation.charge !== undefined) {
-            // Use validated dynamic charge (handles distance & free limits)
+            // Use validated dynamic charge (handles distance, tiers & free limits)
             deliveryCharge = deliveryValidation.charge;
             console.log('[Checkout Debug] Using Dynamic Charge:', deliveryCharge);
         } else {
             // Fallback to static charge (or cart setting)
-            deliveryCharge = (isDeliveryFree) ? 0 : (cartData.deliveryCharge || 0);
-            console.log('[Checkout Debug] Using Static/Fallback Charge:', deliveryCharge);
+            // ONLY apply simple threshold if NOT in tiered mode
+            const isTiered = cartData.deliveryFeeType === 'tiered';
+            const isThresholdMet = !isTiered && cartData?.deliveryFreeThreshold && currentSubtotal >= cartData.deliveryFreeThreshold;
+
+            deliveryCharge = isThresholdMet ? 0 : (cartData.deliveryCharge || 0);
+            console.log('[Checkout Debug] Using Fallback Charge:', deliveryCharge, 'isTiered:', isTiered);
         }
+
+        const isDeliveryFree = deliveryCharge === 0 && deliveryType === 'delivery';
 
         // Calculate Tip from State
         let currentTip = selectedTipAmount;
@@ -1213,6 +1218,20 @@ const CheckoutPageInternal = () => {
         }
     }
 
+    // Smart CTA step flow:
+    // 1) Select address (for delivery)
+    // 2) Select payment mode
+    // 3) Place order
+    const isAddressStepPending = !activeOrderId && deliveryType === 'delivery' && !selectedAddress;
+    const isPaymentStepPending = !isAddressStepPending && !selectedPaymentMethod;
+    const isOrderReadyToPlace = !isAddressStepPending && !!selectedPaymentMethod;
+    const ctaLabel = isAddressStepPending
+        ? 'Select Address'
+        : isPaymentStepPending
+            ? 'Select Payment Mode'
+            : 'Place Order';
+    const isCtaDisabled = isProcessingPayment || (!activeOrderId && deliveryType !== 'delivery' && !orderName.trim());
+
 
 
     const renderPaymentOptions = () => {
@@ -1790,6 +1809,11 @@ const CheckoutPageInternal = () => {
                         {/* Right: Smart Action Button (Price + Action) */}
                         <button
                             onClick={() => {
+                                if (isAddressStepPending) {
+                                    setIsAddressSelectorOpen(true);
+                                    return;
+                                }
+
                                 if (!selectedPaymentMethod) {
                                     setIsPaymentDrawerOpen(true);
                                     return;
@@ -1801,10 +1825,10 @@ const CheckoutPageInternal = () => {
                                     placeOrder('online');
                                 }
                             }}
-                            disabled={isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : !orderName.trim()))}
+                            disabled={isCtaDisabled}
                             className={cn(
                                 "h-12 px-4 rounded-xl font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex-none w-[55%] sm:w-[45%]",
-                                selectedPaymentMethod
+                                isOrderReadyToPlace
                                     ? "bg-primary text-white hover:bg-primary/90 shadow-primary/25"
                                     : "bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/25"
                             )}
@@ -1820,7 +1844,7 @@ const CheckoutPageInternal = () => {
                                         <span className="text-base font-extrabold leading-none">₹{grandTotal.toFixed(0)}</span>
                                     </div>
                                     <div className="flex items-center gap-1 flex-1 justify-center whitespace-nowrap">
-                                        <span>{selectedPaymentMethod ? 'Place Order' : 'Select Payment'}</span>
+                                        <span>{ctaLabel}</span>
                                         <i className="fas fa-caret-right text-xs ml-0.5"></i>
                                     </div>
                                 </div>
