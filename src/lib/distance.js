@@ -88,16 +88,14 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
     let charge = 0;
     let reason = '';
 
-    // ✅ UNIVERSAL FREE ZONE - Works with ALL charge types!
-    // Check if customer is in free delivery zone AND meets minimum order
-    // NOTE: Check if settings exist, allowing 0 as valid value
+    // ✅ UNIVERSAL FREE ZONE - Moved to later to avoid overriding tiered rules
+    let isUniversalFreeZone = false;
     if (
         settings.freeDeliveryRadius > 0 &&
         roadDistance <= settings.freeDeliveryRadius &&
         (settings.freeDeliveryMinOrder === undefined || settings.freeDeliveryMinOrder === null || subtotal >= settings.freeDeliveryMinOrder)
     ) {
-        charge = 0;
-        reason = `Free delivery within ${settings.freeDeliveryRadius}km for orders ≥₹${settings.freeDeliveryMinOrder || 0}`;
+        isUniversalFreeZone = true;
     }
     // Apply charge type if not in free zone
     else if (settings.deliveryChargeType === 'fixed') {
@@ -119,13 +117,15 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
         const tiers = settings.deliveryTiers || [];
         const subtotalNum = parseFloat(subtotal) || 0;
 
-        // Find the applicable tier: the one with the highest minOrder that subtotal satisfies
-        // Ensure values are numbers before sorting/comparing
+        console.log(`[distance.js] 📑 Tiered calculation for subtotal: ${subtotalNum}`);
+        console.log(`[distance.js] 📑 Tiers:`, JSON.stringify(tiers));
+
         const sortedTiers = [...tiers]
             .map(t => ({ minOrder: parseFloat(t.minOrder) || 0, fee: parseFloat(t.fee) || 0 }))
             .sort((a, b) => b.minOrder - a.minOrder);
 
         const activeTier = sortedTiers.find(t => subtotalNum >= t.minOrder);
+        console.log(`[distance.js] 📑 Active Tier:`, activeTier);
 
         if (activeTier) {
             charge = activeTier.fee;
@@ -133,11 +133,19 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
                 ? `Free delivery for orders ≥₹${activeTier.minOrder}`
                 : `₹${activeTier.fee} fee for orders ≥₹${activeTier.minOrder}`;
         } else {
-            // If no tier matches (order is less than smallest minOrder), 
-            // fallback to the fixed charge if available
             charge = parseFloat(settings.fixedCharge) || 0;
             reason = 'Standard delivery charge';
+            console.log(`[distance.js] 📑 No tier matched. Fallback charge: ${charge}`);
         }
+    }
+
+    // ✅ Apply Universal Free Zone as an OVERRIDE if it results in FREE delivery
+    // CRITICAL: Only apply if NOT in tiered mode, as tiers should be the absolute source of truth
+    const isTieredMode = settings.deliveryChargeType === 'tiered';
+
+    if (!isTieredMode && isUniversalFreeZone && charge > 0) {
+        charge = 0;
+        reason = `Free delivery within ${settings.freeDeliveryRadius}km for orders ≥₹${settings.freeDeliveryMinOrder || 0}`;
     }
 
     return {

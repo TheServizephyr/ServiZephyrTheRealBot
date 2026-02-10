@@ -79,10 +79,9 @@ export async function POST(req) {
             deliveryTiers: getSetting('deliveryTiers', []),
         };
 
-        console.log('[API /delivery/calculate-charge] ⚙️ Final Settings:', settings);
-
-        // Calculate delivery charge and validate
+        console.log('[API /delivery/calculate-charge] ⚙️ Settings:', JSON.stringify(settings));
         const result = calculateDeliveryCharge(aerialDistance, subtotalNum, settings);
+        console.log('[API /delivery/calculate-charge] 📊 Result:', JSON.stringify(result));
 
         return NextResponse.json({
             success: true,
