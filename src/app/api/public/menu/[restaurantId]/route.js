@@ -70,6 +70,7 @@ export async function GET(req, { params }) {
         // STEP 2: Build version-based cache key
         // PATCH: Added _patch3 to force cache refresh due to Duplicate Collection Fix
         const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch3`;
+        const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
         console.log(`%c[Menu API] 📊 CACHE DEBUG`, 'color: cyan; font-weight: bold');
@@ -77,10 +78,11 @@ export async function GET(req, { params }) {
         console.log(`[Menu API]    ├─ menuVersion from Firestore: ${menuVersion}`);
         console.log(`[Menu API]    ├─ Generated cache key: ${cacheKey}`);
         console.log(`[Menu API]    ├─ Redis KV available: ${isKvAvailable ? '✅ YES' : '❌ NO'}`);
+        console.log(`[Menu API]    ├─ Skip Cache Requested: ${skipCache ? '⚠️ YES' : 'NO'}`);
         console.log(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
 
         // STEP 3: Check Redis cache with version-specific key
-        if (isKvAvailable) {
+        if (isKvAvailable && !skipCache) {
             const cachedData = await kv.get(cacheKey);
             if (cachedData) {
                 console.log(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');

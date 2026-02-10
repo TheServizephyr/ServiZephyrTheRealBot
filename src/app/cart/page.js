@@ -220,6 +220,93 @@ const CartPageInternal = () => {
         router.push(`/order/${restaurantId}?${params.toString()}`);
     };
 
+    // ✅ NEW: Auto-refresh cart prices on mismatch
+    const refreshCartPrices = async () => {
+        setInfoDialog({ isOpen: true, title: "Updating Prices...", message: "Menu prices may have changed. syncing with latest menu...", type: 'warning' });
+        try {
+            // Fetch fresh menu with skip_cache=true
+            const res = await fetch(`/api/public/menu/${restaurantId}?skip_cache=true`);
+            const menuData = await res.json();
+
+            if (!res.ok) throw new Error("Failed to fetch fresh menu");
+
+            let updatedItemsCount = 0;
+            const newCart = cart.map(item => {
+                // Find matching item in fresh menu
+                let freshItem = null;
+                // Search in all categories
+                for (const catKey in menuData.menu) {
+                    const found = menuData.menu[catKey].find(i => i.id === item.id);
+                    if (found) {
+                        freshItem = found;
+                        break;
+                    }
+                }
+
+                if (!freshItem) return item; // Item removed? Keep as is or remove (keeping for now to avoid data loss)
+
+                // Recalculate Price
+                let newTotalPrice = 0;
+
+                // 1. Base Price (Portion based)
+                const freshPortion = freshItem.portions?.find(p => p.name === item.portion.name);
+                if (freshPortion) {
+                    newTotalPrice = parseFloat(freshPortion.price);
+                } else {
+                    // Fallback if portion removed/renamed - use base or old (risky but safer than 0)
+                    newTotalPrice = parseFloat(freshItem.price || item.totalPrice);
+                }
+
+                // 2. Add-ons
+                if (item.selectedAddOns && Array.isArray(item.selectedAddOns)) {
+                    // We need to re-validate add-on prices too if possible
+                    // Simplified: Assume addons names match. 
+                    // Deep lookup would require iterating freshItem.addOnGroups
+                    item.selectedAddOns.forEach(addon => {
+                        // Try to find updated price for this addon
+                        let freshAddonPrice = addon.price;
+
+                        // Look in flat addons
+                        const flatAddon = freshItem.addons?.find(a => a.name === addon.name);
+                        if (flatAddon) freshAddonPrice = flatAddon.price;
+
+                        // Look in groups
+                        if (!flatAddon && freshItem.addOnGroups) {
+                            freshItem.addOnGroups.forEach(grp => {
+                                const grpOpt = grp.options?.find(o => o.name === addon.name);
+                                if (grpOpt) freshAddonPrice = grpOpt.price;
+                            });
+                        }
+                        newTotalPrice += parseFloat(freshAddonPrice);
+                    });
+                }
+
+                if (Math.abs(newTotalPrice - item.totalPrice) > 0.5) {
+                    updatedItemsCount++;
+                }
+
+                return {
+                    ...item,
+                    price: freshItem.price, // update base price metadata
+                    totalPrice: newTotalPrice
+                };
+            });
+
+            if (updatedItemsCount > 0) {
+                updateCartInStorage({ cart: newCart });
+                setInfoDialog({ isOpen: true, title: "Prices Updated", message: "Some items in your cart had outdated prices. They have been updated to the latest menu prices. Please review your total.", type: 'success' });
+            } else {
+                // Even if no visible diff found by our logic, maybe invisible diff? 
+                // Just proceed or tell user to try again.
+                setInfoDialog({ isOpen: true, title: "Retry Order", message: "We've refreshed the menu data. Please try placing your order again.", type: 'success' });
+            }
+
+        } catch (e) {
+            console.error("Failed to refresh prices:", e);
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not auto-update prices. Please refresh the page manually." });
+        }
+    };
+
     const handlePlaceOrder = async () => {
         console.log("[Cart Page] Placing dine-in post-paid order.");
 
@@ -303,6 +390,11 @@ const CartPageInternal = () => {
             let friendlyError = 'Something went wrong. Please try again.';
             if (err.message.includes('network')) {
                 friendlyError = 'Connection issue. Please check your internet.';
+            } else if (err.message.toLowerCase().includes('price mismatch')) {
+                // ✅ AUTO RECCOVERY TRIGGER
+                console.log("Triggering price auto-recovery...");
+                await refreshCartPrices();
+                return; // Exit, don't show generic error
             } else if (err.message) {
                 friendlyError = err.message;
             }
