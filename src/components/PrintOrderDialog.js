@@ -180,7 +180,19 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 const qty = item.quantity || 1;
                 const price = item.price || 0;
                 const total = (qty * price).toFixed(0);
-                encoder.text(item.name).newline();
+
+                // FIXED: Portion Name
+                const portionText = item.portion?.name ? `(${item.portion.name})` : (item.variant ? `(${item.variant})` : '');
+
+                encoder.text(`${item.name} ${portionText}`).newline();
+
+                // FIXED: Add-ons as sub-items
+                if (item.addons && item.addons.length > 0) {
+                    item.addons.forEach(addon => {
+                        encoder.text(`  + ${addon.name} (${addon.price})`).newline();
+                    });
+                }
+
                 encoder.text(`  ${qty} x ${price}`).align('right').text(total).align('left').newline();
             });
 
