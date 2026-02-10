@@ -29,6 +29,7 @@ import CustomAudioPlayer from '@/components/CustomAudioPlayer';
 import { useToast } from "@/components/ui/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePolling } from '@/lib/usePolling';
+import { emitAppNotification } from '@/lib/appNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -383,6 +384,8 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
 function WhatsAppDirectPageContent() {
     const [conversations, setConversations] = useState([]);
+    const hasBootstrappedWhatsAppNotificationRef = useRef(false);
+    const prevUnreadTotalRef = useRef(0);
     const [messages, setMessages] = useState([]);
     const [activeConversation, setActiveConversation] = useState(null);
     const [loadingConversations, setLoadingConversations] = useState(true);
@@ -438,6 +441,30 @@ function WhatsAppDirectPageContent() {
     const totalUnreadCount = useMemo(() => {
         return conversations.reduce((acc, curr) => acc + (curr.unreadCount || 0), 0);
     }, [conversations]);
+
+    useEffect(() => {
+        const unread = totalUnreadCount || 0;
+        if (!hasBootstrappedWhatsAppNotificationRef.current) {
+            hasBootstrappedWhatsAppNotificationRef.current = true;
+            prevUnreadTotalRef.current = unread;
+            return;
+        }
+
+        if (unread > prevUnreadTotalRef.current) {
+            const delta = unread - prevUnreadTotalRef.current;
+            emitAppNotification({
+                scope: 'owner',
+                title: 'New WhatsApp Message',
+                message: delta === 1
+                    ? '1 new customer message received.'
+                    : `${delta} new customer messages received.`,
+                dedupeKey: `wa_unread_${unread}`,
+                sound: '/notification-whatsapp-message.mp3'
+            });
+        }
+
+        prevUnreadTotalRef.current = unread;
+    }, [totalUnreadCount]);
 
     // Pre-load Opus Worker Blob to allow synchronous Worker creation (Required by library)
     useEffect(() => {

@@ -11,6 +11,7 @@ import { LayoutDashboard, Wallet, LogOut, User, Loader2 } from 'lucide-react';
 import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
+import AppNotificationCenter from '@/components/AppNotificationCenter';
 
 function RiderLayoutContent({ children }) {
     const { user, isUserLoading } = useUser();
@@ -117,7 +118,10 @@ function RiderLayoutContent({ children }) {
                             </Avatar>
                             <h1 className="text-lg font-bold">Welcome, {riderName}</h1>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" /> Logout</Button>
+                        <div className="flex items-center gap-2">
+                            <AppNotificationCenter scope="rider" />
+                            <Button variant="ghost" size="sm" onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" /> Logout</Button>
+                        </div>
                     </div>
                 </header>
 

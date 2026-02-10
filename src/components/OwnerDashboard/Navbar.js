@@ -25,6 +25,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/firebase';
+import AppNotificationCenter from '@/components/AppNotificationCenter';
 
 
 const MotionDiv = motion.div;
@@ -143,6 +144,8 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
         </div>
 
         <div className={styles.navActions}>
+          <AppNotificationCenter scope="owner" />
+
           <button
             onClick={() => setSystemStatusOpen(true)}
             className={`${styles.iconButton} hidden md:flex`}

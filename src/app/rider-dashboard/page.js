@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,6 +19,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { optimizeDeliveryRoute, formatRouteForGoogleMaps } from '@/lib/routeOptimizer';
+import { emitAppNotification } from '@/lib/appNotifications';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
@@ -362,6 +363,8 @@ export default function RiderDashboardPage() {
     const [actionLoading, setActionLoading] = useState(null); // 🔥 POLISH 1: Button locking
     const [gpsPermission, setGpsPermission] = useState('granted'); // 🔥 POLISH 2: GPS warning
     const [batteryLevel, setBatteryLevel] = useState(100); // 🔥 POLISH 3: Battery warning
+    const hasBootstrappedOrderNotificationRef = useRef(false);
+    const prevAssignedOrderIdsRef = useRef(new Set());
     const [isOptimizingRoute, setIsOptimizingRoute] = useState(false); // 🚀 TSP Route optimization
     const [routeOptimizationResult, setRouteOptimizationResult] = useState(null); // 🚀 Optimization results
     const [optimizedRouteData, setOptimizedRouteData] = useState(null); // 🎯 API-optimized route for dashboard
@@ -511,37 +514,34 @@ export default function RiderDashboardPage() {
         checkBattery();
     }, []);
 
-    // 🔥 POLISH 5: Vibration & Sound on New Orders
+    // Rider assignment notification (new orders assigned to this rider)
     useEffect(() => {
-        const prevOrderCount = activeOrders.length;
+        const currentIds = new Set((activeOrders || []).map((o) => o.id));
 
-        // Detect new order assignment
-        if (activeOrders.length > prevOrderCount && prevOrderCount > 0) {
-            // Vibrate
-            if ('vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200]);
-            }
-
-            // Play sound (simple beep using Web Audio API)
-            try {
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-
-                oscillator.frequency.value = 800;
-                oscillator.type = 'sine';
-                gainNode.gain.value = 0.3;
-
-                oscillator.start();
-                setTimeout(() => oscillator.stop(), 200);
-            } catch (err) {
-                console.warn('[Sound] Failed:', err);
-            }
+        if (!hasBootstrappedOrderNotificationRef.current) {
+            hasBootstrappedOrderNotificationRef.current = true;
+            prevAssignedOrderIdsRef.current = currentIds;
+            return;
         }
-    }, [activeOrders.length]);
+
+        const prevIds = prevAssignedOrderIdsRef.current;
+        const newlyAssigned = [...currentIds].filter((id) => !prevIds.has(id));
+        if (newlyAssigned.length > 0) {
+            if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+
+            emitAppNotification({
+                scope: 'rider',
+                title: 'New Delivery Assigned',
+                message: newlyAssigned.length === 1
+                    ? 'You have 1 newly assigned order.'
+                    : `You have ${newlyAssigned.length} newly assigned orders.`,
+                dedupeKey: `rider_assigned_${newlyAssigned.sort().join(',')}`,
+                sound: '/notification-rider-assigned.mp3'
+            });
+        }
+
+        prevAssignedOrderIdsRef.current = currentIds;
+    }, [activeOrders]);
 
     // Helper: One-time restaurant data fetch (checks active status + gets settings like QR)
     const fetchRestaurantData = useCallback(async (restaurantId) => {

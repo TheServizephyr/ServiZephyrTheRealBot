@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import PrintOrderDialog from '@/components/PrintOrderDialog';
 import { useReactToPrint } from 'react-to-print';
 import { usePolling } from '@/lib/usePolling';
+import { emitAppNotification } from '@/lib/appNotifications';
 
 
 export const dynamic = 'force-dynamic';
@@ -992,6 +993,8 @@ export default function LiveOrdersPage() {
     // Print Modal State
     const [printModalData, setPrintModalData] = useState({ isOpen: false, order: null });
     const [restaurantData, setRestaurantData] = useState(null);
+    const hasBootstrappedNotificationRef = useRef(false);
+    const prevRelevantOrderIdsRef = useRef(new Set());
 
     // Fetch User Role
     useEffect(() => {
@@ -1230,6 +1233,51 @@ export default function LiveOrdersPage() {
             cleanupFn();
         };
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    // Role-based new order notifications:
+    // - Owner/Manager: notify on newly arrived pending/placed orders
+    // - Chef: notify when order enters chef queue (confirmed)
+    useEffect(() => {
+        if (!userRole) return;
+
+        const role = (userRole || '').toLowerCase();
+        const relevantOrderIds = new Set(
+            orders
+                .filter((order) => {
+                    if (role === 'chef') {
+                        return order.status === 'confirmed';
+                    }
+                    return ['pending', 'placed'].includes(order.status);
+                })
+                .map((order) => order.id)
+        );
+
+        if (!hasBootstrappedNotificationRef.current) {
+            hasBootstrappedNotificationRef.current = true;
+            prevRelevantOrderIdsRef.current = relevantOrderIds;
+            return;
+        }
+
+        const prevIds = prevRelevantOrderIdsRef.current;
+        const newlyAdded = [...relevantOrderIds].filter((id) => !prevIds.has(id));
+        if (newlyAdded.length > 0) {
+            const isChef = role === 'chef';
+            const title = isChef ? 'New Kitchen Order' : 'New Live Order';
+            const message = newlyAdded.length === 1
+                ? `1 new order is waiting (${isChef ? 'chef queue' : 'action required'}).`
+                : `${newlyAdded.length} new orders are waiting (${isChef ? 'chef queue' : 'action required'}).`;
+
+            emitAppNotification({
+                scope: 'owner',
+                title,
+                message,
+                dedupeKey: `${role}_live_orders_${newlyAdded.sort().join(',')}`,
+                sound: isChef ? '/notification.mp3' : '/notification-owner-manager.mp3'
+            });
+        }
+
+        prevRelevantOrderIdsRef.current = relevantOrderIds;
+    }, [orders, userRole]);
 
 
     const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
