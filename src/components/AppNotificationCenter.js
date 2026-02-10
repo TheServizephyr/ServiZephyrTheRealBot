@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 
 const MAX_KEEP_MS = 24 * 60 * 60 * 1000;
 const MAX_RING_MS = 2 * 60 * 1000;
+const LONG_VIBRATION_PATTERN = [700, 220, 700, 220, 1200];
 
 function now() {
     return Date.now();
@@ -29,6 +30,53 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
     const audioRef = useRef(null);
     const stopTimerRef = useRef(null);
     const audioUnlockedRef = useRef(false);
+    const beepIntervalRef = useRef(null);
+    const vibrationIntervalRef = useRef(null);
+    const fallbackAudioRef = useRef(null);
+
+    const triggerVibration = () => {
+        if (typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
+        try {
+            navigator.vibrate(LONG_VIBRATION_PATTERN);
+        } catch (_) {
+            // Ignore vibration errors
+        }
+    };
+
+    const startFallbackBeep = () => {
+        if (beepIntervalRef.current) return;
+        const playBeep = () => {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                const oscillator = ctx.createOscillator();
+                const gain = ctx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 880;
+                gain.gain.value = 0.25;
+                oscillator.connect(gain);
+                gain.connect(ctx.destination);
+                oscillator.start();
+                setTimeout(() => {
+                    oscillator.stop();
+                    ctx.close();
+                }, 250);
+            } catch (_) {
+                // Ignore beep errors
+            }
+        };
+        playBeep();
+        beepIntervalRef.current = setInterval(playBeep, 1200);
+    };
+
+    const startVibrationLoop = () => {
+        if (vibrationIntervalRef.current) return;
+        triggerVibration();
+        vibrationIntervalRef.current = setInterval(() => {
+            triggerVibration();
+        }, 5000);
+    };
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -74,9 +122,25 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             clearTimeout(stopTimerRef.current);
             stopTimerRef.current = null;
         }
+        if (beepIntervalRef.current) {
+            clearInterval(beepIntervalRef.current);
+            beepIntervalRef.current = null;
+        }
+        if (vibrationIntervalRef.current) {
+            clearInterval(vibrationIntervalRef.current);
+            vibrationIntervalRef.current = null;
+        }
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
+        }
+        if (fallbackAudioRef.current) {
+            fallbackAudioRef.current.pause();
+            fallbackAudioRef.current.currentTime = 0;
+            fallbackAudioRef.current = null;
+        }
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            navigator.vibrate(0);
         }
         setIsAlarmPlaying(false);
     };
@@ -123,11 +187,42 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             });
 
             const soundPath = payload.sound;
+            startVibrationLoop();
+
+            // If app is in background, also raise OS-level local notification (requires permission).
+            if (typeof document !== 'undefined' && document.hidden && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                const title = payload.title || 'New Notification';
+                const body = payload.message || '';
+                const tag = payload.dedupeKey || `servizephyr_${scope}`;
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistration().then((reg) => {
+                        if (reg) {
+                            reg.showNotification(title, {
+                                body,
+                                tag,
+                                renotify: true,
+                                requireInteraction: true,
+                                vibrate: LONG_VIBRATION_PATTERN
+                            });
+                        } else {
+                            // Fallback if service worker not available
+                            new Notification(title, { body, tag });
+                        }
+                    }).catch(() => { });
+                } else {
+                    new Notification(title, { body, tag });
+                }
+            }
+
             if (!soundPath || !audioRef.current) return;
 
             try {
                 stopAlarm();
+                startVibrationLoop();
                 audioRef.current.src = soundPath;
+                audioRef.current.load();
+                audioRef.current.muted = false;
+                audioRef.current.volume = 1;
                 audioRef.current.loop = true;
                 audioRef.current.play().then(() => {
                     setIsAlarmPlaying(true);
@@ -135,10 +230,39 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                         stopAlarm();
                     }, MAX_RING_MS);
                 }).catch(() => {
-                    setIsAlarmPlaying(false);
+                    try {
+                        // Second attempt with fresh Audio() instance for stricter autoplay/decode paths.
+                        const fallbackAudio = new Audio(soundPath);
+                        fallbackAudio.loop = true;
+                        fallbackAudio.volume = 1;
+                        fallbackAudioRef.current = fallbackAudio;
+                        fallbackAudio.play().then(() => {
+                            setIsAlarmPlaying(true);
+                            stopTimerRef.current = setTimeout(() => {
+                                stopAlarm();
+                            }, MAX_RING_MS);
+                        }).catch(() => {
+                            // Browser blocked autoplay / decode issue -> fallback alarm
+                            startFallbackBeep();
+                            setIsAlarmPlaying(true);
+                            stopTimerRef.current = setTimeout(() => {
+                                stopAlarm();
+                            }, MAX_RING_MS);
+                        });
+                    } catch (_) {
+                        startFallbackBeep();
+                        setIsAlarmPlaying(true);
+                        stopTimerRef.current = setTimeout(() => {
+                            stopAlarm();
+                        }, MAX_RING_MS);
+                    }
                 });
             } catch (_) {
-                setIsAlarmPlaying(false);
+                startFallbackBeep();
+                setIsAlarmPlaying(true);
+                stopTimerRef.current = setTimeout(() => {
+                    stopAlarm();
+                }, MAX_RING_MS);
             }
         };
 
@@ -149,6 +273,17 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [scope]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !('Notification' in window)) return;
+        const requestPermission = () => {
+            if (Notification.permission === 'default') {
+                Notification.requestPermission().catch(() => { });
+            }
+        };
+        window.addEventListener('pointerdown', requestPermission, { once: true });
+        return () => window.removeEventListener('pointerdown', requestPermission);
+    }, []);
 
     const unreadCount = useMemo(
         () => notifications.filter((n) => !n.read).length,
@@ -209,4 +344,3 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         </div>
     );
 }
-

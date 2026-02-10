@@ -1235,19 +1235,16 @@ export default function LiveOrdersPage() {
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     // Role-based new order notifications:
-    // - Owner/Manager: notify on newly arrived pending/placed orders
-    // - Chef: notify when order enters chef queue (confirmed)
+    // - Chef only here (owner/manager global notifications are emitted from Sidebar so they work on any page)
     useEffect(() => {
         if (!userRole) return;
 
         const role = (userRole || '').toLowerCase();
+        if (role !== 'chef') return;
         const relevantOrderIds = new Set(
             orders
                 .filter((order) => {
-                    if (role === 'chef') {
-                        return order.status === 'confirmed';
-                    }
-                    return ['pending', 'placed'].includes(order.status);
+                    return order.status === 'confirmed';
                 })
                 .map((order) => order.id)
         );
@@ -1261,18 +1258,17 @@ export default function LiveOrdersPage() {
         const prevIds = prevRelevantOrderIdsRef.current;
         const newlyAdded = [...relevantOrderIds].filter((id) => !prevIds.has(id));
         if (newlyAdded.length > 0) {
-            const isChef = role === 'chef';
-            const title = isChef ? 'New Kitchen Order' : 'New Live Order';
+            const title = 'New Kitchen Order';
             const message = newlyAdded.length === 1
-                ? `1 new order is waiting (${isChef ? 'chef queue' : 'action required'}).`
-                : `${newlyAdded.length} new orders are waiting (${isChef ? 'chef queue' : 'action required'}).`;
+                ? '1 new order is waiting (chef queue).'
+                : `${newlyAdded.length} new orders are waiting (chef queue).`;
 
             emitAppNotification({
                 scope: 'owner',
                 title,
                 message,
                 dedupeKey: `${role}_live_orders_${newlyAdded.sort().join(',')}`,
-                sound: isChef ? '/notification.mp3' : '/notification-owner-manager.mp3'
+                sound: '/notification.mp3'
             });
         }
 

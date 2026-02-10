@@ -26,13 +26,14 @@ import {
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
 import { motion } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, getDocs, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import Image from 'next/image';
 import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
 import { canAccessPage, ROLES } from '@/lib/permissions';
+import { emitAppNotification } from '@/lib/appNotifications';
 
 const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_owner_id') => {
   // Use the appropriate param name based on context (impersonate or employee access)
@@ -232,6 +233,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   // Fetch WhatsApp Unread Count
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+  const hasBootstrappedPendingNotifRef = useRef(false);
+  const prevPendingCountRef = useRef(0);
+  const hasBootstrappedWaNotifRef = useRef(false);
+  const prevWaUnreadCountRef = useRef(0);
 
   // Realtime Listener for WhatsApp Unread Count
   useEffect(() => {
@@ -301,6 +306,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
   // Fetch Pending Orders Count (Real-time)
   useEffect(() => {
+    if (businessType === 'street-vendor') return;
     // Skip if impersonating (too complex to handle multiple listeners properly without context)
     // or if not owner
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
@@ -331,7 +337,28 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         );
 
         unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
-          setPendingOrdersCount(snapshot.size);
+          const count = snapshot.size;
+          setPendingOrdersCount(count);
+
+          if (!hasBootstrappedPendingNotifRef.current) {
+            hasBootstrappedPendingNotifRef.current = true;
+            prevPendingCountRef.current = count;
+            return;
+          }
+
+          if (count > prevPendingCountRef.current) {
+            const delta = count - prevPendingCountRef.current;
+            emitAppNotification({
+              scope: 'owner',
+              title: 'New Live Order',
+              message: delta === 1
+                ? '1 new order is waiting in Live Orders.'
+                : `${delta} new orders are waiting in Live Orders.`,
+              dedupeKey: `sidebar_pending_${count}`,
+              sound: '/notification-owner-manager.mp3'
+            });
+          }
+          prevPendingCountRef.current = count;
         }, (error) => {
           console.error("Error listening to pending orders:", error);
         });
@@ -344,7 +371,30 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [impersonatedOwnerId, employeeOfOwnerId]);
+  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+
+  useEffect(() => {
+    if (impersonatedOwnerId || employeeOfOwnerId) return;
+    const unread = whatsappUnreadCount || 0;
+    if (!hasBootstrappedWaNotifRef.current) {
+      hasBootstrappedWaNotifRef.current = true;
+      prevWaUnreadCountRef.current = unread;
+      return;
+    }
+
+    if (unread > prevWaUnreadCountRef.current) {
+      const delta = unread - prevWaUnreadCountRef.current;
+      emitAppNotification({
+        scope: 'owner',
+        title: 'New WhatsApp Message',
+        message: delta === 1 ? '1 new customer message received.' : `${delta} new customer messages received.`,
+        dedupeKey: `sidebar_wa_${unread}`,
+        sound: '/notification-whatsapp-message.mp3'
+      });
+    }
+
+    prevWaUnreadCountRef.current = unread;
+  }, [whatsappUnreadCount, impersonatedOwnerId, employeeOfOwnerId]);
 
 
   return (
