@@ -181,8 +181,7 @@ const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
 
 const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, initialRestrictedFeatures = [] }) => {
   const features = [
-    { id: 'coupons', label: 'Coupon & Offer Hub' },
-    { id: 'dashboard', label: 'Dashboard (ServiZephyr)' },
+    { id: 'dashboard', label: 'Dashboard' },
     { id: 'live-orders', label: 'Live Order Management' },
     { id: 'menu', label: 'Menu/Item Management' },
     { id: 'dine-in', label: 'Dine-In Management' },
@@ -191,6 +190,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, init
     { id: 'analytics', label: 'Analytics & Reports' },
     { id: 'customers', label: 'Customer Hub' },
     { id: 'delivery', label: 'Delivery Management' },
+    { id: 'coupons', label: 'Coupon & Offer Hub' },
     { id: 'qr', label: 'QR Code Management' },
     { id: 'location', label: 'Location/Address Settings' },
     { id: 'connections', label: 'WhatsApp/Bot Connections' },
