@@ -95,17 +95,19 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
     let reason = '';
     let type = ''; // NEW: explicit type for UI
 
-    // 1. UNIVERSAL FREE ZONE (Radius-based)
-    // Checking if distance qualifies for automatic free delivery
+    // 1. UNIVERSAL FREE ZONE / GLOBAL FREE-MIN-ORDER (non-tier modes)
+    // - Radius free zone: free within configured km
+    // - Global free threshold: if min order is configured, free regardless of local radius
     const freeDeliveryRadius = toNum(settings.freeDeliveryRadius, 0);
     const freeDeliveryMinOrder = settings.freeDeliveryMinOrder === undefined || settings.freeDeliveryMinOrder === null
         ? null
         : toNum(settings.freeDeliveryMinOrder, 0);
     const subtotalNum = toNum(subtotal, 0);
-    const isWithinFreeRadius = freeDeliveryRadius > 0 && roadDistance <= freeDeliveryRadius;
+    const hasRadiusRule = freeDeliveryRadius > 0;
+    const hasGlobalMinOrderRule = freeDeliveryMinOrder !== null && freeDeliveryMinOrder > 0;
+    const isWithinFreeRadius = hasRadiusRule ? roadDistance <= freeDeliveryRadius : true;
     const isFreeMinOrderMet = freeDeliveryMinOrder === null || subtotalNum >= freeDeliveryMinOrder;
-
-    const isUniversalFreeZone = isWithinFreeRadius && isFreeMinOrderMet;
+    const isUniversalFreeZone = (hasRadiusRule || hasGlobalMinOrderRule) && isWithinFreeRadius && isFreeMinOrderMet;
 
     console.log(`[distance.js] 🔍 Calc: d=${roadDistance.toFixed(1)}km, subtotal=${subtotalNum}, freeRad=${freeDeliveryRadius}, freeMin=${freeDeliveryMinOrder}`);
 
@@ -164,13 +166,19 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
         }
     }
 
-    // 3. OVERRIDE LOGIC (Universal Free Zone)
-    // CRITICAL: Only apply if NOT in tiered mode (Tiers handle their own free rules)
+    // 3. OVERRIDE LOGIC (Universal Free Zone / Global Min Order)
+    // CRITICAL: Only apply if NOT in tiered mode (tiers own their rule engine)
     const isTieredMode = settings.deliveryChargeType === 'tiered';
 
     if (!isTieredMode && isUniversalFreeZone && charge > 0) {
         charge = 0;
-        reason = `Free for locals (${roadDistance.toFixed(1)}km zone)`;
+        if (hasRadiusRule && hasGlobalMinOrderRule) {
+            reason = `Free in ${freeDeliveryRadius}km zone for orders ≥₹${freeDeliveryMinOrder}`;
+        } else if (hasRadiusRule) {
+            reason = `Free for locals (${roadDistance.toFixed(1)}km zone)`;
+        } else {
+            reason = `Free delivery for orders ≥₹${freeDeliveryMinOrder}`;
+        }
         type = 'override-free';
         console.log(`[distance.js] ⚡ Radius Override applied: ${reason}`);
     }

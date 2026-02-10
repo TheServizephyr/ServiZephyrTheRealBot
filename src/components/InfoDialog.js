@@ -10,17 +10,23 @@ import { useUser } from '@/firebase/provider';
 const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
   const [isSending, setIsSending] = useState(false);
   const [reportSent, setReportSent] = useState(false);
+  const normalizedText = `${title || ''} ${message || ''}`.toLowerCase();
   const isError = type === 'error'
-    || (title || '').toLowerCase().includes('error')
-    || (title || '').toLowerCase().includes('failed')
-    || (title || '').toLowerCase().includes('invalid')
-    || (title || '').toLowerCase().includes('exceeded')
-    || (title || '').toLowerCase().includes('capacity');
-  const isWarning = type === 'warning' || (title || '').toLowerCase().includes('warning') || (title || '').toLowerCase().includes('restricted');
-  const isLoading = (title || '').toLowerCase().includes('processing')
-    || (title || '').toLowerCase().includes('loading')
-    || (title || '').toLowerCase().includes('wait')
-    || (title || '').toLowerCase().includes('please wait');
+    || normalizedText.includes('error')
+    || normalizedText.includes('failed')
+    || normalizedText.includes('invalid')
+    || normalizedText.includes('exceeded')
+    || normalizedText.includes('capacity');
+  const isWarning = type === 'warning'
+    || normalizedText.includes('warning')
+    || normalizedText.includes('restricted')
+    || normalizedText.includes('not available')
+    || normalizedText.includes('unavailable')
+    || normalizedText.includes('out of range');
+  const isLoading = normalizedText.includes('processing')
+    || normalizedText.includes('loading')
+    || normalizedText.includes('wait')
+    || normalizedText.includes('please wait');
   const pathname = usePathname();
   const { user } = useUser();
 

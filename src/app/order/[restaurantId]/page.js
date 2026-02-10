@@ -963,6 +963,7 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
+        const LIVE_ORDER_TTL_MS = 24 * 60 * 60 * 1000;
 
         const pollStatus = async () => {
             const raw = localStorage.getItem(liveOrderKey);
@@ -978,6 +979,11 @@ const OrderPageInternal = () => {
                 return;
             }
 
+            allOrders = allOrders.filter((order) => {
+                if (!order?.timestamp) return true;
+                return (Date.now() - Number(order.timestamp)) < LIVE_ORDER_TTL_MS;
+            });
+
             if (allOrders.length === 0) {
                 localStorage.removeItem(liveOrderKey);
                 return;
@@ -988,7 +994,11 @@ const OrderPageInternal = () => {
 
             for (const order of allOrders) {
                 try {
-                    const res = await fetch(`/api/order/status/${order.orderId}`);
+                    const statusToken = order?.trackingToken || token;
+                    const statusUrl = statusToken
+                        ? `/api/order/status/${order.orderId}?token=${encodeURIComponent(statusToken)}`
+                        : `/api/order/status/${order.orderId}`;
+                    const res = await fetch(statusUrl);
                     if (res.ok) {
                         const statusData = await res.json();
                         const status = statusData.order?.status;
@@ -999,6 +1009,10 @@ const OrderPageInternal = () => {
                             latestActiveOrder = order;
                         }
                     } else {
+                        if (res.status === 403) {
+                            console.log(`[Poll] Unauthorized for order ${order.orderId}, removing stale local entry.`);
+                            continue;
+                        }
                         if (res.status === 404) {
                             console.log(`[Poll] Order ${order.orderId} not found, removing.`);
                         } else {
@@ -1773,7 +1787,10 @@ const OrderPageInternal = () => {
 
         const liveOrderKey = `liveOrder_${restaurantId}`;
         if (liveOrder && liveOrder.orderId) {
-            localStorage.setItem(liveOrderKey, JSON.stringify(liveOrder));
+            localStorage.setItem(liveOrderKey, JSON.stringify({
+                ...liveOrder,
+                timestamp: liveOrder.timestamp || Date.now()
+            }));
         }
 
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);

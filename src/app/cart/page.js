@@ -376,7 +376,8 @@ const CartPageInternal = () => {
                 orderId: data.order_id,
                 trackingToken: data.token,
                 restaurantId: restaurantId,
-                deliveryType: 'dine-in'
+                deliveryType: 'dine-in',
+                timestamp: Date.now()
             };
             localStorage.setItem(`liveOrder_${restaurantId}`, JSON.stringify(liveOrderData));
             localStorage.removeItem(`cart_${restaurantId}`);

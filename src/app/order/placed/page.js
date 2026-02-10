@@ -61,6 +61,7 @@ const OrderPlacedContent = () => {
                         restaurantId,
                         trackingToken: finalToken,
                         status: 'pending',
+                        timestamp: Date.now(),
                     }));
                     console.log(`[Order Placed] Saved new live order to localStorage with key: ${liveOrderKey}`);
 

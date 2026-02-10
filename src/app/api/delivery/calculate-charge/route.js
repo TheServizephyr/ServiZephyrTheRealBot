@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
+import { findBusinessById } from '@/services/business/businessService';
 
 function toFiniteNumber(value) {
     const n = Number(value);
@@ -28,17 +29,16 @@ export async function POST(req) {
         }
 
         const firestore = await getFirestore();
-        const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
-        const restaurantSnap = await restaurantRef.get();
+        const business = await findBusinessById(firestore, restaurantId);
 
-        if (!restaurantSnap.exists) {
+        if (!business) {
             return NextResponse.json(
                 { error: 'Restaurant not found' },
                 { status: 404 }
             );
         }
-
-        const restaurantData = restaurantSnap.data();
+        const restaurantRef = business.ref;
+        const restaurantData = business.data;
 
         // ✅ FIXED: Support all possible coordinate field structures
         // Priority: coordinates.lat/lng → address.latitude/longitude → businessAddress.latitude/longitude

@@ -68,17 +68,24 @@ function DeliverySettingsPageContent() {
                     return Number.isFinite(n) ? n : fallback;
                 };
                 setSettings({
+                    // Keep threshold unified across "Free Over" and "Bonus Min Order".
+                    // Prefer explicit free-over value, fallback to global min-order override.
+                    // This keeps UI and backend behavior aligned.
+                    deliveryFreeThreshold: toNum(data.deliveryFreeThreshold, 0) > 0
+                        ? toNum(data.deliveryFreeThreshold, 0)
+                        : toNum(data.freeDeliveryMinOrder, 500),
                     deliveryEnabled: data.deliveryEnabled,
                     deliveryRadius: [toNum(data.deliveryRadius, 5)],
                     deliveryFeeType: data.deliveryFeeType || 'fixed',
                     deliveryFixedFee: toNum(data.deliveryFixedFee, 30),
                     deliveryBaseDistance: toNum(data.deliveryBaseDistance, 0),
                     deliveryPerKmFee: toNum(data.deliveryPerKmFee, 5),
-                    deliveryFreeThreshold: toNum(data.deliveryFreeThreshold, 500),
                     // NEW: Road factor & free zone
                     roadDistanceFactor: toNum(data.roadDistanceFactor, 1.0),
                     freeDeliveryRadius: toNum(data.freeDeliveryRadius, 0),
-                    freeDeliveryMinOrder: toNum(data.freeDeliveryMinOrder, 0),
+                    freeDeliveryMinOrder: toNum(data.deliveryFreeThreshold, 0) > 0
+                        ? toNum(data.deliveryFreeThreshold, 0)
+                        : toNum(data.freeDeliveryMinOrder, 0),
                     // NEW: Tiered charges
                     deliveryTiers: (data.deliveryTiers || []).map(t => ({
                         minOrder: toNum(t?.minOrder, 0),
@@ -123,7 +130,10 @@ function DeliverySettingsPageContent() {
                 // NEW: Road factor & free zone
                 roadDistanceFactor: toNum(settings.roadDistanceFactor, 1.0),
                 freeDeliveryRadius: toNum(settings.freeDeliveryRadius, 0),
-                freeDeliveryMinOrder: toNum(settings.freeDeliveryMinOrder, 0),
+                // Keep threshold usable even after switching from "Free Over Amount" mode.
+                freeDeliveryMinOrder: settings.deliveryFeeType === 'free-over'
+                    ? toNum(settings.deliveryFreeThreshold, 0)
+                    : toNum(settings.freeDeliveryMinOrder, 0),
                 // NEW: Tiered charges
                 deliveryTiers: settings.deliveryTiers.map(t => ({ minOrder: toNum(t.minOrder, 0), fee: toNum(t.fee, 0) })),
             };
@@ -156,7 +166,32 @@ function DeliverySettingsPageContent() {
     };
 
     const handleSettingChange = (key, value) => {
-        setSettings(prev => ({ ...prev, [key]: value }));
+        setSettings(prev => {
+            const next = { ...prev, [key]: value };
+
+            // Keep threshold value shared between:
+            // 1) Main engine "Free Over Amount"
+            // 2) Bonus override "Min Order for Free Delivery"
+            if (key === 'deliveryFreeThreshold') {
+                const unifiedValue = Number(value) || 0;
+                next.deliveryFreeThreshold = unifiedValue;
+                next.freeDeliveryMinOrder = unifiedValue;
+            }
+
+            if (key === 'freeDeliveryMinOrder') {
+                const unifiedValue = Number(value) || 0;
+                next.freeDeliveryMinOrder = unifiedValue;
+                next.deliveryFreeThreshold = unifiedValue;
+            }
+
+            // If user switches to free-over mode and threshold is empty,
+            // prefill it from already configured global min-order.
+            if (key === 'deliveryFeeType' && value === 'free-over' && (Number(prev.deliveryFreeThreshold) || 0) <= 0) {
+                next.deliveryFreeThreshold = Number(prev.freeDeliveryMinOrder) || 0;
+            }
+
+            return next;
+        });
     }
 
     const addTier = () => {
@@ -464,7 +499,7 @@ function DeliverySettingsPageContent() {
                                                     type="number"
                                                     className="h-12 pl-8 pr-4 text-xl font-black rounded-xl border-2 w-32 text-center"
                                                     value={settings.deliveryFreeThreshold}
-                                                    onChange={e => handleSettingChange('deliveryFreeThreshold', e.target.value)}
+                                                    onChange={e => handleSettingChange('deliveryFreeThreshold', Number(e.target.value))}
                                                 />
                                             </div>
                                         </div>
@@ -482,7 +517,7 @@ function DeliverySettingsPageContent() {
                                             </div>
                                         </div>
                                     </div>
-                                    <p className="text-sm font-medium text-muted-foreground mt-4 italic">Standard fee applies for small orders.</p>
+                                    <p className="text-sm font-medium text-muted-foreground mt-4 italic">Standard fee applies for small orders. This threshold is shared with Bonus Min Order and works for Fixed/Distance modes too.</p>
                                 </div>
                             )}
 
@@ -649,7 +684,7 @@ function DeliverySettingsPageContent() {
                             <div className="space-y-6">
                                 <Label className="text-base font-bold flex flex-col gap-1">
                                     Min Order for Free Delivery
-                                    <span className="text-xs text-muted-foreground font-medium italic">Global threshold to skip all fees</span>
+                                    <span className="text-xs text-muted-foreground font-medium italic">Global threshold to skip all fees (shared with Free Over Amount)</span>
                                 </Label>
                                 <div className="relative group max-w-[200px]">
                                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-xl text-muted-foreground group-focus-within:text-green-500 transition-colors">₹</span>

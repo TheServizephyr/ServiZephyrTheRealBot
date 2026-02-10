@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight } from 'lucide-react';
@@ -163,6 +163,12 @@ const CheckoutPageInternal = () => {
     // ✅ NEW: Dynamic Delivery Validation
     const [deliveryValidation, setDeliveryValidation] = useState(null);
     const [isValidatingDelivery, setIsValidatingDelivery] = useState(false);
+    const validationRequestSeqRef = useRef(0);
+    const selectedAddressRef = useRef(null);
+
+    useEffect(() => {
+        selectedAddressRef.current = selectedAddress;
+    }, [selectedAddress]);
 
     const validateDelivery = async (addr, currentSubtotal) => {
         if (!addr) {
@@ -183,6 +189,7 @@ const CheckoutPageInternal = () => {
             return;
         }
 
+        const requestSeq = ++validationRequestSeqRef.current;
         setIsValidatingDelivery(true);
         console.log('[Checkout] 🚀 REACHED: validateDelivery calling API for:', addr.label, 'Subtotal:', currentSubtotal);
 
@@ -202,6 +209,10 @@ const CheckoutPageInternal = () => {
 
             if (response.ok) {
                 const result = await response.json();
+                if (requestSeq !== validationRequestSeqRef.current) {
+                    console.log('[Checkout] Ignoring stale delivery validation response');
+                    return;
+                }
                 console.log('[Checkout] ✅ Delivery Validation Result:', result);
                 setDeliveryValidation(result);
 
@@ -215,7 +226,9 @@ const CheckoutPageInternal = () => {
         } catch (error) {
             console.error('[Checkout] ❌ Delivery Validation Failed Network Error:', error);
         } finally {
-            setIsValidatingDelivery(false);
+            if (requestSeq === validationRequestSeqRef.current) {
+                setIsValidatingDelivery(false);
+            }
         }
     };
 
@@ -624,6 +637,8 @@ const CheckoutPageInternal = () => {
     // ✅ TRIGGER VALIDATION: When Address or Subtotal changes
     useEffect(() => {
         if (deliveryType === 'delivery' && selectedAddress) {
+            // Clear previous address/subtotal validation immediately to avoid stale "allowed" state.
+            setDeliveryValidation(null);
             console.log('[Checkout] ⏲️ Setting Validation Timer for:', selectedAddress.label);
             const timer = setTimeout(() => {
                 validateDelivery(selectedAddress, currentSubtotal);
@@ -891,7 +906,6 @@ const CheckoutPageInternal = () => {
                     // Save for recovery if page refreshes
                     setOrderState(ORDER_STATE.PAYMENT_PROCESSING);
                     localStorage.setItem('payment_pending_order', tabId);
-                    localStorage.setItem('payment_pending_token', token || '');
 
                     const options = {
                         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_m9PZ4ZL5ItHp9j',
@@ -907,10 +921,8 @@ const CheckoutPageInternal = () => {
 
                             // Redirect to pending screen for webhook confirmation
                             const pendingOrder = localStorage.getItem('payment_pending_order');
-                            const pendingToken = localStorage.getItem('payment_pending_token');
-
-                            if (pendingOrder && pendingToken) {
-                                router.push(`/track/pending/${pendingOrder}?token=${pendingToken}`);
+                            if (pendingOrder && token) {
+                                router.push(`/track/pending/${pendingOrder}?token=${token}`);
                             } else {
                                 // Fallback to direct tracking
                                 // Ensure Ref is passed if available
@@ -1006,21 +1018,55 @@ const CheckoutPageInternal = () => {
 
             // Final delivery validation before order create
             if (deliveryType === 'delivery' && selectedAddress) {
+                if (isValidatingDelivery) {
+                    setInfoDialog({
+                        isOpen: true,
+                        title: 'Please Wait',
+                        message: 'Delivery range is being validated. Please try again in a moment.'
+                    });
+                    setIsProcessingPayment(false);
+                    return;
+                }
                 try {
-                    const lat = selectedAddress.lat ?? selectedAddress.latitude;
-                    const lng = selectedAddress.lng ?? selectedAddress.longitude;
+                    const addressAtValidationStart = selectedAddressRef.current;
+                    const startLat = addressAtValidationStart?.lat ?? addressAtValidationStart?.latitude;
+                    const startLng = addressAtValidationStart?.lng ?? addressAtValidationStart?.longitude;
+
+                    if (!Number.isFinite(Number(startLat)) || !Number.isFinite(Number(startLng))) {
+                        setInfoDialog({
+                            isOpen: true,
+                            title: 'Address Error',
+                            message: 'Selected address is invalid. Please reselect your delivery address.'
+                        });
+                        setIsProcessingPayment(false);
+                        return;
+                    }
 
                     const validationRes = await fetch('/api/delivery/calculate-charge', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             restaurantId,
-                            addressLat: lat,
-                            addressLng: lng,
+                            addressLat: Number(startLat),
+                            addressLng: Number(startLng),
                             subtotal
                         })
                     });
                     const validationData = await validationRes.json();
+
+                    const addressAfterValidation = selectedAddressRef.current;
+                    const endLat = addressAfterValidation?.lat ?? addressAfterValidation?.latitude;
+                    const endLng = addressAfterValidation?.lng ?? addressAfterValidation?.longitude;
+                    const addressChangedDuringValidation = Number(startLat) !== Number(endLat) || Number(startLng) !== Number(endLng);
+                    if (addressChangedDuringValidation) {
+                        setInfoDialog({
+                            isOpen: true,
+                            title: 'Address Updated',
+                            message: 'Address changed during validation. Please place order again after review.'
+                        });
+                        setIsProcessingPayment(false);
+                        return;
+                    }
 
                     if (!validationRes.ok || !validationData.allowed) {
                         const errorMsg = validationData.message || 'Your address is beyond our delivery range.';
@@ -2143,8 +2189,8 @@ const CheckoutPageInternal = () => {
                                             addresses={userAddresses}
                                             selectedAddressId={selectedAddress?.id}
                                             onSelect={(addr) => {
+                                                setSelectedAddress(addr);
                                                 window.history.back();
-                                                setTimeout(() => setSelectedAddress(addr), 50);
                                             }}
                                             onUseCurrentLocation={handleUseCurrentLocation}
                                             onAddNewAddress={handleAddNewAddress}

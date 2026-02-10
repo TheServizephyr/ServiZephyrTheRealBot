@@ -199,6 +199,9 @@ export async function GET(req, { params }) {
         console.log('[Menu API] Final coupons count:', coupons.length);
 
         const responseData = {
+            // Coordinates for distance calculation consumers
+            latitude: businessData.coordinates?.lat ?? businessData.address?.latitude ?? businessData.businessAddress?.latitude ?? null,
+            longitude: businessData.coordinates?.lng ?? businessData.address?.longitude ?? businessData.businessAddress?.longitude ?? null,
             restaurantName: businessData.name,
             approvalStatus: businessData.approvalStatus || 'approved',
             logoUrl: businessData.logoUrl,
@@ -226,8 +229,6 @@ export async function GET(req, { params }) {
             businessType: businessType,
             dineInModel: businessData.dineInModel,
             isOpen: businessData.isOpen === true,
-            latitude: restaurantLat,
-            longitude: restaurantLng,
         };
 
         // STEP 5: Cache with version-based key and 12-hour TTL
