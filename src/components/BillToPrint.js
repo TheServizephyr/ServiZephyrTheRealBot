@@ -113,19 +113,18 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
 
                     /* Extra specific rule for grand total to make it bolder/darker */
                     #bill-print-root .grand-total-amount {
-                        font-weight: 900 !important;
                         color: #000000 !important;
-                        -webkit-font-smoothing: antialiased !important;
+                        font-weight: 800 !important;
                     }
                 }
             `}</style>
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
                 <h1 className="text-xl font-bold uppercase">{safeRender(restaurant?.name, 'Restaurant')}</h1>
-                <p className="text-xs">{restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')}</p>
-                {restaurant?.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
-                {restaurant?.fssai && <p className="text-xs">FSSAI: {restaurant.fssai}</p>}
+                <p className="text-xs font-bold">{restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')}</p>
+                {restaurant?.gstin && <p className="text-xs mt-1 font-bold">GSTIN: {restaurant.gstin}</p>}
+                {restaurant?.fssai && <p className="text-xs font-bold">FSSAI: {restaurant.fssai}</p>}
             </div>
-            <div className="mb-2 text-xs">
+            <div className="mb-2 text-xs font-bold">
                 <p><strong>Bill To:</strong> {safeRender(finalCustomerDetails.name, 'Walk-in Customer')}</p>
                 {finalCustomerDetails.phone && <p><strong>Phone:</strong> {finalCustomerDetails.phone}</p>}
                 {finalCustomerDetails.address && (
@@ -160,12 +159,12 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                             <tr key={index}>
                                 <td className="py-1">
                                     {safeRender(item.name || item.itemName)}
-                                    {/* FIXED: Show Portion Name in Bill */}
-                                    {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                    {/* FIXED: Show Portion Name in Bill ONLY if multiple portions exist */}
+                                    {item.portions?.length > 1 && (item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : ''))}
 
                                     {/* FIXED: Show Add-ons as sub-items in Bill */}
                                     {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
-                                        <div className="text-[10px] text-gray-500 pl-2">
+                                        <div className="text-[11px] font-medium text-black pl-2">
                                             {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
                                                 <div key={aIdx}>+ {addon.name} (₹{addon.price})</div>
                                             ))}
