@@ -81,6 +81,7 @@ export async function GET(req) {
                 deliveryFeeType: parentData.deliveryFeeType ?? 'fixed',
                 deliveryFixedFee: parentData.deliveryFixedFee ?? 30,
                 deliveryPerKmFee: parentData.deliveryPerKmFee ?? 5,
+                deliveryBaseDistance: parentData.deliveryBaseDistance ?? 0, // NEW: Included KM
                 deliveryFreeThreshold: parentData.deliveryFreeThreshold ?? 500,
                 deliveryOnlinePaymentEnabled: parentData.deliveryOnlinePaymentEnabled ?? true,
                 deliveryCodEnabled: parentData.deliveryCodEnabled ?? true,
@@ -109,7 +110,7 @@ export async function PATCH(req) {
         // Whitelist allowed fields to prevent pollution
         const allowedFields = [
             'deliveryEnabled', 'deliveryRadius', 'deliveryFeeType',
-            'deliveryFixedFee', 'deliveryPerKmFee', 'deliveryFreeThreshold',
+            'deliveryFixedFee', 'deliveryPerKmFee', 'deliveryBaseDistance', 'deliveryFreeThreshold',
             'deliveryOnlinePaymentEnabled', 'deliveryCodEnabled',
             // NEW: Road factor & free zone
             'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder',

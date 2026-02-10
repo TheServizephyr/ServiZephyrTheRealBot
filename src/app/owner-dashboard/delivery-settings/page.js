@@ -266,11 +266,14 @@ function DeliverySettingsPageContent() {
                 </Card>
             </motion.div>
 
-            {/* SECTION 2: CHARGING STRATEGY */}
+            {/* STEP 1: CHARGING ENGINE */}
             <div className="space-y-6">
-                <div className="flex flex-col gap-1">
-                    <h2 className="text-2xl font-bold tracking-tight px-1">Charging Strategy</h2>
-                    <p className="text-sm text-muted-foreground px-1 mb-2">How do you want to calculate delivery fees?</p>
+                <div className="flex items-center gap-3 px-1">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white font-black text-sm shadow-lg shadow-primary/20">1</div>
+                    <div className="flex flex-col">
+                        <h2 className="text-xl font-bold tracking-tight">Main Charging Engine</h2>
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Select one primary method</p>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -279,30 +282,54 @@ function DeliverySettingsPageContent() {
                         { id: 'per-km', label: 'Distance Based', icon: <Truck className="h-5 w-5" />, desc: 'Pay per Kilometre' },
                         { id: 'free-over', label: 'Free Over Amount', icon: <ToggleRight className="h-5 w-5" />, desc: 'Free for large orders' },
                         { id: 'tiered', label: 'Tiered Charges', icon: <Settings className="h-5 w-5" />, desc: 'Advanced rules' }
-                    ].map((strat) => (
-                        <button
-                            key={strat.id}
-                            onClick={() => handleSettingChange('deliveryFeeType', strat.id)}
-                            className={cn(
-                                "flex flex-col items-start p-4 rounded-2xl border-2 text-left transition-all duration-300 group relative overflow-hidden",
-                                settings.deliveryFeeType === strat.id
-                                    ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
-                                    : "border-border hover:border-primary/40 hover:bg-muted/50"
-                            )}
-                        >
-                            {settings.deliveryFeeType === strat.id && (
-                                <motion.div layoutId="strat-active" className="absolute top-3 right-3 h-2 w-2 rounded-full bg-primary" />
-                            )}
-                            <div className={cn(
-                                "p-2.5 rounded-xl mb-3 transition-colors",
-                                settings.deliveryFeeType === strat.id ? "bg-primary text-white" : "bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary"
-                            )}>
-                                {strat.icon}
-                            </div>
-                            <span className="font-bold text-sm leading-tight mb-1">{strat.label}</span>
-                            <span className="text-[10px] text-muted-foreground font-medium leading-normal">{strat.desc}</span>
-                        </button>
-                    ))}
+                    ].map((strat) => {
+                        const isActive = settings.deliveryFeeType === strat.id;
+                        return (
+                            <button
+                                key={strat.id}
+                                onClick={() => handleSettingChange('deliveryFeeType', strat.id)}
+                                className={cn(
+                                    "flex flex-col items-start p-4 rounded-2xl border-2 text-left transition-all duration-500 group relative overflow-hidden",
+                                    isActive
+                                        ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
+                                        : "border-border bg-muted/20 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 hover:border-primary/40 hover:bg-muted/50"
+                                )}
+                            >
+                                <div className="flex justify-between items-start w-full mb-3">
+                                    <div className={cn(
+                                        "p-2.5 rounded-xl transition-all duration-500",
+                                        isActive ? "bg-primary text-white scale-110" : "bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary"
+                                    )}>
+                                        {strat.icon}
+                                    </div>
+                                    <Switch
+                                        checked={isActive}
+                                        onCheckedChange={() => handleSettingChange('deliveryFeeType', strat.id)}
+                                        className="scale-75 data-[state=checked]:bg-primary"
+                                    />
+                                </div>
+
+                                <span className={cn(
+                                    "font-bold text-sm leading-tight mb-1 transition-colors",
+                                    isActive ? "text-foreground" : "text-muted-foreground"
+                                )}>
+                                    {strat.label}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-medium leading-normal">
+                                    {strat.desc}
+                                </span>
+
+                                {isActive && (
+                                    <motion.div
+                                        layoutId="active-glow"
+                                        className="absolute inset-0 bg-primary/5 pointer-events-none"
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                    />
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* DYNAMIC CONFIG AREA */}
@@ -333,21 +360,80 @@ function DeliverySettingsPageContent() {
                             )}
 
                             {settings.deliveryFeeType === 'per-km' && (
-                                <div className="max-w-md mx-auto space-y-4 text-center">
-                                    <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-4">Distance Pricing Setup</p>
-                                    <div className="flex items-center justify-center gap-4">
-                                        <div className="relative">
-                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-xl opacity-50">₹</span>
-                                            <Input
-                                                type="number"
-                                                className="h-16 pl-10 pr-6 text-3xl font-black rounded-2xl border-2 w-32 text-center"
-                                                value={settings.deliveryPerKmFee}
-                                                onChange={e => handleSettingChange('deliveryPerKmFee', e.target.value)}
-                                            />
-                                        </div>
-                                        <span className="text-xl font-bold text-muted-foreground">per km</span>
+                                <div className="max-w-2xl mx-auto space-y-8">
+                                    <div className="text-center space-y-2">
+                                        <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Hybrid Distance Pricing</p>
+                                        <p className="text-xs text-muted-foreground">Set a base fare for a minimum distance, then a rate per KM.</p>
                                     </div>
-                                    <p className="text-sm font-medium text-muted-foreground mt-4 italic">Charge is calculated as: (Distance × {settings.roadDistanceFactor}x) × ₹{settings.deliveryPerKmFee}</p>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        {/* Base Fare */}
+                                        <div className="space-y-3">
+                                            <Label className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">Step 1: Base Fare</Label>
+                                            <div className="relative">
+                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-lg opacity-50">₹</span>
+                                                <Input
+                                                    type="number"
+                                                    className="h-14 pl-10 pr-4 text-2xl font-black rounded-xl border-2 text-center"
+                                                    value={settings.deliveryFixedFee}
+                                                    onChange={e => handleSettingChange('deliveryFixedFee', e.target.value)}
+                                                />
+                                            </div>
+                                            <p className="text-[10px] text-center font-medium text-muted-foreground italic">Minimum order fee</p>
+                                        </div>
+
+                                        {/* Included Distance */}
+                                        <div className="space-y-3">
+                                            <Label className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">Step 2: Included KM</Label>
+                                            <div className="relative">
+                                                <Input
+                                                    type="number"
+                                                    className="h-14 pl-4 pr-12 text-2xl font-black rounded-xl border-2 text-center"
+                                                    value={settings.deliveryBaseDistance}
+                                                    onChange={e => handleSettingChange('deliveryBaseDistance', e.target.value)}
+                                                />
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-sm opacity-50 text-muted-foreground">KM</span>
+                                            </div>
+                                            <p className="text-[10px] text-center font-medium text-muted-foreground italic">Distance covered by Base Fare</p>
+                                        </div>
+
+                                        {/* Thereafter Rate */}
+                                        <div className="space-y-3">
+                                            <Label className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">Step 3: Thereafter</Label>
+                                            <div className="relative">
+                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-lg opacity-50">₹</span>
+                                                <Input
+                                                    type="number"
+                                                    className="h-14 pl-10 pr-12 text-2xl font-black rounded-xl border-2 text-center"
+                                                    value={settings.deliveryPerKmFee}
+                                                    onChange={e => handleSettingChange('deliveryPerKmFee', e.target.value)}
+                                                />
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-primary text-xs">/km</span>
+                                            </div>
+                                            <p className="text-[10px] text-center font-medium text-muted-foreground italic">Charge for extra distance</p>
+                                        </div>
+                                    </div>
+
+                                    {/* LIVE PREVIEW BOX */}
+                                    <div className="bg-primary/5 border border-primary/10 rounded-2xl p-6 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:rotate-12 transition-transform">
+                                            <Truck className="h-12 w-12 text-primary" />
+                                        </div>
+                                        <h4 className="text-xs font-black uppercase tracking-widest text-primary mb-3">Simulated Breakdown:</h4>
+                                        <div className="space-y-1 text-sm">
+                                            <p className="font-medium">
+                                                • Customer at <span className="text-primary font-bold">{Number(settings.deliveryBaseDistance) || 0}km</span> pays <span className="text-primary font-bold">₹{settings.deliveryFixedFee || 0}</span>
+                                            </p>
+                                            <p className="font-medium">
+                                                • Customer at <span className="text-primary font-bold">{(Number(settings.deliveryBaseDistance) || 0) + 2}km</span> pays <span className="text-primary font-bold">₹{(Number(settings.deliveryFixedFee) || 0) + (2 * (Number(settings.deliveryPerKmFee) || 0))}</span>
+                                            </p>
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t border-primary/10">
+                                            <p className="text-[10px] text-muted-foreground leading-relaxed italic">
+                                                Formula: ₹{settings.deliveryFixedFee || 0} Base + (Total KM - {settings.deliveryBaseDistance || 0}KM) × ₹{settings.deliveryPerKmFee || 0}/KM
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -460,17 +546,63 @@ function DeliverySettingsPageContent() {
                 </motion.div>
             </div>
 
-            {/* SECTION 3: FREE DELIVERY OVERRIDES */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
-                <Card className="border-2 shadow-sm overflow-hidden border-green-500/20">
-                    <CardHeader className="bg-green-500/5 border-b border-green-500/10">
-                        <CardTitle className="flex items-center gap-3 text-xl text-green-600 dark:text-green-400">
-                            <div className="p-2 bg-green-500/10 rounded-xl">
+            {/* VISUAL CONNECTOR */}
+            <div className="flex flex-col items-center py-4 opacity-20">
+                <div className="w-px h-12 bg-gradient-to-b from-primary to-transparent" />
+                <Settings className="h-4 w-4 text-primary animate-pulse" />
+            </div>
+
+            {/* STEP 2: GLOBAL OVERRIDES */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+                className={cn(
+                    "transition-all duration-500",
+                    settings.deliveryFeeType === 'tiered' ? "opacity-40 grayscale pointer-events-none" : "opacity-100"
+                )}
+            >
+                <div className="flex items-center gap-3 px-1 mb-6">
+                    <div className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-full font-black text-sm shadow-lg transition-colors",
+                        settings.deliveryFeeType === 'tiered' ? "bg-muted text-muted-foreground" : "bg-green-500 text-white shadow-green-500/20"
+                    )}>2</div>
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-xl font-bold tracking-tight">Bonus Overrides</h2>
+                            {settings.deliveryFeeType === 'tiered' && (
+                                <span className="px-2 py-0.5 rounded-full bg-muted text-[10px] font-black uppercase text-muted-foreground border">Disabled in Tiered Mode</span>
+                            )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Global rules that skip the base fee</p>
+                    </div>
+                </div>
+
+                <Card className={cn(
+                    "border-2 shadow-sm overflow-hidden transition-colors",
+                    settings.deliveryFeeType === 'tiered' ? "border-muted" : "border-green-500/20"
+                )}>
+                    <CardHeader className={cn(
+                        "transition-colors",
+                        settings.deliveryFeeType === 'tiered' ? "bg-muted/10" : "bg-green-500/5 border-b border-green-500/10"
+                    )}>
+                        <CardTitle className={cn(
+                            "flex items-center gap-3 text-xl transition-colors",
+                            settings.deliveryFeeType === 'tiered' ? "text-muted-foreground" : "text-green-600 dark:text-green-400"
+                        )}>
+                            <div className={cn(
+                                "p-2 rounded-xl transition-colors",
+                                settings.deliveryFeeType === 'tiered' ? "bg-muted/20" : "bg-green-500/10"
+                            )}>
                                 <Truck className="h-5 w-5" />
                             </div>
                             Fast & Free Zone
                         </CardTitle>
-                        <CardDescription className="text-base text-green-600/70">Reward nearby or big orders with zero delivery fees.</CardDescription>
+                        <CardDescription className="text-base">
+                            {settings.deliveryFeeType === 'tiered'
+                                ? "Tiered rules handle all delivery logic. Global overrides are not needed."
+                                : "Reward nearby or big orders with zero delivery fees."}
+                        </CardDescription>
                     </CardHeader>
                     <CardContent className="p-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">

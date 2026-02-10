@@ -18,6 +18,7 @@ import SplitBillInterface from '@/components/SplitBillInterface';
 import CustomizationDrawer from '@/components/CustomizationDrawer';
 import AddressSelectionList from '@/components/AddressSelectionList';
 import InfoDialog from '@/components/InfoDialog';
+import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
@@ -164,16 +165,32 @@ const CheckoutPageInternal = () => {
     const [isValidatingDelivery, setIsValidatingDelivery] = useState(false);
 
     const validateDelivery = async (addr, currentSubtotal) => {
-        if (!addr || !addr.lat || !addr.lng || !restaurantId) return;
+        if (!addr) {
+            console.log('[Checkout] 🚚 No address provided for validation');
+            return;
+        }
+
+        // Normalize coordinates: handle both lat/lng and latitude/longitude
+        const lat = addr.lat ?? addr.latitude;
+        const lng = addr.lng ?? addr.longitude;
+
+        if (!lat || !lng) {
+            console.warn('[Checkout] 🚚 Address missing coordinates:', addr.label, addr);
+            return;
+        }
+        if (!restaurantId) {
+            console.error('[Checkout] 🚚 Missing restaurantId for validation');
+            return;
+        }
 
         setIsValidatingDelivery(true);
-        console.log('[Checkout] 🚚 Validating delivery for:', addr.label, 'Subtotal:', currentSubtotal);
+        console.log('[Checkout] 🚀 REACHED: validateDelivery calling API for:', addr.label, 'Subtotal:', currentSubtotal);
 
         try {
             const payload = {
                 restaurantId,
-                addressLat: addr.lat, // FIXED: API expects addressLat
-                addressLng: addr.lng, // FIXED: API expects addressLng
+                addressLat: lat,
+                addressLng: lng,
                 subtotal: currentSubtotal
             };
 
@@ -188,13 +205,15 @@ const CheckoutPageInternal = () => {
                 console.log('[Checkout] ✅ Delivery Validation Result:', result);
                 setDeliveryValidation(result);
 
-                // ✅ NON-BLOCKING: Just log, don't prevent order
                 if (!result.allowed) {
-                    console.warn('[Checkout] ⚠️ Address beyond delivery range, but allowing order:', result.message);
+                    console.warn('[Checkout] ⚠️ Address beyond delivery range:', result.message);
                 }
+            } else {
+                const errData = await response.json();
+                console.error('[Checkout] ❌ API Error during validation:', errData);
             }
         } catch (error) {
-            console.error('[Checkout] ❌ Delivery Validation Failed:', error);
+            console.error('[Checkout] ❌ Delivery Validation Failed Network Error:', error);
         } finally {
             setIsValidatingDelivery(false);
         }
@@ -473,10 +492,17 @@ const CheckoutPageInternal = () => {
                     setCartData(prev => ({
                         ...prev,
                         availableCoupons: menuData.coupons || [],
-                        // Optional: Update delivery charges if you want them real-time
                         deliveryCharge: menuData.deliveryCharge,
+                        deliveryFeeType: menuData.deliveryFeeType,
+                        deliveryFixedFee: menuData.deliveryFixedFee,
+                        deliveryPerKmFee: menuData.deliveryPerKmFee,
+                        deliveryRadius: menuData.deliveryRadius,
+                        deliveryFreeThreshold: menuData.deliveryFreeThreshold,
                         minOrderValue: menuData.minOrderValue,
-                        deliveryFreeThreshold: menuData.deliveryFreeThreshold
+                        latitude: menuData.latitude,
+                        longitude: menuData.longitude,
+                        // Forward more for shadow calc
+                        roadDistanceFactor: menuData.roadDistanceFactor || 1.3
                     }));
                 }
 
@@ -545,29 +571,73 @@ const CheckoutPageInternal = () => {
         return cartData?.deliveryType || 'delivery';
     }, [tableId, cartData]);
 
+    const currentSubtotal = useMemo(() => {
+        return cart.reduce((total, item) => {
+            return total + (item.totalPrice || (item.price || 0) * (item.quantity || 1));
+        }, 0);
+    }, [cart]);
+
+    // 🚀 INSTANT SHADOW CALCULATION
+    const shadowDeliveryResult = useMemo(() => {
+        if (deliveryType !== 'delivery' || !selectedAddress || !cartData?.latitude) return null;
+
+        const custLat = selectedAddress.lat ?? selectedAddress.latitude;
+        const custLng = selectedAddress.lng ?? selectedAddress.longitude;
+
+        if (!custLat || !custLng) return null;
+
+        const aerialDist = calculateHaversineDistance(
+            cartData.latitude,
+            cartData.longitude,
+            custLat,
+            custLng
+        );
+
+        const settings = {
+            deliveryRadius: cartData.deliveryRadius || 10,
+            deliveryChargeType: cartData.deliveryFeeType || 'fixed',
+            fixedCharge: cartData.deliveryFixedFee || 30,
+            perKmCharge: cartData.deliveryPerKmFee || 5,
+            baseDistance: cartData.baseDistance || 0,
+            freeDeliveryThreshold: cartData.deliveryFreeThreshold || 0,
+            freeDeliveryRadius: cartData.freeDeliveryRadius || 0,
+            freeDeliveryMinOrder: cartData.freeDeliveryMinOrder || 0,
+            roadDistanceFactor: cartData.roadDistanceFactor || 1.3,
+            deliveryTiers: cartData.deliveryTiers || []
+        };
+
+        try {
+            const result = calculateDeliveryCharge(aerialDist, currentSubtotal, settings);
+            console.log('[Checkout Debug] ⚡ Shadow Calculation result:', result);
+            return result;
+        } catch (e) {
+            console.error('[Checkout Debug] ❌ Shadow Calculation failed:', e);
+            return null;
+        }
+    }, [deliveryType, selectedAddress, cartData, currentSubtotal]);
+
     const diningPreference = cartData?.diningPreference || 'dine-in';
 
     // ✅ TRIGGER VALIDATION: When Address or Subtotal changes
     useEffect(() => {
         if (deliveryType === 'delivery' && selectedAddress) {
-            const currentSubtotal = cart.reduce((total, item) => {
-                return total + (item.totalPrice || (item.price || 0) * (item.quantity || 1));
-            }, 0);
-
+            console.log('[Checkout] ⏲️ Setting Validation Timer for:', selectedAddress.label);
             const timer = setTimeout(() => {
                 validateDelivery(selectedAddress, currentSubtotal);
-            }, 500); // 500ms debounce
-            return () => clearTimeout(timer);
+            }, 100); // Debounce reduced to 100ms for responsiveness
+            return () => {
+                console.log('[Checkout] 🧹 Clearing Validation Timer');
+                clearTimeout(timer);
+            };
         }
-    }, [deliveryType, selectedAddress, cart]); // Depend on cart to recalc subtotal
+    }, [deliveryType, selectedAddress, currentSubtotal]);
 
 
 
     // ... (Price calculation unchanged) ...
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount, isDeliveryFree } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount, isDeliveryFree, deliveryReason, isEstimated } = useMemo(() => {
         // ... (Same logic as before) ...
         // Re-implementing logic to ensure no regression as I replaced a huge chunk
-        const currentSubtotal = cart.reduce((sum, item) => sum + (item.totalPrice || (item.price || 0) * (item.quantity || 1)), 0);
         if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false, isDeliveryFree: false };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
@@ -590,20 +660,11 @@ const CheckoutPageInternal = () => {
 
         // (End of appliedCoupons loop)
 
-
-        /*
-        // SMART BUNDLING CHECK (Checkout Phase)
-        if (bundlingOrderDetails && bundlingOrderDetails.createdAt && selectedAddress) {
-            // ... (commented out logic)
-        }
-        */
         const isSmartBundlingEligibleValue = false; // Internal value for calculation
         // ========== END BUNDLING FEATURE ==========
-        // ========== END BUNDLING FEATURE ==========
-
-        // ========== BUNDLING FEATURE: Removed isSmartBundlingEligible from condition ==========
 
         let deliveryCharge = 0;
+        let deliveryReason = '';
 
         console.log('[Checkout Debug] Calculating Delivery Charge. Validation:', deliveryValidation);
         console.log('[Checkout Debug] isFreeDeliveryApplied:', isFreeDeliveryApplied);
@@ -616,14 +677,27 @@ const CheckoutPageInternal = () => {
         } else if (deliveryValidation && deliveryValidation.charge !== undefined) {
             // Use validated dynamic charge (handles distance, tiers & free limits)
             deliveryCharge = deliveryValidation.charge;
+            deliveryReason = deliveryValidation.reason;
             console.log('[Checkout Debug] Using Dynamic Charge:', deliveryCharge);
+        } else if (shadowDeliveryResult) {
+            // Instant feedback while waiting for API
+            deliveryCharge = shadowDeliveryResult.charge;
+            deliveryReason = shadowDeliveryResult.reason + ' (Estimated)';
+            console.log('[Checkout Debug] Using Shadow Charge (Estimated):', deliveryCharge);
+        } else if (isValidatingDelivery) {
+            // While validating, we don't have a final charge yet
+            // This prevents "FREE" from flashing if validation hasn't started/finished
+            deliveryCharge = 0;
+            console.log('[Checkout Debug] Validation in progress...');
         } else {
             // Fallback to static charge (or cart setting)
             // ONLY apply simple threshold if NOT in tiered mode
-            const isTiered = cartData.deliveryFeeType === 'tiered';
+            const isTiered = cartData?.deliveryFeeType === 'tiered';
             const isThresholdMet = !isTiered && cartData?.deliveryFreeThreshold && currentSubtotal >= cartData.deliveryFreeThreshold;
 
-            deliveryCharge = isThresholdMet ? 0 : (cartData.deliveryCharge || 0);
+            // ✅ Robust fallback: Use deliveryFixedFee -> fixedCharge -> deliveryCharge -> 0
+            const baseFee = Number(cartData?.deliveryFixedFee ?? cartData?.fixedCharge ?? cartData?.deliveryCharge ?? 0);
+            deliveryCharge = isThresholdMet ? 0 : baseFee;
             console.log('[Checkout Debug] Using Fallback Charge:', deliveryCharge, 'isTiered:', isTiered);
         }
 
@@ -670,9 +744,11 @@ const CheckoutPageInternal = () => {
             packagingCharge: internalPackagingCharge,
             isSmartBundlingEligible: isSmartBundlingEligibleValue,
             tipAmount: tip,
-            isDeliveryFree: isDeliveryFree
+            isDeliveryFree: isDeliveryFree,
+            deliveryReason: deliveryReason,
+            isEstimated: !!shadowDeliveryResult && !deliveryValidation
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation, shadowDeliveryResult, isValidatingDelivery]);
 
     const maxSavings = useMemo(() => {
         if (!cartData?.availableCoupons?.length) return 0;
@@ -1228,9 +1304,9 @@ const CheckoutPageInternal = () => {
     const ctaLabel = isAddressStepPending
         ? 'Select Address'
         : isPaymentStepPending
-            ? 'Select Payment Mode'
+            ? 'Payment Mode'
             : 'Place Order';
-    const isCtaDisabled = isProcessingPayment || (!activeOrderId && deliveryType !== 'delivery' && !orderName.trim());
+    const isCtaDisabled = isProcessingPayment || isValidatingDelivery || (!activeOrderId && deliveryType !== 'delivery' && !orderName.trim());
 
 
 
@@ -1702,12 +1778,21 @@ const CheckoutPageInternal = () => {
                                                     {isValidatingDelivery && <Loader2 className="h-3 w-3 animate-spin" />}
                                                 </span>
                                                 <span className={isDeliveryFree ? "text-green-600 font-bold" : ""}>
-                                                    {isValidatingDelivery ? 'Checking...' : (isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`)}
+                                                    {isValidatingDelivery ? (
+                                                        <span className="text-muted-foreground font-normal italic animate-pulse">Calculating...</span>
+                                                    ) : (
+                                                        <div className="flex flex-col items-end">
+                                                            <span>{isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}</span>
+                                                            {isEstimated && !isDeliveryFree && (
+                                                                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-tight">Estimated</span>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </span>
                                             </div>
-                                            {deliveryValidation && deliveryValidation.allowed && !isValidatingDelivery && (
-                                                <div className="text-xs text-muted-foreground text-right">
-                                                    {deliveryValidation.roadDistance} km • {deliveryValidation.charge === 0 ? 'Free Delivery Zone' : 'Standard Charge'}
+                                            {(deliveryReason || (deliveryValidation && !isValidatingDelivery)) && (
+                                                <div className="text-[10px] text-muted-foreground text-right italic font-medium">
+                                                    {deliveryReason || (deliveryValidation && `${deliveryValidation.roadDistance}km Standard Charge`)}
                                                 </div>
                                             )}
                                         </div>
@@ -1754,7 +1839,12 @@ const CheckoutPageInternal = () => {
                                     <div className="border-t border-border pt-2 mt-2" />
                                     <div className="flex justify-between text-xl font-bold">
                                         <span>You Pay</span>
-                                        <span className="text-primary">₹{Math.round(grandTotal)}</span>
+                                        <div className="flex flex-col items-end">
+                                            <span className="text-primary leading-none">₹{Math.round(grandTotal)}</span>
+                                            <span className="text-[10px] text-muted-foreground font-normal mt-1">
+                                                (Exact: ₹{grandTotal.toFixed(2)})
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             )}

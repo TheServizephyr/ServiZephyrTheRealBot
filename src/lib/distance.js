@@ -87,73 +87,89 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
 
     let charge = 0;
     let reason = '';
+    let type = ''; // NEW: explicit type for UI
 
-    // ✅ UNIVERSAL FREE ZONE - Moved to later to avoid overriding tiered rules
-    let isUniversalFreeZone = false;
-    if (
-        settings.freeDeliveryRadius > 0 &&
-        roadDistance <= settings.freeDeliveryRadius &&
-        (settings.freeDeliveryMinOrder === undefined || settings.freeDeliveryMinOrder === null || subtotal >= settings.freeDeliveryMinOrder)
-    ) {
-        isUniversalFreeZone = true;
-    }
-    // Apply charge type if not in free zone
-    else if (settings.deliveryChargeType === 'fixed') {
+    // 1. UNIVERSAL FREE ZONE (Radius-based)
+    // Checking if distance qualifies for automatic free delivery
+    const isWithinFreeRadius = settings.freeDeliveryRadius > 0 && roadDistance <= settings.freeDeliveryRadius;
+    const isFreeMinOrderMet = settings.freeDeliveryMinOrder === undefined || settings.freeDeliveryMinOrder === null || subtotal >= settings.freeDeliveryMinOrder;
+
+    const isUniversalFreeZone = isWithinFreeRadius && isFreeMinOrderMet;
+
+    console.log(`[distance.js] 🔍 Calc: d=${roadDistance.toFixed(1)}km, subtotal=${subtotal}, freeRad=${settings.freeDeliveryRadius}, freeMin=${settings.freeDeliveryMinOrder}`);
+
+    // 2. PRIMARY ENGINE CALCULATION
+    if (settings.deliveryChargeType === 'fixed') {
         charge = settings.fixedCharge || 0;
-        reason = 'Fixed delivery charge';
+        reason = charge === 0 ? 'Free delivery (Fixed 0)' : `₹${charge.toFixed(0)} Fixed delivery charge`;
+        type = 'fixed';
     } else if (settings.deliveryChargeType === 'per-km') {
-        charge = roadDistance * (settings.perKmCharge || 0);
-        reason = `${roadDistance.toFixed(1)}km × ₹${settings.perKmCharge}/km`;
+        type = 'per-km';
+        const baseFee = parseFloat(settings.fixedCharge) || 0;
+        const includedKm = parseFloat(settings.baseDistance) || 0;
+        const perKmRate = parseFloat(settings.perKmCharge) || 0;
+
+        if (roadDistance <= includedKm) {
+            charge = baseFee;
+            reason = baseFee === 0
+                ? `Free delivery within ${includedKm}km`
+                : `₹${baseFee.toFixed(0)} Base fare (${roadDistance.toFixed(1)}km dist)`;
+        } else {
+            const extraKm = roadDistance - includedKm;
+            charge = baseFee + (extraKm * perKmRate);
+            reason = baseFee === 0
+                ? `${roadDistance.toFixed(1)}km × ₹${perKmRate}/km`
+                : `₹${baseFee.toFixed(0)} Base + ${extraKm.toFixed(1)}km extra (₹${perKmRate}/km)`;
+        }
     } else if (settings.deliveryChargeType === 'free-over') {
+        type = 'threshold';
         if (subtotal >= settings.freeDeliveryThreshold) {
             charge = 0;
             reason = `Free delivery for orders ≥₹${settings.freeDeliveryThreshold}`;
         } else {
-            // Fallback to fixed charge if below threshold
             charge = parseFloat(settings.fixedCharge) || 0;
-            reason = 'Standard delivery charge';
+            reason = `₹${charge.toFixed(0)} fee (Free for orders ≥₹${settings.freeDeliveryThreshold})`;
         }
     } else if (settings.deliveryChargeType === 'tiered') {
+        type = 'tiered';
         const tiers = settings.deliveryTiers || [];
         const subtotalNum = parseFloat(subtotal) || 0;
-
-        console.log(`[distance.js] 📑 Tiered calculation for subtotal: ${subtotalNum}`);
-        console.log(`[distance.js] 📑 Tiers:`, JSON.stringify(tiers));
 
         const sortedTiers = [...tiers]
             .map(t => ({ minOrder: parseFloat(t.minOrder) || 0, fee: parseFloat(t.fee) || 0 }))
             .sort((a, b) => b.minOrder - a.minOrder);
 
         const activeTier = sortedTiers.find(t => subtotalNum >= t.minOrder);
-        console.log(`[distance.js] 📑 Active Tier:`, activeTier);
 
         if (activeTier) {
             charge = activeTier.fee;
             reason = activeTier.fee === 0
-                ? `Free delivery for orders ≥₹${activeTier.minOrder}`
+                ? `Free delivery (Order ≥₹${activeTier.minOrder})`
                 : `₹${activeTier.fee} fee for orders ≥₹${activeTier.minOrder}`;
         } else {
             charge = parseFloat(settings.fixedCharge) || 0;
-            reason = 'Standard delivery charge';
-            console.log(`[distance.js] 📑 No tier matched. Fallback charge: ${charge}`);
+            reason = `Standard fee ₹${charge.toFixed(0)}`;
         }
     }
 
-    // ✅ Apply Universal Free Zone as an OVERRIDE if it results in FREE delivery
-    // CRITICAL: Only apply if NOT in tiered mode, as tiers should be the absolute source of truth
+    // 3. OVERRIDE LOGIC (Universal Free Zone)
+    // CRITICAL: Only apply if NOT in tiered mode (Tiers handle their own free rules)
     const isTieredMode = settings.deliveryChargeType === 'tiered';
 
     if (!isTieredMode && isUniversalFreeZone && charge > 0) {
         charge = 0;
-        reason = `Free delivery within ${settings.freeDeliveryRadius}km for orders ≥₹${settings.freeDeliveryMinOrder || 0}`;
+        reason = `Free for locals (${roadDistance.toFixed(1)}km zone)`;
+        type = 'override-free';
+        console.log(`[distance.js] ⚡ Radius Override applied: ${reason}`);
     }
 
     return {
         allowed: true,
-        charge: Math.round(charge),
+        charge: Math.max(0, Math.round(charge)),
         aerialDistance: parseFloat(aerialDistance.toFixed(1)),
         roadDistance: parseFloat(roadDistance.toFixed(1)),
         roadFactor,
-        reason
+        reason,
+        type
     };
 }

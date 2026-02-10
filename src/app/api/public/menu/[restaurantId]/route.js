@@ -224,6 +224,8 @@ export async function GET(req, { params }) {
             businessType: businessType,
             dineInModel: businessData.dineInModel,
             isOpen: businessData.isOpen === true,
+            latitude: restaurantLat,
+            longitude: restaurantLng,
         };
 
         // STEP 5: Cache with version-based key and 12-hour TTL

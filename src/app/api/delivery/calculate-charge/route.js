@@ -72,6 +72,7 @@ export async function POST(req) {
             deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
             fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
             perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
+            baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)), // NEW: Included KM
             freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
             freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
             freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
