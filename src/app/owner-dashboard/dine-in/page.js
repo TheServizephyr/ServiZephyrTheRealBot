@@ -199,7 +199,11 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                 <div ref={printRef} className="font-mono text-black bg-white p-6">
                     <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
                         <h1 className="text-xl font-bold uppercase">{restaurant.name}</h1>
-                        <p className="text-xs">{restaurant.address?.street}, {restaurant.address?.city}</p>
+                        <p className="text-xs">{
+                            typeof restaurant.address === 'string'
+                                ? restaurant.address
+                                : `${restaurant.address?.street || ''}, ${restaurant.address?.city || ''}`
+                        }</p>
                         {restaurant.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
                     </div>
                     <div className="mb-4 text-xs">

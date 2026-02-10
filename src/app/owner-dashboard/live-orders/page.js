@@ -660,7 +660,11 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
                         <div className="p-4 bg-muted rounded-lg">
                             <p><strong>Name:</strong> {order.customerName}</p>
                             <p><strong>Phone:</strong> {order.customerPhone}</p>
-                            <p><strong>Address:</strong> {order.customerAddress}</p>
+                            <p><strong>Address:</strong> {
+                                typeof order.customerAddress === 'string'
+                                    ? order.customerAddress
+                                    : (order.customerAddress?.street || order.customerAddress?.formattedAddress || 'N/A')
+                            }</p>
                         </div>
                         {customer && (
                             <div className="p-4 bg-blue-500/10 rounded-lg">
@@ -801,8 +805,12 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                         <MapPin size={14} className="text-primary mt-0.5 shrink-0" />
                         <div>
                             <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Delivery Address</span>
-                            <div className="text-sm font-medium leading-tight line-clamp-2" title={order.customerAddress}>
-                                {order.customerAddress}
+                            <div className="text-sm font-medium leading-tight line-clamp-2" title={typeof order.customerAddress === 'string' ? order.customerAddress : (order.customerAddress?.street || order.customerAddress?.formattedAddress || 'N/A')}>
+                                {
+                                    typeof order.customerAddress === 'string'
+                                        ? order.customerAddress
+                                        : (order.customerAddress?.street || order.customerAddress?.formattedAddress || 'N/A')
+                                }
                             </div>
                         </div>
                     </div>

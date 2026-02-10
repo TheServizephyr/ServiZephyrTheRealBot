@@ -6,6 +6,16 @@ import { formatSafeDate } from '@/lib/safeDateFormat';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
+const safeRender = (val, fallback = 'N/A') => {
+    if (!val) return fallback;
+    if (typeof val === 'string' || typeof val === 'number') return val;
+    if (typeof val === 'object') {
+        return val.name || val.firstName || val.title || val.full || fallback;
+    }
+    return String(val);
+};
+
+
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
     if (!order) return null;
 
@@ -64,15 +74,23 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 }
             `}</style>
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
-                <h1 className="text-xl font-bold uppercase">{restaurant?.name || 'Restaurant'}</h1>
+                <h1 className="text-xl font-bold uppercase">{safeRender(restaurant?.name, 'Restaurant')}</h1>
                 <p className="text-xs">{restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')}</p>
                 {restaurant?.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
                 {restaurant?.fssai && <p className="text-xs">FSSAI: {restaurant.fssai}</p>}
             </div>
             <div className="mb-2 text-xs">
-                <p><strong>Bill To:</strong> {finalCustomerDetails.name}</p>
+                <p><strong>Bill To:</strong> {safeRender(finalCustomerDetails.name, 'Walk-in Customer')}</p>
                 {finalCustomerDetails.phone && <p><strong>Phone:</strong> {finalCustomerDetails.phone}</p>}
-                {finalCustomerDetails.address && <p><strong>Address:</strong> {finalCustomerDetails.address}</p>}
+                {finalCustomerDetails.address && (
+                    <p>
+                        <strong>Address:</strong> {
+                            typeof finalCustomerDetails.address === 'string'
+                                ? finalCustomerDetails.address
+                                : (finalCustomerDetails.address.street || finalCustomerDetails.address.formattedAddress || 'N/A')
+                        }
+                    </p>
+                )}
                 <p><strong>Date:</strong> {formatSafeDate(order.orderDate || order.createdAt)}</p>
                 {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
@@ -94,7 +112,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
 
                         return (
                             <tr key={index}>
-                                <td className="py-1">{item.name}</td>
+                                <td className="py-1">{safeRender(item.name || item.itemName)}</td>
                                 <td className="text-center py-1">{quantity}</td>
                                 <td className="text-right py-1">{formatCurrency(pricePerUnit)}</td>
                                 <td className="text-right py-1">{formatCurrency(totalItemPrice)}</td>

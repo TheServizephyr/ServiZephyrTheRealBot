@@ -333,7 +333,11 @@ export default function OrderHistoryPage() {
                                     {selectedOrder.address && (
                                         <div className="col-span-2">
                                             <p className="text-muted-foreground">Address</p>
-                                            <p className="font-medium">{selectedOrder.address}</p>
+                                            <p className="font-medium">{
+                                                typeof selectedOrder.address === 'string'
+                                                    ? selectedOrder.address
+                                                    : (selectedOrder.address?.street || selectedOrder.address?.formattedAddress || 'N/A')
+                                            }</p>
                                         </div>
                                     )}
                                 </div>
