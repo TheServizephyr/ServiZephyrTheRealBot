@@ -250,7 +250,7 @@ const CheckoutPageInternal = () => {
     const handleAddNewAddress = () => {
         const params = new URLSearchParams(searchParams.toString());
         const currentParamsString = params.toString();
-        router.push(`/add-address?${currentParamsString}&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
+        router.push(`/add-address?${currentParamsString}&useCurrent=true&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
     };
 
     const handleUseCurrentLocation = () => {

@@ -103,10 +103,21 @@ const AddAddressPageInternal = () => {
                 setMapCenter(coords); reverseGeocode(coords); setError('');
             },
             (err) => {
-                setError('Could not get your location. Please search manually or allow location access.');
                 setLoading(false);
+                // Only show dialog if it's a genuine error we want to report to the user
+                // PERMISSION_DENIED (1), POSITION_UNAVAILABLE (2), TIMEOUT (3)
+                let message = "We can't fetch your location right now. Please select your address manually on the map.";
+                if (err.code === 1) message = "Location permission is BLOCKED by your browser. Please reset permissions in the address bar (Lock icon) to allow access.";
+                else if (err.code === 3) message = "Location request timed out. Please check your signal or try again.";
+
+                setInfoDialog({
+                    isOpen: true,
+                    type: 'warning',
+                    title: "Location Access Issue",
+                    message: message
+                });
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 }
         );
     }, [reverseGeocode]);
 
@@ -267,7 +278,7 @@ const AddAddressPageInternal = () => {
 
     return (
         <div className="h-screen w-screen flex flex-col bg-background text-foreground">
-            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '', type: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft /></Button>
                 <h1 className="text-xl font-bold">Add Address Details</h1>

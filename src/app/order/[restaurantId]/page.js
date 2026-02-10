@@ -2183,7 +2183,7 @@ const OrderPageInternal = () => {
                                             router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                         onAddNewAddress={() => {
-                                            router.push(`/add-address?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                            router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                         onDelete={async (id) => {
                                             if (confirm('Are you sure you want to delete this address?')) {
