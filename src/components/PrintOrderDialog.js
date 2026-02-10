@@ -41,8 +41,12 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
             // Header
             encoder.initialize().align('center')
                 .bold(true).text(restaurant?.name || 'Restaurant').newline()
-                .bold(false).text(restaurant?.address?.street || restaurant?.address || '').newline()
-                .text('--------------------------------').newline()
+                .bold(false).text(restaurant?.address?.street || restaurant?.address || '').newline();
+
+            if (restaurant?.gstin) encoder.text(`GSTIN: ${restaurant.gstin}`).newline();
+            if (restaurant?.fssai) encoder.text(`FSSAI: ${restaurant.fssai}`).newline();
+
+            encoder.text('--------------------------------').newline()
                 .align('left').bold(true)
                 .text(`Cust. Order ID: ${order.customerOrderId || order.id.substring(0, 8)}`).newline()
                 .bold(false)
@@ -64,9 +68,9 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 .align('right');
 
             const subtotal = (order.items || []).reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            const tax = order.tax || 0;
-            const cgst = tax / 2;
-            const sgst = tax / 2;
+            const cgst = order.cgst !== undefined ? order.cgst : (order.tax || 0) / 2;
+            const sgst = order.sgst !== undefined ? order.sgst : (order.tax || 0) / 2;
+            const tax = cgst + sgst;
             const packing = order.packagingCharge || 0;
             const delivery = order.deliveryCharge || 0;
             const platform = order.platformFee || 0;
@@ -74,6 +78,9 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
             const service = order.serviceFee || 0;
             const tip = order.tip || 0;
             const discount = order.discount || 0;
+
+            const gstRate = order?.gstPercentage || restaurant?.gstPercentage || 5;
+            const halfRate = (gstRate / 2).toFixed(1).replace(/\.0$/, '');
             const grandTotal = order.totalAmount || (subtotal + tax + packing + delivery + platform + convenience + service + tip - discount);
 
             encoder.text(`Subtotal: ${subtotal}`).newline();
@@ -86,8 +93,8 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
             if (delivery > 0) encoder.text(`Delivery: ${delivery}`).newline();
             if (tip > 0) encoder.text(`Tip: ${tip}`).newline();
 
-            if (cgst > 0) encoder.text(`CGST (2.5%): ${cgst}`).newline();
-            if (sgst > 0) encoder.text(`SGST (2.5%): ${sgst}`).newline();
+            if (cgst > 0) encoder.text(`CGST (${halfRate}%): ${cgst}`).newline();
+            if (sgst > 0) encoder.text(`SGST (${halfRate}%): ${sgst}`).newline();
 
             encoder.bold(true).size('large')
                 .text(`TOTAL: ${grandTotal}`).newline()
@@ -132,8 +139,8 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                                 billDetails={{
                                     subtotal: (order.items || []).reduce((sum, i) => sum + (i.price * i.quantity), 0),
                                     grandTotal: order.totalAmount,
-                                    cgst: (order.tax || 0) / 2,
-                                    sgst: (order.tax || 0) / 2,
+                                    cgst: order.cgst !== undefined ? order.cgst : (order.tax || 0) / 2,
+                                    sgst: order.sgst !== undefined ? order.sgst : (order.tax || 0) / 2,
                                     packagingCharge: order.packagingCharge || 0,
                                     deliveryCharge: order.deliveryCharge || 0,
                                     platformFee: order.platformFee || 0,

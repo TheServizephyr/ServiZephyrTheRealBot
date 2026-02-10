@@ -135,6 +135,10 @@ export async function createOrderV2(req) {
             deliveryCharge = 0,
             tipAmount = 0,
             packagingCharge = 0,
+            platformFee = 0,
+            convenienceFee = 0,
+            serviceFee = 0,
+            discount = 0,
             diningPreference = null,
             idempotencyKey,
             existingOrderId, // Add-on flow
@@ -277,7 +281,10 @@ export async function createOrderV2(req) {
         // Use server-calculated totals, but keep client charges (delivery/packaging) for now
         // as they are calculated by complex logic (like distance API) that we don't want to duplicate here
         // UNLESS we have a better way to verify them.
-        const serverGrandTotal = pricing.serverSubtotal + serverCgst + serverSgst + (deliveryCharge || 0) + (packagingCharge || 0) + (tipAmount || 0);
+        // Use server-calculated totals, but include all charges and fees
+        const serverGrandTotal = pricing.serverSubtotal + serverCgst + serverSgst +
+            (deliveryCharge || 0) + (packagingCharge || 0) + (tipAmount || 0) +
+            (platformFee || 0) + (convenienceFee || 0) + (serviceFee || 0) - (discount || 0);
 
         console.log(`[createOrderV2] Server billing verification: CGST=${serverCgst}, SGST=${serverSgst}, GrandTotal=${serverGrandTotal}`);
 
@@ -424,6 +431,10 @@ export async function createOrderV2(req) {
                 deliveryCharge: deliveryCharge || 0,
                 diningPreference: sanitizedDiningPreference,
                 packagingCharge: packagingCharge || 0,
+                platformFee: platformFee || 0,
+                convenienceFee: convenienceFee || 0,
+                serviceFee: serviceFee || 0,
+                discount: discount || 0,
                 totalAmount: serverGrandTotal, // Server-calculated
                 status: 'awaiting_payment', // SAME as V1
                 orderDate: FieldValue.serverTimestamp(),
@@ -588,6 +599,10 @@ export async function createOrderV2(req) {
             deliveryCharge: deliveryCharge || 0,
             diningPreference: sanitizedDiningPreference,
             packagingCharge: packagingCharge || 0,
+            platformFee: platformFee || 0,
+            convenienceFee: convenienceFee || 0,
+            serviceFee: serviceFee || 0,
+            discount: discount || 0,
             totalAmount: serverGrandTotal,
             status: 'pending', // SAME status as V1
             orderDate: FieldValue.serverTimestamp(),

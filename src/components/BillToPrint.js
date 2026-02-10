@@ -64,9 +64,10 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 }
             `}</style>
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
-                <h1 className="text-xl font-bold uppercase">{restaurant?.name}</h1>
-                <p className="text-xs">{restaurant?.address?.street}, {restaurant?.address?.city}</p>
+                <h1 className="text-xl font-bold uppercase">{restaurant?.name || 'Restaurant'}</h1>
+                <p className="text-xs">{restaurant?.address?.street || restaurant?.address || ''}</p>
                 {restaurant?.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
+                {restaurant?.fssai && <p className="text-xs">FSSAI: {restaurant.fssai}</p>}
             </div>
             <div className="mb-2 text-xs">
                 <p><strong>Bill To:</strong> {finalCustomerDetails.name}</p>
@@ -154,18 +155,27 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 )}
 
                 {/* Taxes - Only show if > 0 */}
-                {finalBillDetails.cgst > 0 && (
-                    <div className="flex justify-between">
-                        <span>CGST (2.5%)</span>
-                        <span>+ {formatCurrency(finalBillDetails.cgst)}</span>
-                    </div>
-                )}
-                {finalBillDetails.sgst > 0 && (
-                    <div className="flex justify-between">
-                        <span>SGST (2.5%)</span>
-                        <span>+ {formatCurrency(finalBillDetails.sgst)}</span>
-                    </div>
-                )}
+                {(() => {
+                    const gstRate = order?.gstPercentage || restaurant?.gstPercentage || 5;
+                    const halfRate = (gstRate / 2).toFixed(1).replace(/\.0$/, '');
+
+                    return (
+                        <>
+                            {finalBillDetails.cgst > 0 && (
+                                <div className="flex justify-between">
+                                    <span>CGST ({halfRate}%)</span>
+                                    <span>+ {formatCurrency(finalBillDetails.cgst)}</span>
+                                </div>
+                            )}
+                            {finalBillDetails.sgst > 0 && (
+                                <div className="flex justify-between">
+                                    <span>SGST ({halfRate}%)</span>
+                                    <span>+ {formatCurrency(finalBillDetails.sgst)}</span>
+                                </div>
+                            )}
+                        </>
+                    );
+                })()}
             </div>
 
             <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">

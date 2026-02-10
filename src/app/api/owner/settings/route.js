@@ -157,7 +157,7 @@ export async function GET(req) {
             dineInModel: businessData?.dineInModel || 'post-paid',
             // Add-on Charges Configuration
             gstEnabled: businessData?.gstEnabled || false,
-            gstRate: businessData?.gstRate || 5,
+            gstRate: businessData?.gstPercentage || businessData?.gstRate || 5,
             gstMinAmount: businessData?.gstMinAmount || 0,
             convenienceFeeEnabled: businessData?.convenienceFeeEnabled || false,
             convenienceFeeRate: businessData?.convenienceFeeRate || 2.5,
@@ -375,7 +375,7 @@ export async function PATCH(req) {
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
             // Add-on Charges Configuration
             gstEnabled: finalBusinessData?.gstEnabled || false,
-            gstRate: finalBusinessData?.gstRate || 5,
+            gstRate: finalBusinessData?.gstPercentage || finalBusinessData?.gstRate || 5,
             gstMinAmount: finalBusinessData?.gstMinAmount || 0,
             convenienceFeeEnabled: finalBusinessData?.convenienceFeeEnabled || false,
             convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,

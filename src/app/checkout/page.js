@@ -640,7 +640,7 @@ const CheckoutPageInternal = () => {
         let sgstAmount = 0;
         if (vendorCharges?.gstEnabled && taxableAmount > 0) {
             if (taxableAmount >= (vendorCharges.gstMinAmount || 0)) {
-                const totalGstRate = vendorCharges.gstRate || 5;
+                const totalGstRate = vendorCharges.gstPercentage !== undefined ? vendorCharges.gstPercentage : (vendorCharges.gstRate || 5);
                 const halfGstRate = totalGstRate / 2;
                 cgstAmount = taxableAmount * (halfGstRate / 100);
                 sgstAmount = taxableAmount * (halfGstRate / 100);

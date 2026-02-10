@@ -255,7 +255,7 @@ export function validatePriceMatch(clientSubtotal, serverSubtotal, tolerance = 1
  */
 export function calculateTaxes(subtotal, businessData) {
     const gstEnabled = businessData.gstEnabled || false;
-    const gstRate = businessData.gstRate || 5;
+    const gstRate = businessData.gstPercentage !== undefined ? businessData.gstPercentage : (businessData.gstRate || 5);
 
     if (!gstEnabled) {
         return {
