@@ -1663,7 +1663,7 @@ const CheckoutPageInternal = () => {
                             {!isBillSummaryExpanded && (
                                 <div className="flex justify-between text-xl font-bold mt-3">
                                     <span>You Pay</span>
-                                    <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
+                                    <span className="text-primary">₹{Math.round(grandTotal)}</span>
                                 </div>
                             )}
 
@@ -1735,7 +1735,7 @@ const CheckoutPageInternal = () => {
                                     <div className="border-t border-border pt-2 mt-2" />
                                     <div className="flex justify-between text-xl font-bold">
                                         <span>You Pay</span>
-                                        <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
+                                        <span className="text-primary">₹{Math.round(grandTotal)}</span>
                                     </div>
                                 </div>
                             )}

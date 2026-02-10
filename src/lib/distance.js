@@ -112,14 +112,20 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
             reason = `Free delivery for orders ≥₹${settings.freeDeliveryThreshold}`;
         } else {
             // Fallback to fixed charge if below threshold
-            charge = settings.fixedCharge || 0;
+            charge = parseFloat(settings.fixedCharge) || 0;
             reason = 'Standard delivery charge';
         }
     } else if (settings.deliveryChargeType === 'tiered') {
         const tiers = settings.deliveryTiers || [];
+        const subtotalNum = parseFloat(subtotal) || 0;
+
         // Find the applicable tier: the one with the highest minOrder that subtotal satisfies
-        const sortedTiers = [...tiers].sort((a, b) => b.minOrder - a.minOrder);
-        const activeTier = sortedTiers.find(t => subtotal >= t.minOrder);
+        // Ensure values are numbers before sorting/comparing
+        const sortedTiers = [...tiers]
+            .map(t => ({ minOrder: parseFloat(t.minOrder) || 0, fee: parseFloat(t.fee) || 0 }))
+            .sort((a, b) => b.minOrder - a.minOrder);
+
+        const activeTier = sortedTiers.find(t => subtotalNum >= t.minOrder);
 
         if (activeTier) {
             charge = activeTier.fee;
@@ -129,7 +135,7 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
         } else {
             // If no tier matches (order is less than smallest minOrder), 
             // fallback to the fixed charge if available
-            charge = settings.fixedCharge || 0;
+            charge = parseFloat(settings.fixedCharge) || 0;
             reason = 'Standard delivery charge';
         }
     }

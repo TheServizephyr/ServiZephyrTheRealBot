@@ -11,6 +11,7 @@ export async function POST(req) {
     try {
         const body = await req.json();
         const { restaurantId, addressLat, addressLng, subtotal } = body;
+        const subtotalNum = parseFloat(subtotal) || 0;
 
         if (!restaurantId || !addressLat || !addressLng || subtotal === undefined) {
             return NextResponse.json(
@@ -81,7 +82,7 @@ export async function POST(req) {
         console.log('[API /delivery/calculate-charge] ⚙️ Final Settings:', settings);
 
         // Calculate delivery charge and validate
-        const result = calculateDeliveryCharge(aerialDistance, subtotal, settings);
+        const result = calculateDeliveryCharge(aerialDistance, subtotalNum, settings);
 
         return NextResponse.json({
             success: true,
