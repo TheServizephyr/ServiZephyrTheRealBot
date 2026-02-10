@@ -158,24 +158,28 @@ export async function POST(req) {
 
 
         // ✅ HANDLE DIFFERENT MEDIA TYPES
-        if (text) {
-            // Revert: User found buttons too bulky.
-            // PRO TIP: WhatsApp formatting for "Fake Footer"
-            // We use a mono-space separator or just newlines + italics to make it look distinct.
+        if (effectiveImageUrl) {
+            console.warn("[API] Sending image message with caption if text present.");
 
+            const caption = text ? `${text}\n\n━━━━━━━━━━━━━━━━\n_To end chat, type 'end chat'_` : undefined;
+
+            messagePayload = {
+                type: 'image',
+                image: {
+                    link: effectiveImageUrl,
+                    caption: caption
+                }
+            };
+            firestoreMessageData = { type: 'image', mediaUrl: effectiveImageUrl, text: text || 'Image' };
+            lastMessagePreview = text ? `📷 ${text}` : '📷 Image';
+        } else if (text) {
             const messageBody = `${text}\n\n━━━━━━━━━━━━━━━━\n_To end chat, type 'end chat'_`;
-
             messagePayload = {
                 type: 'text',
                 text: { body: messageBody }
             };
-            firestoreMessageData = { type: 'text', text: text }; // Store original text in Firestore
+            firestoreMessageData = { type: 'text', text: text };
             lastMessagePreview = text;
-        } else if (effectiveImageUrl) {
-            console.warn("[API WARNING] Buttons cannot be sent with media messages. Sending image only.");
-            messagePayload = { type: 'image', image: { link: effectiveImageUrl } };
-            firestoreMessageData = { type: 'image', mediaUrl: effectiveImageUrl, text: 'Image' };
-            lastMessagePreview = '📷 Image';
         } else if (effectiveVideoUrl) {
             messagePayload = { type: 'video', video: { link: effectiveVideoUrl } };
             firestoreMessageData = { type: 'video', mediaUrl: effectiveVideoUrl, text: 'Video', fileName: fileName || 'video' };

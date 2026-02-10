@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Printer, X } from 'lucide-react';
+import { Printer, X, MessageSquare } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useReactToPrint } from 'react-to-print';
 import BillToPrint from '@/components/BillToPrint';
@@ -10,16 +10,127 @@ import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
 import { formatSafeDate } from '@/lib/safeDateFormat';
 
+import { useToast } from "@/components/ui/use-toast";
+import { toPng } from 'html-to-image';
+import { auth } from '@/lib/firebase';
+
 // Reusable Print Dialog
 export default function PrintOrderDialog({ isOpen, onClose, order, restaurant }) {
     const billRef = useRef();
+    const { toast } = useToast();
     const [usbDevice, setUsbDevice] = useState(null);
     const [status, setStatus] = useState('');
+    const [isSharing, setIsSharing] = useState(false);
 
     const handleStandardPrint = useReactToPrint({
         content: () => billRef.current,
         onAfterPrint: () => setStatus('Standard print sent'),
     });
+
+    const handleWhatsAppShare = async () => {
+        if (!order.customerPhone) {
+            toast({
+                title: "Contact Missing",
+                description: "Customer phone number not available for this order.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setIsSharing(true);
+        setStatus('Generating image...');
+
+        try {
+            // 1. Generate Image from Bill Component
+            // Increased delay to ensure all assets/fonts are loaded
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            const node = billRef.current;
+
+            const dataUrl = await toPng(node, {
+                height: node.scrollHeight,
+                width: node.scrollWidth,
+                pixelRatio: 2.5, // Optimized for clarity and file size
+                backgroundColor: '#ffffff',
+                cacheBust: true,
+            });
+
+            // Convert base64 to file blob
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            const imageFile = new File([blob], `bill_${order.id.substring(0, 8)}.png`, { type: 'image/png' });
+
+            setStatus('Uploading bill...');
+
+            // 2. Authentication
+            const user = auth.currentUser;
+            if (!user) throw new Error("Authentication required.");
+            const idToken = await user.getIdToken();
+
+            // 3. Upload Image to Firebase
+            const uploadUrlRes = await fetch('/api/owner/whatsapp-direct/upload-url', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    fileName: imageFile.name,
+                    fileType: imageFile.type,
+                    fileSize: imageFile.size
+                })
+            });
+
+            if (!uploadUrlRes.ok) throw new Error("Failed to get upload URL");
+            const { presignedUrl, publicUrl, storagePath } = await uploadUrlRes.json();
+
+            const uploadToStorageRes = await fetch(presignedUrl, {
+                method: 'PUT',
+                body: imageFile,
+                headers: { 'Content-Type': imageFile.type }
+            });
+
+            if (!uploadToStorageRes.ok) throw new Error("Failed to upload image to storage");
+
+            setStatus('Sending to WhatsApp...');
+
+            // 4. Send WhatsApp Message
+            const sendMessageRes = await fetch('/api/owner/whatsapp-direct/messages', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    conversationId: order.customerPhone, // Assuming 10 digits as per backend logic
+                    imageUrl: publicUrl,
+                    storagePath: storagePath,
+                    text: `Hello ${order.customerName || order.customer || 'Guest'}, here is the bill for your order #${order.customerOrderId || order.id.substring(0, 8)}. Thank you for dining with us!`
+                })
+            });
+
+            if (!sendMessageRes.ok) {
+                const errorData = await sendMessageRes.json();
+                throw new Error(errorData.message || "Failed to send WhatsApp message");
+            }
+
+            setStatus('Shared on WhatsApp! ✅');
+            toast({
+                title: "Success",
+                description: "Bill shared on WhatsApp successfully.",
+            });
+        } catch (error) {
+            console.error("[WhatsApp Share Error]:", error);
+            setStatus('Sharing failed ❌');
+            toast({
+                title: "Sharing Failed",
+                description: error.message || "Something went wrong while sharing the bill.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsSharing(false);
+        }
+    };
 
     const handleDirectPrint = async () => {
         try {
@@ -109,9 +220,13 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-md p-0 overflow-hidden">
                 <DialogHeader className="p-4 border-b">
-                    <DialogTitle className="flex justify-between items-center">
+                    <DialogTitle className="flex items-center gap-2">
                         Print Bill
-                        <span className="text-sm font-normal text-muted-foreground">{status}</span>
+                        {status && (
+                            <span className="text-[10px] font-normal text-muted-foreground bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full truncate max-w-[200px]" title={status}>
+                                {status}
+                            </span>
+                        )}
                     </DialogTitle>
                 </DialogHeader>
 
@@ -125,7 +240,7 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                                 // Adapter for BillToPrint props if needed
                                 items={order.items || []}
                                 customerDetails={{
-                                    name: order.customer || order.customerName || order.name || 'Walk-in Customer',
+                                    name: order.customerName || order.customer || order.name || 'Walk-in Customer',
                                     phone: order.customerPhone,
                                     address: order.customerAddress
                                 }}
@@ -147,12 +262,21 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                     </div>
                 </div>
 
-                <div className="p-4 bg-muted border-t flex flex-col sm:flex-row gap-3 justify-end no-print">
-                    <Button onClick={handleDirectPrint} variant="secondary" className="bg-slate-800 text-white hover:bg-slate-700">
-                        ⚡ Thermal Print (USB)
+                <div className="p-4 bg-muted border-t flex flex-wrap sm:flex-nowrap gap-2 justify-end no-print">
+                    <Button
+                        onClick={handleWhatsAppShare}
+                        variant="outline"
+                        disabled={isSharing}
+                        className="border-green-600 text-green-600 hover:bg-green-50 whitespace-nowrap flex-shrink-0"
+                    >
+                        <MessageSquare className="mr-2 h-4 w-4" />
+                        {isSharing ? 'Sharing...' : 'WhatsApp'}
                     </Button>
-                    <Button onClick={handleStandardPrint} className="bg-primary hover:bg-primary/90">
-                        <Printer className="mr-2 h-4 w-4" /> Standard Print
+                    <Button onClick={handleDirectPrint} variant="secondary" className="bg-slate-800 text-white hover:bg-slate-700 whitespace-nowrap flex-shrink-0">
+                        ⚡ Thermal
+                    </Button>
+                    <Button onClick={handleStandardPrint} className="bg-primary hover:bg-primary/90 whitespace-nowrap flex-shrink-0">
+                        <Printer className="mr-2 h-4 w-4" /> Standard
                     </Button>
                 </div>
             </DialogContent>

@@ -96,7 +96,7 @@ export async function POST(req) {
         const extension = fileName.split('.').pop();
         const uniqueFileName = `${nanoid()}.${extension}`;
         const mediaType = getMediaType(baseMimeType);
-        const filePath = `whatsapp_media/${businessId}/${Date.now()}_${uniqueFileName}`;
+        const filePath = `business_media/MESSAGE_MEDIA/${businessId}/${Date.now()}_${uniqueFileName}`;
 
         const file = bucket.file(filePath);
 
