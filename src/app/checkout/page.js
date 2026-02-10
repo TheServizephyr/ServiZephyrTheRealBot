@@ -1218,6 +1218,20 @@ const CheckoutPageInternal = () => {
         }
     }
 
+    // Smart CTA step flow:
+    // 1) Select address (for delivery)
+    // 2) Select payment mode
+    // 3) Place order
+    const isAddressStepPending = !activeOrderId && deliveryType === 'delivery' && !selectedAddress;
+    const isPaymentStepPending = !isAddressStepPending && !selectedPaymentMethod;
+    const isOrderReadyToPlace = !isAddressStepPending && !!selectedPaymentMethod;
+    const ctaLabel = isAddressStepPending
+        ? 'Select Address'
+        : isPaymentStepPending
+            ? 'Select Payment Mode'
+            : 'Place Order';
+    const isCtaDisabled = isProcessingPayment || (!activeOrderId && deliveryType !== 'delivery' && !orderName.trim());
+
 
 
     const renderPaymentOptions = () => {
@@ -1795,6 +1809,11 @@ const CheckoutPageInternal = () => {
                         {/* Right: Smart Action Button (Price + Action) */}
                         <button
                             onClick={() => {
+                                if (isAddressStepPending) {
+                                    setIsAddressSelectorOpen(true);
+                                    return;
+                                }
+
                                 if (!selectedPaymentMethod) {
                                     setIsPaymentDrawerOpen(true);
                                     return;
@@ -1806,10 +1825,10 @@ const CheckoutPageInternal = () => {
                                     placeOrder('online');
                                 }
                             }}
-                            disabled={isProcessingPayment || (!activeOrderId && (deliveryType === 'delivery' ? !selectedAddress : !orderName.trim()))}
+                            disabled={isCtaDisabled}
                             className={cn(
                                 "h-12 px-4 rounded-xl font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex-none w-[55%] sm:w-[45%]",
-                                selectedPaymentMethod
+                                isOrderReadyToPlace
                                     ? "bg-primary text-white hover:bg-primary/90 shadow-primary/25"
                                     : "bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/25"
                             )}
@@ -1825,7 +1844,7 @@ const CheckoutPageInternal = () => {
                                         <span className="text-base font-extrabold leading-none">₹{grandTotal.toFixed(0)}</span>
                                     </div>
                                     <div className="flex items-center gap-1 flex-1 justify-center whitespace-nowrap">
-                                        <span>{selectedPaymentMethod ? 'Place Order' : 'Select Payment'}</span>
+                                        <span>{ctaLabel}</span>
                                         <i className="fas fa-caret-right text-xs ml-0.5"></i>
                                     </div>
                                 </div>
