@@ -888,13 +888,35 @@ function OrderTrackingContent() {
                                         }
                                         const totalItemPrice = unitPrice * quantity;
 
+                                        // Handle Addons (support both property names)
+                                        const addons = item.addons || item.selectedAddOns || [];
+
                                         return (
-                                            <div key={i} className="flex justify-between text-sm text-gray-600">
-                                                <div className="flex items-start gap-2">
-                                                    <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[20px] text-center">{quantity}x</span>
-                                                    <span className="font-medium">{item.name}</span>
+                                            <div key={i} className="flex flex-col gap-1 text-sm text-gray-600 border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+                                                <div className="flex justify-between">
+                                                    <div className="flex items-start gap-2">
+                                                        <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[20px] text-center mt-0.5">{quantity}x</span>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">
+                                                                {item.name}
+                                                                {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="font-bold text-gray-800">₹{totalItemPrice.toFixed(2)}</span>
                                                 </div>
-                                                <span className="font-bold text-gray-800">₹{totalItemPrice}</span>
+
+                                                {/* Add-ons Display */}
+                                                {addons.length > 0 && (
+                                                    <div className="pl-9 pr-0">
+                                                        {addons.map((addon, aIdx) => (
+                                                            <div key={aIdx} className="flex justify-between text-xs text-gray-500">
+                                                                <span>+ {addon.name}</span>
+                                                                <span>₹{parseFloat(addon.price || 0).toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -973,7 +995,7 @@ function OrderTrackingContent() {
             {/* FOOTER ACTION - Only visible if map is NOT expanded */}
             {!isMapExpanded && (
                 <div className="p-4 bg-white border-t border-gray-100 sticky bottom-0 z-30 pb-safe">
-                    <a href={`tel:${orderData.restaurant.phone}`} className="block w-full">
+                    <a href={`tel:${orderData.restaurant.ownerPhone || orderData.restaurant.phone}`} className="block w-full">
                         <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
                             <Phone size={18} />
                             Call Restaurant

@@ -755,7 +755,10 @@ function DineInTrackingContent() {
                                                         const unitPrice = item.serverVerifiedTotal || item.totalPrice || item.portion?.price || item.price || 0;
 
                                                         // NEW: Calculate addon total to subtract from unit price for display
-                                                        const addonTotal = item.selectedAddOns?.reduce((sum, addon) =>
+                                                        // Handle Addons (support both property names)
+                                                        const addons = item.addons || item.selectedAddOns || [];
+
+                                                        const addonTotal = addons.reduce((sum, addon) =>
                                                             sum + (addon.price * (addon.quantity || 1)), 0) || 0;
 
                                                         const basePrice = unitPrice - addonTotal;
@@ -763,13 +766,16 @@ function DineInTrackingContent() {
                                                         return (
                                                             <div key={i} className="bg-muted/30 rounded-md px-3 py-2">
                                                                 <div className="flex justify-between text-sm">
-                                                                    <span className="font-medium">{item.quantity}x {item.name}</span>
+                                                                    <span className="font-medium">
+                                                                        {item.quantity}x {item.name}
+                                                                        {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                                                    </span>
                                                                     <span className="text-muted-foreground font-semibold">{formatCurrency(basePrice)}</span>
                                                                 </div>
                                                                 {/* ✅ Show Addons */}
-                                                                {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                                                {addons.length > 0 && (
                                                                     <div className="ml-4 mt-1 space-y-0.5">
-                                                                        {item.selectedAddOns.map((addon, addonIdx) => (
+                                                                        {addons.map((addon, addonIdx) => (
                                                                             <div key={addonIdx} className="flex justify-between text-xs text-muted-foreground">
                                                                                 <span>+ {addon.name} {addon.quantity > 1 ? `(x${addon.quantity})` : ''}</span>
                                                                                 <span>₹{addon.price * (addon.quantity || 1)}</span>

@@ -730,12 +730,34 @@ function PreOrderTrackingContent() {
                                         </span>
                                     </p>
                                 )}
-                                {order.items.map((item, index) => (
-                                    <div key={index} className="flex justify-between text-muted-foreground text-sm">
-                                        <span>{item.quantity} x {item.name}</span>
-                                        <span>{formatCurrency(item.totalPrice)}</span>
-                                    </div>
-                                ))}
+                                {order.items.map((item, index) => {
+                                    // Handle Addons (support both property names)
+                                    const addons = item.addons || item.selectedAddOns || [];
+
+                                    return (
+                                        <div key={index} className="flex flex-col gap-1 text-sm text-muted-foreground border-b border-border/50 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
+                                            <div className="flex justify-between items-start">
+                                                <span className="font-medium text-foreground">
+                                                    {item.quantity} x {item.name}
+                                                    {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                                </span>
+                                                <span className="font-semibold text-foreground">{formatCurrency(item.totalPrice)}</span>
+                                            </div>
+
+                                            {/* Add-ons Display */}
+                                            {addons.length > 0 && (
+                                                <div className="pl-4 border-l-2 border-border/50 ml-1">
+                                                    {addons.map((addon, aIdx) => (
+                                                        <div key={aIdx} className="flex justify-between text-xs opacity-80">
+                                                            <span>+ {addon.name}</span>
+                                                            <span>{formatCurrency(addon.price)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
 
                                 <div className="border-t border-dashed my-2"></div>
 
