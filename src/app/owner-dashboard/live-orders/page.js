@@ -690,27 +690,44 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
                         <h4 className="font-semibold flex items-center gap-2 mb-2"><ShoppingBag size={16} /> Items Ordered</h4>
                         <div className="p-4 bg-muted rounded-lg space-y-2">
                             {order.items.map((item, index) => (
-                                <div key={index} className="flex justify-between items-center border-b border-border/50 pb-1">
-                                    <div className="flex items-center gap-2">
-                                        <span>{item.quantity} x {item.name}</span>
-                                        {item.addedAt && (() => {
-                                            try {
-                                                const date = item.addedAt?.seconds
-                                                    ? new Date(item.addedAt.seconds * 1000)
-                                                    : new Date(item.addedAt);
-                                                // Only render if valid date
-                                                if (isNaN(date.getTime())) return null;
-                                                return (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
-                                                        🆕 Added {format(date, 'hh:mm a')}
-                                                    </span>
-                                                );
-                                            } catch (e) {
-                                                return null; // Fail silently
-                                            }
-                                        })()}
+                                <div key={index} className="flex flex-col border-b border-border/50 pb-2 mb-2">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-start gap-2">
+                                            <span className="font-bold text-primary">{item.quantity}x</span>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium">
+                                                    {item.name}
+                                                    {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                                </span>
+                                                {/* Add-ons display */}
+                                                {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
+                                                    <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
+                                                        {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
+                                                            <div key={aIdx} className="flex gap-1">
+                                                                <span>+ {addon.name}</span>
+                                                                <span>(₹{addon.price})</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {item.addedAt && (() => {
+                                                try {
+                                                    const date = item.addedAt?.seconds
+                                                        ? new Date(item.addedAt.seconds * 1000)
+                                                        : new Date(item.addedAt);
+                                                    if (isNaN(date.getTime())) return null;
+                                                    return (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold ml-2">
+                                                            🆕 Added {format(date, 'hh:mm a')}
+                                                        </span>
+                                                    );
+                                                } catch (e) { return null; }
+                                            })()}
+                                        </div>
+                                        {/* Line Total Calculation */}
+                                        <span className="font-semibold">₹{((item.totalPrice || item.price || 0) * item.quantity).toFixed(2)}</span>
                                     </div>
-                                    <span>₹{item.price * item.quantity}</span>
                                 </div>
                             ))}
                         </div>
@@ -827,18 +844,20 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             {/* Items List (Preview) */}
             <div className="space-y-1.5 py-1">
                 {(order.items || []).slice(0, 3).map((item, idx) => {
-                    // Safe Price parsing
-                    const price = parseFloat(item.price) || 0;
+                    // Safe Price parsing - Prioritize totalPrice (Unit Price)
+                    const unitPrice = parseFloat(item.totalPrice || item.price) || 0;
                     const qty = parseInt(item.quantity) || 1;
-                    const lineTotal = price * qty;
+                    const lineTotal = unitPrice * qty;
 
                     return (
                         <div key={idx} className="flex justify-between items-start text-sm">
                             <span className="text-foreground/90 leading-tight">
                                 <span className="font-extrabold text-primary mr-2">{qty}x</span>
                                 {item.name}
+                                {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && <span className="text-xs text-muted-foreground"> +{(item.addons || item.selectedAddOns).length} adds</span>}
                             </span>
-                            <span className="font-semibold text-muted-foreground">₹{lineTotal}</span>
+                            <span className="font-semibold text-muted-foreground">₹{lineTotal.toFixed(0)}</span>
                         </div>
                     )
                 })}

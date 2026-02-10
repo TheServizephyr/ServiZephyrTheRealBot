@@ -112,10 +112,23 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
 
                         return (
                             <tr key={index}>
-                                <td className="py-1">{safeRender(item.name || item.itemName)}</td>
-                                <td className="text-center py-1">{quantity}</td>
-                                <td className="text-right py-1">{formatCurrency(pricePerUnit)}</td>
-                                <td className="text-right py-1">{formatCurrency(totalItemPrice)}</td>
+                                <td className="py-1">
+                                    {safeRender(item.name || item.itemName)}
+                                    {/* FIXED: Show Portion Name in Bill */}
+                                    {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+
+                                    {/* FIXED: Show Add-ons as sub-items in Bill */}
+                                    {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
+                                        <div className="text-[10px] text-gray-500 pl-2">
+                                            {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
+                                                <div key={aIdx}>+ {addon.name} (₹{addon.price})</div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="text-center py-1 align-top">{quantity}</td>
+                                <td className="text-right py-1 align-top">{formatCurrency(pricePerUnit)}</td>
+                                <td className="text-right py-1 align-top">{formatCurrency(totalItemPrice)}</td>
                             </tr>
                         )
                     })}

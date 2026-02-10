@@ -1595,13 +1595,27 @@ const CheckoutPageInternal = () => {
                                     {cart.map((item, idx) => (
                                         <div key={idx} className="flex justify-between items-center text-sm bg-muted/10 p-2 rounded-lg">
                                             <div className="flex flex-col gap-1">
-                                                <span className="font-medium text-foreground">{item.name} {item.variant ? `(${item.variant})` : ''}</span>
-                                                {item.addons && item.addons.length > 0 && (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {item.addons.map(a => a.name).join(', ')}
-                                                    </span>
+                                                <span className="font-medium text-foreground">
+                                                    {item.name}
+                                                    {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                                </span>
+                                                {/* NEW: Base Price Display */}
+                                                <div className="text-xs text-muted-foreground">
+                                                    ₹{parseFloat(item.portion?.price || item.price || 0).toFixed(2)}
+                                                </div>
+                                                {/* FIXED: Show Add-ons as proper sub-items with specific prices */}
+                                                {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
+                                                    <div className="flex flex-col gap-0.5 mt-0.5 pl-2 border-l-2 border-muted">
+                                                        {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
+                                                            <div key={aIdx} className="text-xs text-muted-foreground flex justify-between">
+                                                                <span>+ {addon.name}</span>
+                                                                <span>₹{parseFloat(addon.price || 0).toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 )}
-                                                <span className="font-bold">₹{(item.totalPrice || (item.price || 0) * item.quantity).toFixed(2)}</span>
+                                                {/* Line Total: (Base + Addons) * Qty */}
+                                                <span className="font-bold mt-1">₹{((item.totalPrice || item.price || 0) * item.quantity).toFixed(2)}</span>
                                             </div>
 
                                             <div className="flex items-center gap-2">
