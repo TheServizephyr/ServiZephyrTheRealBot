@@ -576,15 +576,15 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
 
     return (
         <div className="flex flex-col gap-2 w-full">
-            <div className="flex gap-2 w-full"> {/* Row for primary actions */}
+            <div className="flex flex-wrap gap-2 w-full"> {/* Row for primary actions */}
                 {hasAccess && (
                     <Button
                         onClick={action.action}
                         size="sm"
-                        className={cn("h-10 flex-1 font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]", action.className || "bg-primary hover:bg-primary/90")}
+                        className={cn("h-10 flex-1 min-w-[120px] font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]", action.className || "bg-primary hover:bg-primary/90")}
                     >
-                        <ActionIcon size={18} className="mr-2" />
-                        {action.text}
+                        <ActionIcon size={18} className="mr-2 shrink-0" />
+                        <span className="truncate">{action.text}</span>
                     </Button>
                 )}
 
@@ -593,9 +593,9 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                         onClick={() => onRejectClick(order)}
                         variant="destructive"
                         size="sm"
-                        className="h-10 flex-1 font-semibold bg-red-500 hover:bg-red-600 text-white shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        className="h-10 flex-1 min-w-[100px] font-semibold bg-red-500 hover:bg-red-600 text-white shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                        <X size={18} className="mr-2" />
+                        <X size={18} className="mr-2 shrink-0" />
                         Reject
                     </Button>
                 )}
@@ -925,10 +925,28 @@ export default function LiveOrdersPage() {
             try {
                 const userDoc = await getDoc(doc(db, 'users', user.uid));
                 if (userDoc.exists()) {
-                    const role = userDoc.data().role;
-                    console.log(`[LiveOrders] User role fetched: ${role}`);
-                    // Only default to owner if document exists (legacy owners often lack role field)
-                    setUserRole(role || 'owner');
+                    const userData = userDoc.data();
+                    let effectiveRole = userData.role || 'owner';
+
+                    // Employee access uses `employee_of` owner context.
+                    // Resolve employee role from localStorage first, then linkedOutlets fallback.
+                    if (employeeOfOwnerId) {
+                        const storedRole = localStorage.getItem('employeeRole');
+                        if (storedRole) {
+                            effectiveRole = storedRole;
+                        } else {
+                            const linkedOutlets = userData.linkedOutlets || [];
+                            const matchedOutlet = linkedOutlets.find(
+                                (o) => o.ownerId === employeeOfOwnerId && o.status === 'active'
+                            );
+                            if (matchedOutlet?.employeeRole) {
+                                effectiveRole = matchedOutlet.employeeRole;
+                            }
+                        }
+                    }
+
+                    console.log(`[LiveOrders] User role fetched: ${effectiveRole}`);
+                    setUserRole(effectiveRole);
                 } else {
                     console.warn("[LiveOrders] User document not found. Access restricted.");
                     setUserRole(null);
@@ -939,7 +957,7 @@ export default function LiveOrdersPage() {
             }
         };
         fetchRole();
-    }, []);
+    }, [employeeOfOwnerId]);
 
     const handlePrintClick = (order) => {
         setPrintModalData({ isOpen: true, order });
