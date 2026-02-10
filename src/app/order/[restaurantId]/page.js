@@ -2179,6 +2179,7 @@ const OrderPageInternal = () => {
                                         }}
                                         loading={addressLoading}
                                         onUseCurrentLocation={() => {
+                                            // Pass useCurrent=true to trigger auto-fetch
                                             router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                         onAddNewAddress={() => {

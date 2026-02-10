@@ -279,7 +279,7 @@ const AddAddressPageInternal = () => {
                 </div>
 
                 <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
-                    <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-foreground hover:bg-muted" onClick={getCurrentGeolocation} disabled={loading && error.includes('Fetching')}>
+                    <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading && error.includes('Fetching')}>
                         {(loading && error.includes('Fetching')) ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>
                     {loading && !addressDetails ? (
