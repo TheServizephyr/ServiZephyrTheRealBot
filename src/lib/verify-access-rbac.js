@@ -60,20 +60,22 @@ export async function verifyAccessWithRBAC(req, requiredPermission = null, optio
     // ============================================
     // CASE 2: User is an Owner (old or new system)
     // ============================================
-    if (['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
+    const isKnownOwnerRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole);
+    if (isKnownOwnerRole || userData.businessType) {
         return await verifyOwnerAccess(firestore, uid, requestedOutletId, requiredPermission, false, null);
     }
 
     // ============================================
     // CASE 3: User is an Employee (new RBAC system)
     // ============================================
-    if (userRole === 'employee' || userData.linkedOutlets) {
+    if (userRole === 'employee' || (userData.linkedOutlets && userData.linkedOutlets.length > 0)) {
         return await verifyEmployeeAccess(firestore, uid, userData, requestedOutletId, requiredPermission);
     }
 
     // ============================================
     // CASE 4: Unknown role - deny access
     // ============================================
+    console.warn(`[RBAC] Access Denied: UID ${uid} has role '${userRole}' but no businessType or active employee outlets.`);
     throw { message: 'Access denied. Invalid user role.', status: 403 };
 }
 

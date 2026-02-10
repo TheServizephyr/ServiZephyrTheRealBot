@@ -105,8 +105,10 @@ export async function GET(req) {
 
         // This block is for authenticated owner dashboard queries.
         // Use standard verifyOwnerWithAudit for robust impersonation handling
+        console.log(`[API /settings] Verifying owner...`);
         const context = await verifyOwnerWithAudit(req, 'view_settings');
         const { uid, userData, businessSnap, businessId } = context;
+        console.log(`[API /settings] Owner verified: ${uid} for business ${businessId}`);
         const businessRef = businessSnap.ref;
         const businessData = businessSnap.data();
 

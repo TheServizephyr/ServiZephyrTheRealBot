@@ -152,7 +152,7 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
             // Header
             encoder.initialize().align('center')
                 .bold(true).text(restaurant?.name || 'Restaurant').newline()
-                .bold(false).text(restaurant?.address?.street || restaurant?.address || '').newline();
+                .bold(false).text(restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')).newline();
 
             if (restaurant?.gstin) encoder.text(`GSTIN: ${restaurant.gstin}`).newline();
             if (restaurant?.fssai) encoder.text(`FSSAI: ${restaurant.fssai}`).newline();

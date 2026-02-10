@@ -51,20 +51,30 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
             let targetOwnerId = uid;
             let isImpersonating = false;
 
+            console.log(`[verifyOwnerWithAudit] Auth check for UID: ${uid}, Role: ${userRole}`);
+
             if (userRole === 'admin' && impersonatedOwnerId) {
                 if (sessionExpiry && isSessionExpired(parseInt(sessionExpiry))) {
+                    console.warn(`[verifyOwnerWithAudit] Impersonation session expired for admin ${uid}`);
                     throw { message: 'Impersonation session has expired. Please re-authenticate.', status: 401 };
                 }
                 targetOwnerId = impersonatedOwnerId;
                 isImpersonating = true;
+                console.log(`[verifyOwnerWithAudit] Admin impersonating owner: ${targetOwnerId}`);
             } else if (employeeOfOwnerId) {
                 employeeAccessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
                 if (!employeeAccessResult.authorized) {
+                    console.warn(`[verifyOwnerWithAudit] Employee access denied: ${uid} for owner ${employeeOfOwnerId}`);
                     throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
                 }
                 targetOwnerId = employeeOfOwnerId;
-            } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-                throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+                console.log(`[verifyOwnerWithAudit] Employee access granted: ${uid} for owner ${targetOwnerId}`);
+            } else {
+                // For direct owner access, we check role BUT we'll have a fallback later if business exists
+                const isKnownOwnerRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole);
+                if (!isKnownOwnerRole) {
+                    console.log(`[verifyOwnerWithAudit] UID ${uid} has role '${userRole}', checking business association fallback...`);
+                }
             }
 
             // --- RESOLVE BUSINESS ---
@@ -99,6 +109,14 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                 }
             }
 
+            // If we reached here, no business was found
+            const isKnownOwnerRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole);
+            if (!isKnownOwnerRole && !isImpersonating && !employeeOfOwnerId) {
+                console.warn(`[verifyOwnerWithAudit] Access Denied for UID ${uid} (Role: ${userRole}, No business found)`);
+                throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+            }
+
+            console.warn(`[verifyOwnerWithAudit] No business found for Owner ID: ${targetOwnerId}`);
             throw { message: 'No business associated with this owner.', status: 404 };
         })();
     }

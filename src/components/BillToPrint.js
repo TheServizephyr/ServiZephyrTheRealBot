@@ -65,7 +65,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
             `}</style>
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
                 <h1 className="text-xl font-bold uppercase">{restaurant?.name || 'Restaurant'}</h1>
-                <p className="text-xs">{restaurant?.address?.street || restaurant?.address || ''}</p>
+                <p className="text-xs">{restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')}</p>
                 {restaurant?.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
                 {restaurant?.fssai && <p className="text-xs">FSSAI: {restaurant.fssai}</p>}
             </div>

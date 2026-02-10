@@ -17,12 +17,14 @@ export async function GET(request) {
 
         // Verify authentication
         const uid = await verifyAndGetUid(request);
-
+        console.log(`[API /employee/me] UID verified: ${uid}`);
         const db = await getFirestore();
         const auth = await getAuth();
+        console.log(`[API /employee/me] Firebase services initialized`);
 
         // Get user email from auth
         const userRecord = await auth.getUser(uid);
+        console.log(`[API /employee/me] User record fetched for ${uid}`);
         const email = userRecord.email;
 
         // First check if user is an owner (for their own dashboard) - skip if employee_of is set

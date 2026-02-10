@@ -10,27 +10,31 @@ let adminInstance = null;
 function getServiceAccount() {
   // This function remains the same, it correctly gets credentials from env vars.
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    console.log("[firebase-admin] Initializing with FIREBASE_SERVICE_ACCOUNT_JSON from .env.local.");
+    console.log("[firebase-admin] Found FIREBASE_SERVICE_ACCOUNT_JSON env var.");
     try {
-      return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      console.log("[firebase-admin] Successfully parsed FIREBASE_SERVICE_ACCOUNT_JSON.");
+      return parsed;
     } catch (e) {
-      console.error("[firebase-admin] CRITICAL: Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON.", e);
+      console.error("[firebase-admin] CRITICAL: Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON.", e.message);
       return null;
     }
   }
 
   if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
-    console.log("[firebase-admin] Initializing with Base64 encoded Vercel environment variable.");
+    console.log("[firebase-admin] Found FIREBASE_SERVICE_ACCOUNT_BASE64 env var.");
     try {
       const decodedServiceAccount = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8');
-      return JSON.parse(decodedServiceAccount);
+      const parsed = JSON.parse(decodedServiceAccount);
+      console.log("[firebase-admin] Successfully parsed FIREBASE_SERVICE_ACCOUNT_BASE64.");
+      return parsed;
     } catch (e) {
-      console.error("[firebase-admin] CRITICAL: Failed to parse Base64 encoded service account.", e);
+      console.error("[firebase-admin] CRITICAL: Failed to parse Base64 encoded service account.", e.message);
       return null;
     }
   }
 
-  console.error("[firebase-admin] FATAL: No Firebase service account credentials found.");
+  console.error("[firebase-admin] FATAL: No Firebase service account credentials found in env vars.");
   return null;
 }
 

@@ -1,67 +1,11 @@
-
-
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, verifyAndGetUid, FieldValue } from '@/lib/firebase-admin';
-
-// Helper to verify owner and get their first business ID
-async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const uid = await verifyAndGetUid(req); // Use central helper
-
-    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-
-    let targetOwnerId = uid;
-
-    // Admin impersonation
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing delivery data for owner ${impersonatedOwnerId}.`);
-        targetOwnerId = impersonatedOwnerId;
-    }
-    // Employee access
-    else if (employeeOfOwnerId) {
-        const linkedOutlets = userData.linkedOutlets || [];
-        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
-
-        if (!hasAccess) {
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-
-        console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s delivery data`);
-        targetOwnerId = employeeOfOwnerId;
-    }
-    // Owner access
-    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
-
-    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-    for (const collectionName of collectionsToTry) {
-        const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
-        if (!query.empty) {
-            const doc = query.docs[0];
-            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin' };
-        }
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
-
+import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 
 export async function GET(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'view_delivery_dashboard');
 
         const boysRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys');
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
@@ -272,9 +216,8 @@ export async function GET(req) {
 
 export async function POST(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'add_delivery_boy');
         const { boy } = await req.json();
 
         if (!boy || !boy.name || !boy.phone) {
@@ -307,9 +250,8 @@ export async function POST(req) {
 
 export async function PATCH(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'update_delivery_boy');
         const { boy } = await req.json();
 
         if (!boy || !boy.id) {
@@ -335,9 +277,8 @@ export async function PATCH(req) {
 
 export async function DELETE(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerWithAudit(req, 'delete_delivery_boy');
         const { searchParams } = new URL(req.url);
         const boyId = searchParams.get('id');
 
