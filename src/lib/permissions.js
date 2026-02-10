@@ -106,6 +106,21 @@ export const ROLES = {
     INVENTORY_MANAGER: 'inventory_manager',  // Stock/inventory management
 };
 
+// Normalize legacy/business-owner role variants to RBAC base roles.
+// This keeps old role values (e.g. "restaurant-owner") compatible with
+// centralized permission checks.
+const ROLE_ALIAS_MAP = {
+    'restaurant-owner': ROLES.OWNER,
+    'shop-owner': ROLES.OWNER,
+    'street_vendor': ROLES.STREET_VENDOR,
+};
+
+export function normalizeRole(role) {
+    if (typeof role !== 'string') return role;
+    const normalized = role.trim().toLowerCase();
+    return ROLE_ALIAS_MAP[normalized] || normalized;
+}
+
 // ============================================
 // ROLE DISPLAY NAMES (English - All India)
 // ============================================
@@ -289,7 +304,8 @@ export const ROLE_PERMISSIONS = {
 export function hasPermission(role, permission) {
     if (!role || !permission) return false;
 
-    const rolePermissions = ROLE_PERMISSIONS[role];
+    const effectiveRole = normalizeRole(role);
+    const rolePermissions = ROLE_PERMISSIONS[effectiveRole];
     if (!rolePermissions) return false;
 
     return rolePermissions.includes(permission);
@@ -301,7 +317,8 @@ export function hasPermission(role, permission) {
  * @returns {string[]} Array of permission strings
  */
 export function getPermissionsForRole(role) {
-    return ROLE_PERMISSIONS[role] || [];
+    const effectiveRole = normalizeRole(role);
+    return ROLE_PERMISSIONS[effectiveRole] || [];
 }
 
 /**
@@ -333,6 +350,7 @@ export function hasAllPermissions(userPermissions, requiredPermissions) {
  * @returns {number}
  */
 export function getRoleLevel(role) {
+    const effectiveRole = normalizeRole(role);
     const levels = {
         [ROLES.OWNER]: 100,
         [ROLES.MANAGER]: 80,
@@ -341,7 +359,7 @@ export function getRoleLevel(role) {
         [ROLES.CHEF]: 40,
         [ROLES.ORDER_TAKER]: 20,
     };
-    return levels[role] || 0;
+    return levels[effectiveRole] || 0;
 }
 
 /**
@@ -449,7 +467,8 @@ export const ROLE_ALLOWED_PAGES = {
  * @returns {string[] | 'all'} - Array of allowed feature IDs or 'all'
  */
 export function getAllowedPages(role) {
-    return ROLE_ALLOWED_PAGES[role] || [];
+    const effectiveRole = normalizeRole(role);
+    return ROLE_ALLOWED_PAGES[effectiveRole] || [];
 }
 
 /**
@@ -460,14 +479,16 @@ export function getAllowedPages(role) {
  * @returns {boolean}
  */
 export function canAccessPage(role, featureId, customAllowedPages = null) {
+    const effectiveRole = normalizeRole(role);
+
     // For custom roles, use the provided customAllowedPages
-    if (role === 'custom' && customAllowedPages) {
+    if (effectiveRole === ROLES.CUSTOM && customAllowedPages) {
         // Always allow my-profile for all employees
         if (featureId === 'my-profile') return true;
         return customAllowedPages.includes(featureId);
     }
 
-    const allowedPages = ROLE_ALLOWED_PAGES[role];
+    const allowedPages = ROLE_ALLOWED_PAGES[effectiveRole];
     if (!allowedPages) return false;
     if (allowedPages === 'all') return true;
     return allowedPages.includes(featureId);
@@ -478,6 +499,7 @@ export function canAccessPage(role, featureId, customAllowedPages = null) {
 // ============================================
 
 export function getDefaultPermissionsForRole(role) {
-    return ROLE_PERMISSIONS[role] || [];
+    const effectiveRole = normalizeRole(role);
+    return ROLE_PERMISSIONS[effectiveRole] || [];
 }
 
