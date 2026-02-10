@@ -317,8 +317,18 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     const token = latestOrder.trackingToken;
                     console.log(`[Webhook WA] Found latest order ${orderId} with tracking token for userId ${userId}.`);
 
-                    const trackingPath = latestOrder.deliveryType === 'dine-in' ? 'dine-in/' : '';
-                    const link = `https://servizephyr.com/track/${trackingPath}${orderId}?token=${token}`;
+                    // Generate Obfuscated Ref for guest/user
+                    const publicRef = obfuscateGuestId(userId);
+
+                    let trackingPath = 'delivery/'; // Default to delivery
+                    if (latestOrder.deliveryType === 'dine-in') {
+                        trackingPath = 'dine-in/';
+                    } else if (latestOrder.deliveryType === 'pickup') {
+                        trackingPath = 'pickup/'; // Assuming pickup exists, otherwise delivery/ is safe fallback or specific page
+                    }
+
+                    // Format: /track/[type]/[orderId]?token=...&ref=...&activeOrderId=...
+                    const link = `https://www.servizephyr.com/track/${trackingPath}${orderId}?token=${token}&ref=${publicRef}&activeOrderId=${orderId}`;
 
                     const displayOrderId = latestOrder.customerOrderId ? `#${latestOrder.customerOrderId}` : `#${orderId.substring(0, 8)}`;
                     const collectionName = business.ref.parent.id;
