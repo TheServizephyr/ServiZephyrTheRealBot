@@ -108,7 +108,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
             </div>
             <div className="text-right mt-2">
               <button
-                onClick={() => router.push('/owner-dashboard/live-orders')}
+                onClick={() => router.push(`/owner-dashboard/live-orders?${new URLSearchParams(window.location.search).toString()}`)}
                 className="text-xs text-primary hover:text-primary/80 font-semibold">
                 View Details
               </button>
@@ -300,17 +300,17 @@ function PageContent() {
         {/* Quick Action Buttons */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <button
-            onClick={() => router.push('/owner-dashboard/menu')}
+            onClick={() => router.push(`/owner-dashboard/menu?${searchParams.toString()}`)}
             className="flex items-center justify-center p-3 bg-primary hover:bg-primary/90 rounded-lg font-semibold transition-colors text-sm sm:text-base text-primary-foreground">
             <Plus size={18} className="mr-2" /> Add New Item
           </button>
           <button
-            onClick={() => router.push('/owner-dashboard/coupons')}
+            onClick={() => router.push(`/owner-dashboard/coupons?${searchParams.toString()}`)}
             className="flex items-center justify-center p-3 bg-secondary hover:bg-secondary/90 rounded-lg font-semibold transition-colors text-sm sm:text-base text-secondary-foreground">
             <Tag size={18} className="mr-2" /> Create Coupon
           </button>
           <button
-            onClick={() => router.push('/owner-dashboard/menu')}
+            onClick={() => router.push(`/owner-dashboard/menu?${searchParams.toString()}`)}
             className="flex items-center justify-center p-3 bg-secondary hover:bg-secondary/90 rounded-lg font-semibold transition-colors text-sm sm:text-base text-secondary-foreground">
             <XCircle size={18} className="mr-2" /> Mark Item Out of Stock
           </button>

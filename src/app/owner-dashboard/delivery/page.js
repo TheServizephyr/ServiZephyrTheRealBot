@@ -646,7 +646,7 @@ export default function DeliveryPage() {
                         <p className="text-muted-foreground mt-1 text-sm md:text-base">Monitor and manage your delivery team in real-time.</p>
                     </div>
                     <div className="flex-shrink-0 flex gap-4">
-                        <Link href="/owner-dashboard/delivery-settings">
+                        <Link href={`/owner-dashboard/delivery-settings?${searchParams.toString()}`}>
                             <Button variant="outline"><Settings size={16} className="mr-2" /> Delivery Settings</Button>
                         </Link>
                         <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>

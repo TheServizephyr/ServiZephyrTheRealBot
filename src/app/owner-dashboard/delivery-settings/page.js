@@ -667,7 +667,8 @@ function DeliverySettingsPageContent() {
             </motion.div>
 
             {/* SAVE ACTION */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-lg border-t z-50 flex items-center justify-center">
+            {/* SAVE ACTION */}
+            <div className="sticky bottom-0 -mx-4 md:-mx-8 px-4 md:px-8 py-4 bg-background/95 backdrop-blur-xl border-t z-40 flex items-center justify-center mt-auto">
                 <Button
                     onClick={handleSave}
                     disabled={isSaving}
