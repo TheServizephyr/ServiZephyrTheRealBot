@@ -44,7 +44,7 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 .bold(false).text(restaurant?.address?.street || restaurant?.address || '').newline()
                 .text('--------------------------------').newline()
                 .align('left').bold(true)
-                .text(`Order: ${order.id}`).newline()
+                .text(`Cust. Order ID: ${order.customerOrderId || order.id.substring(0, 8)}`).newline()
                 .bold(false)
                 .text(`Date: ${formatSafeDate(order.orderDate || order.createdAt)}`)
                 .newline()
@@ -70,15 +70,19 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
             const packing = order.packagingCharge || 0;
             const delivery = order.deliveryCharge || 0;
             const platform = order.platformFee || 0;
+            const convenience = order.convenienceFee || 0;
+            const service = order.serviceFee || 0;
             const tip = order.tip || 0;
             const discount = order.discount || 0;
-            const grandTotal = order.totalAmount || (subtotal + tax + packing + delivery + platform + tip - discount);
+            const grandTotal = order.totalAmount || (subtotal + tax + packing + delivery + platform + convenience + service + tip - discount);
 
             encoder.text(`Subtotal: ${subtotal}`).newline();
 
             if (discount > 0) encoder.text(`Discount: -${discount}`).newline();
             if (packing > 0) encoder.text(`Packing: ${packing}`).newline();
             if (platform > 0) encoder.text(`Platform Fee: ${platform}`).newline();
+            if (convenience > 0) encoder.text(`Conv. Fee: ${convenience}`).newline();
+            if (service > 0) encoder.text(`Service Fee: ${service}`).newline();
             if (delivery > 0) encoder.text(`Delivery: ${delivery}`).newline();
             if (tip > 0) encoder.text(`Tip: ${tip}`).newline();
 
@@ -121,7 +125,7 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                                 // Adapter for BillToPrint props if needed
                                 items={order.items || []}
                                 customerDetails={{
-                                    name: order.customer,
+                                    name: order.customer || order.customerName || order.name || 'Walk-in Customer',
                                     phone: order.customerPhone,
                                     address: order.customerAddress
                                 }}
@@ -133,6 +137,8 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                                     packagingCharge: order.packagingCharge || 0,
                                     deliveryCharge: order.deliveryCharge || 0,
                                     platformFee: order.platformFee || 0,
+                                    convenienceFee: order.convenienceFee || 0,
+                                    serviceFee: order.serviceFee || 0,
                                     tip: order.tip || 0,
                                     discount: order.discount || 0
                                 }}

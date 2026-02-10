@@ -73,7 +73,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 {finalCustomerDetails.phone && <p><strong>Phone:</strong> {finalCustomerDetails.phone}</p>}
                 {finalCustomerDetails.address && <p><strong>Address:</strong> {finalCustomerDetails.address}</p>}
                 <p><strong>Date:</strong> {formatSafeDate(order.orderDate || order.createdAt)}</p>
-                {order.id && <p><strong>Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
+                {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 
             <table className="w-full text-xs mb-2">
@@ -126,6 +126,18 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     <div className="flex justify-between">
                         <span>Platform Fee</span>
                         <span>+ {formatCurrency(finalBillDetails.platformFee)}</span>
+                    </div>
+                )}
+                {finalBillDetails.convenienceFee > 0 && (
+                    <div className="flex justify-between">
+                        <span>Convenience Fee</span>
+                        <span>+ {formatCurrency(finalBillDetails.convenienceFee)}</span>
+                    </div>
+                )}
+                {finalBillDetails.serviceFee > 0 && (
+                    <div className="flex justify-between">
+                        <span>Service Fee</span>
+                        <span>+ {formatCurrency(finalBillDetails.serviceFee)}</span>
                     </div>
                 )}
                 {finalBillDetails.deliveryCharge > 0 && (
