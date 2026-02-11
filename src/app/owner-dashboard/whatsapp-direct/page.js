@@ -75,6 +75,28 @@ const ConversationItem = ({ conversation, active, onClick }) => {
         return null;
     };
 
+    // ✅ Get status badge based on conversation state
+    const getStatusBadge = () => {
+        if (conversation.conversationState === 'browsing_order') {
+            return <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 flex-shrink-0 ml-1 font-medium">Browsing Order</span>;
+        }
+        if (conversation.conversationState === 'direct_chat') {
+            // Check timeout status
+            if (conversation.timeoutStatus === 'expired') {
+                return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 flex-shrink-0 ml-1 font-medium">Timeout</span>;
+            }
+            // If less than 5 minutes left, show warning
+            if (conversation.timeoutStatus && !conversation.timeoutStatus.includes('expired') && conversation.timeoutStatus !== 'active') {
+                const minutesLeft = parseInt(conversation.timeoutStatus, 10);
+                if (!isNaN(minutesLeft) && minutesLeft < 5) {
+                    return <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 flex-shrink-0 ml-1 font-medium">{conversation.timeoutStatus}</span>;
+                }
+            }
+            return <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 flex-shrink-0 ml-1 font-medium">In Chat</span>;
+        }
+        return null;
+    };
+
     return (
         <div
             onClick={() => onClick(conversation)}
@@ -100,11 +122,14 @@ const ConversationItem = ({ conversation, active, onClick }) => {
                 <div className="flex justify-between items-center">
                     <p className="text-sm text-muted-foreground truncate flex items-center h-5">
                         {getMessageIcon(conversation.lastMessageType)}
-                        <span className="truncate">{conversation.lastMessage}</span>
+                        <span className="truncate">{conversation.lastMessage || `${conversation.conversationState === 'browsing_order' ? 'Accessed order link' : 'No messages'}`}</span>
                     </p>
-                    {conversation.tag && TagIcon && (
-                        <TagIcon size={14} className={cn('flex-shrink-0 ml-1', tagConfig[conversation.tag].color)} />
-                    )}
+                    <div className="flex items-center gap-1 ml-1">
+                        {getStatusBadge()}
+                        {conversation.tag && TagIcon && (
+                            <TagIcon size={14} className={cn('flex-shrink-0', tagConfig[conversation.tag].color)} />
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
@@ -395,6 +420,9 @@ function WhatsAppDirectPageContent() {
     const employeeOfOwnerId = searchParams.get('employee_of');
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
+    const prevMessagesLengthRef = useRef(0); // ✅ Track previous message count
+    const userScrollingRef = useRef(false); // ✅ Track if user is manually scrolling
+    const messagesContainerRef = useRef(null); // ✅ Ref to messages container
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadingFile, setUploadingFile] = useState(null);
     const [activeFilter, setActiveFilter] = useState('All');
@@ -428,6 +456,10 @@ function WhatsAppDirectPageContent() {
     const audioChunksRef = useRef([]);
     const timerRef = useRef(null);
 
+    // ✅ COUNTDOWN TIMER STATE
+    const [remainingSeconds, setRemainingSeconds] = useState(null);
+    const countdownIntervalRef = useRef(null);
+
     // NEW: Audio Engine State
     const [workerBlobUrl, setWorkerBlobUrl] = useState(null);
     const [loadingAudioEngine, setLoadingAudioEngine] = useState(true);
@@ -450,7 +482,9 @@ function WhatsAppDirectPageContent() {
                 const url = URL.createObjectURL(blob);
                 setWorkerBlobUrl(url);
                 setLoadingAudioEngine(false);
-                console.log("Audio Engine Loaded Successfully 🎧");
+                if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                    console.log("Audio Engine Loaded Successfully 🎧");
+                }
             } catch (error) {
                 console.error("Failed to load Audio Engine Worker:", error);
                 setLoadingAudioEngine(false);
@@ -467,20 +501,118 @@ function WhatsAppDirectPageContent() {
 
 
     const scrollToBottom = () => {
-        if (messagesEndRef.current) {
+        if (messagesEndRef.current && !userScrollingRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }
 
-    // Auto-scroll when messages update or conversation changes
+    // ✅ IMPROVED: Only scroll when NEW messages arrive, not on every update
     useEffect(() => {
-        // Immediate scroll for new messages or conversation switch
-        scrollToBottom();
+        if (!activeConversation) {
+            return; // Don't scroll if no conversation
+        }
 
-        // Safety timeout for image loading/layout shifts
-        const timeoutId = setTimeout(scrollToBottom, 300);
-        return () => clearTimeout(timeoutId);
-    }, [messages, activeConversation?.id, loadingMessages]);
+        // Only scroll to bottom if messages count increased (new message arrived)
+        const currentLength = messages.length;
+        const previousLength = prevMessagesLengthRef.current;
+
+        if (currentLength > previousLength) {
+            // New message arrived - scroll to bottom
+            scrollToBottom();
+        }
+
+        prevMessagesLengthRef.current = currentLength;
+    }, [messages, activeConversation]);
+
+    // ✅ DETECT USER SCROLLING: Prevent auto-scroll while user is scrolling up
+    useEffect(() => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        let lastScrollTime = 0;
+        let resetTimeout;
+        const handleScroll = () => {
+            const now = Date.now();
+            // Throttle scroll events to 100ms to improve performance
+            if (now - lastScrollTime < 100) return;
+            lastScrollTime = now;
+            
+            userScrollingRef.current = true;
+            clearTimeout(resetTimeout);
+            resetTimeout = setTimeout(() => {
+                userScrollingRef.current = false;
+            }, 3000); // Reset after 3 seconds of no scrolling
+        };
+
+        container.addEventListener('scroll', handleScroll);
+        return () => {
+            container.removeEventListener('scroll', handleScroll);
+            clearTimeout(resetTimeout);
+        };
+    }, []);
+
+    // ✅ REAL-TIME COUNTDOWN TIMER for direct chat
+    useEffect(() => {
+        if (!activeConversation || activeConversation.conversationState !== 'direct_chat') {
+            setRemainingSeconds(null);
+            if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+            return;
+        }
+
+        // Calculate initial remaining time
+        const calculateRemaining = () => {
+            try {
+                // ✅ STABILIZE: Use conversation's start time, or fallback to 'now' ONLY IF it doesn't exist.
+                // But we must NOT re-evaluate 'Date.now()' as the start time on every tick if it's missing.
+                const enteredTime = activeConversation.enteredDirectChatAt
+                    ? new Date(activeConversation.enteredDirectChatAt).getTime()
+                    : null;
+
+                const timeoutMinutes = activeConversation.directChatTimeoutMinutes || 30;
+                const totalSeconds = timeoutMinutes * 60;
+
+                if (!enteredTime) {
+                    // If we don't have a start time yet, we stop at 30:00 (or whatever timeout is)
+                    // until the next poll brings the timestamp.
+                    return totalSeconds;
+                }
+
+                const elapsed = (Date.now() - enteredTime) / 1000; // in seconds
+                const remaining = Math.max(0, Math.floor(totalSeconds - elapsed));
+
+                return remaining;
+            } catch (error) {
+                if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                    console.error('❌ Timer calculation ERROR:', error);
+                }
+                return 1800; // 30 min fallback
+            }
+        };
+
+        // Set initial value
+        const initial = calculateRemaining();
+        setRemainingSeconds(initial);
+
+        // Update every second
+        countdownIntervalRef.current = setInterval(() => {
+            const remaining = calculateRemaining();
+            setRemainingSeconds(remaining);
+
+            // Stop interval if time expired
+            if (remaining <= 0) {
+                if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                    console.log('⏰ EXPIRED for', activeConversation.customerName);
+                }
+                clearInterval(countdownIntervalRef.current);
+            }
+        }, 1000);
+
+        return () => {
+            if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+            }
+        };
+    }, [activeConversation]);
 
     const [audioBlob, setAudioBlob] = useState(null);
     const [audioReviewUrl, setAudioReviewUrl] = useState(null);
@@ -517,7 +649,9 @@ function WhatsAppDirectPageContent() {
 
             const mediaRecorder = new OpusMediaRecorder(stream, { mimeType: 'audio/ogg' }, workerOptions);
 
-            console.log("Initialized OpusMediaRecorder with Valid OGG/Opus (Sync Factory)");
+            if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                console.log("Initialized OpusMediaRecorder with Valid OGG/Opus (Sync Factory)");
+            }
 
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
@@ -708,6 +842,23 @@ function WhatsAppDirectPageContent() {
             if (!isBackgroundRefresh) setLoadingConversations(false);
         }
     }, [handleApiCall]); // Stable reference with handleApiCall dependency
+
+    // ✅ SYNC: Keep activeConversation in sync with fresh data from API polling
+    useEffect(() => {
+        if (!activeConversation) return;
+
+        const updatedConversation = conversations.find(c => c.id === activeConversation.id);
+        if (updatedConversation && updatedConversation !== activeConversation) {
+            if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+                console.log('🔄 Syncing activeConversation with fresh API data:', {
+                    id: updatedConversation.id,
+                    enteredDirectChatAt: updatedConversation.enteredDirectChatAt,
+                    state: updatedConversation.conversationState
+                });
+            }
+            setActiveConversation(updatedConversation);
+        }
+    }, [conversations, activeConversation]);
 
     const fetchMessages = useCallback(async (conversationId) => {
         try {
@@ -1320,27 +1471,103 @@ function WhatsAppDirectPageContent() {
                             </div>
                         </header>
 
-                        {/* Messages Area */}
-                        <div className="flex-grow p-4 md:p-8 overflow-y-auto z-10 scrollbar-thin scrollbar-thumb-gray-300/50 hover:scrollbar-thumb-gray-400">
-                            {loadingMessages ? (
-                                <div className="flex justify-center p-4"><Loader2 className="animate-spin text-primary" /></div>
-                            ) : (
-                                messages.map(msg => <MessageBubble key={msg.id} message={msg} />)
+                        {/* Messages Area with Floating Banner on Top */}
+                        <div className="flex-grow flex flex-col min-h-0 relative">
+                            {/* ✅ FLOATING STATUS BANNER - At Top of Messages */}
+                            {activeConversation && (
+                                <div className="shrink-0 z-40 bg-background">
+                                    {activeConversation.conversationState === 'browsing_order' && (
+                                        <div className="px-4 py-3 bg-blue-100 dark:bg-blue-900/30 border-b border-blue-300 dark:border-blue-700 flex items-center justify-between animate-in slide-in-from-top duration-300">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">🔗</span>
+                                                <div>
+                                                    <p className="font-semibold text-blue-900 dark:text-blue-100">Browsing Order</p>
+                                                    <p className="text-xs text-blue-800 dark:text-blue-200">Customer accessed order link</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {activeConversation.conversationState === 'direct_chat' && (
+                                        <div className={cn("px-4 py-3 border-b flex items-center justify-between animate-in slide-in-from-top duration-300",
+                                            remainingSeconds <= 0
+                                                ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700'
+                                                : remainingSeconds <= 300
+                                                    ? 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700'
+                                                    : 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700'
+                                        )}>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">{remainingSeconds <= 0 ? '⏰' : '💬'}</span>
+                                                <div>
+                                                    <p className={cn("font-semibold",
+                                                        remainingSeconds <= 0
+                                                            ? 'text-red-900 dark:text-red-100'
+                                                            : remainingSeconds <= 300
+                                                                ? 'text-yellow-900 dark:text-yellow-100'
+                                                                : 'text-green-900 dark:text-green-100'
+                                                    )}>
+                                                        {remainingSeconds <= 0 ? 'Session Expired' : 'Direct Chat Active'}
+                                                    </p>
+                                                    <p className={cn("text-xs",
+                                                        remainingSeconds <= 0
+                                                            ? 'text-red-800 dark:text-red-200'
+                                                            : remainingSeconds <= 300
+                                                                ? 'text-yellow-800 dark:text-yellow-200'
+                                                                : 'text-green-800 dark:text-green-200'
+                                                    )}>
+                                                        {remainingSeconds <= 0 ? '30-minute session ended' : `Type 'end chat' to exit`}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className={cn("text-3xl font-bold font-mono tracking-tight",
+                                                    remainingSeconds <= 0
+                                                        ? 'text-red-900 dark:text-red-100'
+                                                        : remainingSeconds <= 300
+                                                            ? 'text-yellow-900 dark:text-yellow-100'
+                                                            : 'text-green-900 dark:text-green-100'
+                                                )}>
+                                                    {remainingSeconds !== null ? (
+                                                        <>
+                                                            {String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:
+                                                            <span className="tracking-wide">{String(remainingSeconds % 60).padStart(2, '0')}</span>
+                                                        </>
+                                                    ) : '00:00'}
+                                                </div>
+                                                <p className={cn("text-xs font-medium",
+                                                    remainingSeconds <= 0
+                                                        ? 'text-red-700 dark:text-red-300'
+                                                        : remainingSeconds <= 300
+                                                            ? 'text-yellow-700 dark:text-yellow-300'
+                                                            : 'text-green-700 dark:text-green-300'
+                                                )}>remaining</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             )}
-                            {uploadingFile && (
-                                <div className={`flex justify-end mb-3`}>
-                                    <div className="max-w-xs px-4 py-3 rounded-xl bg-white dark:bg-zinc-800 shadow-md">
-                                        <div className="flex items-center gap-3">
-                                            <Loader2 className="animate-spin text-primary" size={20} />
-                                            <div>
-                                                <p className="text-sm font-medium">Sending {uploadingFile}...</p>
-                                                <Progress value={uploadProgress} className="h-1 mt-1" />
+
+                            {/* Messages Scroll Area */}
+                            <div ref={messagesContainerRef} className="flex-grow p-4 md:p-8 overflow-y-auto z-10 scrollbar-thin scrollbar-thumb-gray-300/50 hover:scrollbar-thumb-gray-400">
+                                {loadingMessages ? (
+                                    <div className="flex justify-center p-4"><Loader2 className="animate-spin text-primary" /></div>
+                                ) : (
+                                    messages.map(msg => <MessageBubble key={msg.id} message={msg} />)
+                                )}
+                                {uploadingFile && (
+                                    <div className="flex justify-end mb-3">
+                                        <div className="max-w-xs px-4 py-3 rounded-xl bg-white dark:bg-zinc-800 shadow-md">
+                                            <div className="flex items-center gap-3">
+                                                <Loader2 className="animate-spin text-primary" size={20} />
+                                                <div>
+                                                    <p className="text-sm font-medium">Sending {uploadingFile}...</p>
+                                                    <Progress value={uploadProgress} className="h-1 mt-1" />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
-                            <div ref={messagesEndRef} />
+                                )}
+                                <div ref={messagesEndRef} />
+                            </div>
                         </div>
 
                         {/* Input Area */}

@@ -184,7 +184,8 @@ export const sendSystemMessage = async (phoneNumber, messageText, businessPhoneN
 
         // Store in Firestore
         const firestore = await getFirestore();
-        const cleanPhone = phoneNumber.replace(/^\+?91/, ''); // Remove country code for conversation ID
+        // Remove +91 or 91 prefix and keep last 10 digits
+        const cleanPhone = phoneNumber.replace(/^\+?91/, '').replace(/\D/g, '').slice(-10);
 
         const messageData = {
             id: wamid, // Use 'id' for consistency

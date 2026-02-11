@@ -11,6 +11,16 @@ import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
+/**
+ * Normalizes phone numbers to 10 digits (removes +91 or 91 prefix)
+ */
+const normalizePhone = (phone) => {
+    if (!phone) return '';
+    // Remove +91 or 91 prefix and keep last 10 digits
+    const cleaned = phone.replace(/^\+?91/, '').replace(/\D/g, '');
+    return cleaned.length > 10 ? cleaned.slice(-10) : cleaned;
+};
+
 export async function GET(request) {
     console.log("[Webhook WA] GET request received for verification.");
     try {
@@ -69,30 +79,74 @@ const generateSecureToken = async (firestore, userId) => {
     return token;
 };
 
+/**
+ * Transitions a conversation to direct_chat state and sends the Standard Welcome Message.
+ */
+const activateDirectChat = async (fromNumber, business, botPhoneNumberId) => {
+    const fromPhoneNumber = normalizePhone(fromNumber);
+    const firestore = await getFirestore();
+    const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
 
-const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId) => {
+    console.log(`[Webhook WA] Activating Direct Chat for ${fromPhoneNumber}`);
+
+    await conversationRef.set({
+        state: 'direct_chat',
+        enteredDirectChatAt: FieldValue.serverTimestamp(),
+        directChatTimeoutMinutes: 30
+    }, { merge: true });
+
+    const restaurantName = business.data.name || 'the restaurant';
+    const activationBody = `Now you are connected to *${restaurantName}* directly. Put up your queries.\n\n⏱️ The chat is active for 30 minutes.\n\n💬 You can end chat any time by typing *'end chat'* or clicking the button below.`;
+
+    const helpMessage = {
+        type: "interactive",
+        interactive: {
+            type: "button",
+            body: {
+                text: activationBody
+            },
+            action: {
+                buttons: [
+                    { type: "reply", reply: { id: `action_end_chat`, title: "End Chat" } }
+                ]
+            }
+        }
+    };
+    await sendWhatsAppMessage(fromNumber, helpMessage, botPhoneNumberId);
+
+    // Log activation message to Firestore transcript
+    await conversationRef.collection('messages').add({
+        sender: 'system',
+        type: 'system',
+        text: activationBody,
+        timestamp: FieldValue.serverTimestamp(),
+        status: 'sent',
+        isSystem: true
+    });
+};
+
+
+const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId, customMessage = null) => {
     console.log(`[Webhook WA] Preparing to send welcome message to ${customerPhoneWithCode}`);
 
-    // ✅ DEDUPLICATION: Prevent sending welcome message if already sent recently
+    // Standardize phone number for Firestore
+    const fromPhoneNumber = normalizePhone(customerPhoneWithCode);
     const firestore = await getFirestore();
-    const customerPhone = customerPhoneWithCode.startsWith('91') ? customerPhoneWithCode.substring(2) : customerPhoneWithCode;
-    const conversationRef = business.ref.collection('conversations').doc(customerPhone);
-    const conversationSnap = await conversationRef.get();
+    const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
 
-    if (conversationSnap.exists) {
-        const lastWelcomeSent = conversationSnap.data().lastWelcomeSent;
-        if (lastWelcomeSent) {
-            const timeSinceLastWelcome = Date.now() - lastWelcomeSent.toMillis();
-            if (timeSinceLastWelcome < 60000) { // Less than 60 seconds
-                console.log(`[Webhook WA] ⚠️ Skipping welcome message - already sent ${Math.floor(timeSinceLastWelcome / 1000)}s ago`);
-                return;
-            }
+    // Rate limiting: Don't send more than one welcome menu every 10 seconds to same user
+    const conversationDoc = await conversationRef.get();
+    if (conversationDoc.exists) {
+        const lastSent = conversationDoc.data().lastWelcomeSent;
+        if (lastSent && (Date.now() - lastSent.toDate().getTime()) < 10000) {
+            console.log(`[Webhook WA] Welcome message rate-limited for ${fromPhoneNumber}`);
+            return;
         }
     }
 
     console.log(`[Webhook WA] Sending interactive welcome message to ${customerPhoneWithCode}`);
 
-    const welcomeBody = `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`;
+    const welcomeBody = customMessage || `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`;
 
     const payload = {
         type: "interactive",
@@ -135,6 +189,9 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
 
 
 const handleDineInConfirmation = async (firestore, text, fromNumber, business, botPhoneNumberId) => {
+    // Standardize phone number
+    const normalizedFrom = normalizePhone(fromNumber);
+
     const orderIdMatch = text.match(/order ID: ([a-zA-Z0-9]+)/i);
     if (!orderIdMatch || !orderIdMatch[1]) {
         return false; // Not a dine-in confirmation message
@@ -217,7 +274,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
 
     if (action !== 'action') return;
 
-    const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+    const customerPhone = normalizePhone(fromNumber);
     const conversationRef = business.ref.collection('conversations').doc(customerPhone);
 
     console.log(`[Webhook WA] Handling button action: '${type}' for customer ${customerPhone}`);
@@ -337,27 +394,20 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 break;
             }
             case 'help': {
-                await conversationRef.set({ state: 'direct_chat' }, { merge: true });
-                const helpMessage = {
-                    type: "interactive",
-                    interactive: {
-                        type: "button",
-                        body: {
-                            text: `You are now connected directly with ${business.data.name}.\n\nAsk your questions here, and the restaurant will respond.\n\n_To go back to menu and place an order, type 'end chat'_`
-                        },
-                        action: {
-                            buttons: [
-                                { type: "reply", reply: { id: `action_end_chat`, title: "End This Chat" } }
-                            ]
-                        }
-                    }
-                };
-                await sendWhatsAppMessage(fromNumber, helpMessage, botPhoneNumberId);
+                await activateDirectChat(fromNumber, business, botPhoneNumberId);
                 break;
             }
             case 'end': {
                 if (payloadParts[0] === 'chat') {
                     await conversationRef.set({ state: 'menu' }, { merge: true });
+                    await sendWhatsAppMessage(fromNumber, `Chat has ended.`, botPhoneNumberId);
+                    await conversationRef.collection('messages').add({
+                        sender: 'system',
+                        timestamp: FieldValue.serverTimestamp(), // Consistent with customer message
+                        type: 'system',
+                        text: 'Chat ended by customer',
+                        isSystem: true
+                    });
                     await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
                 }
                 break;
@@ -457,6 +507,8 @@ export async function POST(request) {
             return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
 
+        const restaurantName = business.data.name || 'the restaurant';
+
         console.log("[Webhook WA] Change Value:", JSON.stringify(change.value, null, 2));
 
         if (change.value.statuses && change.value.statuses.length > 0) {
@@ -467,7 +519,7 @@ export async function POST(request) {
                 const messageId = statusUpdate.id;
                 const status = statusUpdate.status;
                 const recipientId = statusUpdate.recipient_id;
-                const customerPhone = recipientId.startsWith('91') ? recipientId.substring(2) : recipientId;
+                const customerPhone = normalizePhone(recipientId);
 
                 console.log(`  > Processing Status: ${status} for WAMID: ${messageId}`);
 
@@ -526,74 +578,55 @@ export async function POST(request) {
         }
 
         if (change.value.messages && change.value.messages.length > 0) {
-            const message = change.value.messages[0];
-            console.log(`[Webhook WA] 📩 INCOMING MESSAGE:`, JSON.stringify(message, null, 2));
-            const fromNumber = message.from;
-            const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+            console.log(`[Webhook WA] 📩 Processing batch of ${change.value.messages.length} messages`);
 
-            if (message.type === 'text') {
-                const textBody = message.text.body.trim().toLowerCase();
+            for (const message of change.value.messages) {
+                console.log(`[Webhook WA] Processing Message ID: ${message.id}, Type: ${message.type}`);
+                const fromNumber = message.from;
+                const fromPhoneNumber = normalizePhone(fromNumber);
 
-                // ✅ 1. Handle "End Chat" Command
-                if (textBody === 'end chat' || textBody === '"end chat"') {
-                    console.log(`[Webhook WA] 'End Chat' command received from ${fromPhoneNumber}`);
+                const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
+                const conversationSnap = await conversationRef.get();
+                let conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
 
-                    const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
+                // ✅ 0. TIMEOUT CHECK: Reset direct_chat if 30 mins passed
+                if (conversationData.state === 'direct_chat' && conversationData.enteredDirectChatAt) {
+                    const enteredTime = conversationData.enteredDirectChatAt.toDate().getTime();
+                    const timeoutMinutes = conversationData.directChatTimeoutMinutes || 30;
+                    const elapsedMinutes = (Date.now() - enteredTime) / 60000;
 
-                    // Reset State
-                    await conversationRef.set({ state: 'menu' }, { merge: true });
+                    if (elapsedMinutes > timeoutMinutes) {
+                        console.log(`[Webhook WA] Session EXPIRED for ${fromPhoneNumber}. Resetting to menu.`);
 
-                    // 1. Send "Chat Ended" Confirmation
-                    await sendWhatsAppMessage(fromNumber, `Chat has ended.`, botPhoneNumberId);
+                        // Transition state
+                        await conversationRef.set({ state: 'menu' }, { merge: true });
+                        conversationData.state = 'menu'; // Update local state for subsequent logic
 
-                    // 2. Save System Message to Firestore
-                    const messageRef = conversationRef.collection('messages').doc(message.id);
-                    await messageRef.set({
-                        id: message.id,
-                        sender: 'system', // Special sender type
-                        timestamp: FieldValue.serverTimestamp(),
-                        time: new Date().toISOString(),
-                        status: 'read', // Auto-read system messages
-                        type: 'system',
-                        text: 'Chat ended by customer',
-                        isSystem: true
-                    });
+                        // Notify customer
+                        const expiryMessage = "Interaction has ended due to inactivity. If you want to continue, you can contact us again.";
+                        await sendWhatsAppMessage(fromNumber, expiryMessage, botPhoneNumberId);
 
-                    // 3. Trigger Welcome Menu
-                    await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
-
-                    return NextResponse.json({ message: 'Chat ended successfully' }, { status: 200 });
+                        // Log expiry message
+                        await conversationRef.collection('messages').add({
+                            sender: 'system',
+                            type: 'system',
+                            text: expiryMessage,
+                            timestamp: FieldValue.serverTimestamp(),
+                            status: 'sent',
+                            isSystem: true
+                        });
+                    }
                 }
 
-                // ✅ 2. Handle Dine-In Logic
-                const isDineInHandled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
-                if (isDineInHandled) {
-                    console.log(`[Webhook WA] Message handled by Dine-in flow. Skipping further processing.`);
-                    return NextResponse.json({ message: 'Dine-in confirmation processed.' }, { status: 200 });
-                }
-            }
-
-            const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
-            const conversationSnap = await conversationRef.get();
-            const conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
-
-            // ✅ FIX: Handle Text (only in direct_chat) AND Media (always)
-            // If it's media, we assume user wants to show something to owner, so we treat it as direct chat.
-            const isMedia = ['image', 'video', 'document', 'audio'].includes(message.type);
-
-            if (conversationData.state === 'direct_chat' || isMedia) {
-                // If it was media and not in direct_chat, switch to direct_chat
-                if (isMedia && conversationData.state !== 'direct_chat') {
-                    console.log(`[Webhook WA] Media received in '${conversationData.state}' state. Switching to 'direct_chat'.`);
-                    await conversationRef.set({ state: 'direct_chat' }, { merge: true });
-                }
-
+                // ✅ 1. UNIVERSAL LOGGING: Save EVERY incoming message to Firestore FIRST
                 const messageRef = conversationRef.collection('messages').doc(message.id);
+
+                // ✅ TIMESTAMP: Use WhatsApp's provided timestamp (in seconds)
+                const waTimestamp = message.timestamp ? new Date(parseInt(message.timestamp) * 1000) : new Date();
 
                 let messageContent = '';
                 let messageType = message.type;
                 let mediaId = null;
-                let mediaUrl = null;
 
                 if (message.type === 'text') {
                     messageContent = message.text.body;
@@ -609,23 +642,25 @@ export async function POST(request) {
                 } else if (message.type === 'audio') {
                     messageContent = '[Audio]';
                     mediaId = message.audio.id;
+                } else if (message.type === 'interactive') {
+                    messageContent = message.interactive.button_reply?.title || message.interactive.list_reply?.title || '[Interactive]';
                 }
 
-                // 1. Save Initial Message (Placeholder)
+                // Skip logging specific technical signals if needed, but for now log everything
                 await messageRef.set({
                     id: message.id,
                     sender: 'customer',
-                    timestamp: FieldValue.serverTimestamp(),
+                    timestamp: waTimestamp, // Use converted WA timestamp
                     status: mediaId ? 'media_pending' : 'received',
                     type: messageType,
                     text: messageContent,
                     mediaId: mediaId,
-                    mediaUrl: null, // Initially null
                     rawPayload: JSON.stringify(message)
-                });
+                }, { merge: true });
 
+                const customerNameFromPayload = change.value.contacts?.[0]?.profile?.name || fromPhoneNumber;
                 await conversationRef.set({
-                    customerName: change.value.contacts[0].profile.name,
+                    customerName: customerNameFromPayload,
                     customerPhone: fromPhoneNumber,
                     lastMessage: messageContent,
                     lastMessageType: messageType,
@@ -633,45 +668,63 @@ export async function POST(request) {
                     unreadCount: FieldValue.increment(1)
                 }, { merge: true });
 
-                console.log(`[Webhook WA] Saved initial message: ${message.id}`);
+                console.log(`[Webhook WA] Message ${message.id} logged for ${fromPhoneNumber}`);
 
-                // 2. Download Media (Async processing)
-                if (mediaId) {
-                    // Do not await this if you want it to be fully background, 
-                    // but for now await is safer to ensure function doesn't terminate.
-                    // Ideally, we move this to a background trigger, but we'll try sequential first with error handling.
-                    try {
-                        mediaUrl = await processIncomingMedia(mediaId, business.id);
+                // ✅ 2. COMMAND PROCESSING: Handle specific keywords after logging
+                if (message.type === 'text') {
+                    const textBody = message.text.body.trim().toLowerCase();
 
-                        await messageRef.update({
-                            mediaUrl: mediaUrl,
-                            status: mediaUrl ? 'received' : 'media_failed' // Update status
+                    // End Chat
+                    if (textBody === 'end chat' || textBody === '"end chat"') {
+                        await conversationRef.set({ state: 'menu' }, { merge: true });
+                        await sendWhatsAppMessage(fromNumber, `Chat has ended.`, botPhoneNumberId);
+                        await conversationRef.collection('messages').add({
+                            sender: 'system',
+                            timestamp: waTimestamp, // Consistent with customer message
+                            type: 'system',
+                            text: 'Chat ended by customer',
+                            isSystem: true
                         });
-                        console.log(`[Webhook WA] Updated message with Media URL: ${mediaUrl}`);
-                    } catch (err) {
-                        console.error(`[Webhook WA] Failed to update message with media:`, err);
-                        await messageRef.update({ status: 'media_failed' });
+                        await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
+                        continue; // Process next message in batch
                     }
+
+                    // Dine-in
+                    const isDineInHandled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
+                    if (isDineInHandled) continue;
                 }
 
-                // ✅ FIX: Removed auto-reply with button. Footer text is now handled in owner send API.
-                // if (message.type === 'text') { ... }
+                // ✅ 3. Media Processing
+                if (mediaId) {
+                    processIncomingMedia(mediaId, business.id).then(async (mediaUrl) => {
+                        await messageRef.update({
+                            mediaUrl: mediaUrl,
+                            status: mediaUrl ? 'received' : 'media_failed'
+                        });
+                    }).catch(err => console.error("Media processing bg error", err));
+                }
 
-                console.log(`[Webhook WA] ${messageType} processing complete for ${fromPhoneNumber}.`);
-                return NextResponse.json({ message: 'Forwarded to owner' }, { status: 200 });
+                // ✅ 4. STATE-BASED RESPONSES
+                // If in direct_chat or browsing_order, bot stays quiet.
+                if (conversationData.state === 'direct_chat' || conversationData.state === 'browsing_order') {
+                    console.log(`[Webhook WA] Bot SILENT (State: ${conversationData.state}) for ${fromPhoneNumber}`);
+                }
+                // Treat Media as Chat Ignition in Menu mode
+                else if (mediaId) {
+                    console.log(`[Webhook WA] Media received in Menu mode. Triggering Direct Chat.`);
+                    await activateDirectChat(fromNumber, business, botPhoneNumberId);
+                }
+                // Handle interactive button clicks
+                else if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
+                    await handleButtonActions(firestore, message.interactive.button_reply.id, fromNumber, business, botPhoneNumberId);
+                }
+                // Handle text messages in Menu mode (Strict Enforcement)
+                else if (message.type === 'text') {
+                    const promptText = `Please select an option from the menu below to proceed:`;
+                    await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId, promptText);
+                }
             }
-
-            if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
-                const buttonReply = message.interactive.button_reply;
-                const buttonId = buttonReply.id;
-
-                console.log(`[Webhook WA] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
-
-                await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
-            }
-            else if (message.type === 'text' && conversationData.state !== 'direct_chat') {
-                await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
-            }
+            return NextResponse.json({ message: 'Messages processed' }, { status: 200 });
         }
 
         console.log("[Webhook WA] POST request processed successfully.");

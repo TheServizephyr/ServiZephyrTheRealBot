@@ -185,7 +185,19 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 const businessId = payloadParts.join('_');
                 const token = await generateSecureToken(firestore, customerPhone);
                 const link = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}&token=${token}`;
+                
+                // ✅ TRACK: Create/update conversation to show customer accessed order link
+                await conversationRef.set({
+                    customerName: 'Unknown',
+                    customerPhone: customerPhone,
+                    state: 'browsing_order',
+                    orderLinkAccessedAt: FieldValue.serverTimestamp(),
+                    lastActivity: 'Order link accessed',
+                    lastActivityTimestamp: FieldValue.serverTimestamp(),
+                }, { merge: true });
+                
                 await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 24 hours.`, botPhoneNumberId);
+                console.log(`[Webhook WA] Order link tracked for customer ${customerPhone}`);
                 break;
             }
             case 'track': {
@@ -218,14 +230,44 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 break;
             }
             case 'help': {
-                await conversationRef.set({ state: 'direct_chat' }, { merge: true });
-                await sendWhatsAppMessage(fromNumber, `You are now connected directly with a representative from ${business.data.name}. You can ask your questions here.\n\nWhen your query is resolved, the restaurant will end the chat.`, botPhoneNumberId);
+                // ✅ NOTIFY CUSTOMER: Send interactive message with End Chat button
+                await conversationRef.set({ 
+                    state: 'direct_chat',
+                    enteredDirectChatAt: FieldValue.serverTimestamp(),
+                    directChatTimeoutMinutes: 30,
+                    lastActivity: 'Entered direct chat',
+                    lastActivityTimestamp: FieldValue.serverTimestamp(),
+                }, { merge: true });
+                
+                // Send interactive message with End Chat button
+                const payload = {
+                    type: "interactive",
+                    interactive: {
+                        type: "button",
+                        body: {
+                            text: `✅ You are now connected directly with support from ${business.data.name}.\n\n👋 A representative will help you shortly.\n\n💬 You can exit anytime by typing: end chat\n\n⏱️ Auto-exit in 30 minutes if no activity.`
+                        },
+                        action: {
+                            buttons: [
+                                { type: "reply", reply: { id: `action_end_chat`, title: "End Chat" } }
+                            ]
+                        }
+                    }
+                };
+                
+                await sendWhatsAppMessage(fromNumber, payload, botPhoneNumberId);
+                console.log(`[Webhook WA] Customer ${customerPhone} entered direct chat with End Chat button`);
                 break;
             }
             case 'end': {
+                // ✅ Handle End Chat button click (action_end_chat splits to type='end', payloadParts=['chat'])
                 if (payloadParts[0] === 'chat') {
                     await conversationRef.set({ state: 'menu' }, { merge: true });
-                    await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
+                    const exitMessage = `👋 Thank you for chatting with ${business.data.name}!\n\nYour chat has been closed. Feel free to place an order anytime!`;
+                    await sendWhatsAppMessage(fromNumber, exitMessage, botPhoneNumberId);
+                    // Send welcome menu after a short delay
+                    setTimeout(() => sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId), 1000);
+                    console.log(`[Webhook WA] Customer ${customerPhone} ended direct chat via button`);
                 }
                 break;
             }
@@ -289,6 +331,37 @@ export async function POST(request) {
             const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
             const conversationSnap = await conversationRef.get();
             const conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
+            
+            // ✅ CHECK FOR AUTO-TIMEOUT: If in direct_chat mode and exceeded timeout window (30 min default)
+            if (conversationData.state === 'direct_chat' && conversationData.enteredDirectChatAt) {
+                const enteredAt = conversationData.enteredDirectChatAt.toDate ? conversationData.enteredDirectChatAt.toDate() : new Date(conversationData.enteredDirectChatAt);
+                const timeoutMinutes = conversationData.directChatTimeoutMinutes || 30;
+                const elapsedMinutes = (Date.now() - enteredAt.getTime()) / 60000;
+                
+                if (elapsedMinutes > timeoutMinutes) {
+                    console.log(`[Webhook WA] Chat timeout detected for customer ${fromPhoneNumber} after ${elapsedMinutes.toFixed(1)} minutes`);
+                    // Auto-exit from direct chat
+                    await conversationRef.set({ state: 'menu' }, { merge: true });
+                    const timeoutMsg = `⏰ Your 30-minute chat session has ended.\n\nFeel free to reach out again anytime you need support!`;
+                    await sendWhatsAppMessage(fromNumber, timeoutMsg, botPhoneNumberId);
+                    await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
+                    return NextResponse.json({ message: 'Chat timed out, returning to menu' }, { status: 200 });
+                }
+            }
+            
+            // ✅ HANDLE 'END CHAT' COMMAND: Allow customer to manually exit direct chat (any case/spacing)
+            if (conversationData.state === 'direct_chat' && message.type === 'text') {
+                const cleanText = message.text.body.toLowerCase().trim().replace(/\s+/g, '');
+                if (cleanText === 'endchat') {
+                    console.log(`[Webhook WA] Customer ${fromPhoneNumber} ended direct chat manually`);
+                    await conversationRef.set({ state: 'menu' }, { merge: true });
+                    const exitMessage = `👋 Thank you for chatting with ${business.data.name}!\n\nYour chat has been closed. Feel free to place an order or ask for help anytime!`;
+                    await sendWhatsAppMessage(fromNumber, exitMessage, botPhoneNumberId);
+                    // Send welcome menu after a short delay
+                    setTimeout(() => sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId), 1000);
+                    return NextResponse.json({ message: 'Chat ended by customer' }, { status: 200 });
+                }
+            }
             
             if (conversationData.state === 'direct_chat' && message.type === 'text') {
                 const messageRef = conversationRef.collection('messages').doc(message.id);

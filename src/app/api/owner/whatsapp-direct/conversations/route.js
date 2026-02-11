@@ -67,10 +67,31 @@ export async function GET(req) {
         const conversations = conversationsSnap.docs.map(doc => {
             const data = doc.data();
             const lastMessageTimestamp = data.lastMessageTimestamp?.toDate ? data.lastMessageTimestamp.toDate().toISOString() : null;
+            const orderLinkAccessedAt = data.orderLinkAccessedAt?.toDate ? data.orderLinkAccessedAt.toDate().toISOString() : null;
+            const enteredDirectChatAt = data.enteredDirectChatAt?.toDate ? data.enteredDirectChatAt.toDate().toISOString() : null;
+
+            // ✅ CALCULATE TIMEOUT STATUS for conversations in direct_chat
+            let timeoutStatus = 'active';
+            if (data.state === 'direct_chat' && enteredDirectChatAt) {
+                const enteredTime = new Date(enteredDirectChatAt).getTime();
+                const timeoutMinutes = data.directChatTimeoutMinutes || 30;
+                const elapsedMinutes = (Date.now() - enteredTime) / 60000;
+
+                if (elapsedMinutes > timeoutMinutes) {
+                    timeoutStatus = 'expired';
+                } else {
+                    timeoutStatus = `${Math.round(timeoutMinutes - elapsedMinutes)}m left`;
+                }
+            }
+
             return {
                 id: doc.id,
                 ...data,
                 lastMessageTimestamp,
+                orderLinkAccessedAt,
+                enteredDirectChatAt,
+                timeoutStatus, // ✅ NEW: Send timeout status to frontend
+                conversationState: data.state, // ✅ NEW: Explicitly include state for UI indicators
             };
         });
 
@@ -103,12 +124,14 @@ export async function PATCH(req) {
             const botPhoneNumberId = businessData.botPhoneNumberId;
             const customerPhoneWithCode = '91' + conversationId;
 
+            const closureBody = `This chat has been closed by the restaurant. You can now use the menu below or type any message to start again.`;
+
             const payload = {
                 type: "interactive",
                 interactive: {
                     type: "button",
                     body: {
-                        text: `This chat has been closed by the restaurant. You can now use the menu below or type any message to start again.`
+                        text: closureBody
                     },
                     action: {
                         buttons: [
@@ -120,6 +143,25 @@ export async function PATCH(req) {
                 }
             };
             await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+
+            // ✅ Log closure to transcript
+            await conversationRef.collection('messages').add({
+                sender: 'system',
+                type: 'system',
+                text: 'Chat ended by restaurant',
+                timestamp: FieldValue.serverTimestamp(),
+                status: 'sent',
+                isSystem: true
+            });
+            // Also log the sent menu
+            await conversationRef.collection('messages').add({
+                sender: 'system',
+                type: 'system',
+                text: closureBody,
+                timestamp: FieldValue.serverTimestamp(),
+                status: 'sent',
+                isSystem: true
+            });
 
             return NextResponse.json({ message: 'Chat ended and menu sent.' }, { status: 200 });
         }

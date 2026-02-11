@@ -73,7 +73,16 @@ export async function GET(req) {
 
         const messages = messagesSnap.docs.map(doc => {
             const data = doc.data();
-            const timestamp = data.timestamp?.toDate ? data.timestamp.toDate().toISOString() : new Date().toISOString();
+            let timestamp;
+            if (data.timestamp?.toDate) {
+                timestamp = data.timestamp.toDate().toISOString();
+            } else if (data.timestamp) {
+                // Handle cases where timestamp might be a string or different object
+                timestamp = new Date(data.timestamp).toISOString();
+            } else {
+                timestamp = new Date().toISOString();
+            }
+
             return {
                 id: doc.id,
                 ...data,
@@ -205,9 +214,47 @@ export async function POST(req) {
 
         const firestore = await getFirestore();
         const conversationRef = businessDoc.ref.collection('conversations').doc(conversationId);
-        const messageRef = conversationRef.collection('messages').doc(messageDocId); // ✅ Use WAMID
-
         const batch = firestore.batch();
+
+        // ✅ ENSURE CUSTOMER NOTIFICATION: If not already in direct_chat, notify them when owner sends first message
+        const conversationSnap = await conversationRef.get();
+        const conversationData = conversationSnap.exists ? conversationSnap.data() : {};
+
+        if (conversationData.state !== 'direct_chat') {
+            const restaurantName = businessData.name || 'the restaurant';
+            const activationBody = `Now you are connected to *${restaurantName}* directly. Put up your queries.\n\n⏱️ The chat is active for 30 minutes.\n\n💬 You can end chat any time by typing *'end chat'* or clicking the button below.`;
+
+            // Send interactive notification with End Chat button
+            const notificationPayload = {
+                type: "interactive",
+                interactive: {
+                    type: "button",
+                    body: {
+                        text: activationBody
+                    },
+                    action: {
+                        buttons: [
+                            { type: "reply", reply: { id: `action_end_chat`, title: "End Chat" } }
+                        ]
+                    }
+                }
+            };
+            await sendWhatsAppMessage(customerPhoneWithCode, notificationPayload, botPhoneNumberId);
+
+            // Log activation message to Firestore transcript
+            const notificationRef = conversationRef.collection('messages').doc(`sys_${Date.now()}`);
+            batch.set(notificationRef, {
+                sender: 'system',
+                type: 'system',
+                text: activationBody,
+                timestamp: FieldValue.serverTimestamp(),
+                status: 'sent',
+                isSystem: true
+            });
+            console.log(`[Messages API] Sent direct chat notification with End Chat button to ${customerPhoneWithCode}`);
+        }
+
+        const messageRef = conversationRef.collection('messages').doc(messageDocId); // ✅ Use WAMID
 
         batch.set(messageRef, {
             id: messageDocId, // Store WAMID
@@ -222,6 +269,9 @@ export async function POST(req) {
             lastMessageType: firestoreMessageData.type,
             lastMessageTimestamp: FieldValue.serverTimestamp(),
             state: 'direct_chat', // ✅ FIX: Force conversation to direct_chat mode so bot doesn't reply
+            ownerInitiatedDirectChat: true, // ✅ Track that owner started the direct chat
+            enteredDirectChatAt: FieldValue.serverTimestamp(),
+            directChatTimeoutMinutes: 30,
         }, { merge: true });
 
         await batch.commit();

@@ -186,7 +186,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     <span>{formatCurrency(finalBillDetails.subtotal)}</span>
                 </div>
                 {finalBillDetails.discount > 0 && (
-                    <div className="flex justify-between text-green-700">
+                    <div className="flex justify-between">
                         <span>Discount</span>
                         <span>- {formatCurrency(finalBillDetails.discount)}</span>
                     </div>
@@ -256,7 +256,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
 
             <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
                 <span>GRAND TOTAL</span>
-                <span className="text-green-600 grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
+                <span className="grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
             <div className="text-center mt-4 pt-2 border-t border-dashed border-black">
