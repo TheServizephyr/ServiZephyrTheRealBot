@@ -74,8 +74,19 @@ function getAllowedNextStatuses(orderData = {}) {
 function canTransition(orderData, fromStatus, toStatus) {
     if (fromStatus === toStatus) return true;
     if (toStatus === 'rejected') return fromStatus === 'pending';
+    // Do not allow reopening finalized orders through status rollback.
+    if (['delivered', 'rejected', 'picked_up', 'cancelled'].includes(fromStatus)) return false;
+
     const allowedNextStatuses = getAllowedNextStatuses(orderData);
-    return !!allowedNextStatuses[fromStatus]?.has(toStatus);
+    if (allowedNextStatuses[fromStatus]?.has(toStatus)) return true;
+
+    // Allow controlled one-step rollback for dashboard "Revert" action.
+    // Example: preparing -> confirmed, prepared -> preparing, dispatched -> ready_for_pickup.
+    const previousStatuses = Object.entries(allowedNextStatuses)
+        .filter(([, nextSet]) => nextSet?.has(fromStatus))
+        .map(([status]) => status);
+
+    return previousStatuses.includes(toStatus);
 }
 
 function redactOrderForViewer(orderData = {}, canViewCustomerDetails = true, canViewPaymentDetails = true) {
@@ -415,7 +426,9 @@ export async function PATCH(req) {
                     }, { status: 400 });
                 }
 
-                if (newStatus === 'ready_for_pickup' && orderData.deliveryType === 'delivery' && !deliveryBoyId) {
+                const resolvedDeliveryBoyId = deliveryBoyId || orderData.deliveryBoyId || null;
+
+                if (newStatus === 'ready_for_pickup' && orderData.deliveryType === 'delivery' && !resolvedDeliveryBoyId) {
                     return NextResponse.json({
                         message: 'Delivery orders require rider assignment before moving to ready_for_pickup.'
                     }, { status: 400 });
@@ -430,7 +443,9 @@ export async function PATCH(req) {
                 };
 
                 if (newStatus === 'rejected' && rejectionReason) updateData.rejectionReason = rejectionReason;
-                if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && deliveryBoyId) updateData.deliveryBoyId = deliveryBoyId;
+                if ((newStatus === 'dispatched' || newStatus === 'ready_for_pickup') && resolvedDeliveryBoyId) {
+                    updateData.deliveryBoyId = resolvedDeliveryBoyId;
+                }
 
                 if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
                     updateData.dineInTabId = `tab_${Date.now()}`;
