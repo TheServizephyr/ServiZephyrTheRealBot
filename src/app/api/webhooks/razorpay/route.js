@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
+import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import crypto from 'crypto';
 import https from 'https';
 import { nanoid } from 'nanoid';
@@ -459,21 +460,32 @@ export async function POST(req) {
             }
 
             const subtotal = billDetails.subtotal || 0;
-            const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
-            const pointsEarned = Math.floor(subtotal / 100) * 10;
-            const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
 
             if (userId && userId !== 'guest') {
-                const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
-                const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
+                const businessCollectionNameForCustomer =
+                    businessType === 'shop'
+                        ? 'shops'
+                        : (businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
 
-                batch.set(restaurantCustomerRef, {
-                    name: customerDetails.name, phone: customerDetails.phone, status: isNewUser ? 'unclaimed' : 'verified',
-                    totalSpend: FieldValue.increment(subtotal),
-                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                    lastOrderDate: FieldValue.serverTimestamp(),
-                    totalOrders: FieldValue.increment(1),
-                }, { merge: true });
+                try {
+                    await upsertBusinessCustomerProfile({
+                        firestore,
+                        businessCollection: businessCollectionNameForCustomer,
+                        businessId: restaurantId,
+                        customerDocId: userId,
+                        customerName: customerDetails?.name || 'Guest Customer',
+                        customerPhone: customerDetails?.phone || '',
+                        customerAddress: customerDetails?.address || null,
+                        customerStatus: isNewUser ? 'unclaimed' : 'verified',
+                        orderId: orderRef.id,
+                        orderSubtotal: subtotal,
+                        orderTotal: paymentAmount / 100,
+                        items,
+                        customerType: String(userId).startsWith('g_') ? 'guest' : 'uid',
+                    });
+                } catch (syncErr) {
+                    console.error('[Webhook RZP] Customer profile sync failed:', syncErr);
+                }
             }
 
 

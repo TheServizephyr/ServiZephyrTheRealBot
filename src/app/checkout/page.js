@@ -22,6 +22,7 @@ import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/dista
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
+import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 
 
 const ORDER_STATE = {
@@ -150,9 +151,9 @@ const CheckoutPageInternal = () => {
         setCart(newCart);
 
         // Persist
-        const savedData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+        const savedData = safeReadCart(restaurantId);
         savedData.cart = newCart;
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(savedData));
+        safeWriteCart(restaurantId, savedData);
         setCartData(savedData);
 
         setIsEditDrawerOpen(false);
@@ -261,9 +262,9 @@ const CheckoutPageInternal = () => {
 
         if (newCart.length === 0) {
             setCart([]);
-            const savedData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+            const savedData = safeReadCart(restaurantId);
             savedData.cart = [];
-            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(savedData));
+            safeWriteCart(restaurantId, savedData);
             setCartData(savedData);
 
             // Redirect to Order Page
@@ -274,9 +275,9 @@ const CheckoutPageInternal = () => {
 
         setCart(newCart);
         // Persist to LocalStorage
-        const savedData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+        const savedData = safeReadCart(restaurantId);
         savedData.cart = newCart;
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(savedData));
+        safeWriteCart(restaurantId, savedData);
         setCartData(savedData); // Trigger re-calc
     };
 
@@ -335,7 +336,7 @@ const CheckoutPageInternal = () => {
             // SIMPLIFIED: Ref presence is sufficient - no token validation needed
             const isWhatsAppSession = !!ref;
 
-            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+            const savedCart = safeReadCart(restaurantId);
 
             let derivedDeliveryType = 'delivery';
             if (tableId) {

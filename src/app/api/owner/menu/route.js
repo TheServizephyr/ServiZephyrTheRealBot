@@ -9,6 +9,7 @@ import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 import { logAuditEvent, AUDIT_ACTIONS, createPriceChangeMetadata } from '@/lib/security/audit-log';
 import { menuPriceLimiter, menuDeleteLimiter } from '@/lib/security/rate-limiter';
 import { validatePriceChange, extractPortions } from '@/lib/security/validation-helpers';
+import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
 
 // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
 // (Logic moved inside methods below)
@@ -136,8 +137,11 @@ export async function POST(req) {
             }
         }
 
+        const normalizedImageUrl = await normalizeMenuItemImageUrl(item.imageUrl || '', businessId, item.id || item.name);
+
         const finalItem = {
             ...item,
+            imageUrl: normalizedImageUrl,
             categoryId: finalCategoryId,
             portions: item.portions || [],
             isAvailable: item.isAvailable === undefined ? true : item.isAvailable,

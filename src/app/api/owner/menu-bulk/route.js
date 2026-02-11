@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
 
 // Helper to verify owner and get their first restaurant ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -173,6 +174,7 @@ export async function POST(req) {
                 return NextResponse.json({ message: `Validation failed: ${validationError}` }, { status: 400 });
             }
 
+            const normalizedImageUrl = await normalizeMenuItemImageUrl(item.imageUrl || '', restaurantId, item.id || item.name);
             const docRef = menuRef.doc();
             const newItem = {
                 id: docRef.id,
@@ -181,7 +183,7 @@ export async function POST(req) {
                 order: 999, // Default order, can be managed later
                 ...item,
                 tags: item.tags || [],
-                imageUrl: item.imageUrl || '',
+                imageUrl: normalizedImageUrl || '',
             };
             batch.set(docRef, newItem);
             allItems.push(newItem);

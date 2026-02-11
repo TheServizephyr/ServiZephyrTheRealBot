@@ -355,7 +355,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                 ? '1 new order is waiting in Live Orders.'
                 : `${delta} new orders are waiting in Live Orders.`,
               dedupeKey: `sidebar_pending_${count}`,
-              sound: '/notification-owner-manager.mp3'
+              sound: '/notification-owner-manager.mp3',
+              href: '/owner-dashboard/live-orders'
             });
           }
           prevPendingCountRef.current = count;
@@ -389,7 +390,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         title: 'New WhatsApp Message',
         message: delta === 1 ? '1 new customer message received.' : `${delta} new customer messages received.`,
         dedupeKey: `sidebar_wa_${unread}`,
-        sound: '/notification-whatsapp-message.mp3'
+        sound: '/notification-whatsapp-message.mp3',
+        href: '/owner-dashboard/whatsapp-direct'
       });
     }
 

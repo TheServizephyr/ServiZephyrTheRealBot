@@ -30,6 +30,7 @@ import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import AddressSelectionList from '@/components/AddressSelectionList';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
+import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), {
@@ -1671,14 +1672,15 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         if (isTokenValid) {
-            const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
-            if (savedCartData) {
-                const parsedData = JSON.parse(savedCartData);
+            const parsedData = safeReadCart(restaurantId);
+            if (Object.keys(parsedData).length > 0) {
                 const now = new Date().getTime();
                 if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
                     localStorage.removeItem(`cart_${restaurantId}`);
                     setCart([]); setNotes('');
                 } else {
+                    // Migrate old heavy payloads to slim cart storage format.
+                    safeWriteCart(restaurantId, parsedData);
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
                     if (parsedData.deliveryType && !tableIdFromUrl) setDeliveryType(parsedData.deliveryType);
@@ -1783,7 +1785,7 @@ const OrderPageInternal = () => {
             convenienceFeePaidBy: restaurantData.convenienceFeePaidBy,
             convenienceFeeLabel: restaurantData.convenienceFeeLabel,
         };
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
+        safeWriteCart(restaurantId, cartDataToSave);
 
         const liveOrderKey = `liveOrder_${restaurantId}`;
         if (liveOrder && liveOrder.orderId) {

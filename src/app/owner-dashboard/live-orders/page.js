@@ -1268,7 +1268,8 @@ export default function LiveOrdersPage() {
                 title,
                 message,
                 dedupeKey: `${role}_live_orders_${newlyAdded.sort().join(',')}`,
-                sound: '/notification.mp3'
+                sound: '/notification.mp3',
+                href: '/owner-dashboard/live-orders'
             });
         }
 

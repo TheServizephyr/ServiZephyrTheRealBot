@@ -13,6 +13,7 @@ import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 
 const ORDER_STATE = {
     IDLE: 'idle',
@@ -84,10 +85,9 @@ const CartPageInternal = () => {
     useEffect(() => {
         if (isTokenValid && restaurantId) {
             console.log("[Cart Page] Loading cart data for restaurant:", restaurantId);
-            const data = localStorage.getItem(`cart_${restaurantId}`);
+            const parsedData = safeReadCart(restaurantId);
 
-            if (data) {
-                const parsedData = JSON.parse(data);
+            if (Object.keys(parsedData).length > 0) {
                 const now = new Date().getTime();
 
                 if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
@@ -99,19 +99,12 @@ const CartPageInternal = () => {
                     console.log("[Cart Page] Found valid cart data:", parsedData);
 
                     // Check for out of stock items
-                    const fullMenu = parsedData.menu || {};
+                    const menuAvailability = parsedData.menuAvailability || {};
                     const availableItems = [];
                     const unavailableItemIds = [];
 
                     (parsedData.cart || []).forEach(cartItem => {
-                        let isAvailable = false;
-                        for (const category in fullMenu) {
-                            const menuItem = fullMenu[category].find(m => m.id === cartItem.id);
-                            if (menuItem && menuItem.isAvailable) {
-                                isAvailable = true;
-                                break;
-                            }
-                        }
+                        const isAvailable = menuAvailability[cartItem.id] !== false;
                         if (isAvailable) {
                             availableItems.push(cartItem);
                         } else {
@@ -138,7 +131,7 @@ const CartPageInternal = () => {
                             setNotes(parsedData.notes || '');
                             setAppliedCoupons(parsedData.appliedCoupons || []);
 
-                            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
+                            safeWriteCart(restaurantId, updatedData);
                         })
                         .catch(err => {
                             console.error("[Cart Page] Failed to fetch fresh settings:", err);
@@ -161,7 +154,7 @@ const CartPageInternal = () => {
     }, [isTokenValid, restaurantId]);
 
     const updateCartInStorage = (updates) => {
-        const currentData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
+        const currentData = safeReadCart(restaurantId);
         const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
         const updatedData = { ...currentData, ...updates, expiryTimestamp };
 
@@ -170,7 +163,7 @@ const CartPageInternal = () => {
         if (updates.notes !== undefined) setNotes(updates.notes);
         if (updates.appliedCoupons !== undefined) setAppliedCoupons(updates.appliedCoupons);
 
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
+        safeWriteCart(restaurantId, updatedData);
     };
 
     const handleUpdateCart = (item, action) => {

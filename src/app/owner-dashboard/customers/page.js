@@ -2,9 +2,9 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp, ChevronDown, Star, AlertTriangle, Sparkles, X, History, Gift, StickyNote, IndianRupee, Mail, Users, UserPlus, Repeat, Crown, Search, Filter, ShieldCheck, User } from 'lucide-react';
+import { ChevronUp, ChevronDown, Star, AlertTriangle, Sparkles, X, History, Gift, StickyNote, IndianRupee, Mail, Users, UserPlus, Repeat, Crown, Search, Filter, ShieldCheck, User, Trophy, TrendingUp, TrendingDown, Clock3, BarChart3, Medal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,21 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+const formatNumber = (value) => Number(value || 0).toLocaleString('en-IN');
+
+const formatWeekRange = (period) => {
+    if (!period?.weekStart || !period?.weekEnd) return 'N/A';
+    const start = formatDate(period.weekStart);
+    const end = formatDate(period.weekEnd);
+    return `${start} - ${end}`;
+};
+
+const getDateMs = (value) => {
+    if (!value) return 0;
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
 
 
 // --- HELPER FUNCTIONS FOR STATUS ---
@@ -337,9 +352,28 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward, api
             }
         };
         fetchHistory();
-    }, [customer]);
+    }, [customer, api]);
 
     if (!customer) return null;
+
+    const derivedBestDishes = (() => {
+        if (Array.isArray(customer.bestDishes) && customer.bestDishes.length > 0) {
+            return customer.bestDishes;
+        }
+        const stats = customer.dishStats;
+        if (!stats || typeof stats !== 'object') return [];
+        return Object.entries(stats)
+            .map(([name, info]) => ({
+                name,
+                count: Number(info?.count || 0),
+                spend: Number(info?.spend || 0),
+            }))
+            .sort((a, b) => {
+                if (b.count !== a.count) return b.count - a.count;
+                return b.spend - a.spend;
+            })
+            .slice(0, 5);
+    })();
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -404,6 +438,37 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward, api
                     <div className="bg-background p-4 text-center">
                         <p className="text-xs text-muted-foreground">Last Order</p>
                         <p className="text-xl font-bold text-foreground">{formatDate(customer.lastOrderDate)}</p>
+                    </div>
+                </div>
+
+                <div className="px-6 py-4 border-b border-border bg-background/60 space-y-3">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="rounded-md bg-muted/50 p-2">
+                            <p className="text-muted-foreground">Joined</p>
+                            <p className="font-medium text-foreground">{formatDate(customer.joinedAt || customer.createdAt || customer.firstOrderDate)}</p>
+                        </div>
+                        <div className="rounded-md bg-muted/50 p-2">
+                            <p className="text-muted-foreground">Last Activity</p>
+                            <p className="font-medium text-foreground">{formatDate(customer.lastActivityAt || customer.lastOrderDate)}</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <p className="text-xs text-muted-foreground mb-2">Best Dishes</p>
+                        {derivedBestDishes.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {derivedBestDishes.slice(0, 5).map((dish, index) => (
+                                    <span
+                                        key={`${dish.name || 'dish'}-${index}`}
+                                        className="inline-flex items-center rounded-full bg-primary/10 text-primary text-xs px-2 py-1"
+                                    >
+                                        {dish.name || 'Unnamed'} • {formatNumber(dish.count || 0)}x
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground">No dish insights available yet.</p>
+                        )}
                     </div>
                 </div>
 
@@ -520,10 +585,108 @@ const StatCard = ({ icon: Icon, title, value, detail, isLoading }) => (
     </div>
 );
 
+const LeaderboardTable = ({ title, icon: Icon, rows, emptyMessage, rankKey = 'rank', onCustomerClick, scoreTrend = 'up', onRewardClick = null }) => (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/40">
+            <div className="flex items-center gap-2">
+                <Icon size={18} className="text-primary" />
+                <h4 className="font-semibold">{title}</h4>
+            </div>
+            {scoreTrend === 'up' ? <TrendingUp size={16} className="text-green-500" /> : <TrendingDown size={16} className="text-red-500" />}
+        </div>
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px]">
+                <thead className="bg-muted/20">
+                    <tr>
+                        <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase">Rank</th>
+                        <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase">Customer</th>
+                        <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Orders</th>
+                        <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Avg Order</th>
+                        <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Score</th>
+                        {onRewardClick && <th className="p-3 text-center text-xs font-semibold text-muted-foreground uppercase">Reward</th>}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                    {rows?.length ? rows.map((row) => (
+                        <tr key={`${title}-${row.customerId}`} className="hover:bg-muted/40 transition-colors">
+                            <td className="p-3 font-semibold">#{row[rankKey]}</td>
+                            <td className="p-3">
+                                <button
+                                    type="button"
+                                    onClick={() => onCustomerClick(row.customerId)}
+                                    className="text-left hover:text-primary transition-colors"
+                                >
+                                    <div className="font-medium">{row.name || 'Guest Customer'}</div>
+                                    <div className="text-xs text-muted-foreground">{row.email || row.phone || row.customerId}</div>
+                                </button>
+                            </td>
+                            <td className="p-3 text-right">{formatNumber(row.weeklyOrders)}</td>
+                            <td className="p-3 text-right">{formatCurrency(row.avgOrderValue)}</td>
+                            <td className="p-3 text-right font-semibold">{Number(row.score || 0).toFixed(2)}</td>
+                            {onRewardClick && (
+                                <td className="p-3 text-center">
+                                    {row.rewardEligible ? (
+                                        <Button
+                                            size="sm"
+                                            onClick={() => onRewardClick(row)}
+                                            className="bg-primary hover:bg-primary/90"
+                                        >
+                                            <Gift size={14} className="mr-1" />
+                                            Reward
+                                        </Button>
+                                    ) : (
+                                        <span
+                                            className="inline-flex items-center px-2 py-1 rounded-full bg-muted text-xs text-muted-foreground"
+                                            title={row.rewardIneligibleReason || 'Not eligible'}
+                                        >
+                                            Not eligible
+                                        </span>
+                                    )}
+                                </td>
+                            )}
+                        </tr>
+                    )) : (
+                        <tr>
+                            <td colSpan={onRewardClick ? 6 : 5} className="p-6 text-center text-sm text-muted-foreground">{emptyMessage}</td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
+
+const WinnerStrip = ({ title, periodLabel, rows, onCustomerClick }) => (
+    <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-1">
+            <Medal size={18} className="text-primary" />
+            <h4 className="font-semibold">{title}</h4>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">{periodLabel}</p>
+        {rows?.length ? (
+            <div className="flex flex-wrap gap-2">
+                {rows.map((row, idx) => (
+                    <button
+                        key={`winner-${row.customerId}-${idx}`}
+                        type="button"
+                        onClick={() => onCustomerClick(row.customerId)}
+                        className="px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                    >
+                        #{idx + 1} {row.name || 'Guest'}
+                    </button>
+                ))}
+            </div>
+        ) : (
+            <p className="text-sm text-muted-foreground">No winners recorded in previous week.</p>
+        )}
+    </div>
+);
+
 // --- MAIN PAGE COMPONENT ---
 export default function CustomersPage() {
     const [customers, setCustomers] = useState([]);
     const [stats, setStats] = useState({});
+    const [leaderboard, setLeaderboard] = useState(null);
     const [loading, setLoading] = useState(true);
     const [sortConfig, setSortConfig] = useState({ key: 'totalSpend', direction: 'desc' });
     const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -537,7 +700,7 @@ export default function CustomersPage() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
 
-    const handleApiCall = async (endpoint, method, body) => {
+    const handleApiCall = useCallback(async (endpoint, method, body) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
@@ -557,33 +720,42 @@ export default function CustomersPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'API call failed');
         return data;
-    }
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const loadCustomers = useCallback(async () => {
+        setLoading(true);
+        try {
+            const data = await handleApiCall('/api/owner/customers', 'GET');
+            setCustomers(data.customers || []);
+            setStats(data.stats || {});
+            setLeaderboard(data.leaderboard || null);
+        } catch (error) {
+            console.error("Failed to fetch customers:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not load customer data: " + error.message });
+        } finally {
+            setLoading(false);
+        }
+    }, [handleApiCall]);
 
     useEffect(() => {
-        const fetchCustomers = async () => {
-            setLoading(true);
-            try {
-                const data = await handleApiCall('/api/owner/customers', 'GET');
-                setCustomers(data.customers || []);
-                setStats(data.stats || {});
-            } catch (error) {
-                console.error("Failed to fetch customers:", error);
-                setInfoDialog({ isOpen: true, title: "Error", message: "Could not load customer data: " + error.message });
-            } finally {
-                setLoading(false);
-            }
-        };
-
         const unsubscribe = auth.onAuthStateChanged(user => {
             if (user) {
-                fetchCustomers();
+                loadCustomers();
             } else {
                 setLoading(false);
                 router.push('/');
             }
         });
         return () => unsubscribe();
-    }, [impersonatedOwnerId, employeeOfOwnerId, router]);
+    }, [router, loadCustomers]);
+
+    useEffect(() => {
+        if (!auth.currentUser) return undefined;
+        const intervalId = setInterval(() => {
+            loadCustomers();
+        }, 5 * 60 * 1000);
+        return () => clearInterval(intervalId);
+    }, [loadCustomers]);
 
     // Effect to handle opening customer panel from URL
     useEffect(() => {
@@ -604,9 +776,62 @@ export default function CustomersPage() {
         return [...customers].sort((a, b) => (b.totalSpend || 0) - (a.totalSpend || 0)).slice(0, 5);
     }, [customers]);
 
+    const topOrderCountCustomers = useMemo(() => {
+        return [...customers].sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0)).slice(0, 10);
+    }, [customers]);
+
+    const dormantCustomers = useMemo(() => {
+        return [...customers]
+            .filter((customer) => getDateMs(customer.lastOrderDate) > 0)
+            .sort((a, b) => getDateMs(a.lastOrderDate) - getDateMs(b.lastOrderDate))
+            .slice(0, 10);
+    }, [customers]);
+
+    const leaderboardTop10 = useMemo(() => leaderboard?.top10 || [], [leaderboard]);
+    const leaderboardBottom10 = useMemo(() => leaderboard?.bottom10 || [], [leaderboard]);
+    const leaderboardPointTable = useMemo(() => leaderboard?.pointTable || [], [leaderboard]);
+    const previousWeekWinners = useMemo(() => leaderboard?.previousWeekWinners?.top10 || [], [leaderboard]);
+    const previousWeekEligibleWinners = useMemo(() => leaderboard?.previousWeekWinners?.top10Eligible || [], [leaderboard]);
+
+    const openCustomerById = (customerId) => {
+        const customer = customers.find((c) => c.id === customerId);
+        if (customer) {
+            setSelectedCustomer(customer);
+            return;
+        }
+        setInfoDialog({
+            isOpen: true,
+            title: 'Customer Profile Not Found',
+            message: 'This leaderboard row belongs to a guest or archived profile. Detailed panel is not available.',
+        });
+    };
+
     const handleSendReward = (customer) => {
         setRewardCustomer(customer);
         setCouponModalOpen(true);
+    };
+
+    const handleSendRewardFromLeaderboard = (row) => {
+        if (!row?.rewardEligible) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Reward Not Eligible',
+                message: row?.rewardIneligibleReason || 'This customer is not eligible for weekly reward yet.',
+            });
+            return;
+        }
+
+        const customer = customers.find((c) => c.id === row.customerId);
+        if (!customer) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Profile Missing',
+                message: 'Reward can only be sent to mapped customer profiles available in your customer list.',
+            });
+            return;
+        }
+
+        handleSendReward(customer);
     };
 
     const handleSaveReward = async (couponData) => {
@@ -697,12 +922,159 @@ export default function CustomersPage() {
                 <p className="text-muted-foreground mt-1">Manage, analyze, and engage with your customers.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 my-6">
-                <StatCard isLoading={loading} icon={Users} title="Total Customers" value={stats.totalCustomers || 0} detail="All-time customers" />
-                <StatCard isLoading={loading} icon={UserPlus} title="New This Month" value={stats.newThisMonth || 0} detail="Joined in the last 30 days" />
-                <StatCard isLoading={loading} icon={Repeat} title="Repeat Customer Rate" value={`${stats.repeatRate || 0}%`} detail="Customers with more than one order" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 my-6">
+                <StatCard isLoading={loading} icon={Users} title="Total Customers" value={formatNumber(stats.totalCustomers)} detail="All-time customers" />
+                <StatCard isLoading={loading} icon={UserPlus} title="New This Month" value={formatNumber(stats.newThisMonth)} detail="First activity in current month" />
+                <StatCard isLoading={loading} icon={Repeat} title="Repeat Customer Rate" value={`${stats.repeatRate || 0}%`} detail="Customers with >1 orders" />
+                <StatCard isLoading={loading} icon={Star} title="Loyal Customers" value={formatNumber(stats.loyalCustomers)} detail="High-frequency regulars" />
+                <StatCard isLoading={loading} icon={AlertTriangle} title="At Risk Customers" value={formatNumber(stats.atRiskCustomers)} detail="No activity for long period" />
+                <StatCard isLoading={loading} icon={Clock3} title="Inactive (45d+)" value={formatNumber(stats.inactiveCustomers)} detail="Need re-engagement campaign" />
                 <StatCard isLoading={loading} icon={Crown} title="Top Spender" value={stats.topSpender?.name || 'N/A'} detail={formatCurrency(stats.topSpender?.totalSpend)} />
+                <StatCard isLoading={loading} icon={Trophy} title="Top Order Count" value={stats.topOrderer?.name || 'N/A'} detail={`${formatNumber(stats.topOrderer?.totalOrders)} orders`} />
+                <StatCard isLoading={loading} icon={BarChart3} title="Weekly Orders" value={formatNumber(stats.weeklyOrders)} detail={`${formatNumber(stats.activeThisWeek)} active customers this week`} />
+                <StatCard isLoading={loading} icon={IndianRupee} title="Weekly Revenue" value={formatCurrency(stats.weeklyRevenue)} detail={`Prev week: ${formatCurrency(stats.previousWeekRevenue)}`} />
             </div>
+
+            <section className="my-8 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2">
+                    <div>
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                            <Trophy className="text-primary" size={20} />
+                            Weekly Frequency Leaderboard
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                            Weekly window: {formatWeekRange(leaderboard?.period)} | Updates daily based on latest orders
+                        </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Score = Orders (60%) + Avg Order Value (25%) + Repeat Speed (15%)
+                    </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-lg bg-card border border-border">
+                        <p className="text-xs text-muted-foreground">Eligibility Rule</p>
+                        <p className="font-semibold">
+                            Min {leaderboard?.eligibilityRules?.minOrdersPerWeek || 3} orders/week
+                        </p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-card border border-border">
+                        <p className="text-xs text-muted-foreground">Eligible in Current Top 10</p>
+                        <p className="font-semibold">
+                            {formatNumber(leaderboard?.rewardSummary?.currentWeekEligibleInTop10)} / {formatNumber(leaderboard?.rewardSummary?.currentWeekTop10Count)}
+                        </p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-card border border-border">
+                        <p className="text-xs text-muted-foreground">Eligible in Previous Winners</p>
+                        <p className="font-semibold">
+                            {formatNumber(leaderboard?.rewardSummary?.previousWeekEligibleInTop10)} / {formatNumber(leaderboard?.rewardSummary?.previousWeekTop10Count)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <LeaderboardTable
+                        title="Top 10 Customers (This Week)"
+                        icon={TrendingUp}
+                        rows={leaderboardTop10}
+                        emptyMessage="No qualifying customers in the current week."
+                        onCustomerClick={openCustomerById}
+                        scoreTrend="up"
+                        onRewardClick={handleSendRewardFromLeaderboard}
+                    />
+                    <LeaderboardTable
+                        title="Bottom 10 Customers (This Week)"
+                        icon={TrendingDown}
+                        rows={leaderboardBottom10}
+                        emptyMessage="No low-activity list available yet."
+                        rankKey="bottomRank"
+                        onCustomerClick={openCustomerById}
+                        scoreTrend="down"
+                    />
+                </div>
+
+                <WinnerStrip
+                    title="Previous Week Winners (Auto reset every Monday)"
+                    periodLabel={`${formatDate(leaderboard?.previousWeekWinners?.weekStart)} - ${formatDate(leaderboard?.previousWeekWinners?.weekEnd)}`}
+                    rows={previousWeekWinners}
+                    onCustomerClick={openCustomerById}
+                />
+                <WinnerStrip
+                    title="Previous Week Reward-Eligible Winners"
+                    periodLabel="These winners matched reward eligibility rules."
+                    rows={previousWeekEligibleWinners}
+                    onCustomerClick={openCustomerById}
+                />
+
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border bg-muted/40 flex items-center justify-between">
+                        <h4 className="font-semibold flex items-center gap-2">
+                            <BarChart3 size={18} className="text-primary" />
+                            Weekly Point Table
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                            Last updated: {formatDate(leaderboard?.period?.lastUpdatedAt)}
+                        </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[920px]">
+                            <thead className="bg-muted/20">
+                                <tr>
+                                    <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase">Rank</th>
+                                    <th className="p-3 text-left text-xs font-semibold text-muted-foreground uppercase">Customer</th>
+                                    <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Weekly Orders</th>
+                                    <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Weekly Spend</th>
+                                    <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Avg Order</th>
+                                    <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Avg Gap (hrs)</th>
+                                    <th className="p-3 text-right text-xs font-semibold text-muted-foreground uppercase">Score</th>
+                                    <th className="p-3 text-center text-xs font-semibold text-muted-foreground uppercase">Eligibility</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                {leaderboardPointTable?.length ? leaderboardPointTable.slice(0, 50).map((row) => (
+                                    <tr key={`point-${row.customerId}`} className="hover:bg-muted/40 transition-colors">
+                                        <td className="p-3 font-semibold">#{row.rank}</td>
+                                        <td className="p-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => openCustomerById(row.customerId)}
+                                                className="text-left hover:text-primary transition-colors"
+                                            >
+                                                <div className="font-medium">{row.name || 'Guest Customer'}</div>
+                                                <div className="text-xs text-muted-foreground">{row.statusTag || 'N/A'}</div>
+                                            </button>
+                                        </td>
+                                        <td className="p-3 text-right">{formatNumber(row.weeklyOrders)}</td>
+                                        <td className="p-3 text-right">{formatCurrency(row.weeklySpend)}</td>
+                                        <td className="p-3 text-right">{formatCurrency(row.avgOrderValue)}</td>
+                                        <td className="p-3 text-right">{row.avgGapHours >= 900 ? 'N/A' : Number(row.avgGapHours).toFixed(1)}</td>
+                                        <td className="p-3 text-right font-semibold">{Number(row.score || 0).toFixed(2)}</td>
+                                        <td className="p-3 text-center">
+                                            {row.rewardEligible ? (
+                                                <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-500/10 text-green-500 text-xs">
+                                                    Eligible
+                                                </span>
+                                            ) : (
+                                                <span
+                                                    className="inline-flex items-center px-2 py-1 rounded-full bg-muted text-xs text-muted-foreground"
+                                                    title={row.rewardIneligibleReason || 'Not eligible'}
+                                                >
+                                                    Not eligible
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan={8} className="p-6 text-center text-sm text-muted-foreground">
+                                            Point table will appear after orders start coming in this week.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
 
             <section className="my-8">
                 <h3 className="text-xl font-bold mb-4">❤️ Your VIP Lounge</h3>
@@ -742,6 +1114,68 @@ export default function CustomersPage() {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </section>
+
+            <section className="my-8 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border bg-muted/40 flex items-center gap-2">
+                        <Trophy size={18} className="text-primary" />
+                        <h4 className="font-semibold">Most Orders (All-time Top 10)</h4>
+                    </div>
+                    <div className="p-4 space-y-3">
+                        {topOrderCountCustomers.length ? topOrderCountCustomers.map((customer, idx) => (
+                            <button
+                                key={`top-order-${customer.id}`}
+                                type="button"
+                                onClick={() => setSelectedCustomer(customer)}
+                                className="w-full p-3 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="font-medium">#{idx + 1} {customer.name || 'Guest Customer'}</div>
+                                        <div className="text-xs text-muted-foreground">{customer.email || customer.phone || customer.id}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="font-semibold">{formatNumber(customer.totalOrders)} orders</div>
+                                        <div className="text-xs text-muted-foreground">{formatCurrency(customer.totalSpend)}</div>
+                                    </div>
+                                </div>
+                            </button>
+                        )) : (
+                            <p className="text-sm text-muted-foreground">No order history available.</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border bg-muted/40 flex items-center gap-2">
+                        <AlertTriangle size={18} className="text-yellow-500" />
+                        <h4 className="font-semibold">Dormant Customers (Needs Follow-up)</h4>
+                    </div>
+                    <div className="p-4 space-y-3">
+                        {dormantCustomers.length ? dormantCustomers.map((customer) => (
+                            <button
+                                key={`dormant-${customer.id}`}
+                                type="button"
+                                onClick={() => setSelectedCustomer(customer)}
+                                className="w-full p-3 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="font-medium">{customer.name || 'Guest Customer'}</div>
+                                        <div className="text-xs text-muted-foreground">Last order: {formatDate(customer.lastOrderDate)}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="font-semibold">{formatNumber(customer.totalOrders)} orders</div>
+                                        <div className="text-xs text-muted-foreground">{formatCurrency(customer.totalSpend)}</div>
+                                    </div>
+                                </div>
+                            </button>
+                        )) : (
+                            <p className="text-sm text-muted-foreground">No dormant customers detected.</p>
+                        )}
                     </div>
                 </div>
             </section>

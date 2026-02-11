@@ -26,6 +26,17 @@ export default function PrivacyPolicy() {
             <li>With your permission, to inform you about new offers and promotions.</li>
           </ul>
 
+          <h2>2A. Delivery Order Customer Notice</h2>
+          <p>
+            For <strong>delivery orders only</strong>, we collect and process delivery-specific information such as your delivery address,
+            phone number, and location details (if you share location) to assign delivery, estimate distance/charges, and complete order tracking.
+          </p>
+          <ul>
+            <li>This delivery information is visible only to the relevant restaurant team and assigned delivery partner on a need-to-know basis.</li>
+            <li>We use this information for order fulfillment, delivery support, fraud prevention, and service quality monitoring.</li>
+            <li>We do not use your delivery address for unrelated marketing without your consent.</li>
+          </ul>
+
           <h2>3. Who Do We Share Your Information With?</h2>
           <ul>
             <li><strong>Restaurant Partners:</strong> To fulfill your order, we share your name, order details, and address with the restaurant from which you have ordered.</li>

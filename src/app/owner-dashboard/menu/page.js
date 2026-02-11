@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { auth } from '@/lib/firebase';
+import { auth, storage } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useSearchParams } from 'next/navigation';
@@ -22,6 +22,7 @@ import { useUser } from '@/firebase';
 import { validatePriceChange } from '@/lib/priceValidation';
 import PriceChangeConfirmationDialog from '@/components/PriceChangeConfirmationDialog';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -365,19 +366,41 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 console.log(`Original menu item image size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
                 console.log(`Compressed menu item image size: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
 
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    handleChange('imageUrl', reader.result);
-                };
-                reader.readAsDataURL(compressedFile);
+                const uid = auth.currentUser?.uid;
+                if (!uid) throw new Error("User not authenticated");
+
+                const timestamp = Date.now();
+                const safeName = compressedFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
+                const path = `menu-items/${uid}/${timestamp}-${safeName}`;
+                const fileRef = storageRef(storage, path);
+                const snapshot = await uploadBytes(fileRef, compressedFile, {
+                    contentType: compressedFile.type || 'image/jpeg'
+                });
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                handleChange('imageUrl', downloadURL);
             } catch (error) {
                 console.error('Menu item image compression failed:', error);
-                // Fallback to original file if compression fails
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    handleChange('imageUrl', reader.result);
-                };
-                reader.readAsDataURL(file);
+                try {
+                    const uid = auth.currentUser?.uid;
+                    if (!uid) throw new Error("User not authenticated");
+                    const timestamp = Date.now();
+                    const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+                    const path = `menu-items/${uid}/${timestamp}-${safeName}`;
+                    const fileRef = storageRef(storage, path);
+                    const snapshot = await uploadBytes(fileRef, file, {
+                        contentType: file.type || 'image/jpeg'
+                    });
+                    const downloadURL = await getDownloadURL(snapshot.ref);
+                    handleChange('imageUrl', downloadURL);
+                } catch (uploadError) {
+                    console.error('Menu item image upload failed:', uploadError);
+                    handleChange('imageUrl', '');
+                    showInfoDialog({
+                        isOpen: true,
+                        title: 'Upload Failed',
+                        message: `Could not upload image: ${uploadError.message}. Please try again.`
+                    });
+                }
             }
         }
     };
@@ -878,8 +901,19 @@ export default function MenuPage() {
                 categories[cat.id] = { title: cat.title, icon: Utensils };
             }
         });
+
+        // Ensure legacy/unknown category keys (e.g. "general") from menu docs are visible in dashboard.
+        Object.keys(menu || {}).forEach((categoryId) => {
+            if (!categories[categoryId]) {
+                categories[categoryId] = {
+                    title: categoryId.charAt(0).toUpperCase() + categoryId.slice(1).replace(/-/g, ' '),
+                    icon: Utensils
+                };
+            }
+        });
+
         return categories;
-    }, [customCategories, businessType]);
+    }, [customCategories, businessType, menu]);
 
 
     const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {

@@ -25,6 +25,7 @@ import { createOrderV1, processOrderV1 } from '@/app/api/order/create/legacy/cre
 
 import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
+import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
@@ -390,6 +391,7 @@ export async function createOrderV2(req) {
 
         let userId, normalizedPhone, isGuest;
         let finalCustomerName = name || 'Guest';
+        let finalCustomerEmail = '';
 
         if (requestPhoneNormalized) {
             // Call getOrCreateGuestProfile - UID first, then guest ID
@@ -398,6 +400,9 @@ export async function createOrderV2(req) {
             isGuest = profileResult.isGuest;
             normalizedPhone = requestPhoneNormalized;
             const profileData = profileResult.data || {};
+            if (profileData.email) {
+                finalCustomerEmail = String(profileData.email).trim().toLowerCase();
+            }
 
             console.log(`[createOrderV2] ✅ User identified: ${userId}, isGuest: ${isGuest}`);
 
@@ -499,6 +504,7 @@ export async function createOrderV2(req) {
                 userId: userId,  // ✅ NEW: Unified userId field
                 customerAddress: address?.full || null,
                 customerPhone: normalizedPhone,
+                customerEmail: finalCustomerEmail || null,
                 customerLocation: customerLocation,
                 restaurantId: business.id, // ✅ FIX: Use resolved Business ID
                 restaurantName: business.data.name,
@@ -665,6 +671,7 @@ export async function createOrderV2(req) {
             userId: userId,  // ✅ NEW: Unified userId field for queries
             customerAddress: address?.full || null,
             customerPhone: normalizedPhone,
+            customerEmail: finalCustomerEmail || null,
             customerLocation: customerLocation,
             restaurantId: business.id, // ✅ FIX: Use resolved Business ID
             restaurantName: business.data.name,
@@ -716,6 +723,30 @@ export async function createOrderV2(req) {
         const orderId = await orderRepository.create(orderData);
 
         console.log(`[createOrderV2] Order created: ${orderId}`);
+
+        // Sync/Upsert customer profile for owner dashboard analytics.
+        // This keeps one stable customer document per restaurant for both UID and Guest users.
+        try {
+            await upsertBusinessCustomerProfile({
+                firestore,
+                businessCollection: business.collection,
+                businessId: business.id,
+                customerDocId: userId,
+                customerName: orderData.customerName,
+                customerEmail: finalCustomerEmail,
+                customerPhone: normalizedPhone,
+                customerAddress: address || orderData.customerAddress || null,
+                customerStatus: isGuest ? 'unclaimed' : 'verified',
+                orderId,
+                orderSubtotal: pricing.serverSubtotal,
+                orderTotal: serverGrandTotal,
+                items: pricing.validatedItems,
+                customerType: isGuest ? 'guest' : 'uid',
+            });
+        } catch (profileSyncError) {
+            console.error('[createOrderV2] Customer profile sync failed:', profileSyncError);
+            // Do not fail order creation because of analytics/profile sync errors.
+        }
 
         // Mark idempotency as completed
         await idempotencyRepository.complete(idempotencyKey, {

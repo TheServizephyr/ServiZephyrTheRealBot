@@ -5,6 +5,7 @@ import { Bell, BellRing, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { APP_NOTIFICATION_EVENT } from '@/lib/appNotifications';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 const MAX_KEEP_MS = 24 * 60 * 60 * 1000;
 const MAX_RING_MS = 1 * 60 * 1000;
@@ -24,6 +25,7 @@ function pruneNotifications(items = []) {
 }
 
 export default function AppNotificationCenter({ scope = 'owner' }) {
+    const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
@@ -155,6 +157,21 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         stopAlarm();
     };
 
+    const handleNotificationClick = (notification) => {
+        setNotifications((prev) =>
+            prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
+        );
+        stopAlarm();
+        setIsOpen(false);
+
+        if (!notification?.href) return;
+        if (/^https?:\/\//i.test(notification.href)) {
+            window.location.assign(notification.href);
+            return;
+        }
+        router.push(notification.href);
+    };
+
     useEffect(() => {
         const handleIncoming = (event) => {
             const payload = event?.detail || {};
@@ -177,6 +194,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                         id,
                         title: payload.title || 'New Notification',
                         message: payload.message || '',
+                        href: payload.href || '',
                         sound: payload.sound || '',
                         dedupeKey,
                         read: false,
@@ -440,11 +458,20 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                             <p className="text-xs text-muted-foreground p-2">No notifications in last 24 hours.</p>
                         )}
                         {notifications.map((n) => (
-                            <div key={n.id} className={cn('rounded-lg border p-2', n.read ? 'border-border' : 'border-primary/40 bg-primary/5')}>
+                            <button
+                                key={n.id}
+                                type="button"
+                                onClick={() => handleNotificationClick(n)}
+                                className={cn(
+                                    'w-full text-left rounded-lg border p-2 transition-colors',
+                                    n.read ? 'border-border' : 'border-primary/40 bg-primary/5',
+                                    n.href ? 'hover:bg-muted/40 cursor-pointer' : 'cursor-default'
+                                )}
+                            >
                                 <p className="text-xs font-semibold">{n.title}</p>
                                 {n.message && <p className="text-xs text-muted-foreground mt-1">{n.message}</p>}
                                 <p className="text-[10px] text-muted-foreground mt-1">{new Date(n.createdAt).toLocaleString()}</p>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 </div>

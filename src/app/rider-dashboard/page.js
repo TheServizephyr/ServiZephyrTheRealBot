@@ -536,7 +536,8 @@ export default function RiderDashboardPage() {
                     ? 'You have 1 newly assigned order.'
                     : `You have ${newlyAssigned.length} newly assigned orders.`,
                 dedupeKey: `rider_assigned_${newlyAssigned.sort().join(',')}`,
-                sound: '/notification-rider-assigned.mp3'
+                sound: '/notification-rider-assigned.mp3',
+                href: '/rider-dashboard'
             });
         }
 

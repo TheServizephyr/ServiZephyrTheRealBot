@@ -17,6 +17,7 @@ import {
   Mail, // Changed from MessageSquare
   List, // Import List for Waitlist
   FileText, // Import FileText for Audit Logs
+  Hash, // Import Hash for Check IDs
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -178,6 +179,9 @@ function AdminLayoutContent({ children }) {
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/users" icon={Users} isCollapsed={isCollapsed}>
                   Users
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/check-ids" icon={Hash} isCollapsed={isCollapsed}>
+                  Check IDs
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/waitlist" icon={List} isCollapsed={isCollapsed}>
                   Waitlist
