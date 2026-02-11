@@ -9,7 +9,7 @@ import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
 import { useReactToPrint } from 'react-to-print';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +42,8 @@ function CustomBillPage() {
     const [usbDevice, setUsbDevice] = useState(null);
     const [activeCategory, setActiveCategory] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+    const [isNoAddressDialogOpen, setIsNoAddressDialogOpen] = useState(false);
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
@@ -77,7 +79,10 @@ function CustomBillPage() {
                 setRestaurant({
                     name: settingsData.restaurantName,
                     address: settingsData.address,
-                    gstin: settingsData.gstin
+                    gstin: settingsData.gstin,
+                    gstEnabled: !!settingsData.gstEnabled,
+                    gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
+                    gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
                 });
 
             } catch (error) {
@@ -190,10 +195,100 @@ function CustomBillPage() {
 
     const { subtotal, cgst, sgst, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
-        const tax = sub * 0.025; // 2.5% CGST and 2.5% SGST
-        const total = sub + (tax * 2);
-        return { subtotal: sub, cgst: tax, sgst: tax, grandTotal: total };
-    }, [cart]);
+        const gstEnabled = !!restaurant?.gstEnabled;
+        const gstPercentage = Number(restaurant?.gstPercentage || 0);
+        const gstMinAmount = Number(restaurant?.gstMinAmount || 0);
+
+        const shouldApplyGst = gstEnabled && gstPercentage > 0 && sub >= gstMinAmount;
+        if (!shouldApplyGst) {
+            return { subtotal: sub, cgst: 0, sgst: 0, grandTotal: sub };
+        }
+
+        const halfRate = gstPercentage / 2;
+        const localCgst = Math.round((sub * halfRate) / 100);
+        const localSgst = Math.round((sub * halfRate) / 100);
+        const total = sub + localCgst + localSgst;
+        return { subtotal: sub, cgst: localCgst, sgst: localSgst, grandTotal: total };
+    }, [cart, restaurant]);
+
+    const submitCreateOrder = async () => {
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error('Authentication required.');
+            const idToken = await user.getIdToken();
+
+            setIsCreatingOrder(true);
+
+            const orderItems = cart.map((item) => ({
+                id: item.id,
+                name: item.name,
+                categoryId: item.categoryId,
+                isVeg: item.isVeg,
+                quantity: item.quantity,
+                price: item.price,
+                totalPrice: item.totalPrice,
+                cartItemId: item.cartItemId,
+                portion: item.portion,
+                selectedAddOns: item.selectedAddOns || [],
+            }));
+
+            const endpoint = `/api/owner/custom-bill/create-order?impersonate_owner_id=${impersonatedOwnerId || ''}`;
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    customerDetails,
+                    items: orderItems,
+                    notes: '',
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data?.message || 'Failed to create order.');
+            }
+
+            const whatsappStatus = data.whatsappSent
+                ? 'WhatsApp notification sent.'
+                : `WhatsApp not sent: ${data.whatsappError || 'Unknown reason'}`;
+            setInfoDialog({
+                isOpen: true,
+                title: 'Order Created',
+                message: `Order ID: ${data.orderId}\n\n${whatsappStatus}`,
+            });
+
+            setCart([]);
+            setItemHistory([]);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Create Order Failed', message: error.message });
+        } finally {
+            setIsCreatingOrder(false);
+        }
+    };
+
+    const handleCreateOrder = async () => {
+        if (!cart.length) {
+            setInfoDialog({ isOpen: true, title: 'Missing Items', message: 'At least one item is required to create an order.' });
+            return;
+        }
+
+        const phoneDigits = String(customerDetails.phone || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) {
+            setInfoDialog({ isOpen: true, title: 'Invalid Phone', message: 'Please enter a valid customer phone number.' });
+            return;
+        }
+
+        const hasAddress = !!String(customerDetails.address || '').trim();
+        if (!hasAddress) {
+            setIsNoAddressDialogOpen(true);
+            return;
+        }
+
+        await submitCreateOrder();
+    };
 
 
     const handleDirectPrint = async () => {
@@ -265,11 +360,41 @@ function CustomBillPage() {
                 message={infoDialog.message}
             />
 
+            <Dialog open={isNoAddressDialogOpen} onOpenChange={setIsNoAddressDialogOpen}>
+                <DialogContent className="bg-card border-border text-foreground max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Address Not Added</DialogTitle>
+                        <DialogDescription>
+                            Owner ko customer address manually dalna zaroori nahi hai. Order create karne par customer ko WhatsApp par location add karne ka link chala jayega.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsNoAddressDialogOpen(false)}
+                            disabled={isCreatingOrder}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            className="bg-primary hover:bg-primary/90"
+                            onClick={async () => {
+                                setIsNoAddressDialogOpen(false);
+                                await submitCreateOrder();
+                            }}
+                            disabled={isCreatingOrder}
+                        >
+                            Continue
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={isBillModalOpen} onOpenChange={setIsBillModalOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
                     <div ref={billPrintRef}>
                         <BillToPrint
-                            order={{}}
+                            order={{ orderDate: new Date() }}
                             restaurant={restaurant}
                             billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
                             items={cart}
@@ -482,7 +607,7 @@ function CustomBillPage() {
                         <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
                             <div className="preview-bill">
                                 <BillToPrint
-                                    order={{}}
+                                    order={{ orderDate: new Date() }}
                                     restaurant={restaurant}
                                     billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
                                     items={cart}
@@ -490,21 +615,28 @@ function CustomBillPage() {
                                 />
                             </div>
                         </div>
-                        <div className="p-3 bg-muted/50 rounded-b-lg border-t border-border flex w-full gap-2 no-print">
+                        <div className="p-3 bg-muted/50 rounded-b-lg border-t border-border grid grid-cols-3 gap-2 no-print">
+                            <Button
+                                onClick={handleCreateOrder}
+                                className="w-full h-10 px-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-900/30 transition-all"
+                                disabled={cart.length === 0 || isCreatingOrder}
+                            >
+                                {isCreatingOrder ? 'Creating...' : 'Create Order'}
+                            </Button>
                             <Button
                                 onClick={() => setIsEditModalOpen(true)}
                                 variant="outline"
-                                className="flex-1 h-11 border-2 border-primary/50 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
-                                disabled={cart.length === 0}
+                                className="w-full h-10 px-2 text-sm border-2 border-primary/50 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
+                                disabled={cart.length === 0 || isCreatingOrder}
                             >
-                                <Edit className="mr-2 h-4 w-4 text-primary" /> Edit Bill
+                                <Edit className="mr-1 h-4 w-4 text-primary" /> IDT
                             </Button>
                             <Button
                                 onClick={() => setIsBillModalOpen(true)}
-                                className="flex-1 h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-extrabold shadow-lg shadow-primary/20 transition-all"
-                                disabled={cart.length === 0}
+                                className="w-full h-10 px-2 text-sm bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md shadow-primary/20 transition-all"
+                                disabled={cart.length === 0 || isCreatingOrder}
                             >
-                                <Printer className="mr-2 h-4 w-4" /> Finalize & Print
+                                <Printer className="mr-1 h-4 w-4" /> Print
                             </Button>
                         </div>
                     </div>

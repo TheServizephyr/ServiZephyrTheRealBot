@@ -42,6 +42,7 @@ const AddAddressPageInternal = () => {
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
     const ref = searchParams.get('ref'); // CAPTURE REF for guest sessions
+    const activeOrderId = searchParams.get('activeOrderId');
     const tableId = searchParams.get('table');
 
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 });
@@ -247,7 +248,8 @@ const AddAddressPageInternal = () => {
                 phone: sessionIdentifierPhone,
                 // Pass Guest Identifiers for V2 Flow
                 ref: searchParams.get('ref'),
-                token: token
+                token: token,
+                activeOrderId
             };
 
             const headers = { 'Content-Type': 'application/json' };

@@ -460,6 +460,19 @@ export async function PATCH(req) {
 
                         // A. Notifications
                         if (orderData.customerPhone) {
+                            const hasCustomerLocation = !!(
+                                orderData.customerLocation &&
+                                (
+                                    typeof orderData.customerLocation._latitude === 'number' ||
+                                    typeof orderData.customerLocation.latitude === 'number' ||
+                                    typeof orderData.customerLocation.lat === 'number'
+                                ) &&
+                                (
+                                    typeof orderData.customerLocation._longitude === 'number' ||
+                                    typeof orderData.customerLocation.longitude === 'number' ||
+                                    typeof orderData.customerLocation.lng === 'number'
+                                )
+                            );
                             effects.push(sendOrderStatusUpdateToCustomer({
                                 customerPhone: orderData.customerPhone,
                                 botPhoneNumberId: businessData.botPhoneNumberId,
@@ -471,6 +484,7 @@ export async function PATCH(req) {
                                 businessType: businessData.businessType || 'restaurant',
                                 deliveryType: orderData.deliveryType,
                                 trackingToken: orderData.trackingToken,
+                                hasCustomerLocation,
                                 amount: orderData.totalAmount || 0,
                                 orderDate: orderData.orderDate
                             }));

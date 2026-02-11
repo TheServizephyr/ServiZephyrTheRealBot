@@ -153,7 +153,7 @@ const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
               <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
             )}
             <DialogTitle className="text-xl">{title}</DialogTitle>
-            {message && <DialogDescription className="pt-2">{message}</DialogDescription>}
+            {message && <DialogDescription className="pt-2 whitespace-pre-line break-words">{message}</DialogDescription>}
           </DialogHeader>
           <DialogFooter className="flex-col sm:flex-row sm:justify-center gap-2">
             <Button onClick={onClose} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">OK</Button>

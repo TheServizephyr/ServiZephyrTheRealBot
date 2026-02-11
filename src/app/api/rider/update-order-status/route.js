@@ -173,6 +173,19 @@ export async function PATCH(req) {
             const driverData = driverDoc.data();
 
             if (restaurantData?.botPhoneNumberId && orderData.customerPhone) {
+                const hasCustomerLocation = !!(
+                    orderData.customerLocation &&
+                    (
+                        typeof orderData.customerLocation._latitude === 'number' ||
+                        typeof orderData.customerLocation.latitude === 'number' ||
+                        typeof orderData.customerLocation.lat === 'number'
+                    ) &&
+                    (
+                        typeof orderData.customerLocation._longitude === 'number' ||
+                        typeof orderData.customerLocation.longitude === 'number' ||
+                        typeof orderData.customerLocation.lng === 'number'
+                    )
+                );
                 await sendOrderStatusUpdateToCustomer({
                     customerPhone: orderData.customerPhone,
                     botPhoneNumberId: restaurantData.botPhoneNumberId,
@@ -187,7 +200,8 @@ export async function PATCH(req) {
                     },
                     businessType: businessType,
                     deliveryType: orderData.deliveryType, // ✅ Pass deliveryType for suppression logic
-                    trackingToken: orderData.trackingToken // ✅ Pass token for secure URL
+                    trackingToken: orderData.trackingToken, // ✅ Pass token for secure URL
+                    hasCustomerLocation
                 });
                 console.log(`[API update-order-status] WhatsApp notification sent for status: ${newStatus}`);
             }

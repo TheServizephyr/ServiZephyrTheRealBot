@@ -48,7 +48,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 };
 
 
-export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, customerOrderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant', deliveryType = null, trackingToken = null, amount = 0, orderDate = null }) => {
+export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, customerOrderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant', deliveryType = null, trackingToken = null, amount = 0, orderDate = null, hasCustomerLocation = true }) => {
     console.log(`[Notification Lib] Preparing status update for customer ${customerPhone}. Order: ${orderId}, New Status: ${status}.`);
 
     if (!customerPhone || !botPhoneNumberId) {
@@ -99,6 +99,21 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
         case 'dispatched':
         case 'on_the_way': // Map 'on_the_way' to the dispatch template (with tracking link)
+            if (deliveryType === 'delivery' && !hasCustomerLocation) {
+                templateName = 'order_status_update';
+                const noLocationParams = [
+                    { type: "text", text: customerName },
+                    { type: "text", text: displayOrderId },
+                    { type: "text", text: restaurantName },
+                    { type: "text", text: "Your order is on the way. Please share your delivery location to enable live tracking." },
+                ];
+                components.push({ type: "body", parameters: noLocationParams });
+
+                fullMessageText = `Hi ${customerName}! 👋\n\nYour order ${displayOrderId} from ${restaurantName} is on the way.\n\nPlease share your delivery location to enable live tracking.`;
+                console.log(`[Notification Lib] Tracking URL suppressed for ${orderId} because customer location is missing.`);
+                break;
+            }
+
             templateName = 'order_dispatched_simple';
             // Use passed token (fallback to empty if missing)
             const tokenParam = trackingToken ? `?token=${trackingToken}` : '';

@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, GeoPoint, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 
 // Helper to get authenticated user UID or null if not logged in
@@ -50,7 +50,7 @@ export async function GET(req) {
 export async function POST(req) {
     console.log("[API][user/addresses] POST request received.");
     try {
-        const { address, phone, ref, guestId: explicitGuestId } = await req.json(); // Expect phone number from the client
+        const { address, phone, ref, guestId: explicitGuestId, activeOrderId } = await req.json(); // Expect phone number from the client
 
         // Retrieve Guest ID from Cookie
         const cookieStore = require('next/headers').cookies();
@@ -108,6 +108,42 @@ export async function POST(req) {
         }
 
         await targetRef.set(updateData, { merge: true });
+
+        // OPTIONAL: If address is being submitted from a live order link, patch that order too.
+        if (activeOrderId) {
+            try {
+                const orderRef = firestore.collection('orders').doc(activeOrderId);
+                const orderSnap = await orderRef.get();
+                if (orderSnap.exists) {
+                    const orderData = orderSnap.data() || {};
+                    const normalizedOrderPhone = String(orderData.customerPhone || '').replace(/\D/g, '').slice(-10);
+                    const normalizedSessionPhone = String(normalizedPhone || '').replace(/\D/g, '').slice(-10);
+                    const belongsToCustomer =
+                        (orderData.customerId && orderData.customerId === userId) ||
+                        (normalizedOrderPhone && normalizedOrderPhone === normalizedSessionPhone);
+
+                    if (belongsToCustomer) {
+                        const patchData = {
+                            customerAddress: address.full,
+                            customerLocation: new GeoPoint(address.latitude, address.longitude),
+                            customerAddressPending: false,
+                            addressCapturedAt: FieldValue.serverTimestamp(),
+                            statusHistory: FieldValue.arrayUnion({
+                                status: 'address_captured',
+                                timestamp: new Date()
+                            })
+                        };
+                        await orderRef.set(patchData, { merge: true });
+                        console.log(`[API][user/addresses] Linked active order ${activeOrderId} updated with customer location.`);
+                    } else {
+                        console.warn(`[API][user/addresses] Skipping active order update due to ownership mismatch for ${activeOrderId}.`);
+                    }
+                }
+            } catch (orderPatchErr) {
+                console.error('[API][user/addresses] Failed to patch active order with new address:', orderPatchErr);
+                // Non-fatal: address save should still succeed.
+            }
+        }
 
         console.log(`[API][user/addresses] Address added successfully to document: ${targetRef.path}.`);
         return NextResponse.json({ message: 'Address added successfully!', address }, { status: 200 });

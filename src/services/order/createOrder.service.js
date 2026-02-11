@@ -149,7 +149,8 @@ export async function createOrderV2(req) {
             idempotencyKey,
             existingOrderId, // Add-on flow
             guestRef,       // ✅ NEW: Guest Identity Ref
-            guestToken      // ✅ NEW: Guest Identity Token (Session Check)
+            guestToken,      // ✅ NEW: Guest Identity Token (Session Check)
+            skipAddressValidation = false
         } = body;
 
         // ✅ SANITIZATION: Only allow diningPreference for dine-in orders
@@ -304,7 +305,7 @@ export async function createOrderV2(req) {
                 business.data.businessAddress?.longitude
             );
 
-            if (!address?.full || customerLat === null || customerLng === null || restaurantLat === null || restaurantLng === null) {
+            if (!skipAddressValidation && (!address?.full || customerLat === null || customerLng === null || restaurantLat === null || restaurantLng === null)) {
                 await idempotencyRepository.fail(idempotencyKey, new Error('Invalid delivery address coordinates'));
                 return buildErrorResponse({
                     message: 'A valid delivery address is required.',
@@ -312,48 +313,55 @@ export async function createOrderV2(req) {
                 });
             }
 
-            const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
-            const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
-            const getSetting = (key, fallback) => deliveryConfig[key] ?? business.data[key] ?? fallback;
+            // Manual call-order flow: allow creating order first and collect address later.
+            if (skipAddressValidation && (customerLat === null || customerLng === null || !address?.full)) {
+                console.log('[createOrderV2] ⚠️ skipAddressValidation enabled - creating delivery order without customer coordinates.');
+                validatedDeliveryCharge = 0;
+            } else {
 
-            const settings = {
-                deliveryEnabled: getSetting('deliveryEnabled', true),
-                deliveryRadius: getSetting('deliveryRadius', 10),
-                deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
-                fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
-                perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
-                baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
-                freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
-                freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
-                freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
-                roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
-                deliveryTiers: getSetting('deliveryTiers', []),
-            };
+                const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
+                const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
+                const getSetting = (key, fallback) => deliveryConfig[key] ?? business.data[key] ?? fallback;
 
-            if (settings.deliveryEnabled === false) {
-                await idempotencyRepository.fail(idempotencyKey, new Error('Delivery disabled'));
-                return buildErrorResponse({
-                    message: 'Delivery is currently disabled for this restaurant.',
-                    status: 400
-                });
+                const settings = {
+                    deliveryEnabled: getSetting('deliveryEnabled', true),
+                    deliveryRadius: getSetting('deliveryRadius', 10),
+                    deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
+                    fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
+                    perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
+                    baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
+                    freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
+                    freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
+                    freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
+                    roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
+                    deliveryTiers: getSetting('deliveryTiers', []),
+                };
+
+                if (settings.deliveryEnabled === false) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Delivery disabled'));
+                    return buildErrorResponse({
+                        message: 'Delivery is currently disabled for this restaurant.',
+                        status: 400
+                    });
+                }
+
+                const aerialDistance = calculateHaversineDistance(
+                    restaurantLat,
+                    restaurantLng,
+                    customerLat,
+                    customerLng
+                );
+                const deliveryResult = calculateDeliveryCharge(aerialDistance, pricing.serverSubtotal, settings);
+                if (!deliveryResult.allowed) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error(deliveryResult.message || 'Out of delivery range'));
+                    return buildErrorResponse({
+                        message: deliveryResult.message || 'Address is outside delivery range.',
+                        status: 400
+                    });
+                }
+
+                validatedDeliveryCharge = Number(deliveryResult.charge) || 0;
             }
-
-            const aerialDistance = calculateHaversineDistance(
-                restaurantLat,
-                restaurantLng,
-                customerLat,
-                customerLng
-            );
-            const deliveryResult = calculateDeliveryCharge(aerialDistance, pricing.serverSubtotal, settings);
-            if (!deliveryResult.allowed) {
-                await idempotencyRepository.fail(idempotencyKey, new Error(deliveryResult.message || 'Out of delivery range'));
-                return buildErrorResponse({
-                    message: deliveryResult.message || 'Address is outside delivery range.',
-                    status: 400
-                });
-            }
-
-            validatedDeliveryCharge = Number(deliveryResult.charge) || 0;
         }
 
         const serverGrandTotal = pricing.serverSubtotal + serverCgst + serverSgst +
@@ -662,6 +670,7 @@ export async function createOrderV2(req) {
             restaurantName: business.data.name,
             businessType: business.type,
             deliveryType,
+            customerAddressPending: deliveryType === 'delivery' && !customerLocation,
             pickupTime: body.pickupTime || '',
             tipAmount: tipAmount || 0,
             tipAmount: tipAmount || 0,
