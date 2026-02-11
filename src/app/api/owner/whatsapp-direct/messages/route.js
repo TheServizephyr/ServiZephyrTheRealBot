@@ -170,7 +170,7 @@ export async function POST(req) {
         if (effectiveImageUrl) {
             console.warn("[API] Sending image message with caption if text present.");
 
-            const caption = text ? `${text}\n\n━━━━━━━━━━━━━━━━\n_To end chat, type 'end chat'_` : undefined;
+            const caption = text ? text : undefined;
 
             messagePayload = {
                 type: 'image',
@@ -182,7 +182,7 @@ export async function POST(req) {
             firestoreMessageData = { type: 'image', mediaUrl: effectiveImageUrl, text: text || 'Image' };
             lastMessagePreview = text ? `📷 ${text}` : '📷 Image';
         } else if (text) {
-            const messageBody = `${text}\n\n━━━━━━━━━━━━━━━━\n_To end chat, type 'end chat'_`;
+            const messageBody = text;
             messagePayload = {
                 type: 'text',
                 text: { body: messageBody }

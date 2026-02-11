@@ -169,8 +169,7 @@ export const sendSystemMessage = async (phoneNumber, messageText, businessPhoneN
     try {
         // Add header and footer to message
         const header = `*${restaurantName} (powered by ServiZephyr)*\n\n`;
-        const footer = "\n\n_To end this chat and place an order, type 'end chat'_";
-        const fullMessage = header + messageText + footer;
+        const fullMessage = header + messageText;
 
         // Send via WhatsApp API
         const response = await sendWhatsAppMessage(phoneNumber, fullMessage, businessPhoneNumberId);

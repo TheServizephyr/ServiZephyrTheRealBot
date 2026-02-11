@@ -674,8 +674,9 @@ export async function POST(request) {
                 if (message.type === 'text') {
                     const textBody = message.text.body.trim().toLowerCase();
 
-                    // End Chat
-                    if (textBody === 'end chat' || textBody === '"end chat"') {
+                    // End Chat (Flexible Regex: handle case, spaces, and optional quotes)
+                    const endChatMatch = textBody.match(/^["]?\s*end\s*chat\s*["]?$/i);
+                    if (endChatMatch) {
                         await conversationRef.set({ state: 'menu' }, { merge: true });
                         await sendWhatsAppMessage(fromNumber, `Chat has ended.`, botPhoneNumberId);
                         await conversationRef.collection('messages').add({
@@ -705,18 +706,18 @@ export async function POST(request) {
                 }
 
                 // ✅ 4. STATE-BASED RESPONSES
-                // If in direct_chat or browsing_order, bot stays quiet.
-                if (conversationData.state === 'direct_chat' || conversationData.state === 'browsing_order') {
+                // Handle interactive button clicks (ALWAYS process button actions, even if state is silent)
+                if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
+                    await handleButtonActions(firestore, message.interactive.button_reply.id, fromNumber, business, botPhoneNumberId);
+                }
+                // If in direct_chat or browsing_order, bot stays quiet for other types of messages
+                else if (conversationData.state === 'direct_chat' || conversationData.state === 'browsing_order') {
                     console.log(`[Webhook WA] Bot SILENT (State: ${conversationData.state}) for ${fromPhoneNumber}`);
                 }
                 // Treat Media as Chat Ignition in Menu mode
                 else if (mediaId) {
                     console.log(`[Webhook WA] Media received in Menu mode. Triggering Direct Chat.`);
                     await activateDirectChat(fromNumber, business, botPhoneNumberId);
-                }
-                // Handle interactive button clicks
-                else if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
-                    await handleButtonActions(firestore, message.interactive.button_reply.id, fromNumber, business, botPhoneNumberId);
                 }
                 // Handle text messages in Menu mode (Strict Enforcement)
                 else if (message.type === 'text') {
