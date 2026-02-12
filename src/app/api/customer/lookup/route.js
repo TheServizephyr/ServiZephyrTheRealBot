@@ -9,7 +9,8 @@ export async function POST(req) {
     try {
         const firestore = await getFirestore();
         const body = await req.json();
-        const { phone, guestId: explicitGuestId, ref, token } = body || {};
+        const { phone, guestId: explicitGuestId, ref } = body || {};
+        const guestId = typeof explicitGuestId === 'string' ? explicitGuestId.trim() : explicitGuestId;
 
         // CRITICAL CHANGE: If ref is provided, prioritize it over logged-in UID
         // This ensures WhatsApp capability URLs work correctly even when user is logged in
