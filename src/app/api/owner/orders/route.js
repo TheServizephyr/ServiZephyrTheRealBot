@@ -419,6 +419,16 @@ export async function PATCH(req) {
 
                 const orderData = orderSnap.data();
                 const currentStatus = orderData.status;
+                const isBlockedDeliveryOrder =
+                    orderData.deliveryType === 'delivery' &&
+                    orderData.deliveryBlocked === true &&
+                    !['rejected', 'cancelled'].includes(newStatus);
+
+                if (isBlockedDeliveryOrder) {
+                    return NextResponse.json({
+                        message: orderData.deliveryBlockedReason || 'Delivery is blocked for this order. Ask customer to submit a valid in-range address before progressing.'
+                    }, { status: 400 });
+                }
 
                 if (!canTransition(orderData, currentStatus, newStatus)) {
                     return NextResponse.json({

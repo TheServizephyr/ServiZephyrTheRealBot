@@ -44,6 +44,7 @@ const AddAddressPageInternal = () => {
     const ref = searchParams.get('ref'); // CAPTURE REF for guest sessions
     const activeOrderId = searchParams.get('activeOrderId');
     const tableId = searchParams.get('table');
+    const prefilledNameFromUrl = searchParams.get('name') || '';
 
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 });
     const [addressDetails, setAddressDetails] = useState(null);
@@ -61,12 +62,46 @@ const AddAddressPageInternal = () => {
     const [customAddressLabel, setCustomAddressLabel] = useState('');
 
     const returnUrl = searchParams.get('returnUrl') || '/';
-    const useCurrent = searchParams.get('useCurrent') === 'true';
+    const useCurrent =
+        searchParams.get('useCurrent') === 'true' ||
+        searchParams.get('currentLocation') === 'true';
 
     useEffect(() => {
-        // REMOVED SESSION VALIDATION: Allow adding addresses for all users (guests/logged-in/redirected)
-        setIsTokenValid(true);
-    }, []);
+        const verifySessionToken = async () => {
+            // Backward compatible flow: if no token in URL, allow direct entry.
+            if (!token) {
+                setIsTokenValid(true);
+                return;
+            }
+
+            try {
+                const payload = { token };
+                if (phone) payload.phone = phone;
+                if (ref) payload.ref = ref;
+                if (tableId) payload.tableId = tableId;
+
+                const verifyRes = await fetch('/api/auth/verify-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                const verifyData = await verifyRes.json().catch(() => ({}));
+                if (!verifyRes.ok) {
+                    setTokenError(verifyData.message || 'Session verification failed. Please request a new link.');
+                    setIsTokenValid(false);
+                    return;
+                }
+
+                setIsTokenValid(true);
+            } catch (err) {
+                setTokenError('Session verification failed. Please request a new link.');
+                setIsTokenValid(false);
+            }
+        };
+
+        verifySessionToken();
+    }, [token, phone, ref, tableId]);
 
     const reverseGeocode = useCallback(async (coords) => {
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
@@ -136,6 +171,10 @@ const AddAddressPageInternal = () => {
         let isMounted = true;
         const prefillData = async () => {
             try {
+                if (prefilledNameFromUrl && isMounted) {
+                    setRecipientName(prev => prev || prefilledNameFromUrl);
+                }
+
                 // CRITICAL: Support both ref-based (new) and phone-based (legacy) flows
                 // prioritizing logged-in user via Auth header
 
@@ -194,7 +233,7 @@ const AddAddressPageInternal = () => {
         }
 
         return () => { isMounted = false; };
-    }, [isTokenValid, user, phone, ref, token]); // Removed addressDetails dependencies
+    }, [isTokenValid, user, phone, ref, token, prefilledNameFromUrl]); // Removed addressDetails dependencies
 
     // Effect for Geolocation (Separated)
     useEffect(() => {

@@ -2,6 +2,44 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, GeoPoint, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
+import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
+import { findBusinessById } from '@/services/business/businessService';
+
+function toFiniteNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function toNum(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function calculateGrandTotalFromOrder(orderData, deliveryChargeOverride) {
+    const subtotal = toNum(orderData?.subtotal, 0);
+    const cgst = toNum(orderData?.cgst, 0);
+    const sgst = toNum(orderData?.sgst, 0);
+    const packagingCharge = toNum(orderData?.packagingCharge, 0);
+    const tipAmount = toNum(orderData?.tipAmount, 0);
+    const platformFee = toNum(orderData?.platformFee, 0);
+    const convenienceFee = toNum(orderData?.convenienceFee, 0);
+    const serviceFee = toNum(orderData?.serviceFee, 0);
+    const discount = toNum(orderData?.discount, 0);
+
+    const total =
+        subtotal +
+        cgst +
+        sgst +
+        toNum(deliveryChargeOverride, 0) +
+        packagingCharge +
+        tipAmount +
+        platformFee +
+        convenienceFee +
+        serviceFee -
+        discount;
+
+    return parseFloat(total.toFixed(2));
+}
 
 // Helper to get authenticated user UID or null if not logged in
 async function getUserIdFromToken(req) {
@@ -123,16 +161,128 @@ export async function POST(req) {
                         (normalizedOrderPhone && normalizedOrderPhone === normalizedSessionPhone);
 
                     if (belongsToCustomer) {
+                        const statusEvents = [
+                            {
+                                status: 'address_captured',
+                                timestamp: new Date()
+                            }
+                        ];
+
                         const patchData = {
                             customerAddress: address.full,
                             customerLocation: new GeoPoint(address.latitude, address.longitude),
                             customerAddressPending: false,
-                            addressCapturedAt: FieldValue.serverTimestamp(),
-                            statusHistory: FieldValue.arrayUnion({
-                                status: 'address_captured',
-                                timestamp: new Date()
-                            })
+                            addressCapturedAt: FieldValue.serverTimestamp()
                         };
+
+                        // Recalculate delivery charge/range on server after address capture.
+                        if (orderData.deliveryType === 'delivery') {
+                            const business = await findBusinessById(firestore, orderData.restaurantId);
+                            if (!business) {
+                                throw new Error('Restaurant not found for delivery recalculation.');
+                            }
+
+                            const businessData = business.data || {};
+                            const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
+                            const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
+                            const getSetting = (key, fallback) => deliveryConfig[key] ?? businessData[key] ?? fallback;
+
+                            const settings = {
+                                deliveryEnabled: getSetting('deliveryEnabled', true),
+                                deliveryRadius: getSetting('deliveryRadius', 10),
+                                deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
+                                fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
+                                perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
+                                baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
+                                freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
+                                freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
+                                freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
+                                roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
+                                deliveryTiers: getSetting('deliveryTiers', []),
+                            };
+
+                            const restaurantLat = toFiniteNumber(
+                                businessData.coordinates?.lat ??
+                                businessData.address?.latitude ??
+                                businessData.businessAddress?.latitude
+                            );
+                            const restaurantLng = toFiniteNumber(
+                                businessData.coordinates?.lng ??
+                                businessData.address?.longitude ??
+                                businessData.businessAddress?.longitude
+                            );
+
+                            if (restaurantLat === null || restaurantLng === null) {
+                                throw new Error('Restaurant coordinates are not configured.');
+                            }
+
+                            const subtotalAmount = toNum(orderData.subtotal, 0);
+                            let deliveryResult;
+
+                            if (settings.deliveryEnabled === false) {
+                                deliveryResult = {
+                                    allowed: false,
+                                    charge: 0,
+                                    aerialDistance: 0,
+                                    roadDistance: 0,
+                                    roadFactor: settings.roadDistanceFactor,
+                                    message: 'Delivery is currently disabled for this restaurant.',
+                                    reason: 'delivery-disabled'
+                                };
+                            } else {
+                                const aerialDistance = calculateHaversineDistance(
+                                    restaurantLat,
+                                    restaurantLng,
+                                    toNum(address.latitude, 0),
+                                    toNum(address.longitude, 0)
+                                );
+                                deliveryResult = calculateDeliveryCharge(aerialDistance, subtotalAmount, settings);
+                            }
+
+                            const validatedCharge = toNum(deliveryResult.charge, 0);
+                            const recalculatedGrandTotal = calculateGrandTotalFromOrder(orderData, validatedCharge);
+
+                            patchData.deliveryCharge = validatedCharge;
+                            patchData.totalAmount = recalculatedGrandTotal;
+                            patchData.deliveryValidation = {
+                                success: true,
+                                ...deliveryResult,
+                                checkedAt: new Date()
+                            };
+                            patchData.deliveryValidationMessage = deliveryResult.message || null;
+                            patchData.deliveryOutOfRange = !deliveryResult.allowed;
+                            patchData.billDetails = {
+                                ...(orderData.billDetails || {}),
+                                subtotal: toNum(orderData.subtotal, toNum(orderData.billDetails?.subtotal, 0)),
+                                cgst: toNum(orderData.cgst, toNum(orderData.billDetails?.cgst, 0)),
+                                sgst: toNum(orderData.sgst, toNum(orderData.billDetails?.sgst, 0)),
+                                deliveryCharge: validatedCharge,
+                                grandTotal: recalculatedGrandTotal
+                            };
+
+                            if (!deliveryResult.allowed) {
+                                patchData.deliveryBlocked = true;
+                                patchData.deliveryBlockedReason = deliveryResult.message || 'Address is outside delivery range.';
+                                patchData.deliveryBlockedAt = FieldValue.serverTimestamp();
+                                statusEvents.push({
+                                    status: 'delivery_blocked',
+                                    timestamp: new Date(),
+                                    message: patchData.deliveryBlockedReason
+                                });
+                            } else {
+                                patchData.deliveryBlocked = false;
+                                patchData.deliveryBlockedReason = null;
+                                patchData.deliveryBlockedAt = null;
+                                patchData.deliveryValidatedAt = FieldValue.serverTimestamp();
+                                statusEvents.push({
+                                    status: 'delivery_validated',
+                                    timestamp: new Date(),
+                                    message: deliveryResult.reason || `Delivery charge set to ₹${validatedCharge}`
+                                });
+                            }
+                        }
+
+                        patchData.statusHistory = FieldValue.arrayUnion(...statusEvents);
                         await orderRef.set(patchData, { merge: true });
                         console.log(`[API][user/addresses] Linked active order ${activeOrderId} updated with customer location.`);
                     } else {

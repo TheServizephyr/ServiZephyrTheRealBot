@@ -207,9 +207,15 @@ export async function POST(req) {
         }
 
         const baseUrl = resolvePublicBaseUrl(req);
-        const trackingUrl = `${baseUrl}/track/delivery/${orderId}?token=${token}&ref=${encodeURIComponent(guestRef)}&activeOrderId=${orderId}`;
-        const returnTrackingPath = `/track/delivery/${orderId}?token=${token}&ref=${guestRef}&activeOrderId=${orderId}`;
-        const addAddressLink = `${baseUrl}/add-address?ref=${encodeURIComponent(guestRef)}&phone=${phone}&activeOrderId=${orderId}&returnUrl=${encodeURIComponent(returnTrackingPath)}`;
+        const encodedGuestRef = encodeURIComponent(guestRef);
+        const encodedOrderId = encodeURIComponent(orderId);
+        const encodedToken = encodeURIComponent(token);
+        const encodedPhone = encodeURIComponent(phone);
+        const encodedCustomerName = encodeURIComponent(customerName);
+
+        const trackingUrl = `${baseUrl}/track/delivery/${orderId}?token=${token}&ref=${encodedGuestRef}&activeOrderId=${orderId}`;
+        const returnTrackingPath = `/track/delivery/${orderId}?token=${encodedToken}&ref=${encodedGuestRef}&activeOrderId=${encodedOrderId}`;
+        const addAddressLink = `${baseUrl}/add-address?token=${encodedToken}&ref=${encodedGuestRef}&phone=${encodedPhone}&name=${encodedCustomerName}&activeOrderId=${encodedOrderId}&useCurrent=true&currentLocation=true&returnUrl=${encodeURIComponent(returnTrackingPath)}`;
 
         const businessData = businessSnap.data() || {};
         const botPhoneNumberId = businessData.botPhoneNumberId;

@@ -170,14 +170,27 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             break;
 
         case 'delivered':
-        case 'rejected':
+            templateName = 'order_status_update';
+            const deliveredMessage = "Your order has been delivered. Thank you for ordering with us. Next time order karne ke liye sirf 'Hi' likh kar bhej dijiye.";
+            const deliveredParams = [
+                { type: "text", text: customerName },
+                { type: "text", text: displayOrderId },
+                { type: "text", text: restaurantName },
+                { type: "text", text: deliveredMessage },
+            ];
+            components.push({ type: "body", parameters: deliveredParams });
+            fullMessageText = `Hi ${customerName}, your order ${displayOrderId} from ${restaurantName} has been delivered. Thank you for ordering with us. Next time order karne ke liye sirf 'Hi' likh kar bhej dijiye.`;
+            console.log(`[Notification Lib] Using template '${templateName}' for delivered status.`);
+            break;
+
         case 'ready_for_pickup':
-            // Suppress this message for delivery orders (it triggers when rider is assigned, but customer shouldn't get "Ready for Pickup" msg)
+            // Suppress this message for delivery orders (customer should get dispatch/track message instead).
             if (deliveryType === 'delivery') {
                 console.log(`[Notification Lib] Suppressing 'ready_for_pickup' notification for delivery order ${orderId}.`);
                 return;
             }
         // Fallthrough for takeaway/dine-in or if deliveryType missing
+        case 'rejected':
         case 'picked_up':
             console.log(`[Notification Lib] No specific template configured for status: '${status}'. Using default 'order_status_update'.`);
             templateName = 'order_status_update';
