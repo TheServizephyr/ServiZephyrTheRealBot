@@ -18,6 +18,7 @@ const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
 const WELCOME_CTA_TEMPLATE_NAME = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_NAME || '').trim();
 const WELCOME_CTA_TEMPLATE_LANGUAGE = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_LANGUAGE || 'en').trim();
+const WELCOME_TEMPLATE_FALLBACK_COOLDOWN_MS = 15000;
 
 /**
  * Normalizes phone numbers to 10 digits (removes +91 or 91 prefix)
@@ -205,6 +206,13 @@ const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) 
     return { orderPath, trackPath };
 };
 
+const getWhatsappErrorCodes = (statusUpdate = {}) => {
+    const errors = Array.isArray(statusUpdate?.errors) ? statusUpdate.errors : [];
+    return errors
+        .map((err) => Number(err?.code))
+        .filter((code) => Number.isFinite(code));
+};
+
 /**
  * Transitions a conversation to direct_chat state and sends the Standard Welcome Message.
  */
@@ -266,6 +274,7 @@ const sendWelcomeMessageWithOptions = async (
     const firestore = await getFirestore();
     const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
     const bypassRateLimit = options?.bypassRateLimit === true;
+    const forceInteractive = options?.forceInteractive === true;
 
     // Rate limiting: Don't send more than one welcome menu every 10 seconds to same user
     if (!bypassRateLimit) {
@@ -282,7 +291,7 @@ const sendWelcomeMessageWithOptions = async (
     const welcomeBody = customMessage || `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`;
     const collectionName = business.ref.parent.id;
 
-    if (WELCOME_CTA_TEMPLATE_NAME) {
+    if (WELCOME_CTA_TEMPLATE_NAME && !forceInteractive) {
         try {
             const customerName = options?.customerName || 'Customer';
             const { orderPath, trackPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
@@ -654,6 +663,83 @@ const processIncomingMedia = async (mediaId, businessId) => {
     }
 };
 
+const maybeFallbackWelcomeMenuOnTemplateFailure = async ({
+    business,
+    statusUpdate,
+    botPhoneNumberId
+}) => {
+    try {
+        if (statusUpdate?.status !== 'failed') return;
+        if (!WELCOME_CTA_TEMPLATE_NAME) return;
+
+        const recipientId = statusUpdate?.recipient_id;
+        const messageId = statusUpdate?.id;
+        if (!recipientId || !messageId) return;
+
+        const firestore = await getFirestore();
+        const normalizedRecipient = normalizePhone(recipientId);
+        const conversationCandidates = [normalizedRecipient, recipientId].filter(Boolean);
+
+        let matchedConversationRef = null;
+        let matchedMessageData = null;
+
+        for (const conversationId of conversationCandidates) {
+            const messageRef = business.ref
+                .collection('conversations')
+                .doc(conversationId)
+                .collection('messages')
+                .doc(messageId);
+            const messageSnap = await messageRef.get();
+            if (messageSnap.exists) {
+                matchedConversationRef = business.ref.collection('conversations').doc(conversationId);
+                matchedMessageData = messageSnap.data() || {};
+                break;
+            }
+        }
+
+        if (!matchedConversationRef || !matchedMessageData) return;
+
+        const isWelcomeTemplateMessage =
+            matchedMessageData.messageFormat === 'template' &&
+            matchedMessageData.templateName === WELCOME_CTA_TEMPLATE_NAME;
+        if (!isWelcomeTemplateMessage) return;
+
+        const conversationSnap = await matchedConversationRef.get();
+        const conversationData = conversationSnap.exists ? (conversationSnap.data() || {}) : {};
+
+        const lastFallbackAt = coerceDate(conversationData.lastWelcomeTemplateFallbackAt);
+        if (lastFallbackAt && (Date.now() - lastFallbackAt.getTime()) < WELCOME_TEMPLATE_FALLBACK_COOLDOWN_MS) {
+            console.log('[Webhook WA] Welcome fallback skipped due to cooldown.');
+            return;
+        }
+
+        const customerName = conversationData.customerName || 'Customer';
+        const fallbackBody = `Welcome to ${business.data.name || 'ServiZephyr'}!\n\nWhat would you like to do today?`;
+
+        await sendWelcomeMessageWithOptions(
+            recipientId,
+            business,
+            botPhoneNumberId,
+            fallbackBody,
+            {
+                bypassRateLimit: true,
+                forceInteractive: true,
+                customerName
+            }
+        );
+
+        const errorCodes = getWhatsappErrorCodes(statusUpdate);
+        await matchedConversationRef.set({
+            lastWelcomeTemplateFallbackAt: FieldValue.serverTimestamp(),
+            lastWelcomeTemplateFailureCode: errorCodes[0] || null
+        }, { merge: true });
+
+        console.log(`[Webhook WA] Fallback interactive welcome menu sent to ${recipientId} after template failure.`);
+    } catch (error) {
+        console.error('[Webhook WA] Failed to fallback welcome menu after template failure:', error);
+    }
+};
+
 
 export async function POST(request) {
     console.log("[Webhook WA] POST request received.");
@@ -744,6 +830,17 @@ export async function POST(request) {
 
                     if (!success) {
                         console.error(`    - ❌ FAILED to update status for WAMID: ${messageId}`);
+                    }
+
+                    if (status === 'failed') {
+                        const errorCodes = getWhatsappErrorCodes(statusUpdate);
+                        console.warn(`[Webhook WA] Message failed for ${recipientId}. Error codes: ${errorCodes.join(',') || 'unknown'}`);
+
+                        await maybeFallbackWelcomeMenuOnTemplateFailure({
+                            business,
+                            statusUpdate,
+                            botPhoneNumberId
+                        });
                     }
                 } else {
                     console.warn(`  - ❌ Business not found for Bot ID: ${botPhoneNumberId}`);
