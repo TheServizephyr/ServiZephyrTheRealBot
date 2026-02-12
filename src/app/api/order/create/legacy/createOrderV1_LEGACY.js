@@ -628,31 +628,38 @@ export async function processOrderV1(body, firestore) {
                     const couponData = couponSnap.data();
                     const now = new Date();
                     const expiryDate = couponData.expiryDate?.toDate ? couponData.expiryDate.toDate() : new Date(couponData.expiryDate);
+                    const couponType = String(couponData.type || '').toLowerCase() === 'fixed'
+                        ? 'flat'
+                        : String(couponData.type || '').toLowerCase();
+                    const couponMinOrder = Number(couponData.minOrder) || 0;
+                    const couponUsageLimit = Number(couponData.usageLimit) || 0;
+                    const couponTimesUsed = Number(couponData.timesUsed) || 0;
 
                     // 1. Basic Eligibility Checks
                     const isExpired = expiryDate < now;
-                    const isBelowMinOrder = pricing.serverSubtotal < (couponData.minOrder || 0);
-                    const isUsageLimitMet = couponData.usageLimit && couponData.timesUsed >= couponData.usageLimit;
+                    const isBelowMinOrder = pricing.serverSubtotal < couponMinOrder;
+                    const isUsageLimitMet = couponUsageLimit > 0 && couponTimesUsed >= couponUsageLimit;
 
                     if (isExpired || isBelowMinOrder || isUsageLimitMet) {
                         console.warn(`[API /order/create] Coupon ${coupon.code} invalid: Expired=${isExpired}, MinOrder=${isBelowMinOrder}, LimitMet=${isUsageLimitMet}`);
                     } else {
                         // 2. Calculate Discount
                         let discountAmount = 0;
-                        if (couponData.type === 'flat') {
+                        if (couponType === 'flat') {
                             discountAmount = Number(couponData.value) || 0;
-                        } else if (couponData.type === 'percentage') {
+                        } else if (couponType === 'percentage') {
                             discountAmount = (pricing.serverSubtotal * (Number(couponData.value) || 0)) / 100;
-                            if (couponData.maxDiscount && discountAmount > couponData.maxDiscount) {
-                                discountAmount = couponData.maxDiscount;
+                            const couponMaxDiscount = Number(couponData.maxDiscount) || 0;
+                            if (couponMaxDiscount > 0 && discountAmount > couponMaxDiscount) {
+                                discountAmount = couponMaxDiscount;
                             }
-                        } else if (couponData.type === 'free_delivery') {
+                        } else if (couponType === 'free_delivery') {
                             // Handled in delivery charge logic below if applicable
                             console.log("[API /order/create] Free delivery coupon detected");
                         }
 
                         finalDiscount += discountAmount;
-                        verifiedCoupon = { ...couponData, id: couponSnap.id };
+                        verifiedCoupon = { ...couponData, type: couponType, id: couponSnap.id };
                         console.log(`[API /order/create] ✅ Coupon ${couponData.code} validated. Discount: ₹${discountAmount}`);
                     }
                 }
@@ -729,7 +736,7 @@ export async function processOrderV1(body, firestore) {
         }
 
         // Coupon-level free delivery override is applied after server distance/range validation.
-        if (verifiedCoupon && verifiedCoupon.type === 'free_delivery') {
+        if (verifiedCoupon && String(verifiedCoupon.type || '').toLowerCase() === 'free_delivery') {
             finalDeliveryCharge = 0;
         }
 

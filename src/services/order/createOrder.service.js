@@ -101,6 +101,12 @@ const toFiniteNumber = (value) => {
     return Number.isFinite(n) ? n : null;
 };
 
+const normalizeCouponType = (couponType) => {
+    const normalized = String(couponType || '').trim().toLowerCase();
+    if (normalized === 'fixed') return 'flat';
+    return normalized;
+};
+
 /**
  * CREATE ORDER V2 with HYBRID FALLBACK
  * 
@@ -146,6 +152,7 @@ export async function createOrderV2(req, options = {}) {
             platformFee = 0,
             convenienceFee = 0,
             serviceFee = 0,
+            coupon = null,
             discount = 0,
             diningPreference = null,
             idempotencyKey,
@@ -298,13 +305,119 @@ export async function createOrderV2(req, options = {}) {
         }
 
         // --- SERVER-SIDE BILLING CALCULATIONS ---
-        const taxes = calculateTaxes(pricing.serverSubtotal, business.data);
-        const serverCgst = taxes.cgst;
-        const serverSgst = taxes.sgst;
-        const safeDiscount = 0;
+        let verifiedCoupon = null;
+        let couponDiscountAmount = 0;
+
         if (Number(discount) > 0) {
             console.warn('[createOrderV2] Ignoring client-provided discount; server side discount validation is required.');
         }
+
+        // Coupon re-validation for V2 (COD/Counter flows).
+        if (coupon && coupon.id) {
+            try {
+                const couponRef = business.ref.collection('coupons').doc(coupon.id);
+                const couponSnap = await couponRef.get();
+
+                if (!couponSnap.exists) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Selected coupon not found'));
+                    return buildErrorResponse({
+                        message: 'Selected coupon is no longer available.',
+                        status: 400
+                    });
+                }
+
+                const couponData = couponSnap.data() || {};
+                const now = new Date();
+                const couponType = normalizeCouponType(couponData.type);
+                const couponValue = Number(couponData.value) || 0;
+                const couponMinOrder = Number(couponData.minOrder) || 0;
+                const couponMaxDiscount = Number(couponData.maxDiscount) || 0;
+                const couponUsageLimit = Number(couponData.usageLimit) || 0;
+                const couponTimesUsed = Number(couponData.timesUsed) || 0;
+
+                const startDate = couponData.startDate?.toDate
+                    ? couponData.startDate.toDate()
+                    : (couponData.startDate ? new Date(couponData.startDate) : null);
+                const expiryDate = couponData.expiryDate?.toDate
+                    ? couponData.expiryDate.toDate()
+                    : (couponData.expiryDate ? new Date(couponData.expiryDate) : null);
+
+                if (couponData.status && couponData.status !== 'active') {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Coupon inactive'));
+                    return buildErrorResponse({
+                        message: 'This coupon is inactive.',
+                        status: 400
+                    });
+                }
+
+                if (startDate && startDate > now) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Coupon not started'));
+                    return buildErrorResponse({
+                        message: 'This coupon is not active yet.',
+                        status: 400
+                    });
+                }
+
+                if (expiryDate && expiryDate < now) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Coupon expired'));
+                    return buildErrorResponse({
+                        message: 'This coupon has expired.',
+                        status: 400
+                    });
+                }
+
+                if (pricing.serverSubtotal < couponMinOrder) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Coupon minimum order not met'));
+                    return buildErrorResponse({
+                        message: `Coupon valid on minimum order of ₹${couponMinOrder}.`,
+                        status: 400
+                    });
+                }
+
+                if (couponUsageLimit > 0 && couponTimesUsed >= couponUsageLimit) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Coupon usage limit reached'));
+                    return buildErrorResponse({
+                        message: 'Coupon usage limit reached.',
+                        status: 400
+                    });
+                }
+
+                if (!['flat', 'percentage', 'free_delivery'].includes(couponType)) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Unsupported coupon type'));
+                    return buildErrorResponse({
+                        message: 'Invalid coupon type.',
+                        status: 400
+                    });
+                }
+
+                if (couponType === 'flat') {
+                    couponDiscountAmount = couponValue;
+                } else if (couponType === 'percentage') {
+                    couponDiscountAmount = (pricing.serverSubtotal * couponValue) / 100;
+                    if (couponMaxDiscount > 0 && couponDiscountAmount > couponMaxDiscount) {
+                        couponDiscountAmount = couponMaxDiscount;
+                    }
+                } else {
+                    couponDiscountAmount = 0;
+                }
+
+                couponDiscountAmount = Math.max(0, couponDiscountAmount);
+                verifiedCoupon = { ...couponData, type: couponType, id: couponSnap.id };
+
+                console.log(`[createOrderV2] ✅ Coupon validated: ${verifiedCoupon.code || verifiedCoupon.id}, discount=₹${couponDiscountAmount}`);
+            } catch (couponError) {
+                await idempotencyRepository.fail(idempotencyKey, couponError);
+                return buildErrorResponse({
+                    message: couponError?.message || 'Coupon validation failed.',
+                    status: 400
+                });
+            }
+        }
+
+        const netSubtotal = Math.max(0, pricing.serverSubtotal - couponDiscountAmount);
+        const taxes = calculateTaxes(netSubtotal, business.data);
+        const serverCgst = taxes.cgst;
+        const serverSgst = taxes.sgst;
 
         // Re-validate delivery range/charge on server to prevent client tampering.
         let validatedDeliveryCharge = 0;
@@ -381,11 +494,15 @@ export async function createOrderV2(req, options = {}) {
             }
         }
 
-        const serverGrandTotal = pricing.serverSubtotal + serverCgst + serverSgst +
-            validatedDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0) +
-            (platformFee || 0) + (convenienceFee || 0) + (serviceFee || 0) - safeDiscount;
+        if (verifiedCoupon && verifiedCoupon.type === 'free_delivery') {
+            validatedDeliveryCharge = 0;
+        }
 
-        console.log(`[createOrderV2] Server billing verification: CGST=${serverCgst}, SGST=${serverSgst}, GrandTotal=${serverGrandTotal}`);
+        const serverGrandTotal = netSubtotal + serverCgst + serverSgst +
+            validatedDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0) +
+            (platformFee || 0) + (convenienceFee || 0) + (serviceFee || 0);
+
+        console.log(`[createOrderV2] Server billing verification: Subtotal=${pricing.serverSubtotal}, Discount=${couponDiscountAmount}, CGST=${serverCgst}, SGST=${serverSgst}, GrandTotal=${serverGrandTotal}`);
 
         // Optionally override body fields with server-verified ones
         // subtotal = pricing.serverSubtotal;
@@ -538,7 +655,8 @@ export async function createOrderV2(req, options = {}) {
                 platformFee: platformFee || 0,
                 convenienceFee: convenienceFee || 0,
                 serviceFee: serviceFee || 0,
-                discount: safeDiscount,
+                discount: couponDiscountAmount,
+                coupon: verifiedCoupon || null,
                 totalAmount: serverGrandTotal, // Server-calculated
                 status: 'awaiting_payment', // SAME as V1
                 orderDate: FieldValue.serverTimestamp(),
@@ -554,7 +672,16 @@ export async function createOrderV2(req, options = {}) {
             // Build servizephyr_payload for webhook (V1 parity)
             const servizephyrPayload = {
                 customerDetails: { name, phone: normalizedPhone, address },
-                billDetails: { subtotal: pricing.serverSubtotal, grandTotal: serverGrandTotal, cgst: serverCgst, sgst: serverSgst, deliveryCharge: validatedDeliveryCharge, tipAmount },
+                billDetails: {
+                    subtotal: pricing.serverSubtotal,
+                    discount: couponDiscountAmount,
+                    grandTotal: serverGrandTotal,
+                    cgst: serverCgst,
+                    sgst: serverSgst,
+                    deliveryCharge: validatedDeliveryCharge,
+                    tipAmount,
+                    coupon: verifiedCoupon || null
+                },
                 items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
                 restaurantId: business.id, // ✅ FIX
                 userId,
@@ -708,7 +835,8 @@ export async function createOrderV2(req, options = {}) {
             platformFee: platformFee || 0,
             convenienceFee: convenienceFee || 0,
             serviceFee: serviceFee || 0,
-            discount: safeDiscount,
+            discount: couponDiscountAmount,
+            coupon: verifiedCoupon || null,
             totalAmount: serverGrandTotal,
             status: effectiveInitialStatus,
             orderDate: FieldValue.serverTimestamp(),
