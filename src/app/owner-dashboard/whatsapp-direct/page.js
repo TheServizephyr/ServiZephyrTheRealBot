@@ -460,9 +460,6 @@ function WhatsAppDirectPageContent() {
     const [remainingSeconds, setRemainingSeconds] = useState(null);
     const countdownIntervalRef = useRef(null);
 
-    // ✅ NOTIFICATION SOUNDS
-    const notificationAudioRef = useRef(null);
-    const audioPrimedRef = useRef(false);
     const prevTotalUnreadRef = useRef(0);
     const prevActiveMessagesCountRef = useRef(0);
 
@@ -471,38 +468,6 @@ function WhatsAppDirectPageContent() {
     const [loadingAudioEngine, setLoadingAudioEngine] = useState(true);
 
     const [restaurantProfile, setRestaurantProfile] = useState(null); // Store fetched profile
-
-    // ✅ Initialize Notification Sound
-    useEffect(() => {
-        notificationAudioRef.current = new Audio('/notification-whatsapp-message.mp3');
-        notificationAudioRef.current.load();
-    }, []);
-
-    // ✅ Notification Sound Player
-    const playNotificationSound = useCallback(() => {
-        if (notificationAudioRef.current && audioPrimedRef.current) {
-            notificationAudioRef.current.currentTime = 0;
-            notificationAudioRef.current.play().catch(err => {
-                if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
-                    console.warn('[Audio] Play blocked or failed:', err);
-                }
-            });
-        }
-    }, []);
-
-    // ✅ Prime audio context on first interaction
-    const primeAudio = useCallback(() => {
-        if (!audioPrimedRef.current && notificationAudioRef.current) {
-            notificationAudioRef.current.play().then(() => {
-                notificationAudioRef.current.pause();
-                notificationAudioRef.current.currentTime = 0;
-                audioPrimedRef.current = true;
-                if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
-                    console.log('🔊 Audio Primed Successfully');
-                }
-            }).catch(err => console.warn('[Audio] Priming failed:', err));
-        }
-    }, []);
 
     // Calculate total unread count
     const totalUnreadCount = useMemo(() => {
@@ -881,16 +846,13 @@ function WhatsAppDirectPageContent() {
         }
     }, [handleApiCall]); // Stable reference with handleApiCall dependency
 
-    // ✅ NOTIFICATION SOUND TRIGGER: Background conversations
+    // NOTE:
+    // Global owner notifications are handled by Navbar/AppNotificationCenter.
+    // Do not play local WhatsApp sounds here, otherwise sound can trigger twice.
     useEffect(() => {
-        if (totalUnreadCount > prevTotalUnreadRef.current) {
-            if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
-                console.log('🔔 Unread count increased. Playing sound...');
-            }
-            playNotificationSound();
-        }
+        // Keep reference in sync only (no local sound trigger).
         prevTotalUnreadRef.current = totalUnreadCount;
-    }, [totalUnreadCount, playNotificationSound]);
+    }, [totalUnreadCount]);
 
     // ✅ SYNC: Keep activeConversation in sync with fresh data from API polling
     useEffect(() => {
@@ -952,14 +914,8 @@ function WhatsAppDirectPageContent() {
             const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: activeConversation.id });
             const msgs = data.messages || [];
 
-            // ✅ NOTIFICATION SOUND TRIGGER: Active conversation
+            // Keep only count sync (no local sound while chat screen is open).
             const customerMsgs = msgs.filter(m => m.sender === 'customer');
-            if (customerMsgs.length > prevActiveMessagesCountRef.current) {
-                if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
-                    console.log('🔔 New message in active chat. Playing sound...');
-                }
-                playNotificationSound();
-            }
             prevActiveMessagesCountRef.current = customerMsgs.length;
 
             if (msgs.length > 0) setMessages(msgs);
@@ -1386,7 +1342,7 @@ function WhatsAppDirectPageContent() {
 
     // --- Main Render ---
     return (
-        <div className="flex bg-background h-[calc(100vh-6rem)] overflow-hidden font-sans border rounded-xl shadow-sm my-2 mr-2" onClick={primeAudio}>
+        <div className="flex bg-background h-[calc(100vh-6rem)] overflow-hidden font-sans border rounded-xl shadow-sm my-2 mr-2">
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}

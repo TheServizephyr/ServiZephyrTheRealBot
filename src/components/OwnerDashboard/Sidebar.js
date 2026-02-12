@@ -288,7 +288,12 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         );
 
         unsubscribe = onSnapshot(q, (snapshot) => {
-          const totalUnread = snapshot.docs.reduce((acc, doc) => acc + (doc.data().unreadCount || 0), 0);
+          // Notification/badge should only consider active direct-chat support threads.
+          const totalUnread = snapshot.docs.reduce((acc, doc) => {
+            const data = doc.data() || {};
+            if (data.state !== 'direct_chat') return acc;
+            return acc + (data.unreadCount || 0);
+          }, 0);
           setWhatsappUnreadCount(totalUnread);
         }, (error) => {
           console.error("Error listening to whatsapp conversations:", error);
@@ -383,7 +388,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       return;
     }
 
-    if (unread > prevWaUnreadCountRef.current) {
+    const isOnWhatsAppDirectPage = pathname?.includes('/owner-dashboard/whatsapp-direct');
+    if (unread > prevWaUnreadCountRef.current && !isOnWhatsAppDirectPage) {
       const delta = unread - prevWaUnreadCountRef.current;
       emitAppNotification({
         scope: 'owner',
@@ -396,7 +402,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     }
 
     prevWaUnreadCountRef.current = unread;
-  }, [whatsappUnreadCount, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [whatsappUnreadCount, impersonatedOwnerId, employeeOfOwnerId, pathname]);
 
 
   return (

@@ -659,14 +659,21 @@ export async function POST(request) {
                 }, { merge: true });
 
                 const customerNameFromPayload = change.value.contacts?.[0]?.profile?.name || fromPhoneNumber;
-                await conversationRef.set({
+                const shouldIncrementUnreadForOwner = conversationData.state === 'direct_chat';
+                const conversationUpdate = {
                     customerName: customerNameFromPayload,
                     customerPhone: fromPhoneNumber,
                     lastMessage: messageContent,
                     lastMessageType: messageType,
                     lastMessageTimestamp: FieldValue.serverTimestamp(),
-                    unreadCount: FieldValue.increment(1)
-                }, { merge: true });
+                };
+
+                // Owner-side unread notifications should ONLY come from direct chat mode.
+                if (shouldIncrementUnreadForOwner) {
+                    conversationUpdate.unreadCount = FieldValue.increment(1);
+                }
+
+                await conversationRef.set(conversationUpdate, { merge: true });
 
                 console.log(`[Webhook WA] Message ${message.id} logged for ${fromPhoneNumber}`);
 
