@@ -212,12 +212,12 @@ function OrderTrackingContent() {
         if (userPhone) params.set('phone', userPhone);
         if (refParam) params.set('ref', refParam);
 
-        const activeId = overrideOrderId || currentOrderId || activeOrderParam || paramOrderId || orderData?.order?.id;
+        const activeId = overrideOrderId || currentOrderId || activeOrderParam || paramOrderId;
         if (activeId) params.set('activeOrderId', activeId);
 
         const qs = params.toString();
         return qs ? `/order/${restaurantId}?${qs}` : `/order/${restaurantId}`;
-    }, [sessionToken, userPhone, refParam, currentOrderId, activeOrderParam, paramOrderId, orderData?.order?.id]);
+    }, [sessionToken, userPhone, refParam, currentOrderId, activeOrderParam, paramOrderId]);
 
     // Handler to switch between active orders via tabs
     const handleSwitchOrder = (id) => {
