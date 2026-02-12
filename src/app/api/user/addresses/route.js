@@ -15,6 +15,60 @@ function toNum(value, fallback = 0) {
     return Number.isFinite(n) ? n : fallback;
 }
 
+const COORD_EPSILON = 0.00005;
+
+function normalizeText(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function toCoordinate(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function hasValidCoordinatePair(lat, lng) {
+    return lat !== null && lng !== null;
+}
+
+function addressesMatch(existingAddress = {}, incomingAddress = {}) {
+    const existingLat = toCoordinate(existingAddress.latitude);
+    const existingLng = toCoordinate(existingAddress.longitude);
+    const incomingLat = toCoordinate(incomingAddress.latitude);
+    const incomingLng = toCoordinate(incomingAddress.longitude);
+
+    const sameCoordinates =
+        hasValidCoordinatePair(existingLat, existingLng) &&
+        hasValidCoordinatePair(incomingLat, incomingLng) &&
+        Math.abs(existingLat - incomingLat) <= COORD_EPSILON &&
+        Math.abs(existingLng - incomingLng) <= COORD_EPSILON;
+
+    if (sameCoordinates) return true;
+
+    const sameFullAddress =
+        normalizeText(existingAddress.full) &&
+        normalizeText(existingAddress.full) === normalizeText(incomingAddress.full);
+    const samePhone =
+        normalizeText(existingAddress.phone) &&
+        normalizeText(existingAddress.phone) === normalizeText(incomingAddress.phone);
+
+    return sameFullAddress && samePhone;
+}
+
+function orderHasSameLocation(orderData = {}, incomingAddress = {}) {
+    const orderLoc = orderData.customerLocation || {};
+    const orderLat = toCoordinate(orderLoc._latitude ?? orderLoc.latitude ?? orderLoc.lat);
+    const orderLng = toCoordinate(orderLoc._longitude ?? orderLoc.longitude ?? orderLoc.lng);
+    const incomingLat = toCoordinate(incomingAddress.latitude);
+    const incomingLng = toCoordinate(incomingAddress.longitude);
+
+    return (
+        hasValidCoordinatePair(orderLat, orderLng) &&
+        hasValidCoordinatePair(incomingLat, incomingLng) &&
+        Math.abs(orderLat - incomingLat) <= COORD_EPSILON &&
+        Math.abs(orderLng - incomingLng) <= COORD_EPSILON
+    );
+}
+
 function calculateGrandTotalFromOrder(orderData, deliveryChargeOverride) {
     const subtotal = toNum(orderData?.subtotal, 0);
     const cgst = toNum(orderData?.cgst, 0);
@@ -133,11 +187,22 @@ export async function POST(req) {
             console.log(`[API][user/addresses] Saving to user UID: ${userId}`);
         }
 
+        const currentProfileSnap = await targetRef.get();
+        const currentProfileData = currentProfileSnap.exists ? (currentProfileSnap.data() || {}) : {};
+        const existingAddresses = Array.isArray(currentProfileData.addresses) ? currentProfileData.addresses : [];
+        const duplicateAddress = existingAddresses.find((savedAddress) => addressesMatch(savedAddress, address));
+        const addressToPersist = duplicateAddress || address;
+
+        currentName = currentProfileData.name || currentName;
+
         const updateData = {
-            addresses: FieldValue.arrayUnion(address),
             // Update phone on profile if missing
             phone: phone
         };
+
+        if (!duplicateAddress) {
+            updateData.addresses = FieldValue.arrayUnion(addressToPersist);
+        }
 
         // ✅ SYNC NAME: If profile has no name or is "Guest", update it from address contact
         if ((!currentName || currentName === 'Guest') && newName) {
@@ -161,130 +226,138 @@ export async function POST(req) {
                         (normalizedOrderPhone && normalizedOrderPhone === normalizedSessionPhone);
 
                     if (belongsToCustomer) {
-                        const statusEvents = [
-                            {
-                                status: 'address_captured',
-                                timestamp: new Date()
-                            }
-                        ];
+                        const alreadyCapturedWithSameLocation =
+                            orderData.customerAddressPending === false &&
+                            orderHasSameLocation(orderData, addressToPersist);
 
-                        const patchData = {
-                            customerAddress: address.full,
-                            customerLocation: new GeoPoint(address.latitude, address.longitude),
-                            customerAddressPending: false,
-                            addressCapturedAt: FieldValue.serverTimestamp()
-                        };
+                        if (alreadyCapturedWithSameLocation) {
+                            console.log(`[API][user/addresses] Skipping duplicate order patch for ${activeOrderId} (same location already captured).`);
+                        } else {
+                            const statusEvents = [
+                                {
+                                    status: 'address_captured',
+                                    timestamp: new Date()
+                                }
+                            ];
 
-                        // Recalculate delivery charge/range on server after address capture.
-                        if (orderData.deliveryType === 'delivery') {
-                            const business = await findBusinessById(firestore, orderData.restaurantId);
-                            if (!business) {
-                                throw new Error('Restaurant not found for delivery recalculation.');
-                            }
-
-                            const businessData = business.data || {};
-                            const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
-                            const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
-                            const getSetting = (key, fallback) => deliveryConfig[key] ?? businessData[key] ?? fallback;
-
-                            const settings = {
-                                deliveryEnabled: getSetting('deliveryEnabled', true),
-                                deliveryRadius: getSetting('deliveryRadius', 10),
-                                deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
-                                fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
-                                perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
-                                baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
-                                freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
-                                freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
-                                freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
-                                roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
-                                deliveryTiers: getSetting('deliveryTiers', []),
+                            const patchData = {
+                                customerAddress: addressToPersist.full,
+                                customerLocation: new GeoPoint(addressToPersist.latitude, addressToPersist.longitude),
+                                customerAddressPending: false,
+                                addressCapturedAt: FieldValue.serverTimestamp()
                             };
 
-                            const restaurantLat = toFiniteNumber(
-                                businessData.coordinates?.lat ??
-                                businessData.address?.latitude ??
-                                businessData.businessAddress?.latitude
-                            );
-                            const restaurantLng = toFiniteNumber(
-                                businessData.coordinates?.lng ??
-                                businessData.address?.longitude ??
-                                businessData.businessAddress?.longitude
-                            );
+                            // Recalculate delivery charge/range on server after address capture.
+                            if (orderData.deliveryType === 'delivery') {
+                                const business = await findBusinessById(firestore, orderData.restaurantId);
+                                if (!business) {
+                                    throw new Error('Restaurant not found for delivery recalculation.');
+                                }
 
-                            if (restaurantLat === null || restaurantLng === null) {
-                                throw new Error('Restaurant coordinates are not configured.');
-                            }
+                                const businessData = business.data || {};
+                                const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
+                                const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
+                                const getSetting = (key, fallback) => deliveryConfig[key] ?? businessData[key] ?? fallback;
 
-                            const subtotalAmount = toNum(orderData.subtotal, 0);
-                            let deliveryResult;
-
-                            if (settings.deliveryEnabled === false) {
-                                deliveryResult = {
-                                    allowed: false,
-                                    charge: 0,
-                                    aerialDistance: 0,
-                                    roadDistance: 0,
-                                    roadFactor: settings.roadDistanceFactor,
-                                    message: 'Delivery is currently disabled for this restaurant.',
-                                    reason: 'delivery-disabled'
+                                const settings = {
+                                    deliveryEnabled: getSetting('deliveryEnabled', true),
+                                    deliveryRadius: getSetting('deliveryRadius', 10),
+                                    deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
+                                    fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
+                                    perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
+                                    baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
+                                    freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
+                                    freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
+                                    freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
+                                    roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
+                                    deliveryTiers: getSetting('deliveryTiers', []),
                                 };
-                            } else {
-                                const aerialDistance = calculateHaversineDistance(
-                                    restaurantLat,
-                                    restaurantLng,
-                                    toNum(address.latitude, 0),
-                                    toNum(address.longitude, 0)
+
+                                const restaurantLat = toFiniteNumber(
+                                    businessData.coordinates?.lat ??
+                                    businessData.address?.latitude ??
+                                    businessData.businessAddress?.latitude
                                 );
-                                deliveryResult = calculateDeliveryCharge(aerialDistance, subtotalAmount, settings);
+                                const restaurantLng = toFiniteNumber(
+                                    businessData.coordinates?.lng ??
+                                    businessData.address?.longitude ??
+                                    businessData.businessAddress?.longitude
+                                );
+
+                                if (restaurantLat === null || restaurantLng === null) {
+                                    throw new Error('Restaurant coordinates are not configured.');
+                                }
+
+                                const subtotalAmount = toNum(orderData.subtotal, 0);
+                                let deliveryResult;
+
+                                if (settings.deliveryEnabled === false) {
+                                    deliveryResult = {
+                                        allowed: false,
+                                        charge: 0,
+                                        aerialDistance: 0,
+                                        roadDistance: 0,
+                                        roadFactor: settings.roadDistanceFactor,
+                                        message: 'Delivery is currently disabled for this restaurant.',
+                                        reason: 'delivery-disabled'
+                                    };
+                                } else {
+                                    const aerialDistance = calculateHaversineDistance(
+                                        restaurantLat,
+                                        restaurantLng,
+                                        toNum(addressToPersist.latitude, 0),
+                                        toNum(addressToPersist.longitude, 0)
+                                    );
+                                    deliveryResult = calculateDeliveryCharge(aerialDistance, subtotalAmount, settings);
+                                }
+
+                                const validatedCharge = toNum(deliveryResult.charge, 0);
+                                const recalculatedGrandTotal = calculateGrandTotalFromOrder(orderData, validatedCharge);
+
+                                patchData.deliveryCharge = validatedCharge;
+                                patchData.totalAmount = recalculatedGrandTotal;
+                                patchData.deliveryValidation = {
+                                    success: true,
+                                    ...deliveryResult,
+                                    checkedAt: new Date()
+                                };
+                                patchData.deliveryValidationMessage = deliveryResult.message || null;
+                                patchData.deliveryOutOfRange = !deliveryResult.allowed;
+                                patchData.billDetails = {
+                                    ...(orderData.billDetails || {}),
+                                    subtotal: toNum(orderData.subtotal, toNum(orderData.billDetails?.subtotal, 0)),
+                                    cgst: toNum(orderData.cgst, toNum(orderData.billDetails?.cgst, 0)),
+                                    sgst: toNum(orderData.sgst, toNum(orderData.billDetails?.sgst, 0)),
+                                    deliveryCharge: validatedCharge,
+                                    grandTotal: recalculatedGrandTotal
+                                };
+
+                                if (!deliveryResult.allowed) {
+                                    patchData.deliveryBlocked = true;
+                                    patchData.deliveryBlockedReason = deliveryResult.message || 'Address is outside delivery range.';
+                                    patchData.deliveryBlockedAt = FieldValue.serverTimestamp();
+                                    statusEvents.push({
+                                        status: 'delivery_blocked',
+                                        timestamp: new Date(),
+                                        message: patchData.deliveryBlockedReason
+                                    });
+                                } else {
+                                    patchData.deliveryBlocked = false;
+                                    patchData.deliveryBlockedReason = null;
+                                    patchData.deliveryBlockedAt = null;
+                                    patchData.deliveryValidatedAt = FieldValue.serverTimestamp();
+                                    statusEvents.push({
+                                        status: 'delivery_validated',
+                                        timestamp: new Date(),
+                                        message: deliveryResult.reason || `Delivery charge set to ₹${validatedCharge}`
+                                    });
+                                }
                             }
 
-                            const validatedCharge = toNum(deliveryResult.charge, 0);
-                            const recalculatedGrandTotal = calculateGrandTotalFromOrder(orderData, validatedCharge);
-
-                            patchData.deliveryCharge = validatedCharge;
-                            patchData.totalAmount = recalculatedGrandTotal;
-                            patchData.deliveryValidation = {
-                                success: true,
-                                ...deliveryResult,
-                                checkedAt: new Date()
-                            };
-                            patchData.deliveryValidationMessage = deliveryResult.message || null;
-                            patchData.deliveryOutOfRange = !deliveryResult.allowed;
-                            patchData.billDetails = {
-                                ...(orderData.billDetails || {}),
-                                subtotal: toNum(orderData.subtotal, toNum(orderData.billDetails?.subtotal, 0)),
-                                cgst: toNum(orderData.cgst, toNum(orderData.billDetails?.cgst, 0)),
-                                sgst: toNum(orderData.sgst, toNum(orderData.billDetails?.sgst, 0)),
-                                deliveryCharge: validatedCharge,
-                                grandTotal: recalculatedGrandTotal
-                            };
-
-                            if (!deliveryResult.allowed) {
-                                patchData.deliveryBlocked = true;
-                                patchData.deliveryBlockedReason = deliveryResult.message || 'Address is outside delivery range.';
-                                patchData.deliveryBlockedAt = FieldValue.serverTimestamp();
-                                statusEvents.push({
-                                    status: 'delivery_blocked',
-                                    timestamp: new Date(),
-                                    message: patchData.deliveryBlockedReason
-                                });
-                            } else {
-                                patchData.deliveryBlocked = false;
-                                patchData.deliveryBlockedReason = null;
-                                patchData.deliveryBlockedAt = null;
-                                patchData.deliveryValidatedAt = FieldValue.serverTimestamp();
-                                statusEvents.push({
-                                    status: 'delivery_validated',
-                                    timestamp: new Date(),
-                                    message: deliveryResult.reason || `Delivery charge set to ₹${validatedCharge}`
-                                });
-                            }
+                            patchData.statusHistory = FieldValue.arrayUnion(...statusEvents);
+                            await orderRef.set(patchData, { merge: true });
+                            console.log(`[API][user/addresses] Linked active order ${activeOrderId} updated with customer location.`);
                         }
-
-                        patchData.statusHistory = FieldValue.arrayUnion(...statusEvents);
-                        await orderRef.set(patchData, { merge: true });
-                        console.log(`[API][user/addresses] Linked active order ${activeOrderId} updated with customer location.`);
                     } else {
                         console.warn(`[API][user/addresses] Skipping active order update due to ownership mismatch for ${activeOrderId}.`);
                     }
@@ -295,8 +368,15 @@ export async function POST(req) {
             }
         }
 
-        console.log(`[API][user/addresses] Address added successfully to document: ${targetRef.path}.`);
-        return NextResponse.json({ message: 'Address added successfully!', address }, { status: 200 });
+        const responseMessage = duplicateAddress
+            ? 'Address already exists. Existing saved location was reused.'
+            : 'Address added successfully!';
+        console.log(`[API][user/addresses] ${responseMessage} Document: ${targetRef.path}.`);
+        return NextResponse.json({
+            message: responseMessage,
+            address: addressToPersist,
+            duplicateAddressSkipped: !!duplicateAddress
+        }, { status: 200 });
 
     } catch (error) {
         console.error(`[API][user/addresses] POST /api/user/addresses ERROR:`, error);

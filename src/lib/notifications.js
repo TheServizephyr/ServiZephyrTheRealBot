@@ -171,7 +171,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
         case 'delivered':
             templateName = 'order_status_update';
-            const deliveredMessage = "Your order has been delivered. Thank you for ordering with us. Next time order karne ke liye sirf 'Hi' likh kar bhej dijiye.";
+            const deliveredMessage = "Your order has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.";
             const deliveredParams = [
                 { type: "text", text: customerName },
                 { type: "text", text: displayOrderId },
@@ -179,7 +179,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: deliveredMessage },
             ];
             components.push({ type: "body", parameters: deliveredParams });
-            fullMessageText = `Hi ${customerName}, your order ${displayOrderId} from ${restaurantName} has been delivered. Thank you for ordering with us. Next time order karne ke liye sirf 'Hi' likh kar bhej dijiye.`;
+            fullMessageText = `Hi ${customerName}, your order ${displayOrderId} from ${restaurantName} has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.`;
             console.log(`[Notification Lib] Using template '${templateName}' for delivered status.`);
             break;
 
