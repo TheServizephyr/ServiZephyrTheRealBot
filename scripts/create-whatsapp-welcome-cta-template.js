@@ -14,7 +14,7 @@ const path = require('path');
 const admin = require('firebase-admin');
 
 function sanitizeTemplateName(name) {
-    const candidate = String(name || 'servizephyr_welcome_cta').toLowerCase();
+    const candidate = String(name || 'servizephyr_welcome_cta_utility').toLowerCase();
     return candidate.replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '').slice(0, 512);
 }
 
@@ -90,15 +90,48 @@ async function run() {
         throw new Error('Missing WHATSAPP_WABA_ID and could not auto-detect wabaId from Firestore.');
     }
 
-    const templateName = sanitizeTemplateName(process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_NAME || 'servizephyr_welcome_cta');
+    const templateName = sanitizeTemplateName(process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_NAME || 'servizephyr_welcome_cta_utility');
     const language = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_LANGUAGE || 'en').trim();
     const baseUrl = normalizeBaseUrl(process.env.WHATSAPP_CTA_BASE_URL || 'https://www.servizephyr.com');
+    const category = String(process.env.WHATSAPP_WELCOME_TEMPLATE_CATEGORY || 'UTILITY').trim().toUpperCase();
+    const deleteFirst = String(process.env.WHATSAPP_TEMPLATE_DELETE_FIRST || 'false').trim().toLowerCase() === 'true';
+    const allowCategoryChange = String(process.env.WHATSAPP_ALLOW_CATEGORY_CHANGE || 'false').trim().toLowerCase() === 'true';
+
+    const validCategories = new Set(['UTILITY', 'MARKETING', 'AUTHENTICATION']);
+    if (!validCategories.has(category)) {
+        throw new Error(`Invalid WHATSAPP_WELCOME_TEMPLATE_CATEGORY: ${category}`);
+    }
+
+    if (deleteFirst) {
+        try {
+            const deleteRes = await axios.delete(
+                `https://graph.facebook.com/v21.0/${wabaId}/message_templates`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                    },
+                    params: { name: templateName },
+                }
+            );
+            console.log('Existing template delete response:', JSON.stringify(deleteRes.data, null, 2));
+        } catch (deleteError) {
+            const metaDeleteError = deleteError?.response?.data?.error;
+            if (metaDeleteError?.code === 132001 || metaDeleteError?.error_subcode === 2388044) {
+                console.log('Template not found during delete-first step. Continuing with create...');
+            } else if (metaDeleteError) {
+                console.error('Delete-first Meta API error:', JSON.stringify(metaDeleteError, null, 2));
+                throw deleteError;
+            } else {
+                throw deleteError;
+            }
+        }
+    }
 
     const payload = {
         name: templateName,
         language,
-        category: 'UTILITY',
-        allow_category_change: true,
+        category,
+        allow_category_change: allowCategoryChange,
         components: [
             {
                 type: 'HEADER',
@@ -148,6 +181,9 @@ async function run() {
     console.log(`WABA ID: ${wabaId}`);
     console.log(`Template: ${templateName}`);
     console.log(`Language: ${language}`);
+    console.log(`Category: ${category}`);
+    console.log(`Delete First: ${deleteFirst}`);
+    console.log(`Allow Category Change: ${allowCategoryChange}`);
     console.log('========================================');
 
     try {

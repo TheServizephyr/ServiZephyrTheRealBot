@@ -19,6 +19,8 @@ const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
 const WELCOME_CTA_TEMPLATE_NAME = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_NAME || '').trim();
 const WELCOME_CTA_TEMPLATE_LANGUAGE = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_LANGUAGE || 'en').trim();
 const WELCOME_TEMPLATE_FALLBACK_COOLDOWN_MS = 15000;
+const WELCOME_CTA_BASE_URL = String(process.env.WHATSAPP_CTA_BASE_URL || 'https://www.servizephyr.com').trim().replace(/\/+$/g, '');
+const USE_SESSION_CTA_WELCOME = String(process.env.WHATSAPP_USE_SESSION_CTA_WELCOME || 'true').trim().toLowerCase() !== 'false';
 
 /**
  * Normalizes phone numbers to 10 digits (removes +91 or 91 prefix)
@@ -206,6 +208,14 @@ const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) 
     return { orderPath, trackPath };
 };
 
+const toAbsoluteWelcomeUrl = (pathOrUrl = '') => {
+    const value = String(pathOrUrl || '').trim();
+    if (!value) return WELCOME_CTA_BASE_URL;
+    if (/^https?:\/\//i.test(value)) return value;
+    const normalizedPath = value.startsWith('/') ? value : `/${value}`;
+    return `${WELCOME_CTA_BASE_URL}${normalizedPath}`;
+};
+
 const getWhatsappErrorCodes = (statusUpdate = {}) => {
     const errors = Array.isArray(statusUpdate?.errors) ? statusUpdate.errors : [];
     return errors
@@ -290,6 +300,91 @@ const sendWelcomeMessageWithOptions = async (
 
     const welcomeBody = customMessage || `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`;
     const collectionName = business.ref.parent.id;
+    const sendInteractiveMessageWithLogging = async (payload, fallbackText) => {
+        const response = await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+        const wamid = response?.messages?.[0]?.id;
+        if (wamid) {
+            await conversationRef.collection('messages').doc(wamid).set({
+                id: wamid,
+                sender: 'system',
+                type: 'system',
+                text: fallbackText || welcomeBody,
+                interactive_type: payload?.interactive?.type || 'interactive',
+                timestamp: FieldValue.serverTimestamp(),
+                status: 'sent',
+                isSystem: true
+            });
+        }
+        return response;
+    };
+
+    if (USE_SESSION_CTA_WELCOME && !forceInteractive) {
+        try {
+            const { orderPath, trackPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
+            const orderUrl = toAbsoluteWelcomeUrl(orderPath);
+            const trackUrl = toAbsoluteWelcomeUrl(trackPath);
+            const headerText = String(business.data.name || 'ServiZephyr').slice(0, 60);
+
+            const orderCtaPayload = {
+                type: 'interactive',
+                interactive: {
+                    type: 'cta_url',
+                    header: { type: 'text', text: headerText },
+                    body: { text: `Hi ${options?.customerName || 'Customer'}! Start your order instantly.` },
+                    footer: { text: 'Powered by ServiZephyr' },
+                    action: {
+                        name: 'cta_url',
+                        parameters: {
+                            display_text: 'Order Food',
+                            url: orderUrl
+                        }
+                    }
+                }
+            };
+
+            const trackCtaPayload = {
+                type: 'interactive',
+                interactive: {
+                    type: 'cta_url',
+                    header: { type: 'text', text: headerText },
+                    body: { text: 'Track your latest order in one tap.' },
+                    footer: { text: 'Powered by ServiZephyr' },
+                    action: {
+                        name: 'cta_url',
+                        parameters: {
+                            display_text: 'Track Last Order',
+                            url: trackUrl
+                        }
+                    }
+                }
+            };
+
+            const helpQuickReplyPayload = {
+                type: "interactive",
+                interactive: {
+                    type: "button",
+                    body: {
+                        text: "Need personal help from restaurant? Tap below."
+                    },
+                    action: {
+                        buttons: [
+                            { type: "reply", reply: { id: `action_help`, title: "Need Help?" } }
+                        ]
+                    }
+                }
+            };
+
+            await sendInteractiveMessageWithLogging(orderCtaPayload, `Order now: ${orderUrl}`);
+            await sendInteractiveMessageWithLogging(trackCtaPayload, `Track last order: ${trackUrl}`);
+            await sendInteractiveMessageWithLogging(helpQuickReplyPayload, 'Need Help?');
+
+            await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
+            console.log(`[Webhook WA] Session CTA welcome sent to ${customerPhoneWithCode}`);
+            return;
+        } catch (sessionCtaError) {
+            console.warn(`[Webhook WA] Session CTA welcome failed. Falling back to template/interactive.`, sessionCtaError?.message || sessionCtaError);
+        }
+    }
 
     if (WELCOME_CTA_TEMPLATE_NAME && !forceInteractive) {
         try {
@@ -345,22 +440,11 @@ const sendWelcomeMessageWithOptions = async (
         }
     };
 
-    const response = await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+    const response = await sendInteractiveMessageWithLogging(payload, welcomeBody);
 
     // ✅ PERSISTENCE: Save Welcome Message to Firestore
     if (response && response.messages && response.messages[0]) {
-        const wamid = response.messages[0].id;
-        await conversationRef.collection('messages').doc(wamid).set({
-            id: wamid,
-            sender: 'system',
-            type: 'system',
-            text: welcomeBody, // Simplify for display
-            interactive_type: 'welcome_menu',
-            timestamp: FieldValue.serverTimestamp(),
-            status: 'sent',
-            isSystem: true
-        });
-        console.log(`[Webhook WA] Welcome message saved to Firestore: ${wamid}`);
+        console.log(`[Webhook WA] Welcome message saved to Firestore: ${response.messages[0].id}`);
     }
 
     // ✅ Update timestamp to prevent duplicates
