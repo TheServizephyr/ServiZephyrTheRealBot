@@ -365,7 +365,11 @@ export async function POST(req) {
                         botPhoneNumberId,
                         businessId,
                         businessData.name || 'ServiZephyr',
-                        collectionName
+                        collectionName,
+                        {
+                            customerName,
+                            conversationPreview: 'Your order has been created successfully. Please add your delivery location for live tracking.',
+                        }
                     );
                     if (waResponse?.messages?.[0]?.id) {
                         whatsappSent = true;
@@ -387,7 +391,11 @@ export async function POST(req) {
                         botPhoneNumberId,
                         businessId,
                         businessData.name || 'ServiZephyr',
-                        collectionName
+                        collectionName,
+                        {
+                            customerName,
+                            conversationPreview: 'Your order has been created successfully. Please add your delivery location for live tracking.',
+                        }
                     );
                     if (waResponse?.messages?.[0]?.id) {
                         whatsappSent = true;

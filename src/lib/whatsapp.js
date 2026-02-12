@@ -166,12 +166,20 @@ const storeSystemConversationMessage = async ({
     collectionName = 'restaurants',
     wamid,
     text,
+    customerName = null,
+    conversationPreview = null,
     extra = {}
 }) => {
     if (!wamid || !businessId) return;
 
     const firestore = await getFirestore();
     const cleanPhone = normalizePhoneForConversation(phoneNumber);
+    if (!cleanPhone) return;
+    const conversationRef = firestore
+        .collection(collectionName)
+        .doc(businessId)
+        .collection('conversations')
+        .doc(cleanPhone);
 
     const messageData = {
         id: wamid,
@@ -186,14 +194,30 @@ const storeSystemConversationMessage = async ({
         ...extra
     };
 
-    await firestore
-        .collection(collectionName)
-        .doc(businessId)
-        .collection('conversations')
-        .doc(cleanPhone)
-        .collection('messages')
-        .doc(wamid)
-        .set(messageData);
+    const previewBase = typeof conversationPreview === 'string' && conversationPreview.trim()
+        ? conversationPreview
+        : text;
+    const previewText = String(previewBase || 'System message')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 400);
+
+    const conversationData = {
+        customerPhone: cleanPhone,
+        lastMessage: previewText || 'System message',
+        lastMessageType: 'system',
+        lastMessageTimestamp: FieldValue.serverTimestamp(),
+    };
+
+    if (customerName && String(customerName).trim()) {
+        conversationData.customerName = String(customerName).trim().slice(0, 80);
+    }
+
+    const messageRef = conversationRef.collection('messages').doc(wamid);
+    const batch = firestore.batch();
+    batch.set(conversationRef, conversationData, { merge: true });
+    batch.set(messageRef, messageData);
+    await batch.commit();
 };
 
 /**
@@ -205,7 +229,15 @@ const storeSystemConversationMessage = async ({
  * @param {string} restaurantName The name of the restaurant/business.
  * @param {string} collectionName The Firestore collection name ('restaurants' or 'shops').
  */
-export const sendSystemMessage = async (phoneNumber, messageText, businessPhoneNumberId, businessId, restaurantName, collectionName = 'restaurants') => {
+export const sendSystemMessage = async (
+    phoneNumber,
+    messageText,
+    businessPhoneNumberId,
+    businessId,
+    restaurantName,
+    collectionName = 'restaurants',
+    options = {}
+) => {
     try {
         // Add header and footer to message
         const header = `*${restaurantName} (powered by ServiZephyr)*\n\n`;
@@ -225,7 +257,9 @@ export const sendSystemMessage = async (phoneNumber, messageText, businessPhoneN
             businessId,
             collectionName,
             wamid,
-            text: fullMessage
+            text: fullMessage,
+            customerName: options?.customerName || null,
+            conversationPreview: options?.conversationPreview || messageText,
         });
 
         console.log(`[WhatsApp Lib] System message sent and stored: ${wamid}`);
@@ -248,7 +282,8 @@ export const sendSystemTemplateMessage = async (
     businessPhoneNumberId,
     businessId,
     restaurantName,
-    collectionName = 'restaurants'
+    collectionName = 'restaurants',
+    options = {}
 ) => {
     try {
         if (!templatePayload || typeof templatePayload !== 'object') {
@@ -272,6 +307,8 @@ export const sendSystemTemplateMessage = async (
             collectionName,
             wamid,
             text: fallbackText,
+            customerName: options?.customerName || null,
+            conversationPreview: options?.conversationPreview || readableMessageText,
             extra: {
                 messageFormat: 'template',
                 templateName: templatePayload?.name || null,
