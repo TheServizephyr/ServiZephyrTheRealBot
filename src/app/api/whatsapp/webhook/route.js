@@ -2,7 +2,12 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
-import { sendWhatsAppMessage, downloadWhatsAppMedia, sendSystemMessage } from '@/lib/whatsapp';
+import {
+    sendWhatsAppMessage,
+    downloadWhatsAppMedia,
+    sendSystemMessage,
+    sendSystemTemplateMessage
+} from '@/lib/whatsapp';
 import { sendOrderStatusUpdateToCustomer, sendNewOrderToOwner } from '@/lib/notifications';
 import axios from 'axios';
 import { nanoid } from 'nanoid';
@@ -11,6 +16,8 @@ import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
+const WELCOME_CTA_TEMPLATE_NAME = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_NAME || '').trim();
+const WELCOME_CTA_TEMPLATE_LANGUAGE = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_LANGUAGE || 'en').trim();
 
 /**
  * Normalizes phone numbers to 10 digits (removes +91 or 91 prefix)
@@ -83,7 +90,7 @@ async function getBusiness(firestore, botPhoneNumberId) {
     console.warn(`[Webhook WA] getBusiness: No business found for botPhoneNumberId: ${botPhoneNumberId}`);
     return null;
 }
-
+ 
 const generateSecureToken = async (firestore, userId) => {
     console.log(`[Webhook WA] generateSecureToken: Generating for userId: ${userId}`);
     const token = nanoid(24);
@@ -96,6 +103,106 @@ const generateSecureToken = async (firestore, userId) => {
     });
     console.log("[Webhook WA] generateSecureToken: Token generated linked to User ID.");
     return token;
+};
+
+const toTemplateButtonSuffix = (pathWithQuery = '') => {
+    const clean = String(pathWithQuery || '').trim();
+    if (!clean) return '';
+    return clean.startsWith('/') ? clean.slice(1) : clean;
+};
+
+const buildWelcomeCtaTemplatePayload = ({
+    restaurantName,
+    customerName,
+    orderPath,
+    trackPath
+}) => {
+    if (!WELCOME_CTA_TEMPLATE_NAME) return null;
+
+    const safeRestaurant = String(restaurantName || 'ServiZephyr').slice(0, 60);
+    const safeCustomer = String(customerName || 'Customer').slice(0, 40);
+
+    return {
+        name: WELCOME_CTA_TEMPLATE_NAME,
+        language: { code: WELCOME_CTA_TEMPLATE_LANGUAGE || 'en' },
+        components: [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: safeRestaurant }],
+            },
+            {
+                type: 'body',
+                parameters: [{ type: 'text', text: safeCustomer }],
+            },
+            {
+                type: 'button',
+                sub_type: 'url',
+                index: '0',
+                parameters: [{ type: 'text', text: toTemplateButtonSuffix(orderPath) }],
+            },
+            {
+                type: 'button',
+                sub_type: 'url',
+                index: '1',
+                parameters: [{ type: 'text', text: toTemplateButtonSuffix(trackPath) }],
+            },
+        ],
+    };
+};
+
+const resolveActionIdFromTemplateReply = (rawId, businessId) => {
+    const source = String(rawId || '').trim();
+    if (!source) return null;
+    const normalized = source.toLowerCase();
+
+    if (normalized.startsWith('action_')) return source;
+    if (normalized === 'need help' || normalized === 'need help?' || normalized === 'help') {
+        return 'action_help';
+    }
+    if (normalized === 'end chat') {
+        return 'action_end_chat';
+    }
+    if (normalized === 'order food' || normalized === 'food order') {
+        return `action_order_${businessId}`;
+    }
+    if (normalized === 'track last order' || normalized === 'track order') {
+        return `action_track_${businessId}`;
+    }
+    return source;
+};
+
+const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) => {
+    const normalizedPhone = normalizePhone(customerPhoneWithCode);
+    const { userId } = await getOrCreateGuestProfile(firestore, normalizedPhone);
+    const publicRef = obfuscateGuestId(userId);
+    const encodedRef = encodeURIComponent(publicRef);
+
+    const orderPath = `/order/${business.id}?ref=${encodedRef}`;
+    let trackPath = `${orderPath}&from=track_last_order`;
+
+    const latestOrderSnapshot = await firestore.collection('orders')
+        .where('restaurantId', '==', business.id)
+        .where('userId', '==', userId)
+        .orderBy('orderDate', 'desc')
+        .limit(1)
+        .get();
+
+    if (!latestOrderSnapshot.empty) {
+        const latestOrderDoc = latestOrderSnapshot.docs[0];
+        const latestOrder = latestOrderDoc.data() || {};
+        const orderId = latestOrderDoc.id;
+        const trackingToken = latestOrder.trackingToken;
+
+        if (trackingToken) {
+            let trackingPath = 'delivery';
+            if (latestOrder.deliveryType === 'dine-in') trackingPath = 'dine-in';
+            if (latestOrder.deliveryType === 'pickup') trackingPath = 'pickup';
+
+            trackPath = `/track/${trackingPath}/${orderId}?token=${encodeURIComponent(trackingToken)}&ref=${encodedRef}&activeOrderId=${encodeURIComponent(orderId)}`;
+        }
+    }
+
+    return { orderPath, trackPath };
 };
 
 /**
@@ -172,9 +279,45 @@ const sendWelcomeMessageWithOptions = async (
         }
     }
 
-    console.log(`[Webhook WA] Sending interactive welcome message to ${customerPhoneWithCode}`);
-
     const welcomeBody = customMessage || `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`;
+    const collectionName = business.ref.parent.id;
+
+    if (WELCOME_CTA_TEMPLATE_NAME) {
+        try {
+            const customerName = options?.customerName || 'Customer';
+            const { orderPath, trackPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
+            const templatePayload = buildWelcomeCtaTemplatePayload({
+                restaurantName: business.data.name,
+                customerName,
+                orderPath,
+                trackPath
+            });
+
+            if (templatePayload) {
+                await sendSystemTemplateMessage(
+                    customerPhoneWithCode,
+                    templatePayload,
+                    welcomeBody,
+                    botPhoneNumberId,
+                    business.id,
+                    business.data.name || 'ServiZephyr',
+                    collectionName,
+                    {
+                        conversationPreview: welcomeBody,
+                        customerName
+                    }
+                );
+
+                await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
+                console.log(`[Webhook WA] Welcome CTA template sent to ${customerPhoneWithCode}`);
+                return;
+            }
+        } catch (templateError) {
+            console.warn(`[Webhook WA] Welcome CTA template failed. Falling back to interactive buttons.`, templateError?.message || templateError);
+        }
+    }
+
+    console.log(`[Webhook WA] Sending interactive welcome message to ${customerPhoneWithCode}`);
 
     const payload = {
         type: "interactive",
@@ -298,6 +441,10 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
 
 
 const handleButtonActions = async (firestore, buttonId, fromNumber, business, botPhoneNumberId) => {
+    if (!buttonId || typeof buttonId !== 'string') {
+        console.warn(`[Webhook WA] Ignoring button action because buttonId is invalid:`, buttonId);
+        return;
+    }
     const [action, type, ...payloadParts] = buttonId.split('_');
 
     if (action !== 'action') return;
@@ -635,7 +782,10 @@ export async function POST(request) {
                             business,
                             botPhoneNumberId,
                             timeoutMessage,
-                            { bypassRateLimit: true }
+                            {
+                                bypassRateLimit: true,
+                                customerName: conversationData.customerName || fromPhoneNumber
+                            }
                         );
                     } else {
                         const elapsedMinutes = (Date.now() - enteredAt.getTime()) / 60000;
@@ -652,7 +802,10 @@ export async function POST(request) {
                                 business,
                                 botPhoneNumberId,
                                 timeoutMessage,
-                                { bypassRateLimit: true }
+                                {
+                                    bypassRateLimit: true,
+                                    customerName: conversationData.customerName || fromPhoneNumber
+                                }
                             );
                         }
                     }
@@ -684,6 +837,8 @@ export async function POST(request) {
                     mediaId = message.audio.id;
                 } else if (message.type === 'interactive') {
                     messageContent = message.interactive.button_reply?.title || message.interactive.list_reply?.title || '[Interactive]';
+                } else if (message.type === 'button') {
+                    messageContent = message.button?.text || message.button?.payload || '[Button]';
                 }
 
                 // Skip logging specific technical signals if needed, but for now log everything
@@ -733,7 +888,13 @@ export async function POST(request) {
                             text: 'Chat ended by customer',
                             isSystem: true
                         });
-                        await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
+                        await sendWelcomeMessageWithOptions(
+                            fromNumber,
+                            business,
+                            botPhoneNumberId,
+                            null,
+                            { customerName: customerNameFromPayload }
+                        );
                         continue; // Process next message in batch
                     }
 
@@ -755,7 +916,17 @@ export async function POST(request) {
                 // ✅ 4. STATE-BASED RESPONSES
                 // Handle interactive button clicks (ALWAYS process button actions, even if state is silent)
                 if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
-                    await handleButtonActions(firestore, message.interactive.button_reply.id, fromNumber, business, botPhoneNumberId);
+                    const rawButtonId = message.interactive.button_reply.id || message.interactive.button_reply.title;
+                    const actionId = resolveActionIdFromTemplateReply(rawButtonId, business.id);
+                    await handleButtonActions(firestore, actionId, fromNumber, business, botPhoneNumberId);
+                }
+                // Template quick replies can come as `button` payload
+                else if (message.type === 'button') {
+                    const rawButtonPayload = message.button?.payload || message.button?.text;
+                    const actionId = resolveActionIdFromTemplateReply(rawButtonPayload, business.id);
+                    if (actionId) {
+                        await handleButtonActions(firestore, actionId, fromNumber, business, botPhoneNumberId);
+                    }
                 }
                 // If in direct_chat or browsing_order, bot stays quiet for other types of messages
                 else if (conversationData.state === 'direct_chat' || conversationData.state === 'browsing_order') {
@@ -769,7 +940,13 @@ export async function POST(request) {
                 // Handle text messages in Menu mode (Strict Enforcement)
                 else if (message.type === 'text') {
                     const promptText = `Please select an option from the menu below to proceed:`;
-                    await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId, promptText);
+                    await sendWelcomeMessageWithOptions(
+                        fromNumber,
+                        business,
+                        botPhoneNumberId,
+                        promptText,
+                        { customerName: customerNameFromPayload }
+                    );
                 }
             }
             return NextResponse.json({ message: 'Messages processed' }, { status: 200 });

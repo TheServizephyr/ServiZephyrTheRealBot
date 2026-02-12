@@ -17,7 +17,8 @@
     "cleanup:auth-tokens": "node -r dotenv/config scripts/cleanup-auth-tokens.js dotenv_config_path=.env.local",
     "cleanup:auth-tokens:full": "node -r dotenv/config -e \"process.env.MODE='full'; require('./scripts/cleanup-auth-tokens.js')\" dotenv_config_path=.env.local",
     "cleanup:audit-logs": "node -r dotenv/config scripts/cleanup-audit-logs.js dotenv_config_path=.env.local",
-    "cleanup:audit-logs:full": "node -r dotenv/config -e \"process.env.MODE='full'; require('./scripts/cleanup-audit-logs.js')\" dotenv_config_path=.env.local"
+    "cleanup:audit-logs:full": "node -r dotenv/config -e \"process.env.MODE='full'; require('./scripts/cleanup-audit-logs.js')\" dotenv_config_path=.env.local",
+    "whatsapp:create-welcome-cta-template": "node -r dotenv/config scripts/create-whatsapp-welcome-cta-template.js dotenv_config_path=.env.local"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.0.0",

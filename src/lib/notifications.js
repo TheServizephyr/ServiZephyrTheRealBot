@@ -1,7 +1,38 @@
 
-
-import { sendWhatsAppMessage } from './whatsapp';
+import { sendSystemMessage, sendWhatsAppMessage } from './whatsapp';
 import { getFirestore, FieldValue } from './firebase-admin';
+
+const normalizeIndianPhoneForWhatsApp = (value) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return null;
+    if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+    if (digits.length > 10) return digits.slice(-10);
+    return digits;
+};
+
+const resolveBusinessByBotPhoneId = async (firestore, botPhoneNumberId) => {
+    const restaurants = await firestore
+        .collection('restaurants')
+        .where('botPhoneNumberId', '==', botPhoneNumberId)
+        .limit(1)
+        .get();
+    if (!restaurants.empty) {
+        const doc = restaurants.docs[0];
+        return { doc, collectionName: 'restaurants' };
+    }
+
+    const shops = await firestore
+        .collection('shops')
+        .where('botPhoneNumberId', '==', botPhoneNumberId)
+        .limit(1)
+        .get();
+    if (!shops.empty) {
+        const doc = shops.docs[0];
+        return { doc, collectionName: 'shops' };
+    }
+
+    return null;
+};
 
 export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId, restaurantName }) => {
     console.log(`[Notification Lib] Preparing 'new_order' notification for owner ${ownerPhone}.`);
@@ -10,7 +41,12 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
         console.error(`[Notification Lib] CRITICAL: Cannot send new order notification. Owner phone or Bot ID is missing. Owner Phone: ${ownerPhone}, Bot ID: ${botPhoneNumberId}`);
         return;
     }
-    const ownerPhoneWithCode = '91' + ownerPhone;
+    const normalizedOwnerPhone = normalizeIndianPhoneForWhatsApp(ownerPhone);
+    if (!normalizedOwnerPhone || normalizedOwnerPhone.length < 10) {
+        console.error(`[Notification Lib] Invalid owner phone for notification: ${ownerPhone}`);
+        return;
+    }
+    const ownerPhoneWithCode = '91' + normalizedOwnerPhone;
 
     console.log(`[Notification Lib] New order details: Customer: ${customerName}, Amount: ${totalAmount}, OrderID: ${orderId}`);
 
@@ -55,7 +91,12 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         console.warn(`[Notification Lib] Customer phone or Bot ID not found. Cannot send status update for order ${orderId}.`);
         return;
     }
-    const customerPhoneWithCode = '91' + customerPhone;
+    const normalizedCustomerPhone = normalizeIndianPhoneForWhatsApp(customerPhone);
+    if (!normalizedCustomerPhone || normalizedCustomerPhone.length < 10) {
+        console.warn(`[Notification Lib] Invalid customer phone for order ${orderId}: ${customerPhone}`);
+        return;
+    }
+    const customerPhoneWithCode = '91' + normalizedCustomerPhone;
 
     // Use Customer-facing ID if available, else fallback to truncated Firestore ID
     const displayOrderId = customerOrderId ? `#${customerOrderId}` : `#${orderId.substring(0, 8)}`;
@@ -261,17 +302,11 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 // 1. Find Business Context (Restaurant vs Shop)
                 // We need to know WHICH collection and WHICH document ID to save to.
                 // Assuming we can lookup by botPhoneNumberId
-                const businessQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
-                let businessDoc = !businessQuery.empty ? businessQuery.docs[0] : null;
-
-                if (!businessDoc) {
-                    const shopQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
-                    businessDoc = !shopQuery.empty ? shopQuery.docs[0] : null;
-                }
-
-                if (businessDoc) {
+                const businessContext = await resolveBusinessByBotPhoneId(firestore, botPhoneNumberId);
+                if (businessContext?.doc) {
+                    const businessDoc = businessContext.doc;
                     const wamid = response.messages[0].id;
-                    const cleanPhone = customerPhone; // from arg
+                    const cleanPhone = normalizedCustomerPhone;
                     // const summaryText = `Order Status: ${capitalizedStatus}`; // OLD
 
                     await businessDoc.ref
@@ -298,8 +333,35 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         }
 
     } catch (e) {
-        console.error("[Notification Lib] CRITICAL: Failed to send WhatsApp status update.", e);
-        throw e; // Re-throw to let the caller know it failed
+        console.error("[Notification Lib] Template status update failed. Trying text fallback.", e);
+
+        try {
+            const firestore = await getFirestore();
+            const businessContext = await resolveBusinessByBotPhoneId(firestore, botPhoneNumberId);
+
+            if (businessContext?.doc) {
+                const businessDoc = businessContext.doc;
+                const businessName = businessDoc.data()?.name || restaurantName || 'ServiZephyr';
+                await sendSystemMessage(
+                    customerPhoneWithCode,
+                    fullMessageText || `Order ${displayOrderId} status updated: ${capitalizedStatus}`,
+                    botPhoneNumberId,
+                    businessDoc.id,
+                    businessName,
+                    businessContext.collectionName,
+                    {
+                        customerName,
+                        conversationPreview: `Order ${displayOrderId}: ${capitalizedStatus}`
+                    }
+                );
+                console.log(`[Notification Lib] Text fallback sent successfully for order ${orderId}.`);
+                return;
+            }
+
+            console.error("[Notification Lib] Fallback skipped: business lookup by botPhoneNumberId failed.");
+        } catch (fallbackErr) {
+            console.error("[Notification Lib] CRITICAL: Text fallback also failed.", fallbackErr);
+        }
     }
 };
 
