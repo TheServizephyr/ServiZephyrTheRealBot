@@ -112,6 +112,7 @@ const CheckoutPageInternal = () => {
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
     const [orderState, setOrderState] = useState(ORDER_STATE.IDLE);
     const [orderError, setOrderError] = useState('');
+    const [retryCount, setRetryCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [idempotencyKey, setIdempotencyKey] = useState('');
@@ -814,8 +815,45 @@ const CheckoutPageInternal = () => {
 
     const handleViewBill = () => {
         setDineInModalOpen(false);
-        setDetailsConfirmed(true);
         setIsOnlinePaymentFlow(true);
+    };
+
+    const validateOrderDetails = () => {
+        if (!Array.isArray(cart) || cart.length === 0) {
+            setError("Cart is empty. Please add at least one item.");
+            return false;
+        }
+
+        const hasInvalidItem = cart.some((item) => {
+            if (!item) return true;
+            const qty = parseInt(item.quantity, 10) || 0;
+            return qty <= 0;
+        });
+
+        if (hasInvalidItem) {
+            setError("Cart has invalid item quantity. Please review cart.");
+            return false;
+        }
+
+        if (activeOrderId) {
+            setError('');
+            return true;
+        }
+
+        if (deliveryType === 'delivery' && !selectedAddress) {
+            setError("Please select or add a delivery address.");
+            return false;
+        }
+        if (deliveryType === 'delivery' && deliveryValidation && deliveryValidation.allowed === false) {
+            setError(deliveryValidation.message || "Your selected address is outside delivery range.");
+            return false;
+        }
+        if (deliveryType === 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
+            setError("Please provide a name for the order.");
+            return false;
+        }
+        setError('');
+        return true;
     };
 
 
@@ -1101,6 +1139,7 @@ const CheckoutPageInternal = () => {
             const res = await fetch('/api/order/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
             const data = await res.json();
             console.log("[Checkout Page] Order API response received:", data);
+            setRetryCount(0);
 
             if (data.razorpay_order_id) {
                 console.log(`[Checkout Page] Razorpay ID found: ${data.razorpay_order_id}`);
@@ -1334,6 +1373,7 @@ const CheckoutPageInternal = () => {
             }
         } catch (err) {
             console.error("[Checkout Page] placeOrder function error:", err);
+            setRetryCount((prev) => Math.min(prev + 1, 3));
 
             // Set ORDER_STATE.ERROR for proper UI handling
             setOrderState(ORDER_STATE.ERROR);
@@ -1361,29 +1401,10 @@ const CheckoutPageInternal = () => {
         }
     };
 
-    const validateOrderDetails = () => {
-        if (activeOrderId) return true;
-
-        if (deliveryType === 'delivery' && !selectedAddress) {
-            setError("Please select or add a delivery address.");
-            return false;
-        }
-        if (deliveryType === 'delivery' && deliveryValidation && deliveryValidation.allowed === false) {
-            setError(deliveryValidation.message || "Your selected address is outside delivery range.");
-            return false;
-        }
-        if (deliveryType === 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
-            setError("Please provide a name for the order.");
-            return false;
-        }
-        setError('');
-        return true;
-    }
-
     const handleConfirmDetails = () => {
         if (validateOrderDetails()) {
             localStorage.setItem('customerName', orderName);
-            setDetailsConfirmed(true);
+            setIsPaymentDrawerOpen(true);
         }
     }
 

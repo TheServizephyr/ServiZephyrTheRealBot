@@ -442,10 +442,14 @@ export async function processOrderV1(body, firestore) {
             console.error("[API /order/create] Validation Error: Name is required for non-dine-in orders.");
             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
-        if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
-            const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
+        if (!restaurantId || !Array.isArray(items) || grandTotal === undefined || subtotal === undefined) {
+            const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${Array.isArray(items)}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
             console.error(`[API /order/create] Validation Error: Missing required fields. Details: ${missingFields}`);
             return NextResponse.json({ message: `Missing required fields for order creation. Details: ${missingFields}` }, { status: 400 });
+        }
+        if (items.length === 0) {
+            console.error("[API /order/create] Validation Error: Empty items array.");
+            return NextResponse.json({ message: 'At least one item is required for order creation.' }, { status: 400 });
         }
         if (deliveryType === 'delivery' && (!address || !address.full)) {
             console.error("[API /order/create] Validation Error: Full, structured address required for delivery.");

@@ -198,9 +198,16 @@ export async function createOrderV2(req, options = {}) {
             });
         }
 
-        if (!restaurantId || !items || grandTotal === undefined) {
+        if (!restaurantId || !Array.isArray(items) || grandTotal === undefined) {
             return buildErrorResponse({
                 message: 'Missing required fields for order creation.',
+                status: 400
+            });
+        }
+
+        if (items.length === 0) {
+            return buildErrorResponse({
+                message: 'At least one item is required to place an order.',
                 status: 400
             });
         }

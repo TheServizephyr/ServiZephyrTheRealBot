@@ -639,12 +639,6 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                 )}
             </div>
 
-            {isAddressPendingDeliveryOrder && (
-                <div className="text-xs font-semibold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1">
-                    Address not filled yet: order progress allowed hai, lekin rider assign tabhi karein jab customer location aa jaye.
-                </div>
-            )}
-
             {/* Admin/Extra Actions Row */}
             <div className="flex justify-between items-center px-1">
                 <Button onClick={onPrintClick} variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground h-8 px-2">
@@ -916,11 +910,6 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                                 }
                             </div>
                         </div>
-                    </div>
-                )}
-                {isAddressPendingDeliveryOrder && (
-                    <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] font-semibold text-yellow-300">
-                        Customer ne abhi location submit nahi ki. Rider assign karne se pehle add-address link complete karwana recommended hai.
                     </div>
                 )}
             </div>
