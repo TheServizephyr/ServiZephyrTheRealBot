@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 import { getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
-import { sendSystemMessage } from '@/lib/whatsapp';
+import { sendSystemMessage, sendSystemTemplateMessage } from '@/lib/whatsapp';
 import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 import { createOrderV2 } from '@/services/order/createOrder.service';
+
+const SHORT_LINK_COLLECTION = 'short_links';
+const SHORT_LINK_LENGTH = 8;
+const SHORT_LINK_MAX_ATTEMPTS = 5;
+const SHORT_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+const ADD_ADDRESS_TEMPLATE_NAME = (process.env.WHATSAPP_ADD_ADDRESS_TEMPLATE_NAME || '').trim();
+const ADD_ADDRESS_TEMPLATE_LANGUAGE = (process.env.WHATSAPP_ADD_ADDRESS_TEMPLATE_LANGUAGE || 'en').trim();
 
 function normalizePhone(phone) {
     const digits = String(phone || '').replace(/\D/g, '');
@@ -95,6 +103,106 @@ function resolvePublicBaseUrl(req) {
     const isTunnelOrLocal = /localhost|127\.0\.0\.1|ngrok|trycloudflare|loca\.lt|localtunnel/i.test(rawBase);
 
     return isTunnelOrLocal ? PROD_BASE_URL : rawBase;
+}
+
+function generateShortCode(length = SHORT_LINK_LENGTH) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    const bytes = randomBytes(length);
+    let out = '';
+    for (let i = 0; i < length; i += 1) {
+        out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+}
+
+function normalizeAddAddressPath(fullUrl) {
+    try {
+        const parsed = new URL(fullUrl);
+        if (!parsed.pathname.startsWith('/add-address')) {
+            return null;
+        }
+        return `${parsed.pathname}${parsed.search || ''}`;
+    } catch {
+        return null;
+    }
+}
+
+async function createShortAddAddressCode({
+    firestore,
+    addAddressLink,
+    businessId,
+    orderId,
+    customerPhone,
+    customerName,
+}) {
+    const targetPath = normalizeAddAddressPath(addAddressLink);
+    if (!targetPath) {
+        throw new Error('Invalid add-address target path for short link.');
+    }
+
+    for (let attempt = 0; attempt < SHORT_LINK_MAX_ATTEMPTS; attempt += 1) {
+        const code = generateShortCode();
+        const docRef = firestore.collection(SHORT_LINK_COLLECTION).doc(code);
+        try {
+            await docRef.create({
+                code,
+                targetPath,
+                purpose: 'manual_call_add_address',
+                businessId,
+                orderId,
+                customerPhone,
+                customerName: customerName || 'Guest',
+                accessCount: 0,
+                status: 'active',
+                createdAt: new Date(),
+                expiresAt: new Date(Date.now() + SHORT_LINK_TTL_MS),
+            });
+            return code;
+        } catch (error) {
+            const alreadyExists =
+                error?.code === 6 || // gRPC already exists
+                /already exists/i.test(String(error?.message || ''));
+            if (!alreadyExists) {
+                throw error;
+            }
+        }
+    }
+
+    throw new Error('Unable to generate short link code. Please retry.');
+}
+
+function buildAddAddressTemplatePayload({ restaurantName, customerName, orderId, shortCode }) {
+    if (!ADD_ADDRESS_TEMPLATE_NAME) {
+        return null;
+    }
+
+    const orderPreview = String(orderId || '').slice(0, 8).toUpperCase();
+    const safeCustomer = String(customerName || 'Customer').slice(0, 30);
+    const safeRestaurant = String(restaurantName || 'ServiZephyr').slice(0, 60);
+
+    return {
+        name: ADD_ADDRESS_TEMPLATE_NAME,
+        language: { code: ADD_ADDRESS_TEMPLATE_LANGUAGE || 'en' },
+        components: [
+            {
+                type: 'header',
+                parameters: [{ type: 'text', text: safeRestaurant }],
+            },
+            {
+                type: 'body',
+                parameters: [
+                    { type: 'text', text: safeCustomer || 'Customer' },
+                    { type: 'text', text: orderPreview || 'ORDER' },
+                ],
+            },
+            {
+                type: 'button',
+                sub_type: 'url',
+                index: '0',
+                parameters: [{ type: 'text', text: shortCode }],
+            },
+        ],
+    };
 }
 
 export async function POST(req) {
@@ -205,36 +313,97 @@ export async function POST(req) {
 
         const trackingUrl = `${baseUrl}/track/delivery/${orderId}?token=${token}&ref=${encodedGuestRef}&phone=${encodedPhone}&activeOrderId=${orderId}`;
         const returnTrackingPath = `/track/delivery/${orderId}?token=${encodedToken}&ref=${encodedGuestRef}&phone=${encodedPhone}&activeOrderId=${encodedOrderId}`;
-        const addAddressLink = `${baseUrl}/add-address?token=${encodedToken}&ref=${encodedGuestRef}&phone=${encodedPhone}&name=${encodedCustomerName}&activeOrderId=${encodedOrderId}&useCurrent=true&currentLocation=true&returnUrl=${encodeURIComponent(returnTrackingPath)}`;
+        const addAddressPath = `/add-address?token=${encodedToken}&ref=${encodedGuestRef}&phone=${encodedPhone}&name=${encodedCustomerName}&activeOrderId=${encodedOrderId}&useCurrent=true&currentLocation=true&returnUrl=${encodeURIComponent(returnTrackingPath)}`;
+        const addAddressLink = `${baseUrl}${addAddressPath}`;
+
+        let addAddressShortCode = null;
+        let addAddressShortLink = null;
+        try {
+            addAddressShortCode = await createShortAddAddressCode({
+                firestore,
+                addAddressLink,
+                businessId,
+                orderId,
+                customerPhone: phone,
+                customerName,
+            });
+            addAddressShortLink = `${baseUrl}/a/${addAddressShortCode}`;
+        } catch (shortErr) {
+            console.warn('[Custom Bill Create Order] Failed to create short add-address link:', shortErr?.message || shortErr);
+        }
 
         const businessData = businessSnap.data() || {};
         const botPhoneNumberId = businessData.botPhoneNumberId;
         let whatsappSent = false;
         let whatsappError = null;
+        let whatsappMode = 'none';
 
         if (duplicateOrderRequest) {
             whatsappSent = false;
             whatsappError = 'Duplicate create-order request ignored (existing order reused).';
         } else if (botPhoneNumberId) {
-            try {
-                const message = `Your order has been created successfully.\n\nTo enable live tracking, please add your current delivery location:\n${addAddressLink}`;
-                const waResponse = await sendSystemMessage(
-                    `91${phone}`,
-                    message,
-                    botPhoneNumberId,
-                    businessId,
-                    businessData.name || 'ServiZephyr',
-                    collectionName
-                );
-                if (waResponse?.messages?.[0]?.id) {
-                    whatsappSent = true;
-                } else {
-                    whatsappSent = false;
-                    whatsappError = 'WhatsApp API did not return a message id.';
+            const customerFacingLink = addAddressShortLink || addAddressLink;
+            const fallbackMessage = `Your order has been created successfully.\n\nTo enable live tracking, please add your current delivery location:\n${customerFacingLink}`;
+
+            // Preferred path: approved WhatsApp template with CTA URL button.
+            if (ADD_ADDRESS_TEMPLATE_NAME && addAddressShortCode) {
+                try {
+                    const templatePayload = buildAddAddressTemplatePayload({
+                        restaurantName: businessData.name || 'ServiZephyr',
+                        customerName,
+                        orderId,
+                        shortCode: addAddressShortCode,
+                    });
+                    if (!templatePayload) {
+                        throw new Error('Template payload not available.');
+                    }
+
+                    const waResponse = await sendSystemTemplateMessage(
+                        `91${phone}`,
+                        templatePayload,
+                        fallbackMessage,
+                        botPhoneNumberId,
+                        businessId,
+                        businessData.name || 'ServiZephyr',
+                        collectionName
+                    );
+                    if (waResponse?.messages?.[0]?.id) {
+                        whatsappSent = true;
+                        whatsappMode = 'template';
+                    } else {
+                        throw new Error('WhatsApp API did not return a message id for template.');
+                    }
+                } catch (templateErr) {
+                    console.warn('[Custom Bill Create Order] Template send failed. Falling back to text message:', templateErr?.message || templateErr);
+                    whatsappMode = 'text_fallback';
                 }
-            } catch (err) {
-                whatsappError = err?.message || 'Failed to send WhatsApp message.';
-                console.error('[Custom Bill Create Order] WhatsApp send failed:', err);
+            }
+
+            if (!whatsappSent) {
+                try {
+                    const waResponse = await sendSystemMessage(
+                        `91${phone}`,
+                        fallbackMessage,
+                        botPhoneNumberId,
+                        businessId,
+                        businessData.name || 'ServiZephyr',
+                        collectionName
+                    );
+                    if (waResponse?.messages?.[0]?.id) {
+                        whatsappSent = true;
+                        if (whatsappMode === 'text_fallback') {
+                            whatsappMode = 'text_fallback';
+                        } else if (whatsappMode !== 'template') {
+                            whatsappMode = 'text';
+                        }
+                    } else {
+                        whatsappSent = false;
+                        whatsappError = 'WhatsApp API did not return a message id.';
+                    }
+                } catch (err) {
+                    whatsappError = err?.message || 'Failed to send WhatsApp message.';
+                    console.error('[Custom Bill Create Order] WhatsApp send failed:', err);
+                }
             }
         } else {
             whatsappError = 'Business botPhoneNumberId is not configured.';
@@ -247,9 +416,11 @@ export async function POST(req) {
             guestRef,
             trackingUrl,
             addAddressLink,
+            addAddressShortLink,
             addressPending: true,
             duplicateRequest: duplicateOrderRequest,
             whatsappSent,
+            whatsappMode,
             whatsappError,
         });
     } catch (error) {

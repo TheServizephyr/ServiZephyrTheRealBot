@@ -156,6 +156,46 @@ export const markWhatsAppMessageAsRead = async (messageId, businessPhoneNumberId
     }
 };
 
+const normalizePhoneForConversation = (phoneNumber = '') => {
+    return String(phoneNumber).replace(/^\+?91/, '').replace(/\D/g, '').slice(-10);
+};
+
+const storeSystemConversationMessage = async ({
+    phoneNumber,
+    businessId,
+    collectionName = 'restaurants',
+    wamid,
+    text,
+    extra = {}
+}) => {
+    if (!wamid || !businessId) return;
+
+    const firestore = await getFirestore();
+    const cleanPhone = normalizePhoneForConversation(phoneNumber);
+
+    const messageData = {
+        id: wamid,
+        wamid: wamid,
+        sender: 'system',
+        type: 'system',
+        text: text,
+        body: text,
+        timestamp: FieldValue.serverTimestamp(),
+        status: 'sent',
+        isSystem: true,
+        ...extra
+    };
+
+    await firestore
+        .collection(collectionName)
+        .doc(businessId)
+        .collection('conversations')
+        .doc(cleanPhone)
+        .collection('messages')
+        .doc(wamid)
+        .set(messageData);
+};
+
 /**
  * Sends a system-generated WhatsApp message with header, footer and stores it in Firestore.
  * @param {string} phoneNumber The recipient's phone number (with country code, e.g., '919876543210').
@@ -180,38 +220,69 @@ export const sendSystemMessage = async (phoneNumber, messageText, businessPhoneN
         }
 
         const wamid = response.messages[0].id;
-
-        // Store in Firestore
-        const firestore = await getFirestore();
-        // Remove +91 or 91 prefix and keep last 10 digits
-        const cleanPhone = phoneNumber.replace(/^\+?91/, '').replace(/\D/g, '').slice(-10);
-
-        const messageData = {
-            id: wamid, // Use 'id' for consistency
-            wamid: wamid,
-            sender: 'system', // Standardized sender
-            type: 'system',
-            text: fullMessage, // Standardized content field
-            body: fullMessage, // Keep for backward compat if needed
-            timestamp: FieldValue.serverTimestamp(),
-            status: 'sent',
-            isSystem: true
-        };
-
-        await firestore
-            .collection(collectionName)
-            .doc(businessId)
-            .collection('conversations')
-            .doc(cleanPhone)
-            .collection('messages')
-            .doc(wamid)
-            .set(messageData);
+        await storeSystemConversationMessage({
+            phoneNumber,
+            businessId,
+            collectionName,
+            wamid,
+            text: fullMessage
+        });
 
         console.log(`[WhatsApp Lib] System message sent and stored: ${wamid}`);
         return response;
 
     } catch (error) {
         console.error('[WhatsApp Lib] Error in sendSystemMessage:', error);
+        throw error;
+    }
+};
+
+/**
+ * Sends a WhatsApp template message and stores a readable system copy in Firestore.
+ * Use this when interactive/template UX is needed but conversation history must remain intact.
+ */
+export const sendSystemTemplateMessage = async (
+    phoneNumber,
+    templatePayload,
+    readableMessageText,
+    businessPhoneNumberId,
+    businessId,
+    restaurantName,
+    collectionName = 'restaurants'
+) => {
+    try {
+        if (!templatePayload || typeof templatePayload !== 'object') {
+            throw new Error('Invalid template payload');
+        }
+
+        const response = await sendWhatsAppMessage(phoneNumber, templatePayload, businessPhoneNumberId);
+
+        if (!response || !response.messages || !response.messages[0]) {
+            console.error('[WhatsApp Lib] Failed to get message ID from template response');
+            return;
+        }
+
+        const wamid = response.messages[0].id;
+        const header = `*${restaurantName} (powered by ServiZephyr)*\n\n`;
+        const fallbackText = header + (readableMessageText || 'Template message sent.');
+
+        await storeSystemConversationMessage({
+            phoneNumber,
+            businessId,
+            collectionName,
+            wamid,
+            text: fallbackText,
+            extra: {
+                messageFormat: 'template',
+                templateName: templatePayload?.name || null,
+                templateLanguage: templatePayload?.language?.code || null,
+            }
+        });
+
+        console.log(`[WhatsApp Lib] System template message sent and stored: ${wamid}`);
+        return response;
+    } catch (error) {
+        console.error('[WhatsApp Lib] Error in sendSystemTemplateMessage:', error);
         throw error;
     }
 };
