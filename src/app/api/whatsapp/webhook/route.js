@@ -10,6 +10,7 @@ import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
 
 /**
  * Normalizes phone numbers to 10 digits (removes +91 or 91 prefix)
@@ -19,6 +20,24 @@ const normalizePhone = (phone) => {
     // Remove +91 or 91 prefix and keep last 10 digits
     const cleaned = phone.replace(/^\+?91/, '').replace(/\D/g, '');
     return cleaned.length > 10 ? cleaned.slice(-10) : cleaned;
+};
+
+const coerceDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') {
+        const parsed = value.toDate();
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getDirectChatTimeoutMinutes = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES;
+    }
+    return parsed;
 };
 
 export async function GET(request) {
@@ -590,31 +609,40 @@ export async function POST(request) {
                 let conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
 
                 // ✅ 0. TIMEOUT CHECK: Reset direct_chat if 30 mins passed
-                if (conversationData.state === 'direct_chat' && conversationData.enteredDirectChatAt) {
-                    const enteredTime = conversationData.enteredDirectChatAt.toDate().getTime();
-                    const timeoutMinutes = conversationData.directChatTimeoutMinutes || 30;
-                    const elapsedMinutes = (Date.now() - enteredTime) / 60000;
+                if (conversationData.state === 'direct_chat') {
+                    const enteredAt = coerceDate(conversationData.enteredDirectChatAt);
+                    const timeoutMinutes = getDirectChatTimeoutMinutes(conversationData.directChatTimeoutMinutes);
 
-                    if (elapsedMinutes > timeoutMinutes) {
-                        console.log(`[Webhook WA] Session EXPIRED for ${fromPhoneNumber}. Resetting to menu.`);
+                    if (!enteredAt) {
+                        console.warn(`[Webhook WA] Missing/invalid enteredDirectChatAt for ${fromPhoneNumber}. Resetting state.`);
+                        await conversationRef.set({
+                            state: 'menu',
+                            autoExpiredAt: FieldValue.serverTimestamp(),
+                        }, { merge: true });
+                        conversationData.state = 'menu';
+                    } else {
+                        const elapsedMinutes = (Date.now() - enteredAt.getTime()) / 60000;
+                        if (elapsedMinutes >= timeoutMinutes) {
+                            console.log(`[Webhook WA] Session EXPIRED for ${fromPhoneNumber}. Resetting to menu.`);
 
-                        // Transition state
-                        await conversationRef.set({ state: 'menu' }, { merge: true });
-                        conversationData.state = 'menu'; // Update local state for subsequent logic
+                            await conversationRef.set({
+                                state: 'menu',
+                                autoExpiredAt: FieldValue.serverTimestamp(),
+                            }, { merge: true });
+                            conversationData.state = 'menu';
 
-                        // Notify customer
-                        const expiryMessage = "Interaction has ended due to inactivity. If you want to continue, you can contact us again.";
-                        await sendWhatsAppMessage(fromNumber, expiryMessage, botPhoneNumberId);
+                            const expiryMessage = 'Interaction has ended due to inactivity. If you want to continue, you can contact us again.';
+                            await sendWhatsAppMessage(fromNumber, expiryMessage, botPhoneNumberId);
 
-                        // Log expiry message
-                        await conversationRef.collection('messages').add({
-                            sender: 'system',
-                            type: 'system',
-                            text: expiryMessage,
-                            timestamp: FieldValue.serverTimestamp(),
-                            status: 'sent',
-                            isSystem: true
-                        });
+                            await conversationRef.collection('messages').add({
+                                sender: 'system',
+                                type: 'system',
+                                text: expiryMessage,
+                                timestamp: FieldValue.serverTimestamp(),
+                                status: 'sent',
+                                isSystem: true
+                            });
+                        }
                     }
                 }
 

@@ -1,15 +1,33 @@
-
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
+const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
+
+function coerceDate(value) {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') {
+        const parsed = value.toDate();
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getDirectChatTimeoutMinutes(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES;
+    }
+    return parsed;
+}
+
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req); // Use central helper
+    const uid = await verifyAndGetUid(req);
 
-    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = url.searchParams.get('employee_of');
@@ -24,12 +42,9 @@ async function verifyOwnerAndGetBusinessRef(req) {
 
     let targetOwnerId = uid;
 
-    // Admin impersonation
     if (userRole === 'admin' && impersonatedOwnerId) {
         targetOwnerId = impersonatedOwnerId;
-    }
-    // Employee access
-    else if (employeeOfOwnerId) {
+    } else if (employeeOfOwnerId) {
         const linkedOutlets = userData.linkedOutlets || [];
         const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
 
@@ -37,9 +52,7 @@ async function verifyOwnerAndGetBusinessRef(req) {
             throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
         }
         targetOwnerId = employeeOfOwnerId;
-    }
-    // Owner access
-    else if (!['owner', 'restaurant-owner', 'shop-owner'].includes(userRole)) {
+    } else if (!['owner', 'restaurant-owner', 'shop-owner'].includes(userRole)) {
         throw { message: 'Access Denied', status: 403 };
     }
 
@@ -58,30 +71,49 @@ async function verifyOwnerAndGetBusinessRef(req) {
 
 export async function GET(req) {
     try {
+        const firestore = await getFirestore();
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
 
         const conversationsSnap = await businessRef.collection('conversations')
             .orderBy('lastMessageTimestamp', 'desc')
             .get();
 
+        const nowMs = Date.now();
+        const batch = firestore.batch();
+        let hasAutoExpireUpdates = false;
+
         const conversations = conversationsSnap.docs.map(doc => {
             const data = doc.data();
-            const lastMessageTimestamp = data.lastMessageTimestamp?.toDate ? data.lastMessageTimestamp.toDate().toISOString() : null;
-            const orderLinkAccessedAt = data.orderLinkAccessedAt?.toDate ? data.orderLinkAccessedAt.toDate().toISOString() : null;
-            const enteredDirectChatAt = data.enteredDirectChatAt?.toDate ? data.enteredDirectChatAt.toDate().toISOString() : null;
+            const lastMessageTimestamp = coerceDate(data.lastMessageTimestamp)?.toISOString() || null;
+            const orderLinkAccessedAt = coerceDate(data.orderLinkAccessedAt)?.toISOString() || null;
+            const enteredDirectChatDate = coerceDate(data.enteredDirectChatAt);
+            const enteredDirectChatAt = enteredDirectChatDate?.toISOString() || null;
+            const timeoutMinutes = getDirectChatTimeoutMinutes(data.directChatTimeoutMinutes);
 
-            // ✅ CALCULATE TIMEOUT STATUS for conversations in direct_chat
+            let conversationState = data.state;
             let timeoutStatus = 'active';
-            if (data.state === 'direct_chat' && enteredDirectChatAt) {
-                const enteredTime = new Date(enteredDirectChatAt).getTime();
-                const timeoutMinutes = data.directChatTimeoutMinutes || 30;
-                const elapsedMinutes = (Date.now() - enteredTime) / 60000;
 
-                if (elapsedMinutes > timeoutMinutes) {
+            if (conversationState === 'direct_chat' && enteredDirectChatDate) {
+                const elapsedMinutes = (nowMs - enteredDirectChatDate.getTime()) / 60000;
+                if (elapsedMinutes >= timeoutMinutes) {
                     timeoutStatus = 'expired';
+                    conversationState = 'menu';
+                    hasAutoExpireUpdates = true;
+                    batch.set(doc.ref, {
+                        state: 'menu',
+                        autoExpiredAt: FieldValue.serverTimestamp(),
+                    }, { merge: true });
                 } else {
-                    timeoutStatus = `${Math.round(timeoutMinutes - elapsedMinutes)}m left`;
+                    timeoutStatus = `${Math.max(1, Math.ceil(timeoutMinutes - elapsedMinutes))}m left`;
                 }
+            } else if (conversationState === 'direct_chat' && !enteredDirectChatDate) {
+                timeoutStatus = 'expired';
+                conversationState = 'menu';
+                hasAutoExpireUpdates = true;
+                batch.set(doc.ref, {
+                    state: 'menu',
+                    autoExpiredAt: FieldValue.serverTimestamp(),
+                }, { merge: true });
             }
 
             return {
@@ -90,19 +122,22 @@ export async function GET(req) {
                 lastMessageTimestamp,
                 orderLinkAccessedAt,
                 enteredDirectChatAt,
-                timeoutStatus, // ✅ NEW: Send timeout status to frontend
-                conversationState: data.state, // ✅ NEW: Explicitly include state for UI indicators
+                timeoutStatus,
+                conversationState,
             };
         });
+
+        if (hasAutoExpireUpdates) {
+            await batch.commit();
+        }
 
         return NextResponse.json({ conversations }, { status: 200 });
 
     } catch (error) {
-        console.error("GET /api/owner/whatsapp-direct/conversations ERROR:", error);
+        console.error('GET /api/owner/whatsapp-direct/conversations ERROR:', error);
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
-
 
 export async function PATCH(req) {
     try {
@@ -122,29 +157,28 @@ export async function PATCH(req) {
             await conversationRef.set({ state: 'menu' }, { merge: true });
 
             const botPhoneNumberId = businessData.botPhoneNumberId;
-            const customerPhoneWithCode = '91' + conversationId;
+            const customerPhoneWithCode = `91${conversationId}`;
 
-            const closureBody = `This chat has been closed by the restaurant. You can now use the menu below or type any message to start again.`;
+            const closureBody = 'This chat has been closed by the restaurant. You can now use the menu below or type any message to start again.';
 
             const payload = {
-                type: "interactive",
+                type: 'interactive',
                 interactive: {
-                    type: "button",
+                    type: 'button',
                     body: {
                         text: closureBody
                     },
                     action: {
                         buttons: [
-                            { type: "reply", reply: { id: `action_order_${businessDoc.id}`, title: "Order Food" } },
-                            { type: "reply", reply: { id: `action_track_${businessDoc.id}`, title: "Track Last Order" } },
-                            { type: "reply", reply: { id: "action_help", title: "Need More Help?" } }
+                            { type: 'reply', reply: { id: `action_order_${businessDoc.id}`, title: 'Order Food' } },
+                            { type: 'reply', reply: { id: `action_track_${businessDoc.id}`, title: 'Track Last Order' } },
+                            { type: 'reply', reply: { id: 'action_help', title: 'Need More Help?' } }
                         ]
                     }
                 }
             };
             await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
 
-            // ✅ Log closure to transcript
             await conversationRef.collection('messages').add({
                 sender: 'system',
                 type: 'system',
@@ -153,7 +187,6 @@ export async function PATCH(req) {
                 status: 'sent',
                 isSystem: true
             });
-            // Also log the sent menu
             await conversationRef.collection('messages').add({
                 sender: 'system',
                 type: 'system',
@@ -179,7 +212,7 @@ export async function PATCH(req) {
         return NextResponse.json({ message: 'No valid action or tag provided.' }, { status: 400 });
 
     } catch (error) {
-        console.error("PATCH /api/owner/whatsapp-direct/conversations ERROR:", error);
+        console.error('PATCH /api/owner/whatsapp-direct/conversations ERROR:', error);
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
