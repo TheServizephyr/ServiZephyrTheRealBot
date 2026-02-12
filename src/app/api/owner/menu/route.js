@@ -14,55 +14,87 @@ import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
 // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
 // (Logic moved inside methods below)
 
+function normalizeCompactPortions(item = {}) {
+    if (Array.isArray(item?.portions) && item.portions.length > 0) {
+        return item.portions.map((portion) => ({
+            name: String(portion?.name || 'Regular'),
+            price: Number(portion?.price ?? item?.price ?? 0) || 0,
+        }));
+    }
+
+    const fallbackPrice = Number(item?.price ?? 0);
+    return [{ name: 'Regular', price: Number.isFinite(fallbackPrice) ? fallbackPrice : 0 }];
+}
+
 export async function GET(req) {
     try {
         const firestore = await getFirestore();
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(req, 'view_menu');
+        const requestUrl = new URL(req.url);
+        const compactMode = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('compact') || '').toLowerCase());
 
 
         // (Audit logging handled by verifyOwnerWithAudit internally for impersonation)
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
-        const menuSnap = await menuRef.orderBy('order', 'asc').get();
+        let menuQuery = menuRef.orderBy('order', 'asc');
+        if (compactMode) {
+            menuQuery = menuQuery.select(
+                'name',
+                'categoryId',
+                'isVeg',
+                'isAvailable',
+                'portions',
+                'price',
+                'order',
+                'isDeleted'
+            );
+        }
+        const menuSnap = await menuQuery.get();
         // ✅ SOFT-DELETE: Filter items in JS to avoid index dependency
         const activeDocs = menuSnap.docs.filter(doc => doc.data().isDeleted !== true);
 
 
         let menuData = {};
         const businessData = businessSnap.data();
-        // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
-        const customCatSnap = await firestore.collection(collectionName).doc(businessId).collection('custom_categories').orderBy('order', 'asc').get();
-        const customCategories = customCatSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let customCategories = [];
+        if (!compactMode) {
+            // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
+            const customCatSnap = await firestore.collection(collectionName).doc(businessId).collection('custom_categories').orderBy('order', 'asc').get();
+            customCategories = customCatSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        }
 
         const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'shop' : 'street-vendor'));
         console.log(`[API LOG] GET /api/owner/menu: Determined businessType as '${businessType}'.`);
 
-        const restaurantCategoryConfig = {
-            "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
-            "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
-            "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
-            "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
-            "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
-            'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
-        };
-        const shopCategoryConfig = {
-            "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
-            "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
-            "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
-        };
+        if (!compactMode) {
+            const restaurantCategoryConfig = {
+                "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
+                "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
+                "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
+                "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
+                "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
+                'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
+            };
+            const shopCategoryConfig = {
+                "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
+                "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
+                "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
+            };
 
-        const allCategories = { ...(businessType === 'restaurant' || businessType === 'street-vendor' ? restaurantCategoryConfig : shopCategoryConfig) };
-        customCategories.forEach(cat => {
-            if (!allCategories[cat.id]) {
-                allCategories[cat.id] = { title: cat.title };
-            }
-        });
+            const allCategories = { ...(businessType === 'restaurant' || businessType === 'street-vendor' ? restaurantCategoryConfig : shopCategoryConfig) };
+            customCategories.forEach(cat => {
+                if (!allCategories[cat.id]) {
+                    allCategories[cat.id] = { title: cat.title };
+                }
+            });
 
-        const allCategoryKeys = Object.keys(allCategories);
+            const allCategoryKeys = Object.keys(allCategories);
 
-        allCategoryKeys.forEach(key => {
-            menuData[key] = [];
-        });
+            allCategoryKeys.forEach(key => {
+                menuData[key] = [];
+            });
+        }
 
         activeDocs.forEach(doc => {
             const item = doc.data();
@@ -70,11 +102,28 @@ export async function GET(req) {
             if (!menuData[categoryKey]) {
                 menuData[categoryKey] = [];
             }
-            menuData[categoryKey].push({ id: doc.id, ...item });
+            if (compactMode) {
+                menuData[categoryKey].push({
+                    id: doc.id,
+                    name: String(item?.name || 'Unnamed Item'),
+                    categoryId: categoryKey,
+                    isVeg: !!item?.isVeg,
+                    isAvailable: item?.isAvailable !== false,
+                    portions: normalizeCompactPortions(item),
+                });
+            } else {
+                menuData[categoryKey].push({ id: doc.id, ...item });
+            }
         });
 
         console.log("[API LOG] GET /api/owner/menu: Successfully processed menu data. Responding to client.");
-        return NextResponse.json({ menu: menuData, customCategories: customCategories, businessType: businessType, restaurantId: businessId }, { status: 200 });
+        return NextResponse.json({
+            menu: menuData,
+            customCategories: customCategories,
+            businessType: businessType,
+            restaurantId: businessId,
+            compact: compactMode,
+        }, { status: 200 });
 
     } catch (error) {
         console.error("[API LOG] CRITICAL ERROR in GET /api/owner/menu:", error);

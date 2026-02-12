@@ -55,6 +55,8 @@ function CustomBillPage() {
     });
 
     useEffect(() => {
+        let isMounted = true;
+
         const fetchMenuAndSettings = async () => {
             setLoading(true);
             try {
@@ -62,33 +64,61 @@ function CustomBillPage() {
                 if (!user) throw new Error("Authentication required.");
                 const idToken = await user.getIdToken();
 
-                let menuUrl = `/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId || ''}`;
-                let settingsUrl = `/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`;
+                const menuUrl = `/api/owner/menu?compact=1&impersonate_owner_id=${impersonatedOwnerId || ''}`;
+                const settingsUrl = `/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`;
+                const headers = { 'Authorization': `Bearer ${idToken}` };
 
-                const [menuRes, settingsRes] = await Promise.all([
-                    fetch(menuUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
-                    fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
-                ]);
+                const menuPromise = fetch(menuUrl, { headers });
+                const settingsPromise = fetch(settingsUrl, { headers });
 
-                if (!menuRes.ok || !settingsRes.ok) throw new Error('Failed to fetch data.');
+                settingsPromise
+                    .then(async (settingsRes) => {
+                        if (!settingsRes.ok) {
+                            const settingsError = await settingsRes.json().catch(() => ({}));
+                            throw new Error(settingsError?.message || 'Failed to fetch settings.');
+                        }
+                        const settingsData = await settingsRes.json();
+                        if (!isMounted) return;
+                        setRestaurant({
+                            name: settingsData.restaurantName,
+                            address: settingsData.address,
+                            gstin: settingsData.gstin,
+                            gstEnabled: !!settingsData.gstEnabled,
+                            gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
+                            gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
+                        });
+                    })
+                    .catch((settingsError) => {
+                        if (!isMounted) return;
+                        setInfoDialog((prev) => {
+                            if (prev.isOpen) return prev;
+                            return {
+                                isOpen: true,
+                                title: 'Warning',
+                                message: `Menu loaded, but restaurant details could not load: ${settingsError.message}`,
+                            };
+                        });
+                    });
+
+                const menuRes = await menuPromise;
+                if (!menuRes.ok) {
+                    const menuError = await menuRes.json().catch(() => ({}));
+                    throw new Error(menuError?.message || 'Failed to fetch menu.');
+                }
 
                 const menuData = await menuRes.json();
-                const settingsData = await settingsRes.json();
-
-                setMenu(menuData.menu || {});
-                setRestaurant({
-                    name: settingsData.restaurantName,
-                    address: settingsData.address,
-                    gstin: settingsData.gstin,
-                    gstEnabled: !!settingsData.gstEnabled,
-                    gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
-                    gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
-                });
+                if (isMounted) {
+                    setMenu(menuData.menu || {});
+                }
 
             } catch (error) {
-                setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load menu: ${error.message}` });
+                if (isMounted) {
+                    setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load menu: ${error.message}` });
+                }
             } finally {
-                setLoading(false);
+                if (isMounted) {
+                    setLoading(false);
+                }
             }
         };
 
@@ -97,7 +127,10 @@ function CustomBillPage() {
             else setLoading(false);
         });
 
-        return () => unsubscribe();
+        return () => {
+            isMounted = false;
+            unsubscribe();
+        };
     }, [impersonatedOwnerId]);
 
     // Handle Scroll Spy
@@ -125,8 +158,8 @@ function CustomBillPage() {
 
         container.addEventListener('scroll', handleScroll);
         // Set initial active category
-        if (Object.keys(menu).length > 0 && !activeCategory) {
-            setActiveCategory(Object.keys(menu)[0]);
+        if (Object.keys(menu).length > 0) {
+            setActiveCategory((prev) => prev || Object.keys(menu)[0]);
         }
         return () => container.removeEventListener('scroll', handleScroll);
     }, [menu]);
@@ -210,6 +243,21 @@ function CustomBillPage() {
         const total = sub + localCgst + localSgst;
         return { subtotal: sub, cgst: localCgst, sgst: localSgst, grandTotal: total };
     }, [cart, restaurant]);
+
+    const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
+    const visibleMenuEntries = useMemo(() => {
+        const entries = [];
+        for (const [categoryId, items] of Object.entries(menu || {})) {
+            if (!Array.isArray(items) || items.length === 0) continue;
+            const filteredItems = normalizedSearchQuery
+                ? items.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery))
+                : items;
+            if (filteredItems.length > 0) {
+                entries.push([categoryId, filteredItems]);
+            }
+        }
+        return entries;
+    }, [menu, normalizedSearchQuery]);
 
     const submitCreateOrder = async () => {
         try {
@@ -525,7 +573,7 @@ function CustomBillPage() {
                         {/* CATEGORY NAVIGATION SIDEBAR */}
                         <div className="w-1/4 flex-shrink-0 border-r border-border pr-2 overflow-y-auto custom-scrollbar hidden md:block">
                             <div className="space-y-1">
-                                {Object.entries(menu).filter(([_, items]) => items.length > 0).map(([categoryId, _]) => (
+                                {visibleMenuEntries.map(([categoryId]) => (
                                     <button
                                         key={categoryId}
                                         onClick={() => scrollToCategory(categoryId)}
@@ -552,34 +600,29 @@ function CustomBillPage() {
                                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
                                     <p>Loading menu...</p>
                                 </div>
-                            ) : Object.entries(menu).filter(([_, items]) => items.length > 0).map(([categoryId, items]) => {
-                                const filteredItems = items.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
-                                if (filteredItems.length === 0) return null;
-
-                                return (
-                                    <div key={categoryId} id={`cat-${categoryId}`} className="mb-4 pt-1">
-                                        <h3 className="font-bold text-base sticky top-0 bg-card py-1.5 z-10 capitalize border-b border-border/50 mb-2">
-                                            {categoryId.replace('-', ' ')}
-                                        </h3>
-                                        {filteredItems.map(item => (
-                                            <div key={item.id} className="mb-1.5 p-2 bg-muted/40 hover:bg-muted/60 rounded-xl border border-border/30 transition-colors">
-                                                <p className="font-semibold text-foreground">{item.name}</p>
-                                                <div className="flex w-full gap-2 mt-2">
-                                                    {item.portions.map(portion => (
-                                                        <button
-                                                            key={portion.name}
-                                                            onClick={() => addToCart(item, portion)}
-                                                            className="flex-1 text-xs px-3 py-2 rounded-lg bg-background border border-border hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-1 font-medium"
-                                                        >
-                                                            <Plus size={12} /> {item.portions.length > 1 ? `${portion.name} - ` : 'Add - '} {formatCurrency(portion.price)}
-                                                        </button>
-                                                    ))}
-                                                </div>
+                            ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
+                                <div key={categoryId} id={`cat-${categoryId}`} className="mb-4 pt-1">
+                                    <h3 className="font-bold text-base sticky top-0 bg-card py-1.5 z-10 capitalize border-b border-border/50 mb-2">
+                                        {categoryId.replace('-', ' ')}
+                                    </h3>
+                                    {filteredItems.map(item => (
+                                        <div key={item.id} className="mb-1.5 p-2 bg-muted/40 hover:bg-muted/60 rounded-xl border border-border/30 transition-colors">
+                                            <p className="font-semibold text-foreground">{item.name}</p>
+                                            <div className="flex w-full gap-2 mt-2">
+                                                {item.portions.map(portion => (
+                                                    <button
+                                                        key={portion.name}
+                                                        onClick={() => addToCart(item, portion)}
+                                                        className="flex-1 text-xs px-3 py-2 rounded-lg bg-background border border-border hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-1 font-medium"
+                                                    >
+                                                        <Plus size={12} /> {item.portions.length > 1 ? `${portion.name} - ` : 'Add - '} {formatCurrency(portion.price)}
+                                                    </button>
+                                                ))}
                                             </div>
-                                        ))}
-                                    </div>
-                                );
-                            })}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>

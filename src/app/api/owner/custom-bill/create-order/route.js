@@ -8,8 +8,6 @@ import { sendSystemMessage } from '@/lib/whatsapp';
 import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 import { createOrderV2 } from '@/services/order/createOrder.service';
 
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
 function normalizePhone(phone) {
     const digits = String(phone || '').replace(/\D/g, '');
     if (digits.length >= 10) return digits.slice(-10);
@@ -20,11 +18,6 @@ function toPositiveNumber(value, fallback = 0) {
     const n = Number(value);
     if (!Number.isFinite(n) || n < 0) return fallback;
     return n;
-}
-
-function toFiniteNumber(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
 }
 
 function normalizeItem(item, index) {
@@ -75,34 +68,6 @@ function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal }) 
     const signature = `${businessId}|${phone}|${normalizedItems}|${Number(subtotal || 0).toFixed(2)}|${minuteBucket}`;
     const digest = createHash('sha256').update(signature).digest('hex').slice(0, 24);
     return `manual_call_${digest}`;
-}
-
-async function geocodeAddress(addressText) {
-    if (!GOOGLE_MAPS_API_KEY) {
-        throw new Error('Google Maps key missing on server.');
-    }
-
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressText)}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url, { cache: 'no-store' });
-    const data = await res.json();
-
-    if (!res.ok || data.status !== 'OK' || !data.results?.length) {
-        const reason = data.error_message || data.status || 'Geocoding failed';
-        throw new Error(`Address geocoding failed: ${reason}`);
-    }
-
-    const first = data.results[0];
-    const lat = Number(first?.geometry?.location?.lat);
-    const lng = Number(first?.geometry?.location?.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        throw new Error('Address coordinates are invalid.');
-    }
-
-    return {
-        latitude: lat,
-        longitude: lng,
-        formattedAddress: first.formatted_address || addressText,
-    };
 }
 
 function getBusinessTypeFromCollection(collectionName) {
@@ -163,20 +128,10 @@ export async function POST(req) {
         const items = rawItems.map(normalizeItem);
         const subtotal = items.reduce((sum, item) => sum + toPositiveNumber(item.totalPrice, 0), 0);
 
-        const providedLat = toFiniteNumber(customerDetails?.latitude ?? customerDetails?.lat);
-        const providedLng = toFiniteNumber(customerDetails?.longitude ?? customerDetails?.lng);
         const hasProvidedAddress = !!addressText;
-
-        let geocoded = null;
-        if (hasProvidedAddress) {
-            geocoded = (providedLat !== null && providedLng !== null)
-                ? {
-                    latitude: providedLat,
-                    longitude: providedLng,
-                    formattedAddress: addressText,
-                }
-                : await geocodeAddress(addressText);
-        }
+        // Owner-entered address is treated as bill-only placeholder.
+        // Customer still shares live location later through add-address link.
+        const ownerEnteredAddress = hasProvidedAddress ? { full: addressText } : null;
 
         const firestore = await getFirestore();
         const profileResult = await getOrCreateGuestProfile(firestore, phone);
@@ -185,11 +140,7 @@ export async function POST(req) {
         const createOrderPayload = {
             name: customerName,
             phone,
-            address: hasProvidedAddress ? {
-                full: geocoded.formattedAddress,
-                latitude: geocoded.latitude,
-                longitude: geocoded.longitude,
-            } : null,
+            address: ownerEnteredAddress,
             restaurantId: businessId,
             items,
             notes,
@@ -201,7 +152,7 @@ export async function POST(req) {
             sgst: 0,
             grandTotal: subtotal,
             deliveryCharge: 0,
-            skipAddressValidation: !hasProvidedAddress,
+            skipAddressValidation: true,
             initialStatus: 'confirmed',
             idempotencyKey: buildManualOrderIdempotencyKey({
                 businessId,
@@ -236,9 +187,9 @@ export async function POST(req) {
             await firestore.collection('orders').doc(orderId).set({
                 orderSource: 'manual_call',
                 isManualCallOrder: true,
-                addressCaptureRequired: !hasProvidedAddress,
-                addAddressLinkRequired: !hasProvidedAddress,
-                addAddressRequestedAt: !hasProvidedAddress ? new Date() : null,
+                addressCaptureRequired: true,
+                addAddressLinkRequired: true,
+                addAddressRequestedAt: new Date(),
                 manualCallUpdatedAt: new Date(),
             }, { merge: true });
         } catch (tagError) {
@@ -266,9 +217,7 @@ export async function POST(req) {
             whatsappError = 'Duplicate create-order request ignored (existing order reused).';
         } else if (botPhoneNumberId) {
             try {
-                const message = hasProvidedAddress
-                    ? `Your order has been created successfully.\n\nTrack your order here:\n${trackingUrl}`
-                    : `Your order has been created successfully.\n\nTo enable live tracking, please add your current delivery location:\n${addAddressLink}`;
+                const message = `Your order has been created successfully.\n\nTo enable live tracking, please add your current delivery location:\n${addAddressLink}`;
                 const waResponse = await sendSystemMessage(
                     `91${phone}`,
                     message,
@@ -297,8 +246,8 @@ export async function POST(req) {
             token,
             guestRef,
             trackingUrl,
-            addAddressLink: hasProvidedAddress ? null : addAddressLink,
-            addressPending: !hasProvidedAddress,
+            addAddressLink,
+            addressPending: true,
             duplicateRequest: duplicateOrderRequest,
             whatsappSent,
             whatsappError,
