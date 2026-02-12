@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { nanoid } from 'nanoid';
+import { createHash } from 'crypto';
 
 import { getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
@@ -58,6 +58,23 @@ function normalizeItem(item, index) {
             }))
             : [],
     };
+}
+
+function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal }) {
+    const minuteBucket = Math.floor(Date.now() / 60000);
+    const normalizedItems = (items || [])
+        .map((item) => {
+            const id = String(item?.id || 'na');
+            const qty = Number(item?.quantity || 1);
+            const price = Number(item?.price || item?.totalPrice || 0);
+            return `${id}:${qty}:${price}`;
+        })
+        .sort()
+        .join('|');
+
+    const signature = `${businessId}|${phone}|${normalizedItems}|${Number(subtotal || 0).toFixed(2)}|${minuteBucket}`;
+    const digest = createHash('sha256').update(signature).digest('hex').slice(0, 24);
+    return `manual_call_${digest}`;
 }
 
 async function geocodeAddress(addressText) {
@@ -185,18 +202,27 @@ export async function POST(req) {
             grandTotal: subtotal,
             deliveryCharge: 0,
             skipAddressValidation: !hasProvidedAddress,
-            idempotencyKey: `manual_call_${businessId}_${Date.now()}_${nanoid(8)}`,
+            initialStatus: 'confirmed',
+            idempotencyKey: buildManualOrderIdempotencyKey({
+                businessId,
+                phone,
+                items,
+                subtotal
+            }),
             guestRef,
         };
 
         const createOrderReq = { json: async () => createOrderPayload };
-        const createOrderRes = await createOrderV2(createOrderReq);
+        const createOrderRes = await createOrderV2(createOrderReq, {
+            allowInitialStatusOverride: true
+        });
         const createOrderData = await createOrderRes.json();
 
         if (!createOrderRes.ok) {
             return NextResponse.json(createOrderData, { status: createOrderRes.status });
         }
 
+        const duplicateOrderRequest = createOrderData?.message === 'Order already exists';
         const orderId = createOrderData?.order_id || createOrderData?.firestore_order_id;
         const token = createOrderData?.token;
         if (!orderId || !token) {
@@ -206,6 +232,19 @@ export async function POST(req) {
             );
         }
 
+        try {
+            await firestore.collection('orders').doc(orderId).set({
+                orderSource: 'manual_call',
+                isManualCallOrder: true,
+                addressCaptureRequired: !hasProvidedAddress,
+                addAddressLinkRequired: !hasProvidedAddress,
+                addAddressRequestedAt: !hasProvidedAddress ? new Date() : null,
+                manualCallUpdatedAt: new Date(),
+            }, { merge: true });
+        } catch (tagError) {
+            console.warn('[Custom Bill Create Order] Failed to tag manual-call metadata:', tagError?.message || tagError);
+        }
+
         const baseUrl = resolvePublicBaseUrl(req);
         const encodedGuestRef = encodeURIComponent(guestRef);
         const encodedOrderId = encodeURIComponent(orderId);
@@ -213,8 +252,8 @@ export async function POST(req) {
         const encodedPhone = encodeURIComponent(phone);
         const encodedCustomerName = encodeURIComponent(customerName);
 
-        const trackingUrl = `${baseUrl}/track/delivery/${orderId}?token=${token}&ref=${encodedGuestRef}&activeOrderId=${orderId}`;
-        const returnTrackingPath = `/track/delivery/${orderId}?token=${encodedToken}&ref=${encodedGuestRef}&activeOrderId=${encodedOrderId}`;
+        const trackingUrl = `${baseUrl}/track/delivery/${orderId}?token=${token}&ref=${encodedGuestRef}&phone=${encodedPhone}&activeOrderId=${orderId}`;
+        const returnTrackingPath = `/track/delivery/${orderId}?token=${encodedToken}&ref=${encodedGuestRef}&phone=${encodedPhone}&activeOrderId=${encodedOrderId}`;
         const addAddressLink = `${baseUrl}/add-address?token=${encodedToken}&ref=${encodedGuestRef}&phone=${encodedPhone}&name=${encodedCustomerName}&activeOrderId=${encodedOrderId}&useCurrent=true&currentLocation=true&returnUrl=${encodeURIComponent(returnTrackingPath)}`;
 
         const businessData = businessSnap.data() || {};
@@ -222,7 +261,10 @@ export async function POST(req) {
         let whatsappSent = false;
         let whatsappError = null;
 
-        if (botPhoneNumberId) {
+        if (duplicateOrderRequest) {
+            whatsappSent = false;
+            whatsappError = 'Duplicate create-order request ignored (existing order reused).';
+        } else if (botPhoneNumberId) {
             try {
                 const message = hasProvidedAddress
                     ? `Your order has been created successfully.\n\nTrack your order here:\n${trackingUrl}`
@@ -257,6 +299,7 @@ export async function POST(req) {
             trackingUrl,
             addAddressLink: hasProvidedAddress ? null : addAddressLink,
             addressPending: !hasProvidedAddress,
+            duplicateRequest: duplicateOrderRequest,
             whatsappSent,
             whatsappError,
         });

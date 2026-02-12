@@ -89,6 +89,18 @@ function canTransition(orderData, fromStatus, toStatus) {
     return previousStatuses.includes(toStatus);
 }
 
+function hasValidGeoLocation(location) {
+    if (!location || typeof location !== 'object') return false;
+
+    const latCandidate = location._latitude ?? location.latitude ?? location.lat;
+    const lngCandidate = location._longitude ?? location.longitude ?? location.lng;
+
+    const lat = Number(latCandidate);
+    const lng = Number(lngCandidate);
+
+    return Number.isFinite(lat) && Number.isFinite(lng);
+}
+
 function redactOrderForViewer(orderData = {}, canViewCustomerDetails = true, canViewPaymentDetails = true) {
     const redacted = { ...orderData };
 
@@ -419,6 +431,7 @@ export async function PATCH(req) {
 
                 const orderData = orderSnap.data();
                 const currentStatus = orderData.status;
+                const hasCustomerLocation = hasValidGeoLocation(orderData.customerLocation);
                 const isBlockedDeliveryOrder =
                     orderData.deliveryType === 'delivery' &&
                     orderData.deliveryBlocked === true &&
@@ -438,9 +451,14 @@ export async function PATCH(req) {
 
                 const resolvedDeliveryBoyId = deliveryBoyId || orderData.deliveryBoyId || null;
 
-                if (newStatus === 'ready_for_pickup' && orderData.deliveryType === 'delivery' && !resolvedDeliveryBoyId) {
+                if (
+                    newStatus === 'ready_for_pickup' &&
+                    orderData.deliveryType === 'delivery' &&
+                    hasCustomerLocation &&
+                    !resolvedDeliveryBoyId
+                ) {
                     return NextResponse.json({
-                        message: 'Delivery orders require rider assignment before moving to ready_for_pickup.'
+                        message: 'Delivery orders with customer location require rider assignment before moving to ready_for_pickup.'
                     }, { status: 400 });
                 }
 
@@ -470,19 +488,6 @@ export async function PATCH(req) {
 
                         // A. Notifications
                         if (orderData.customerPhone) {
-                            const hasCustomerLocation = !!(
-                                orderData.customerLocation &&
-                                (
-                                    typeof orderData.customerLocation._latitude === 'number' ||
-                                    typeof orderData.customerLocation.latitude === 'number' ||
-                                    typeof orderData.customerLocation.lat === 'number'
-                                ) &&
-                                (
-                                    typeof orderData.customerLocation._longitude === 'number' ||
-                                    typeof orderData.customerLocation.longitude === 'number' ||
-                                    typeof orderData.customerLocation.lng === 'number'
-                                )
-                            );
                             effects.push(sendOrderStatusUpdateToCustomer({
                                 customerPhone: orderData.customerPhone,
                                 botPhoneNumberId: businessData.botPhoneNumberId,

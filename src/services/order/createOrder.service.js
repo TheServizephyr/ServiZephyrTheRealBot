@@ -113,11 +113,12 @@ const toFiniteNumber = (value) => {
  * 6. Persist order
  * 7. Return response
  */
-export async function createOrderV2(req) {
+export async function createOrderV2(req, options = {}) {
     console.log('[createOrderV2] Processing order request');
 
     try {
         const firestore = await getFirestore();
+        const { allowInitialStatusOverride = false } = options || {};
 
         // ========================================
         // STEP 1: PARSE REQUEST
@@ -151,8 +152,16 @@ export async function createOrderV2(req) {
             existingOrderId, // Add-on flow
             guestRef,       // ✅ NEW: Guest Identity Ref
             guestToken,      // ✅ NEW: Guest Identity Token (Session Check)
-            skipAddressValidation = false
+            skipAddressValidation = false,
+            initialStatus = 'pending'
         } = body;
+
+        const requestedInitialStatus = String(initialStatus || 'pending').trim().toLowerCase();
+        const allowedInitialStatuses = new Set(['pending', 'confirmed']);
+        const effectiveInitialStatus =
+            allowInitialStatusOverride && allowedInitialStatuses.has(requestedInitialStatus)
+                ? requestedInitialStatus
+                : 'pending';
 
         // ✅ SANITIZATION: Only allow diningPreference for dine-in orders
         const sanitizedDiningPreference = (deliveryType === 'dine-in') ? diningPreference : null;
@@ -694,7 +703,7 @@ export async function createOrderV2(req) {
             serviceFee: serviceFee || 0,
             discount: safeDiscount,
             totalAmount: serverGrandTotal,
-            status: 'pending', // SAME status as V1
+            status: effectiveInitialStatus,
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             // ✅ Dine-in specific fields

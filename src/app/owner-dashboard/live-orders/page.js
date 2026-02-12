@@ -45,6 +45,17 @@ const statusConfig = {
 const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'prepared', 'ready_for_pickup', 'dispatched', 'delivered'];
 const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
+const hasValidCustomerLocation = (order = {}) => {
+    const location = order?.customerLocation || {};
+    const lat = Number(location?._latitude ?? location?.latitude ?? location?.lat);
+    const lng = Number(location?._longitude ?? location?.longitude ?? location?.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng);
+};
+
+const isAddressPendingForDelivery = (order = {}) =>
+    order?.deliveryType === 'delivery' &&
+    (order?.customerAddressPending === true || !hasValidCustomerLocation(order));
+
 
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantClosed, onMarkItemsOutOfStock }) => {
     const [reason, setReason] = useState('');
@@ -451,6 +462,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
+    const isAddressPendingDeliveryOrder = isAddressPendingForDelivery(order);
 
     const currentIndex = statusFlow.indexOf(status);
 
@@ -548,11 +560,23 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                 className: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
             },
         'prepared': {
-            text: 'Assign Rider',
+            text: isAddressPendingDeliveryOrder ? 'Skip Rider & Continue' : 'Assign Rider',
             icon: Bike,
-            action: () => onAssignClick([order]),
+            action: () => {
+                if (isAddressPendingDeliveryOrder) {
+                    const shouldProceed = window.confirm(
+                        'Customer address abhi pending hai. Rider assign skip karke order ko ready_for_pickup par continue karna hai?'
+                    );
+                    if (!shouldProceed) return;
+                    onNext(nextStatus);
+                    return;
+                }
+                onAssignClick([order]);
+            },
             permission: PERMISSIONS.ASSIGN_RIDER,
-            className: "bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
+            className: isAddressPendingDeliveryOrder
+                ? "bg-yellow-600 hover:bg-yellow-700 text-white shadow-sm"
+                : "bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
         },
         'ready_for_pickup': {
             text: isPickup ? 'Mark as Picked Up' : 'Mark Out for Delivery',
@@ -580,8 +604,10 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         );
     }
     const ActionIcon = action.icon;
-    const isConfirmable = status === 'pending';
-    const hasAccess = impersonatedOwnerId || hasPermission(userRole, action.permission || PERMISSIONS.UPDATE_ORDER_STATUS);
+    const requiredPermission = status === 'prepared' && isAddressPendingDeliveryOrder
+        ? PERMISSIONS.MARK_ORDER_READY
+        : (action.permission || PERMISSIONS.UPDATE_ORDER_STATUS);
+    const hasAccess = impersonatedOwnerId || hasPermission(userRole, requiredPermission);
 
     return (
         <div className="flex flex-col gap-2 w-full">
@@ -590,14 +616,17 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                     <Button
                         onClick={action.action}
                         size="sm"
-                        className={cn("h-10 flex-1 min-w-[120px] font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]", action.className || "bg-primary hover:bg-primary/90")}
+                        className={cn(
+                            "h-10 flex-1 min-w-[120px] font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]",
+                            action.className || "bg-primary hover:bg-primary/90"
+                        )}
                     >
                         <ActionIcon size={18} className="mr-2 shrink-0" />
                         <span className="truncate">{action.text}</span>
                     </Button>
                 )}
 
-                {isConfirmable && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.CANCEL_ORDER)) && (
+                {status === 'pending' && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.CANCEL_ORDER)) && (
                     <Button
                         onClick={() => onRejectClick(order)}
                         variant="destructive"
@@ -609,6 +638,12 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                     </Button>
                 )}
             </div>
+
+            {isAddressPendingDeliveryOrder && (
+                <div className="text-xs font-semibold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1">
+                    Address not filled yet: order progress allowed hai, lekin rider assign tabhi karein jab customer location aa jaye.
+                </div>
+            )}
 
             {/* Admin/Extra Actions Row */}
             <div className="flex justify-between items-center px-1">
@@ -777,8 +812,14 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
     const customerDisplayName = isChefRole ? 'Customer Hidden' : (order.customerName || order.customer || 'Guest');
     const customerDisplayPhone = isChefRole ? '' : (order.customerPhone || '');
 
-    // Show checkbox only for rider-assignable delivery orders
-    const showCheckbox = canAssignFromCard && order.status === 'prepared' && order.deliveryType === 'delivery';
+    const isAddressPendingDeliveryOrder = isAddressPendingForDelivery(order);
+    // Show checkbox only for rider-assignable delivery orders with valid location.
+    const showCheckbox =
+        canAssignFromCard &&
+        order.status === 'prepared' &&
+        order.deliveryType === 'delivery' &&
+        !isAddressPendingDeliveryOrder;
+    const isManualCallOrder = order?.isManualCallOrder === true || order?.orderSource === 'manual_call';
 
     return (
         <motion.div
@@ -809,6 +850,18 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                     <div className="font-extrabold text-lg tracking-tight">#{order.customerOrderId || order.id.substring(0, 8)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5 font-medium">
                         {formatSafeRelativeTime(order.orderDate)}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {isManualCallOrder && (
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/40">
+                                Manual Call Order
+                            </span>
+                        )}
+                        {isAddressPendingDeliveryOrder && (
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
+                                Address Not Filled Yet
+                            </span>
+                        )}
                     </div>
                 </div>
                 <div className={cn(
@@ -863,6 +916,11 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                                 }
                             </div>
                         </div>
+                    </div>
+                )}
+                {isAddressPendingDeliveryOrder && (
+                    <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2 text-[11px] font-semibold text-yellow-300">
+                        Customer ne abhi location submit nahi ki. Rider assign karne se pehle add-address link complete karwana recommended hai.
                     </div>
                 )}
             </div>
@@ -1699,7 +1757,11 @@ export default function LiveOrdersPage() {
                                             className="hover:bg-muted/50"
                                         >
                                             <td className="p-4 w-12 align-top">
-                                                {canAssignRider && order.status === 'prepared' && order.deliveryType !== 'pickup' && order.deliveryType !== 'dine-in' && (
+                                                {canAssignRider &&
+                                                    order.status === 'prepared' &&
+                                                    order.deliveryType !== 'pickup' &&
+                                                    order.deliveryType !== 'dine-in' &&
+                                                    !isAddressPendingForDelivery(order) && (
                                                     <Checkbox
                                                         checked={selectedOrders.includes(order.id)}
                                                         onCheckedChange={() => handleSelectOrder(order.id)}
@@ -1729,6 +1791,16 @@ export default function LiveOrdersPage() {
                                                     {/* ✅ FIX: Only show Dine-In tag if deliveryType is explicitly dine-in */}
                                                     {(order.deliveryType === 'dine-in' || (order.diningPreference === 'dine-in' && order.deliveryType !== 'delivery' && order.deliveryType !== 'pickup')) && (
                                                         <div title="Dine-In Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12} /> Dine-In</div>
+                                                    )}
+                                                    {(order.isManualCallOrder === true || order.orderSource === 'manual_call') && (
+                                                        <div title="Manual Call Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-400 border border-violet-500/30 w-fit">
+                                                            Manual
+                                                        </div>
+                                                    )}
+                                                    {isAddressPendingForDelivery(order) && (
+                                                        <div title="Customer address pending" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 w-fit">
+                                                            Address Not Filled Yet
+                                                        </div>
                                                     )}
                                                 </div>
                                             </td>

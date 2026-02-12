@@ -197,10 +197,27 @@ function OrderTrackingContent() {
     const searchParams = useSearchParams();
     const sessionToken = searchParams.get('token');
     const userPhone = searchParams.get('phone');
+    const refParam = searchParams.get('ref');
+    const activeOrderParam = searchParams.get('activeOrderId');
 
     // Internal State
     const [currentOrderId, setCurrentOrderId] = useState(paramOrderId);
     const [activeOrders, setActiveOrders] = useState([]); // List of all active orders for this user
+
+    const buildOrderPageUrl = useCallback((restaurantId, overrideOrderId = null) => {
+        if (!restaurantId) return null;
+
+        const params = new URLSearchParams();
+        if (sessionToken) params.set('token', sessionToken);
+        if (userPhone) params.set('phone', userPhone);
+        if (refParam) params.set('ref', refParam);
+
+        const activeId = overrideOrderId || currentOrderId || activeOrderParam || paramOrderId || orderData?.order?.id;
+        if (activeId) params.set('activeOrderId', activeId);
+
+        const qs = params.toString();
+        return qs ? `/order/${restaurantId}?${qs}` : `/order/${restaurantId}`;
+    }, [sessionToken, userPhone, refParam, currentOrderId, activeOrderParam, paramOrderId, orderData?.order?.id]);
 
     // Handler to switch between active orders via tabs
     const handleSwitchOrder = (id) => {
@@ -326,25 +343,10 @@ function OrderTrackingContent() {
     useEffect(() => {
         const preventBack = () => {
             window.history.pushState(null, document.title, window.location.href);
-            const restaurantId = orderData?.order?.restaurantId;
-            if (restaurantId) {
+            const restaurantId = orderData?.order?.restaurantId || orderData?.restaurant?.id;
+            const targetUrl = buildOrderPageUrl(restaurantId);
+            if (targetUrl) {
                 console.log('[DeliveryTrack] Back intercepted -> going to menu');
-                // Persist session tokens
-                const token = searchParams.get('token');
-                const phone = searchParams.get('phone');
-                let targetUrl = `/order/${restaurantId}`;
-                if (params.toString()) targetUrl += `?${params.toString()}`;
-
-                const ref = searchParams.get('ref'); // CAPTURE REF
-                if (token) params.set('token', token);
-                if (phone) params.set('phone', phone);
-                if (ref) params.set('ref', ref); // ADD REF
-                // Important: Don't pass activeOrderId if we are just going back, OR pass it if we want to keep one active. 
-                // Given the new "Multi-Order" flow, we might NOT want to lock the menu to this order.
-                // But for safety, let's keep the params clean.
-
-                if (params.toString()) targetUrl += `?${params.toString()}`;
-
                 router.replace(targetUrl);
             }
         };
@@ -355,7 +357,7 @@ function OrderTrackingContent() {
         return () => {
             window.removeEventListener('popstate', preventBack);
         };
-    }, [orderData, router]);
+    }, [orderData?.order?.restaurantId, orderData?.restaurant?.id, buildOrderPageUrl, router]);
 
     // Payment Verification
     const paymentStatus = searchParams.get('payment_status');
@@ -493,14 +495,8 @@ function OrderTrackingContent() {
                     </p>
                     <Button
                         onClick={() => {
-                            if (orderData?.restaurant?.id) {
-                                const phone = searchParams.get('phone');
-                                const ref = searchParams.get('ref');
-                                if (token) params.set('token', token);
-                                if (phone) params.set('phone', phone);
-                                if (ref) params.set('ref', ref);
-                                router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
-                            }
+                            const targetUrl = buildOrderPageUrl(orderData?.restaurant?.id, currentOrderId);
+                            if (targetUrl) router.push(targetUrl);
                         }}
                         className="mt-8 bg-green-600 text-white hover:bg-green-700 px-8 py-3 text-lg font-semibold rounded-xl shadow-lg"
                     >
@@ -524,17 +520,8 @@ function OrderTrackingContent() {
                     </p>
                     <Button
                         onClick={() => {
-                            if (orderData?.restaurant?.id) {
-                                const params = new URLSearchParams();
-                                const phone = searchParams.get('phone');
-                                const ref = searchParams.get('ref');
-                                const token = searchParams.get('token');
-
-                                if (token) params.set('token', token);
-                                if (phone) params.set('phone', phone);
-                                if (ref) params.set('ref', ref);
-                                router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
-                            }
+                            const targetUrl = buildOrderPageUrl(orderData?.restaurant?.id, currentOrderId);
+                            if (targetUrl) router.push(targetUrl);
                         }}
                         className="mt-8 bg-gray-900 text-white hover:bg-black px-8 py-3 text-lg font-semibold rounded-xl shadow-lg"
                     >
@@ -563,20 +550,8 @@ function OrderTrackingContent() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Button variant="ghost" size="sm" onClick={() => {
-                                            if (orderData?.restaurant?.id) {
-                                                const token = searchParams.get('token');
-                                                const phone = searchParams.get('phone');
-                                                let targetUrl = `/order/${orderData.restaurant.id}`;
-                                                const params = new URLSearchParams();
-                                                const ref = searchParams.get('ref'); // CAPTURE REF
-                                                if (token) params.set('token', token);
-                                                if (phone) params.set('phone', phone);
-                                                if (ref) params.set('ref', ref); // ADD REF
-                                                // FIXED: Pass activeOrderId to preserve bundled session state
-                                                if (currentOrderId) params.set('activeOrderId', currentOrderId);
-
-                                                if (params.toString()) targetUrl += `?${params.toString()}`;
-
+                                            const targetUrl = buildOrderPageUrl(orderData?.restaurant?.id, currentOrderId);
+                                            if (targetUrl) {
                                                 router.push(targetUrl);
                                             } else {
                                                 router.back();
@@ -720,14 +695,8 @@ function OrderTrackingContent() {
                                         </p>
                                     </div>
                                     <Button size="sm" onClick={() => {
-                                        const params = new URLSearchParams();
-                                        if (sessionToken) params.set('token', sessionToken);
-                                        if (sessionToken) params.set('token', sessionToken);
-                                        // Use param phone OR fallback to order phone to keep session valid
-                                        const phoneToUse = userPhone || orderData?.order?.phone || orderData?.order?.customerPhone;
-                                        if (phoneToUse) params.set('phone', phoneToUse);
-                                        params.set('activeOrderId', currentOrderId);
-                                        router.push(`/order/${orderData.restaurant.id}?${params.toString()}`);
+                                        const targetUrl = buildOrderPageUrl(orderData?.restaurant?.id, currentOrderId);
+                                        if (targetUrl) router.push(targetUrl);
                                     }} className="bg-green-600 hover:bg-green-700 text-white rounded-lg h-9 text-xs font-bold">
                                         + Add Items
                                     </Button>

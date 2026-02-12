@@ -111,6 +111,9 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: 'Unauthorized. Tracking token required.' }, { status: 403 });
         }
 
+        const businessType = orderData.businessType || 'restaurant';
+        const collectionName = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
+
         let deliveryBoyData = null;
 
         if (orderData.deliveryBoyId) {
@@ -191,11 +194,37 @@ export async function GET(request, { params }) {
                 console.log(`[API][Order Status] Delivery boy found. Online: ${riderOnline}, Distance: ${distanceKm?.toFixed(2) || 'N/A'} km`);
             } else {
                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in the main 'drivers' collection.`);
+
+                // Fallback: restaurant-level rider profile (for legacy/manual rider setups)
+                try {
+                    const riderSubDoc = await requestCache.get(
+                        `rider_subdoc:${collectionName}:${orderData.restaurantId}:${orderData.deliveryBoyId}`,
+                        () => firestore
+                            .collection(collectionName)
+                            .doc(orderData.restaurantId)
+                            .collection('deliveryBoys')
+                            .doc(orderData.deliveryBoyId)
+                            .get()
+                    );
+
+                    if (riderSubDoc.exists) {
+                        const riderData = riderSubDoc.data() || {};
+                        deliveryBoyData = {
+                            id: riderSubDoc.id,
+                            ...riderData,
+                            isOnline: riderData.status === 'Available' || riderData.status === 'online',
+                            distanceKm: null,
+                            eta: null,
+                            currentLocation: riderData.currentLocation || riderData.location || null
+                        };
+                        console.log(`[API][Order Status] Fallback rider found in ${collectionName}/${orderData.restaurantId}/deliveryBoys/${orderData.deliveryBoyId}`);
+                    }
+                } catch (fallbackErr) {
+                    console.warn('[API][Order Status] Rider subcollection fallback failed:', fallbackErr?.message || fallbackErr);
+                }
             }
         }
 
-        const businessType = orderData.businessType || 'restaurant';
-        const collectionName = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
         const businessDoc = await requestCache.get(
             `business:${collectionName}:${orderData.restaurantId}`,
             () => firestore.collection(collectionName).doc(orderData.restaurantId).get()
@@ -374,6 +403,7 @@ export async function GET(request, { params }) {
             order: {
                 id: orderSnap.id, // Primary ID
                 customerOrderId: orderData.customerOrderId, // 10-digit customer-facing ID
+                restaurantId: orderData.restaurantId || null,
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
                 restaurantLocation: restaurantLocationForMap,
@@ -404,12 +434,13 @@ export async function GET(request, { params }) {
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
-                name: deliveryBoyData.name,
+                name: deliveryBoyData.name || deliveryBoyData.fullName || 'Delivery Partner',
                 address: businessData.address,
-                photoUrl: deliveryBoyData.profilePictureUrl,
+                photoUrl: deliveryBoyData.profilePictureUrl || deliveryBoyData.photoURL || deliveryBoyData.photoUrl || null,
                 rating: deliveryBoyData.avgRating || 4.5,
-                phone: deliveryBoyData.phone,
-                location: deliveryBoyData.currentLocation
+                phone: deliveryBoyData.phone || deliveryBoyData.phoneNumber || null,
+                location: deliveryBoyData.currentLocation || deliveryBoyData.location || null,
+                isOnline: deliveryBoyData.isOnline !== false
             } : null
         };
 
