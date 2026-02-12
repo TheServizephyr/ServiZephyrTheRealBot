@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Printer, Share2, CheckCircle2, MapPin, Phone, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
@@ -15,6 +15,7 @@ const formatCurrency = (val) => `₹${Number(val || 0).toLocaleString('en-IN')}`
 
 export default function PublicBillPage() {
     const { orderId } = useParams();
+    const searchParams = useSearchParams();
     const [order, setOrder] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -28,11 +29,50 @@ export default function PublicBillPage() {
     useEffect(() => {
         const fetchOrder = async () => {
             if (!orderId) return;
+
+            const token = searchParams.get('token');
+            const phone = searchParams.get('phone');
+            const refParam = searchParams.get('ref');
             try {
-                // 1. Fetch Order
+                // Prefer secure server API so public bill works with WhatsApp tracking token.
+                const params = new URLSearchParams();
+                if (token) params.set('token', token);
+                if (phone) params.set('phone', phone);
+                if (refParam) params.set('ref', refParam);
+
+                const response = await fetch(`/api/order/status/${orderId}?${params.toString()}`, {
+                    cache: 'no-store'
+                });
+
+                if (response.ok) {
+                    const payload = await response.json();
+                    const apiOrder = payload?.order || null;
+                    const apiRestaurant = payload?.restaurant || null;
+
+                    if (!apiOrder) {
+                        setError('Invoice not found.');
+                        return;
+                    }
+
+                    setOrder({
+                        id: apiOrder.id || orderId,
+                        ...apiOrder,
+                        orderDate: apiOrder.createdAt || apiOrder.orderDate || null,
+                        customer: apiOrder.customerName || apiOrder.customer || 'Guest',
+                        restaurantName: apiRestaurant?.name || ''
+                    });
+
+                    setRestaurant({
+                        name: apiRestaurant?.name || 'Restaurant Partner',
+                        address: apiRestaurant?.address?.street || apiRestaurant?.address?.full || '',
+                        phone: apiRestaurant?.phone || ''
+                    });
+                    return;
+                }
+
+                // Fallback: legacy direct Firestore read (in case tokenless trusted context)
                 const orderRef = doc(db, 'orders', orderId);
                 const orderSnap = await getDoc(orderRef);
-
                 if (!orderSnap.exists()) {
                     setError('Invoice not found.');
                     return;
@@ -40,16 +80,7 @@ export default function PublicBillPage() {
 
                 const orderData = orderSnap.data();
                 setOrder({ id: orderSnap.id, ...orderData });
-
-                // 2. Fetch Restaurant Details (using restaurantId from order)
                 if (orderData.restaurantId) {
-                    // Try owner_settings first or similar collection where name exists
-                    // Assuming 'users' collection stores owner profile or specific 'restaurants' collection
-                    // Based on previous code, owner settings are accessed via API or 'users/{uid}/settings'
-                    // For public safety, we might need a dedicated public query or just use what's in order if replicated.
-                    // Let's assume 'users/{restaurantId}/settings/general' based on standard structure or 'restaurants_public' if exists.
-                    // Fallback: Check if restaurantName is in order data (often duplicated for snapshots).
-
                     if (orderData.restaurantName) {
                         setRestaurant({
                             name: orderData.restaurantName,
@@ -57,8 +88,6 @@ export default function PublicBillPage() {
                             phone: orderData.restaurantPhone || ''
                         });
                     } else {
-                        // Attempt fetch if architecture allows.
-                        // For now, minimal.
                         setRestaurant({ name: 'Restaurant Partner', address: '', phone: '' });
                     }
                 }
@@ -71,7 +100,7 @@ export default function PublicBillPage() {
         };
 
         fetchOrder();
-    }, [orderId]);
+    }, [orderId, searchParams]);
 
     const handleShare = async () => {
         if (navigator.share) {

@@ -138,7 +138,8 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             // FALLBACK TO STANDARD TEMPLATE
             templateName = 'order_status_update';
 
-            const billUrl = `https://servizephyr.com/public/bill/${orderId}`;
+            const billTokenParam = trackingToken ? `?token=${encodeURIComponent(trackingToken)}` : '';
+            const billUrl = `https://www.servizephyr.com/public/bill/${orderId}${billTokenParam}`;
             const finalConfirmedMsg = `${confirmedMessage} View Bill: ${billUrl}`;
 
             const confirmedParams = [

@@ -101,6 +101,49 @@ function hasValidGeoLocation(location) {
     return Number.isFinite(lat) && Number.isFinite(lng);
 }
 
+function normalizeIndianPhone(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return null;
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
+async function resolveRiderForNotification(firestore, collectionName, businessId, riderId) {
+    if (!riderId) return null;
+
+    try {
+        const primaryDoc = await firestore.collection('drivers').doc(riderId).get();
+        if (primaryDoc.exists) {
+            const data = primaryDoc.data() || {};
+            return {
+                name: data.displayName || data.name || 'Delivery Partner',
+                phone: normalizeIndianPhone(data.phone)
+            };
+        }
+    } catch (err) {
+        console.warn(`[Rider Resolve] Failed to read drivers/${riderId}:`, err?.message || err);
+    }
+
+    try {
+        const subDoc = await firestore
+            .collection(collectionName)
+            .doc(businessId)
+            .collection('deliveryBoys')
+            .doc(riderId)
+            .get();
+        if (subDoc.exists) {
+            const data = subDoc.data() || {};
+            return {
+                name: data.displayName || data.name || 'Delivery Partner',
+                phone: normalizeIndianPhone(data.phone)
+            };
+        }
+    } catch (err) {
+        console.warn(`[Rider Resolve] Failed to read ${collectionName}/${businessId}/deliveryBoys/${riderId}:`, err?.message || err);
+    }
+
+    return null;
+}
+
 function redactOrderForViewer(orderData = {}, canViewCustomerDetails = true, canViewPaymentDetails = true) {
     const redacted = { ...orderData };
 
@@ -488,6 +531,14 @@ export async function PATCH(req) {
 
                         // A. Notifications
                         if (orderData.customerPhone) {
+                            const riderIdForNotification = resolvedDeliveryBoyId || orderData.deliveryBoyId || null;
+                            const riderForNotification = await resolveRiderForNotification(
+                                firestore,
+                                collectionName,
+                                businessId,
+                                riderIdForNotification
+                            );
+
                             effects.push(sendOrderStatusUpdateToCustomer({
                                 customerPhone: orderData.customerPhone,
                                 botPhoneNumberId: businessData.botPhoneNumberId,
@@ -500,6 +551,7 @@ export async function PATCH(req) {
                                 deliveryType: orderData.deliveryType,
                                 trackingToken: orderData.trackingToken,
                                 hasCustomerLocation,
+                                deliveryBoy: riderForNotification,
                                 amount: orderData.totalAmount || 0,
                                 orderDate: orderData.orderDate
                             }));
