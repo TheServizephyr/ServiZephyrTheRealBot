@@ -145,21 +145,30 @@ const activateDirectChat = async (fromNumber, business, botPhoneNumberId) => {
 };
 
 
-const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId, customMessage = null) => {
+const sendWelcomeMessageWithOptions = async (
+    customerPhoneWithCode,
+    business,
+    botPhoneNumberId,
+    customMessage = null,
+    options = {}
+) => {
     console.log(`[Webhook WA] Preparing to send welcome message to ${customerPhoneWithCode}`);
 
     // Standardize phone number for Firestore
     const fromPhoneNumber = normalizePhone(customerPhoneWithCode);
     const firestore = await getFirestore();
     const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
+    const bypassRateLimit = options?.bypassRateLimit === true;
 
     // Rate limiting: Don't send more than one welcome menu every 10 seconds to same user
-    const conversationDoc = await conversationRef.get();
-    if (conversationDoc.exists) {
-        const lastSent = conversationDoc.data().lastWelcomeSent;
-        if (lastSent && (Date.now() - lastSent.toDate().getTime()) < 10000) {
-            console.log(`[Webhook WA] Welcome message rate-limited for ${fromPhoneNumber}`);
-            return;
+    if (!bypassRateLimit) {
+        const conversationDoc = await conversationRef.get();
+        if (conversationDoc.exists) {
+            const lastSent = conversationDoc.data().lastWelcomeSent;
+            if (lastSent && (Date.now() - lastSent.toDate().getTime()) < 10000) {
+                console.log(`[Webhook WA] Welcome message rate-limited for ${fromPhoneNumber}`);
+                return;
+            }
         }
     }
 
@@ -612,6 +621,7 @@ export async function POST(request) {
                 if (conversationData.state === 'direct_chat') {
                     const enteredAt = coerceDate(conversationData.enteredDirectChatAt);
                     const timeoutMinutes = getDirectChatTimeoutMinutes(conversationData.directChatTimeoutMinutes);
+                    const timeoutMessage = `Your chat has been closed automatically due to ${timeoutMinutes} minutes of inactivity.\n\nIf your issue is not resolved, tap *Need Help?* to start direct chat again.`;
 
                     if (!enteredAt) {
                         console.warn(`[Webhook WA] Missing/invalid enteredDirectChatAt for ${fromPhoneNumber}. Resetting state.`);
@@ -620,6 +630,13 @@ export async function POST(request) {
                             autoExpiredAt: FieldValue.serverTimestamp(),
                         }, { merge: true });
                         conversationData.state = 'menu';
+                        await sendWelcomeMessageWithOptions(
+                            fromNumber,
+                            business,
+                            botPhoneNumberId,
+                            timeoutMessage,
+                            { bypassRateLimit: true }
+                        );
                     } else {
                         const elapsedMinutes = (Date.now() - enteredAt.getTime()) / 60000;
                         if (elapsedMinutes >= timeoutMinutes) {
@@ -630,18 +647,13 @@ export async function POST(request) {
                                 autoExpiredAt: FieldValue.serverTimestamp(),
                             }, { merge: true });
                             conversationData.state = 'menu';
-
-                            const expiryMessage = 'Interaction has ended due to inactivity. If you want to continue, you can contact us again.';
-                            await sendWhatsAppMessage(fromNumber, expiryMessage, botPhoneNumberId);
-
-                            await conversationRef.collection('messages').add({
-                                sender: 'system',
-                                type: 'system',
-                                text: expiryMessage,
-                                timestamp: FieldValue.serverTimestamp(),
-                                status: 'sent',
-                                isSystem: true
-                            });
+                            await sendWelcomeMessageWithOptions(
+                                fromNumber,
+                                business,
+                                botPhoneNumberId,
+                                timeoutMessage,
+                                { bypassRateLimit: true }
+                            );
                         }
                     }
                 }
