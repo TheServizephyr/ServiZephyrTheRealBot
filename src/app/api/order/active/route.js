@@ -154,6 +154,7 @@ export async function GET(req) {
                         status: d.status,
                         trackingToken: d.trackingToken || d.token,
                         restaurantId: d.restaurantId,
+                        restaurantName: d.restaurantName || d.businessName || 'Restaurant', // ✅ Added for UI display
                         totalAmount: d.grandTotal || d.totalAmount,
                         items: d.items || [],
                         deliveryType: d.deliveryType,
@@ -163,6 +164,13 @@ export async function GET(req) {
                         customerOrderId: d.customerOrderId // ✅ Added for UI display
                     });
                 }
+            });
+
+            // Sort in memory: Newest First
+            finalActiveOrders.sort((a, b) => {
+                const timeA = (a.orderDate?.toMillis ? a.orderDate.toMillis() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : 0));
+                const timeB = (b.orderDate?.toMillis ? b.orderDate.toMillis() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : 0));
+                return timeB - timeA;
             });
 
             console.log(`[API /order/active] Returning ${finalActiveOrders.length} active orders.`);
