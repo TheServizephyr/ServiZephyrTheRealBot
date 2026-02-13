@@ -290,8 +290,17 @@ function CustomBillPage() {
             const itemTotal = Number(item?.totalPrice || 0);
             const unitPrice = (itemTotal / safeQty).toFixed(0);
             const total = itemTotal.toFixed(0);
+            const portionLabel = String(
+                item?.portion?.name ||
+                item?.selectedPortion?.name ||
+                item?.variant ||
+                ''
+            ).trim();
+            const displayName = portionLabel
+                ? `${item?.name || 'Item'} (${portionLabel})`
+                : (item?.name || 'Item');
 
-            encoder.text(item?.name || 'Item').newline();
+            encoder.text(displayName).newline();
             encoder.text(`  ${safeQty} x ${unitPrice}`).align('right').text(total).align('left').newline();
         });
 

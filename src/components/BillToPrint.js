@@ -47,6 +47,18 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         return price * qty;
     };
 
+    const getItemPortionLabel = (item) => {
+        const label =
+            item?.portion?.name ||
+            item?.selectedPortion?.name ||
+            item?.variant ||
+            item?.portionName ||
+            item?.size ||
+            '';
+        const normalized = String(label || '').trim();
+        return normalized || null;
+    };
+
 
     return (
         <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto font-mono text-[12px] leading-tight">
@@ -140,7 +152,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 
-            <table className="w-full text-xs mb-2">
+            <table className="w-full text-[13px] mb-2">
                 <thead className="border-y-2 border-dashed border-black">
                     <tr>
                         <th className="text-left font-bold py-1">ITEM</th>
@@ -154,26 +166,28 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         const pricePerUnit = getItemPrice(item);
                         const totalItemPrice = getItemTotal(item);
                         const quantity = item.quantity || item.qty || 1;
+                        const portionLabel = getItemPortionLabel(item);
 
                         return (
                             <tr key={index}>
-                                <td className="py-1">
-                                    {safeRender(item.name || item.itemName)}
-                                    {/* FIXED: Show Portion Name in Bill ONLY if multiple portions exist */}
-                                    {item.portions?.length > 1 && (item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : ''))}
+                                <td className="py-1.5 align-top pr-1">
+                                    <div className="text-[14px] leading-snug">
+                                        {safeRender(item.name || item.itemName)}
+                                        {portionLabel ? ` (${portionLabel})` : ''}
+                                    </div>
 
                                     {/* FIXED: Show Add-ons as sub-items in Bill */}
                                     {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
-                                        <div className="text-[11px] font-medium text-black pl-2">
+                                        <div className="text-[12px] font-medium text-black pl-2 leading-snug mt-0.5">
                                             {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
                                                 <div key={aIdx}>+ {addon.name} (₹{addon.price})</div>
                                             ))}
                                         </div>
                                     )}
                                 </td>
-                                <td className="text-center py-1 align-top">{quantity}</td>
-                                <td className="text-right py-1 align-top">{formatCurrency(pricePerUnit)}</td>
-                                <td className="text-right py-1 align-top">{formatCurrency(totalItemPrice)}</td>
+                                <td className="text-center py-1.5 align-top">{quantity}</td>
+                                <td className="text-right py-1.5 align-top">{formatCurrency(pricePerUnit)}</td>
+                                <td className="text-right py-1.5 align-top">{formatCurrency(totalItemPrice)}</td>
                             </tr>
                         )
                     })}

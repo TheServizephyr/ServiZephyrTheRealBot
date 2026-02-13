@@ -186,9 +186,13 @@ const CheckoutPageInternal = () => {
     const [isValidatingDelivery, setIsValidatingDelivery] = useState(false);
     const validationRequestSeqRef = useRef(0);
     const selectedAddressRef = useRef(null);
+    const outOfRangeNoticeKeyRef = useRef(null);
 
     useEffect(() => {
         selectedAddressRef.current = selectedAddress;
+        if (!selectedAddress) {
+            outOfRangeNoticeKeyRef.current = null;
+        }
     }, [selectedAddress]);
 
     const validateDelivery = async (addr, currentSubtotal) => {
@@ -239,6 +243,18 @@ const CheckoutPageInternal = () => {
 
                 if (!result.allowed) {
                     console.warn('[Checkout] ⚠️ Address beyond delivery range:', result.message);
+                    const addressKey = `${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
+                    if (outOfRangeNoticeKeyRef.current !== addressKey) {
+                        outOfRangeNoticeKeyRef.current = addressKey;
+                        setInfoDialog({
+                            isOpen: true,
+                            title: 'Delivery Not Available',
+                            message: `${result.message || 'This address is outside our delivery range.'}\n\nPlease select an address within serviceable distance.`,
+                            type: 'warning'
+                        });
+                    }
+                } else {
+                    outOfRangeNoticeKeyRef.current = null;
                 }
             } else {
                 const errData = await response.json();
@@ -686,10 +702,10 @@ const CheckoutPageInternal = () => {
 
 
     // ... (Price calculation unchanged) ...
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount, isDeliveryFree, deliveryReason, isEstimated } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount, isDeliveryFree, deliveryReason, isEstimated, isDeliveryOutOfRange } = useMemo(() => {
         // ... (Same logic as before) ...
         // Re-implementing logic to ensure no regression as I replaced a huge chunk
-        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false, isDeliveryFree: false };
+        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false, tipAmount: 0, isDeliveryFree: false, deliveryReason: '', isEstimated: false, isDeliveryOutOfRange: false };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
         const isFreeDeliveryApplied = appliedCoupons.some(c => normalizeCouponType(c?.type) === 'free_delivery' && currentSubtotal >= (Number(c?.minOrder) || 0));
@@ -721,12 +737,17 @@ const CheckoutPageInternal = () => {
 
         let deliveryCharge = 0;
         let deliveryReason = '';
+        let isDeliveryOutOfRange = false;
 
         console.log('[Checkout Debug] Calculating Delivery Charge. Validation:', deliveryValidation);
         console.log('[Checkout Debug] isFreeDeliveryApplied:', isFreeDeliveryApplied);
 
         if (isStreetVendor || deliveryType !== 'delivery') {
             deliveryCharge = 0;
+        } else if (deliveryValidation && deliveryValidation.allowed === false) {
+            deliveryCharge = 0;
+            isDeliveryOutOfRange = true;
+            deliveryReason = deliveryValidation.message || 'This address is outside delivery range.';
         } else if (isFreeDeliveryApplied) {
             // Coupon overrides everything
             deliveryCharge = 0;
@@ -735,6 +756,10 @@ const CheckoutPageInternal = () => {
             deliveryCharge = deliveryValidation.charge;
             deliveryReason = deliveryValidation.reason;
             console.log('[Checkout Debug] Using Dynamic Charge:', deliveryCharge);
+        } else if (shadowDeliveryResult && shadowDeliveryResult.allowed === false) {
+            deliveryCharge = 0;
+            isDeliveryOutOfRange = true;
+            deliveryReason = `${shadowDeliveryResult.message || 'This address is outside delivery range.'} (Estimated)`;
         } else if (shadowDeliveryResult) {
             // Instant feedback while waiting for API
             deliveryCharge = shadowDeliveryResult.charge;
@@ -772,7 +797,7 @@ const CheckoutPageInternal = () => {
             console.log('[Checkout Debug] Using Fallback Charge:', deliveryCharge, 'deliveryFeeType:', deliveryFeeType);
         }
 
-        const isDeliveryFree = deliveryCharge === 0 && deliveryType === 'delivery';
+        const isDeliveryFree = deliveryCharge === 0 && deliveryType === 'delivery' && !isDeliveryOutOfRange;
 
         // Calculate Tip from State
         let currentTip = selectedTipAmount;
@@ -817,7 +842,8 @@ const CheckoutPageInternal = () => {
             tipAmount: tip,
             isDeliveryFree: isDeliveryFree,
             deliveryReason: deliveryReason,
-            isEstimated: !!shadowDeliveryResult && !deliveryValidation
+            isEstimated: !!shadowDeliveryResult && !deliveryValidation,
+            isDeliveryOutOfRange: isDeliveryOutOfRange
         };
     }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation, shadowDeliveryResult, isValidatingDelivery]);
 
@@ -1552,12 +1578,13 @@ const CheckoutPageInternal = () => {
     const isAddressStepPending = !activeOrderId && deliveryType === 'delivery' && !selectedAddress;
     const isPaymentStepPending = !isAddressStepPending && !selectedPaymentMethod;
     const isOrderReadyToPlace = !isAddressStepPending && !!selectedPaymentMethod;
+    const hasOutOfRangeAddress = deliveryType === 'delivery' && deliveryValidation?.allowed === false;
     const ctaLabel = isAddressStepPending
         ? 'Select Address'
         : isPaymentStepPending
             ? 'Payment Mode'
             : 'Place Order';
-    const isCtaDisabled = isProcessingPayment || isValidatingDelivery || (!activeOrderId && deliveryType !== 'delivery' && !orderName.trim());
+    const isCtaDisabled = isProcessingPayment || isValidatingDelivery || hasOutOfRangeAddress || (!activeOrderId && deliveryType !== 'delivery' && !orderName.trim());
 
     const orderPageUrl = useMemo(() => {
         const params = new URLSearchParams(searchParams.toString());
@@ -2068,13 +2095,13 @@ const CheckoutPageInternal = () => {
                                                     Delivery Fee
                                                     {isValidatingDelivery && <Loader2 className="h-3 w-3 animate-spin" />}
                                                 </span>
-                                                <span className={isDeliveryFree ? "text-green-600 font-bold" : ""}>
+                                                <span className={isDeliveryOutOfRange ? "text-destructive font-bold" : (isDeliveryFree ? "text-green-600 font-bold" : "")}>
                                                     {isValidatingDelivery ? (
                                                         <span className="text-muted-foreground font-normal italic animate-pulse">Calculating...</span>
                                                     ) : (
                                                         <div className="flex flex-col items-end">
-                                                            <span>{isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}</span>
-                                                            {isEstimated && !isDeliveryFree && (
+                                                            <span>{isDeliveryOutOfRange ? 'Not Serviceable' : (isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`)}</span>
+                                                            {isEstimated && !isDeliveryFree && !isDeliveryOutOfRange && (
                                                                 <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-tight">Estimated</span>
                                                             )}
                                                         </div>
@@ -2082,8 +2109,8 @@ const CheckoutPageInternal = () => {
                                                 </span>
                                             </div>
                                             {(deliveryReason || (deliveryValidation && !isValidatingDelivery)) && (
-                                                <div className="text-[10px] text-muted-foreground text-right italic font-medium">
-                                                    {deliveryReason || (deliveryValidation && `${deliveryValidation.roadDistance}km Standard Charge`)}
+                                                <div className={`text-[10px] text-right italic font-medium ${isDeliveryOutOfRange ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                                    {deliveryReason || (deliveryValidation?.allowed !== false && `${deliveryValidation.roadDistance}km Standard Charge`)}
                                                 </div>
                                             )}
                                         </div>
