@@ -2203,7 +2203,7 @@ const OrderPageInternal = () => {
     };
 
     const trackingUrl = getTrackingUrl();
-    const shouldShowFloatingTrackToast = Boolean(liveOrder && trackingUrl);
+    const shouldShowFloatingTrackToast = Boolean(liveOrder && trackingUrl && !customizationItem);
     const trackOrdersLabel = storedOrders.length > 1
         ? `Track ${storedOrders.length} Orders`
         : `Track ${liveOrder?.restaurantId === restaurantId ? '' : (liveOrder?.restaurantName || 'Order')}`.trim() || 'Track';
