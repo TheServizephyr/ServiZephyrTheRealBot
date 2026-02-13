@@ -14,6 +14,7 @@ import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
+import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 
 const ORDER_STATE = {
     IDLE: 'idle',
@@ -570,8 +571,7 @@ const CartPageInternal = () => {
                                         <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
                                     </div>
                                     <div className="flex-grow">
-                                        <p className="font-semibold text-foreground">{item.name}</p>
-                                        <p className="text-xs text-muted-foreground">{item.portion.name}</p>
+                                        <p className="font-semibold text-foreground">{item.name}{getItemVariantLabel(item)}</p>
                                         {item.selectedAddOns && item.selectedAddOns.length > 0 && (
                                             <ul className="mt-1 pl-4">
                                                 {item.selectedAddOns.map(addon => (

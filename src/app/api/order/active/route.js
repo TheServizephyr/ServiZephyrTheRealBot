@@ -113,7 +113,7 @@ export async function GET(req) {
             // --- QUERY EXECUTION ---
             // CRITICAL: Use userId for queries (UID for logged-in, guest ID for guests)
             const ordersRef = firestore.collection('orders');
-            const activeStatuses = ['pending', 'placed', 'accepted', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived', 'confirmed'];
+            const activeStatuses = ['pending', 'placed', 'accepted', 'confirmed', 'preparing', 'prepared', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived'];
             const ONE_DAY_MS = 24 * 60 * 60 * 1000;
             const yesterday = new Date(Date.now() - ONE_DAY_MS);
 
@@ -134,16 +134,54 @@ export async function GET(req) {
                 return NextResponse.json({ message: 'Could not resolve user identity' }, { status: 400 });
             }
 
-            // Query by userId field (UID-first priority)
-            let query = ordersRef
-                .where('userId', '==', userId)
-                .where('status', 'in', activeStatuses)
-                .limit(20);
+            // Query primarily by userId. Add phone-based fallbacks to support
+            // mixed identity histories (guest -> logged-in migration, legacy docs, etc.).
+            const queryPromises = [
+                ordersRef
+                    .where('userId', '==', userId)
+                    .where('status', 'in', activeStatuses)
+                    .limit(20)
+                    .get()
+            ];
 
-            let snapshot = await query.get();
+            // Use normalized phone fallback when available.
+            let phoneForFallback = targetPhone || null;
+            if (!phoneForFallback && targetCustomerId?.startsWith('g_')) {
+                try {
+                    const guestDoc = await firestore.collection('guest_profiles').doc(targetCustomerId).get();
+                    const guestPhone = guestDoc.exists ? guestDoc.data()?.phone : null;
+                    if (guestPhone) phoneForFallback = guestPhone;
+                } catch (e) {
+                    console.warn('[API /order/active] Failed to resolve guest phone fallback:', e.message);
+                }
+            }
+
+            if (phoneForFallback) {
+                queryPromises.push(
+                    ordersRef
+                        .where('customerPhone', '==', phoneForFallback)
+                        .where('status', 'in', activeStatuses)
+                        .limit(20)
+                        .get()
+                );
+
+                queryPromises.push(
+                    ordersRef
+                        .where('customer.phone', '==', phoneForFallback)
+                        .where('status', 'in', activeStatuses)
+                        .limit(20)
+                        .get()
+                );
+            }
+
+            const snapshots = await Promise.all(queryPromises);
+            const uniqueDocs = new Map();
+            snapshots.forEach((snap) => {
+                snap.forEach((doc) => uniqueDocs.set(doc.id, doc));
+            });
 
             const finalActiveOrders = [];
-            snapshot.forEach(doc => {
+            uniqueDocs.forEach((doc) => {
                 const d = doc.data();
                 const createdTime = d.orderDate || d.createdAt; // Support both
 
@@ -319,7 +357,7 @@ export async function POST(req) {
         const activeOrderQuery = await ordersRef
             .where('restaurantId', '==', restaurantId)
             .where('customer.phone', '==', phone)
-            .where('status', 'in', ['pending', 'placed', 'accepted', 'preparing', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived']) // Added all active statuses
+            .where('status', 'in', ['pending', 'placed', 'accepted', 'confirmed', 'preparing', 'prepared', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived']) // Added all active statuses
             .limit(20) // Safety Cap: Prevent fetching too many docs
             .get();
 

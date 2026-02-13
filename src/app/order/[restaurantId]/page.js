@@ -32,6 +32,7 @@ import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 
+const isFullPortionLabel = (value) => String(value || '').trim().toLowerCase() === 'full';
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), {
     ssr: false,
@@ -1030,8 +1031,12 @@ const OrderPageInternal = () => {
                         const finalStates = ['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'];
 
                         if (!finalStates.includes(status)) {
-                            activeOrders.push(order);
-                            latestActiveOrder = order;
+                            const orderWithStatus = {
+                                ...order,
+                                status: status || order.status
+                            };
+                            activeOrders.push(orderWithStatus);
+                            latestActiveOrder = orderWithStatus;
                         }
                     } else {
                         if (res.status === 403) {
@@ -1816,14 +1821,31 @@ const OrderPageInternal = () => {
         safeWriteCart(restaurantId, cartDataToSave);
 
         const liveOrderKey = `liveOrder_${restaurantId}`;
-        if (liveOrder && liveOrder.orderId) {
-            localStorage.setItem(liveOrderKey, JSON.stringify({
+        if (storedOrders.length > 0) {
+            const normalizedOrders = storedOrders.map((order) => ({
+                ...order,
+                timestamp: order?.timestamp || Date.now()
+            }));
+            localStorage.setItem(liveOrderKey, JSON.stringify(normalizedOrders));
+        } else if (liveOrder && liveOrder.orderId) {
+            let existingOrders = [];
+            try {
+                const raw = localStorage.getItem(liveOrderKey);
+                const parsed = raw ? JSON.parse(raw) : [];
+                existingOrders = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+            } catch (e) {
+                existingOrders = [];
+            }
+
+            const currentOrder = {
                 ...liveOrder,
                 timestamp: liveOrder.timestamp || Date.now()
-            }));
+            };
+            const withoutCurrent = existingOrders.filter((order) => order?.orderId !== currentOrder.orderId);
+            localStorage.setItem(liveOrderKey, JSON.stringify([...withoutCurrent, currentOrder]));
         }
 
-    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
+    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder, storedOrders]);
 
     const searchPlaceholder = useMemo(() => {
         return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
@@ -1895,7 +1917,17 @@ const OrderPageInternal = () => {
             return; // Block add to cart
         }
 
-        const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => `${a.name}x${a.quantity}`).sort().join('-')}`;
+        const portionName = String(portion?.name || '').trim();
+        const portionCount = Array.isArray(item?.portions) ? item.portions.length : 0;
+        const isSyntheticFullPortion = isFullPortionLabel(portionName) && portionCount <= 1;
+        const normalizedPortion = portion
+            ? {
+                ...portion,
+                ...(isSyntheticFullPortion ? { isDefault: true } : {})
+            }
+            : portion;
+        const normalizedPortionName = portionName || 'default';
+        const cartItemId = `${item.id}-${normalizedPortionName}-${(selectedAddOns || []).map(a => `${a.name}x${a.quantity}`).sort().join('-')}`;
         setCart(currentCart => {
             const existingItemIndex = currentCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
             if (existingItemIndex > -1) {
@@ -1903,7 +1935,18 @@ const OrderPageInternal = () => {
                     index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
                 );
             } else {
-                return [...currentCart, { ...item, cartItemId, portion, selectedAddOns, totalPrice, quantity: 1 }];
+                return [
+                    ...currentCart,
+                    {
+                        ...item,
+                        cartItemId,
+                        portion: normalizedPortion,
+                        portionCount,
+                        selectedAddOns,
+                        totalPrice,
+                        quantity: 1
+                    }
+                ];
             }
         });
     }, [deliveryType, deliveryValidation]);
@@ -2160,6 +2203,53 @@ const OrderPageInternal = () => {
     };
 
     const trackingUrl = getTrackingUrl();
+    const shouldShowFloatingTrackToast = Boolean(liveOrder && trackingUrl);
+    const trackOrdersLabel = storedOrders.length > 1
+        ? `Track ${storedOrders.length} Orders`
+        : `Track ${liveOrder?.restaurantId === restaurantId ? '' : (liveOrder?.restaurantName || 'Order')}`.trim() || 'Track';
+    const formatOrderStatusLabel = (status) => {
+        const key = String(status || '').toLowerCase().trim();
+        if (!key) return 'In Progress';
+
+        const labelMap = {
+            pending: 'Placed',
+            placed: 'Placed',
+            paid: 'Placed',
+            accepted: 'Confirmed',
+            confirmed: 'Confirmed',
+            preparing: 'Preparing',
+            cooking: 'Preparing',
+            prepared: 'Prepared',
+            ready: 'Ready for Pickup',
+            ready_for_pickup: 'Ready for Pickup',
+            rider_assigned: 'Rider Assigned',
+            dispatched: 'Rider Assigned',
+            reached_restaurant: 'Rider Assigned',
+            picked_up: 'Out for Delivery',
+            out_for_delivery: 'Out for Delivery',
+            on_the_way: 'Out for Delivery',
+            reached: 'Rider Reached',
+            rider_arrived: 'Rider Reached',
+            delivered: 'Delivered',
+            picked_up_by_customer: 'Delivered',
+            completed: 'Delivered',
+            cancelled: 'Cancelled',
+            rejected: 'Cancelled',
+            failed_delivery: 'Cancelled'
+        };
+
+        if (labelMap[key]) return labelMap[key];
+
+        return key
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    };
+    const statusSourceOrders = storedOrders.length > 0 ? storedOrders : (liveOrder ? [liveOrder] : []);
+    const trackOrdersStatusSummary = statusSourceOrders
+        .map((order) => formatOrderStatusLabel(order?.status))
+        .join(', ');
+    const floatingTrackOffset = totalCartItems > 0 ? -80 : 0;
+    const menuFabOffset = (totalCartItems > 0 ? -80 : 0) + (shouldShowFloatingTrackToast ? -76 : 0);
 
     return (
         <>
@@ -2496,24 +2586,6 @@ const OrderPageInternal = () => {
                             <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
                                 <div className="container mx-auto px-4">
                                     <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
-                                        {liveOrder && trackingUrl && (
-                                            <div className="flex items-center gap-1">
-                                                <Link href={trackingUrl} className="flex-shrink-0">
-                                                    <motion.div
-                                                        className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
-                                                        whileHover={{ scale: 1.05 }}
-                                                    >
-                                                        <Navigation size={16} className="mr-2" />
-                                                        <span className="text-sm font-bold">
-                                                            {storedOrders.length > 1
-                                                                ? `Track ${storedOrders.length} Orders`
-                                                                : `Track ${liveOrder.restaurantId === restaurantId ? '' : (liveOrder.restaurantName || 'Order')}`.trim() || 'Track'}
-                                                        </span>
-                                                    </motion.div>
-                                                </Link>
-                                            </div>
-                                        )}
-
                                         <Popover>
                                             <PopoverTrigger asChild>
                                                 <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
@@ -2613,6 +2685,43 @@ const OrderPageInternal = () => {
                         </div>
                     )
                 }
+
+                <AnimatePresence>
+                    {shouldShowFloatingTrackToast && (
+                        <motion.div
+                            className="fixed left-4 right-4 bottom-4 z-40 pointer-events-none"
+                            initial={{ y: 24, opacity: 0 }}
+                            animate={{ y: floatingTrackOffset, opacity: 1 }}
+                            exit={{ y: 24, opacity: 0 }}
+                            transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+                        >
+                            <Link href={trackingUrl} className="pointer-events-auto block">
+                                <motion.div
+                                    whileTap={{ scale: 0.98 }}
+                                    className={cn(
+                                        "rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md",
+                                        "flex items-center justify-between gap-3",
+                                        liveOrder?.status === 'Ready' || liveOrder?.status === 'ready_for_pickup'
+                                            ? 'bg-green-400/95 border-green-500 text-black'
+                                            : 'bg-yellow-400/95 border-yellow-500 text-black'
+                                    )}
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-9 h-9 rounded-full bg-black/10 flex items-center justify-center">
+                                            <Navigation size={18} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-extrabold truncate">{trackOrdersLabel}</p>
+                                            <p className="text-xs text-black/70 truncate">Live order status: {trackOrdersStatusSummary || 'In Progress'}</p>
+                                        </div>
+                                    </div>
+                                    <ArrowRight className="h-4 w-4 shrink-0" />
+                                </motion.div>
+                            </Link>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <AnimatePresence>
                     {totalCartItems > 0 && (
                         <motion.div
@@ -2635,7 +2744,7 @@ const OrderPageInternal = () => {
 
                 <motion.div
                     className="fixed bottom-4 right-4 z-20"
-                    animate={{ y: totalCartItems > 0 ? -80 : 0 }}
+                    animate={{ y: menuFabOffset }}
                     transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                 >
                     <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>

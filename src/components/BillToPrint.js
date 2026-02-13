@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { formatSafeDate } from '@/lib/safeDateFormat';
+import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -46,19 +47,6 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         const qty = item.quantity || item.qty || 1;
         return price * qty;
     };
-
-    const getItemPortionLabel = (item) => {
-        const label =
-            item?.portion?.name ||
-            item?.selectedPortion?.name ||
-            item?.variant ||
-            item?.portionName ||
-            item?.size ||
-            '';
-        const normalized = String(label || '').trim();
-        return normalized || null;
-    };
-
 
     return (
         <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto font-mono text-[12px] leading-tight">
@@ -166,14 +154,14 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         const pricePerUnit = getItemPrice(item);
                         const totalItemPrice = getItemTotal(item);
                         const quantity = item.quantity || item.qty || 1;
-                        const portionLabel = getItemPortionLabel(item);
+                        const variantLabel = getItemVariantLabel(item);
 
                         return (
                             <tr key={index}>
                                 <td className="py-1.5 align-top pr-1">
                                     <div className="text-[14px] leading-snug">
                                         {safeRender(item.name || item.itemName)}
-                                        {portionLabel ? ` (${portionLabel})` : ''}
+                                        {variantLabel}
                                     </div>
 
                                     {/* FIXED: Show Add-ons as sub-items in Bill */}

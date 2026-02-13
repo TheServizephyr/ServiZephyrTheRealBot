@@ -464,6 +464,28 @@ function OrderTrackingContent() {
     if (error) return <div className="h-screen flex items-center justify-center text-red-500">{error}</div>;
     if (!orderData) return null;
 
+    const normalizeDialablePhone = (value) => {
+        if (!value) return null;
+        const raw = String(value).trim();
+        if (!raw) return null;
+
+        if (raw.startsWith('+')) {
+            const withCountryCode = `+${raw.slice(1).replace(/\D/g, '')}`;
+            return withCountryCode.length > 1 ? withCountryCode : null;
+        }
+
+        const digitsOnly = raw.replace(/\D/g, '');
+        return digitsOnly || null;
+    };
+
+    const restaurantCallPhone = normalizeDialablePhone(
+        orderData?.restaurant?.ownerPhone ||
+        orderData?.restaurant?.phone ||
+        orderData?.restaurant?.contactPhone ||
+        orderData?.order?.restaurantPhone
+    );
+    const restaurantCallHref = restaurantCallPhone ? `tel:${restaurantCallPhone}` : null;
+
     // Location Logic
     const mapLocations = {
         restaurantLocation: orderData.restaurant?.address
@@ -930,7 +952,7 @@ function OrderTrackingContent() {
                                                 {delivery > 0 && (
                                                     <div className="flex justify-between text-xs text-gray-500">
                                                         <span>Delivery Fee</span>
-                                                        <span>₹{delivery}</span>
+                                                        <span>₹{Number(delivery).toFixed(2)}</span>
                                                     </div>
                                                 )}
                                                 {tax > 0 && (
@@ -975,12 +997,22 @@ function OrderTrackingContent() {
             {/* FOOTER ACTION - Only visible if map is NOT expanded */}
             {!isMapExpanded && (
                 <div className="p-4 bg-white border-t border-gray-100 sticky bottom-0 z-30 pb-safe">
-                    <a href={`tel:${orderData.restaurant.ownerPhone || orderData.restaurant.phone}`} className="block w-full">
-                        <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
+                    {restaurantCallHref ? (
+                        <a href={restaurantCallHref} className="block w-full">
+                            <Button className="w-full h-12 text-base font-bold bg-gray-900 text-white hover:bg-black shadow-lg rounded-xl flex items-center justify-center gap-2">
+                                <Phone size={18} />
+                                Call Restaurant
+                            </Button>
+                        </a>
+                    ) : (
+                        <Button
+                            disabled
+                            className="w-full h-12 text-base font-bold bg-gray-300 text-gray-600 rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
+                        >
                             <Phone size={18} />
-                            Call Restaurant
+                            Restaurant Phone Unavailable
                         </Button>
-                    </a>
+                    )}
                 </div>
             )}
         </div>

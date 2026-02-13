@@ -25,6 +25,7 @@ import PrintOrderDialog from '@/components/PrintOrderDialog';
 import { useReactToPrint } from 'react-to-print';
 import { usePolling } from '@/lib/usePolling';
 import { emitAppNotification } from '@/lib/appNotifications';
+import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 
 
 export const dynamic = 'force-dynamic';
@@ -752,7 +753,7 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
                                             <div className="flex flex-col">
                                                 <span className="font-medium">
                                                     {item.name}
-                                                    {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                                    {getItemVariantLabel(item)}
                                                 </span>
                                                 {/* Add-ons display */}
                                                 {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
@@ -934,7 +935,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                             <span className="text-foreground/90 leading-tight">
                                 <span className="font-extrabold text-primary mr-2">{qty}x</span>
                                 {item.name}
-                                {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                {getItemVariantLabel(item)}
                                 {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && <span className="text-xs text-muted-foreground"> +{(item.addons || item.selectedAddOns).length} adds</span>}
                             </span>
                             <span className="font-semibold text-muted-foreground">₹{lineTotal.toFixed(0)}</span>
@@ -1802,7 +1803,7 @@ export default function LiveOrdersPage() {
                                             <td className="p-4 align-top hidden md:table-cell">
                                                 {(order.items || []).slice(0, 2).map((item, index) => (
                                                     <div key={index} className="text-xs text-muted-foreground flex items-center gap-2">
-                                                        <span>{item.quantity}x {item.name}</span>
+                                                        <span>{item.quantity}x {item.name}{getItemVariantLabel(item)}</span>
                                                         {item.addedAt && (() => {
                                                             const addedDate = safeToDate(item.addedAt?.seconds ? new Date(item.addedAt.seconds * 1000) : item.addedAt);
                                                             return addedDate ? (

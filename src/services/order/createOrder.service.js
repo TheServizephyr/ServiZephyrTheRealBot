@@ -85,8 +85,14 @@ const optimizeItemSnapshot = (item) => {
     if (item.portion) {
         snapshot.portion = {
             name: item.portion.name,
-            price: item.portion.price || 0
+            price: item.portion.price || 0,
+            isDefault: item.portion.isDefault === true
         };
+    }
+
+    const portionCount = Number(item.portionCount ?? (Array.isArray(item.portions) ? item.portions.length : 0));
+    if (Number.isFinite(portionCount) && portionCount > 0) {
+        snapshot.portionCount = portionCount;
     }
 
     if (item.addedAt) {

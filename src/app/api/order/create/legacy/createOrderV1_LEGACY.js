@@ -1517,7 +1517,7 @@ function getBusinessCollection(businessType) {
 
 const optimizeItemSnapshot = (item) => {
     if (!item) return item;
-    return {
+    const snapshot = {
         id: item.id,
         name: item.name,
         categoryId: item.categoryId || 'general',
@@ -1534,7 +1534,15 @@ const optimizeItemSnapshot = (item) => {
         isAddon: !!item.isAddon,
         portion: item.portion ? {
             name: item.portion.name,
-            price: item.portion.price || 0
+            price: item.portion.price || 0,
+            isDefault: item.portion.isDefault === true
         } : null
     };
+
+    const portionCount = Number(item.portionCount ?? (Array.isArray(item.portions) ? item.portions.length : 0));
+    if (Number.isFinite(portionCount) && portionCount > 0) {
+        snapshot.portionCount = portionCount;
+    }
+
+    return snapshot;
 };

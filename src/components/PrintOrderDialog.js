@@ -9,6 +9,7 @@ import BillToPrint from '@/components/BillToPrint';
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
 import { formatSafeDate } from '@/lib/safeDateFormat';
+import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 
 import { useToast } from "@/components/ui/use-toast";
 import { toPng } from 'html-to-image';
@@ -182,9 +183,8 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 const total = (qty * price).toFixed(0);
 
                 // FIXED: Portion Name
-                const portionText = item.portion?.name ? `(${item.portion.name})` : (item.variant ? `(${item.variant})` : '');
-
-                encoder.text(`${item.name} ${portionText}`).newline();
+                const variantLabel = getItemVariantLabel(item).replace(/^\s*/, '');
+                encoder.text(`${item.name}${variantLabel}`).newline();
 
                 // FIXED: Add-ons as sub-items
                 if (item.addons && item.addons.length > 0) {

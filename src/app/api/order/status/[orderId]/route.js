@@ -399,6 +399,31 @@ export async function GET(request, { params }) {
             }
         }
 
+        const normalizeDialablePhone = (value) => {
+            if (!value) return null;
+            const raw = String(value).trim();
+            if (!raw) return null;
+
+            if (raw.startsWith('+')) {
+                const withCountryCode = `+${raw.slice(1).replace(/\D/g, '')}`;
+                return withCountryCode.length > 1 ? withCountryCode : null;
+            }
+
+            const digitsOnly = raw.replace(/\D/g, '');
+            return digitsOnly || null;
+        };
+
+        const restaurantContactPhoneRaw =
+            orderData.restaurantPhone ||
+            businessData.ownerPhone ||
+            businessData.phone ||
+            businessData.phoneNumber ||
+            businessData.contactPhone ||
+            businessData.mobileNumber ||
+            businessData.whatsappNumber ||
+            null;
+        const restaurantContactPhone = normalizeDialablePhone(restaurantContactPhoneRaw);
+
         const responsePayload = {
             order: {
                 id: orderSnap.id, // Primary ID
@@ -430,6 +455,8 @@ export async function GET(request, { params }) {
                 id: businessDoc.id,
                 name: businessData.name,
                 address: businessData.address,
+                ownerPhone: restaurantContactPhone,
+                phone: restaurantContactPhone,
                 businessType: businessData.businessType || 'restaurant' // CRITICAL: Router needs this!
             },
             deliveryBoy: deliveryBoyData ? {

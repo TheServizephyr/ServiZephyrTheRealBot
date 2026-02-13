@@ -24,6 +24,7 @@ import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
+import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 
 
 const ORDER_STATE = {
@@ -1892,7 +1893,7 @@ const CheckoutPageInternal = () => {
                                             <div className="flex flex-col gap-1">
                                                 <span className="font-medium text-foreground">
                                                     {item.name}
-                                                    {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
+                                                    {getItemVariantLabel(item)}
                                                 </span>
                                                 {/* NEW: Base Price Display */}
                                                 <div className="text-xs text-muted-foreground">
