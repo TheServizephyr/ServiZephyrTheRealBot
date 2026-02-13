@@ -21,7 +21,9 @@
     "whatsapp:create-welcome-cta-template": "node -r dotenv/config scripts/create-whatsapp-welcome-cta-template.js dotenv_config_path=.env.local",
     "kiosk:launch": "powershell -ExecutionPolicy Bypass -File scripts/launch-kiosk-printing.ps1",
     "kiosk:install-startup": "powershell -ExecutionPolicy Bypass -File scripts/install-kiosk-startup.ps1",
-    "kiosk:remove-startup": "powershell -ExecutionPolicy Bypass -File scripts/remove-kiosk-startup.ps1"
+    "kiosk:remove-startup": "powershell -ExecutionPolicy Bypass -File scripts/remove-kiosk-startup.ps1",
+    "kiosk:printer:list": "powershell -ExecutionPolicy Bypass -File scripts/set-default-printer.ps1",
+    "kiosk:printer:set-default": "powershell -ExecutionPolicy Bypass -File scripts/set-default-printer.ps1"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.0.0",

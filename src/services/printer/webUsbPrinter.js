@@ -1,10 +1,21 @@
 export const connectPrinter = async (onStatus = () => { }) => {
     try {
-        onStatus('Requesting device...');
-        const device = await navigator.usb.requestDevice({ filters: [] });
+        let device = null;
 
-        onStatus('Opening device...');
-        await device.open();
+        onStatus('Checking previously authorized devices...');
+        const authorizedDevices = await navigator.usb.getDevices();
+        if (Array.isArray(authorizedDevices) && authorizedDevices.length > 0) {
+            device = authorizedDevices[0];
+            onStatus('Using authorized device...');
+        } else {
+            onStatus('Requesting device...');
+            device = await navigator.usb.requestDevice({ filters: [] });
+        }
+
+        if (!device.opened) {
+            onStatus('Opening device...');
+            await device.open();
+        }
 
         if (device.configuration === null) {
             onStatus('Selecting configuration...');
@@ -36,10 +47,14 @@ export const connectPrinter = async (onStatus = () => { }) => {
             await device.claimInterface(interfaceNumber);
         } catch (claimErr) {
             console.error('[WebUSB] Claim interface failed:', claimErr);
-            if (claimErr.name === 'SecurityError' || claimErr.message.includes('access denied')) {
+            const claimErrorMsg = String(claimErr?.message || '').toLowerCase();
+            if (claimErr?.name === 'InvalidStateError' || claimErrorMsg.includes('already claimed')) {
+                onStatus(`Interface ${interfaceNumber} already claimed`);
+            } else if (claimErr.name === 'SecurityError' || claimErrorMsg.includes('access denied')) {
                 throw new Error('Access Denied: Another app/driver is using the printer. On Windows, you might need "WinUSB" driver (via Zadig).');
+            } else {
+                throw claimErr;
             }
-            throw claimErr;
         }
 
         onStatus('Ready to print');
