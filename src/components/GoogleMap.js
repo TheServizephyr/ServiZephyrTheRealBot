@@ -7,6 +7,7 @@ import { Loader2, Globe, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const GOOGLE_MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || '';
 
 // MapControls component (No change needed)
 const MapControls = () => {
@@ -81,7 +82,7 @@ const GoogleMap = ({ center, onIdle }) => {
         <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
             <div className="w-full h-full relative">
                 <Map
-                    mapId="servizephyr_map"
+                    mapId={GOOGLE_MAP_ID || undefined}
                     style={{ width: '100%', height: '100%' }}
                     
                     // **THE FIX:** Use 'defaultCenter' instead of 'center'

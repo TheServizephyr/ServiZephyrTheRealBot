@@ -73,6 +73,21 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
         const n = Number(value);
         return Number.isFinite(n) ? n : fallback;
     };
+    const normalizeOrderSlabRules = (rules) => {
+        if (!Array.isArray(rules)) return [];
+        return rules
+            .map((rule) => ({
+                maxOrder: toNum(rule?.maxOrder, 0),
+                fee: toNum(rule?.fee, 0),
+            }))
+            .filter((rule) => rule.maxOrder > 0)
+            .sort((a, b) => a.maxOrder - b.maxOrder);
+    };
+    const resolveOrderSlabBaseFee = (subtotalAmount, rules, aboveFee) => {
+        const matchedRule = rules.find((rule) => subtotalAmount < rule.maxOrder);
+        if (matchedRule) return matchedRule.fee;
+        return aboveFee;
+    };
 
     // Apply road distance factor (optional)
     const roadFactor = Math.max(1.0, toNum(settings.roadDistanceFactor, 1.0));
@@ -164,13 +179,32 @@ export function calculateDeliveryCharge(aerialDistance, subtotal, settings) {
             charge = toNum(settings.fixedCharge, 0);
             reason = `Standard fee ₹${charge.toFixed(0)}`;
         }
+    } else if (settings.deliveryChargeType === 'order-slab-distance') {
+        type = 'order-slab-distance';
+        const orderSlabRules = normalizeOrderSlabRules(settings.orderSlabRules);
+        const orderSlabAboveFee = toNum(settings.orderSlabAboveFee, 0);
+        const includedKm = Math.max(0, toNum(settings.orderSlabBaseDistance, 1));
+        const perKmRate = Math.max(0, toNum(settings.orderSlabPerKmFee, 15));
+        const baseFee = resolveOrderSlabBaseFee(subtotalNum, orderSlabRules, orderSlabAboveFee);
+
+        if (roadDistance <= includedKm) {
+            charge = baseFee;
+            reason = `Order slab base fee applied for ${includedKm}km`;
+        } else {
+            const extraKmRaw = roadDistance - includedKm;
+            const billedExtraKm = Math.ceil(extraKmRaw);
+            charge = baseFee + (billedExtraKm * perKmRate);
+            reason = `Order slab base + ${billedExtraKm}km extra (${perKmRate}/km)`;
+        }
     }
 
     // 3. OVERRIDE LOGIC (Universal Free Zone / Global Min Order)
-    // CRITICAL: Only apply if NOT in tiered mode (tiers own their rule engine)
-    const isTieredMode = settings.deliveryChargeType === 'tiered';
+    // CRITICAL: Do not apply on engines that already encode full pricing rules.
+    const isOverrideDisabledMode =
+        settings.deliveryChargeType === 'tiered' ||
+        settings.deliveryChargeType === 'order-slab-distance';
 
-    if (!isTieredMode && isUniversalFreeZone && charge > 0) {
+    if (!isOverrideDisabledMode && isUniversalFreeZone && charge > 0) {
         charge = 0;
         if (hasRadiusRule && hasGlobalMinOrderRule) {
             reason = `Free in ${freeDeliveryRadius}km zone for orders ≥₹${freeDeliveryMinOrder}`;

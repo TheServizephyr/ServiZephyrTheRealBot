@@ -813,6 +813,7 @@ const OrderPageInternal = () => {
 
     // NEW: Ref to track if we've attempted auto-open (prevents multiple triggers)
     const hasAttemptedAutoOpen = useRef(false);
+    const isAddressSelectionInProgress = useRef(false);
 
     // FETCH ADDRESSES FOR DRAWER
     useEffect(() => {
@@ -827,9 +828,25 @@ const OrderPageInternal = () => {
 
     // Handler to close address selector with validation
     const handleCloseAddressSelector = () => {
+        if (isAddressSelectionInProgress.current) {
+            setIsAddressSelectorOpen(false);
+            return;
+        }
+
         // Simple check: Only prevent close if this is first-time WhatsApp delivery AND no address saved ANYWHERE
-        const savedLocation = localStorage.getItem('customerLocation');
-        const hasAnyAddress = savedLocation || customerLocation?.lat;
+        const savedLocationRaw = localStorage.getItem('customerLocation');
+        let savedLocation = null;
+        if (savedLocationRaw) {
+            try {
+                savedLocation = JSON.parse(savedLocationRaw);
+            } catch (e) {
+                savedLocation = null;
+            }
+        }
+        const hasAnyAddress =
+            !!savedLocation?.id ||
+            Number.isFinite(Number(savedLocation?.lat ?? savedLocation?.latitude)) ||
+            Number.isFinite(Number(customerLocation?.lat ?? customerLocation?.latitude));
         const isFromWhatsApp = !!ref || !!phone;
         const isFirstTimeDelivery = isFromWhatsApp && deliveryType === 'delivery' && !hasAnyAddress;
 
@@ -958,6 +975,7 @@ const OrderPageInternal = () => {
         setCustomerLocation(addr);
         localStorage.setItem('customerLocation', JSON.stringify(addr));
         setIsAddressSelectorOpen(false);
+        isAddressSelectionInProgress.current = false;
 
         // Call validation with current subtotal
         await validateDelivery(addr, subtotal);
@@ -2216,6 +2234,7 @@ const OrderPageInternal = () => {
                                         addresses={userAddresses}
                                         selectedAddressId={customerLocation?.id}
                                         onSelect={(addr) => {
+                                            isAddressSelectionInProgress.current = true;
                                             window.history.back(); // Close first (pops state)
                                             // Small timeout to allow state pop before setting new address
                                             setTimeout(() => handleSelectNewAddress(addr), 50);

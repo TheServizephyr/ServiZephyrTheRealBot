@@ -81,6 +81,13 @@ export async function GET(req) {
             freeDeliveryRadius: 0,
             freeDeliveryMinOrder: 0,
             deliveryTiers: [],
+            deliveryOrderSlabRules: [
+                { maxOrder: 100, fee: 10 },
+                { maxOrder: 200, fee: 20 }
+            ],
+            deliveryOrderSlabAboveFee: 0,
+            deliveryOrderSlabBaseDistance: 1,
+            deliveryOrderSlabPerKmFee: 15,
         };
 
         const configData = configDoc.exists ? configDoc.data() || {} : {};
@@ -115,7 +122,9 @@ export async function PATCH(req) {
             // NEW: Road factor & free zone
             'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder',
             // NEW: Tiered charges
-            'deliveryTiers'
+            'deliveryTiers',
+            // NEW: Order slab + distance mode
+            'deliveryOrderSlabRules', 'deliveryOrderSlabAboveFee', 'deliveryOrderSlabBaseDistance', 'deliveryOrderSlabPerKmFee'
         ];
 
         const cleanUpdates = {};
@@ -137,6 +146,18 @@ export async function PATCH(req) {
                 minOrder: toFiniteNumber(t?.minOrder, 0),
                 fee: toFiniteNumber(t?.fee, 0),
             }));
+        }
+        if (cleanUpdates.deliveryOrderSlabAboveFee !== undefined) cleanUpdates.deliveryOrderSlabAboveFee = toFiniteNumber(cleanUpdates.deliveryOrderSlabAboveFee, 0);
+        if (cleanUpdates.deliveryOrderSlabBaseDistance !== undefined) cleanUpdates.deliveryOrderSlabBaseDistance = Math.max(0, toFiniteNumber(cleanUpdates.deliveryOrderSlabBaseDistance, 1));
+        if (cleanUpdates.deliveryOrderSlabPerKmFee !== undefined) cleanUpdates.deliveryOrderSlabPerKmFee = Math.max(0, toFiniteNumber(cleanUpdates.deliveryOrderSlabPerKmFee, 15));
+        if (Array.isArray(cleanUpdates.deliveryOrderSlabRules)) {
+            cleanUpdates.deliveryOrderSlabRules = cleanUpdates.deliveryOrderSlabRules
+                .map(rule => ({
+                    maxOrder: toFiniteNumber(rule?.maxOrder, 0),
+                    fee: toFiniteNumber(rule?.fee, 0),
+                }))
+                .filter(rule => rule.maxOrder > 0)
+                .sort((a, b) => a.maxOrder - b.maxOrder);
         }
 
         cleanUpdates.updatedAt = new Date();

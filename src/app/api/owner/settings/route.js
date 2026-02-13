@@ -71,6 +71,10 @@ export async function GET(req) {
                 roadDistanceFactor: fallback('roadDistanceFactor', 1.0),
                 freeDeliveryRadius: fallback('freeDeliveryRadius', 0),
                 freeDeliveryMinOrder: fallback('freeDeliveryMinOrder', 0),
+                deliveryOrderSlabRules: fallback('deliveryOrderSlabRules', []),
+                deliveryOrderSlabAboveFee: fallback('deliveryOrderSlabAboveFee', 0),
+                deliveryOrderSlabBaseDistance: fallback('deliveryOrderSlabBaseDistance', 1),
+                deliveryOrderSlabPerKmFee: fallback('deliveryOrderSlabPerKmFee', 15),
                 pickupEnabled: fallback('pickupEnabled', true),
                 dineInEnabled: fallback('dineInEnabled', true),
             };
@@ -153,6 +157,10 @@ export async function GET(req) {
             roadDistanceFactor: fallback('roadDistanceFactor', 1.0),
             freeDeliveryRadius: fallback('freeDeliveryRadius', 0),
             freeDeliveryMinOrder: fallback('freeDeliveryMinOrder', 0),
+            deliveryOrderSlabRules: fallback('deliveryOrderSlabRules', []),
+            deliveryOrderSlabAboveFee: fallback('deliveryOrderSlabAboveFee', 0),
+            deliveryOrderSlabBaseDistance: fallback('deliveryOrderSlabBaseDistance', 1),
+            deliveryOrderSlabPerKmFee: fallback('deliveryOrderSlabPerKmFee', 15),
             // Other Settings
             pickupEnabled: fallback('pickupEnabled', false),
             dineInEnabled: fallback('dineInEnabled', true),
@@ -313,10 +321,13 @@ export async function PATCH(req) {
         // If frontend sends delivery params to THIS endpoint, we should forward them to sub-collection
         const deliveryFields = [
             'deliveryEnabled', 'deliveryRadius', 'deliveryFeeType',
-            'deliveryFixedFee', 'deliveryPerKmFee', 'deliveryFreeThreshold',
+            'deliveryFixedFee', 'deliveryPerKmFee', 'deliveryBaseDistance', 'deliveryFreeThreshold',
             'deliveryOnlinePaymentEnabled', 'deliveryCodEnabled',
             // NEW: Road factor & free delivery zone
-            'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder'
+            'roadDistanceFactor', 'freeDeliveryRadius', 'freeDeliveryMinOrder',
+            // NEW: Tiered + slab distance modes
+            'deliveryTiers',
+            'deliveryOrderSlabRules', 'deliveryOrderSlabAboveFee', 'deliveryOrderSlabBaseDistance', 'deliveryOrderSlabPerKmFee'
         ];
 
         const deliveryUpdates = {};
@@ -382,6 +393,10 @@ export async function PATCH(req) {
             roadDistanceFactor: fallback('roadDistanceFactor', 1.0),
             freeDeliveryRadius: fallback('freeDeliveryRadius', 0),
             freeDeliveryMinOrder: fallback('freeDeliveryMinOrder', 0),
+            deliveryOrderSlabRules: fallback('deliveryOrderSlabRules', []),
+            deliveryOrderSlabAboveFee: fallback('deliveryOrderSlabAboveFee', 0),
+            deliveryOrderSlabBaseDistance: fallback('deliveryOrderSlabBaseDistance', 1),
+            deliveryOrderSlabPerKmFee: fallback('deliveryOrderSlabPerKmFee', 15),
             // Other
             pickupEnabled: fallback('pickupEnabled', false),
             dineInEnabled: fallback('dineInEnabled', true),

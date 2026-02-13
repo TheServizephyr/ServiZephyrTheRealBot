@@ -68,8 +68,8 @@ export async function GET(req, { params }) {
         }
 
         // STEP 2: Build version-based cache key
-        // PATCH: Added _patch3 to force cache refresh due to Duplicate Collection Fix
-        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch3`;
+        // PATCH: Added _patch4 to force cache refresh for new delivery fee engine fields
+        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch4`;
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
@@ -210,6 +210,7 @@ export async function GET(req, { params }) {
             // Use deliveryFixedFee as source of truth for fixed charge
             deliveryCharge: deliveryConfigSnap.exists ? (deliveryConfig.deliveryFeeType === 'fixed' ? deliveryConfig.deliveryFixedFee : 0) : (businessData.deliveryCharge || 0),
             deliveryFixedFee: deliveryConfigSnap.exists ? deliveryConfig.deliveryFixedFee : (businessData.deliveryFixedFee || 30),
+            deliveryBaseDistance: deliveryConfigSnap.exists ? deliveryConfig.deliveryBaseDistance : (businessData.deliveryBaseDistance || 0),
             deliveryFreeThreshold: deliveryConfigSnap.exists ? deliveryConfig.deliveryFreeThreshold : (businessData.deliveryFreeThreshold || 500),
             minOrderValue: deliveryConfigSnap.exists ? deliveryConfig.minOrderValue : (businessData.minOrderValue || 0),
 
@@ -217,6 +218,14 @@ export async function GET(req, { params }) {
             deliveryFeeType: deliveryConfigSnap.exists ? deliveryConfig.deliveryFeeType : (businessData.deliveryFeeType || 'fixed'),
             deliveryPerKmFee: deliveryConfigSnap.exists ? deliveryConfig.deliveryPerKmFee : (businessData.deliveryPerKmFee || 0),
             deliveryRadius: deliveryConfigSnap.exists ? deliveryConfig.deliveryRadius : (businessData.deliveryRadius || 5),
+            roadDistanceFactor: deliveryConfigSnap.exists ? (deliveryConfig.roadDistanceFactor || 1.0) : (businessData.roadDistanceFactor || 1.0),
+            freeDeliveryRadius: deliveryConfigSnap.exists ? (deliveryConfig.freeDeliveryRadius || 0) : (businessData.freeDeliveryRadius || 0),
+            freeDeliveryMinOrder: deliveryConfigSnap.exists ? (deliveryConfig.freeDeliveryMinOrder || 0) : (businessData.freeDeliveryMinOrder || 0),
+            deliveryTiers: deliveryConfigSnap.exists ? (deliveryConfig.deliveryTiers || []) : (businessData.deliveryTiers || []),
+            deliveryOrderSlabRules: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabRules || []) : (businessData.deliveryOrderSlabRules || []),
+            deliveryOrderSlabAboveFee: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabAboveFee || 0) : (businessData.deliveryOrderSlabAboveFee || 0),
+            deliveryOrderSlabBaseDistance: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabBaseDistance || 1) : (businessData.deliveryOrderSlabBaseDistance || 1),
+            deliveryOrderSlabPerKmFee: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabPerKmFee || 15) : (businessData.deliveryOrderSlabPerKmFee || 15),
 
             menu: menuData,
             coupons: coupons,

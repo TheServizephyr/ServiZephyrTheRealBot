@@ -5,12 +5,37 @@ import { getFirestore, verifyIdToken } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
 import { getOrCreateGuestProfile, deobfuscateGuestId } from '@/lib/guest-utils';
 
+const normalizePhone = (value) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.slice(-10);
+};
+
+const pickPhone = (profileData = {}, fallback = '') => {
+    const candidates = [
+        profileData?.phone,
+        profileData?.phoneNumber,
+        profileData?.whatsappNumber,
+        profileData?.addresses?.[0]?.phone,
+        fallback,
+    ];
+
+    for (const candidate of candidates) {
+        const normalized = normalizePhone(candidate);
+        if (normalized.length === 10) return normalized;
+    }
+
+    return normalizePhone(fallback);
+};
+
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
         const body = await req.json();
         const { phone, guestId: explicitGuestId, ref } = body || {};
         const guestId = typeof explicitGuestId === 'string' ? explicitGuestId.trim() : explicitGuestId;
+        const cookieStore = cookies();
+        const cookieGuestId = cookieStore.get('auth_guest_session')?.value?.trim() || null;
 
         // CRITICAL CHANGE: If ref is provided, prioritize it over logged-in UID
         // This ensures WhatsApp capability URLs work correctly even when user is logged in
@@ -44,10 +69,13 @@ export async function POST(req) {
         // PRIORITY LOGIC:
         // 1. If ref provided → use refId (WhatsApp capability URL)
         // 2. Else if logged in → use loggedInUid
-        const targetUserId = refId || loggedInUid;
+        const targetUserId = refId || guestId || cookieGuestId || loggedInUid;
 
         if (targetUserId) {
-            console.log(`[API /customer/lookup] � Target User: ${targetUserId} (source: ${refId ? 'ref' : 'auth'})`);
+            const source = refId
+                ? 'ref'
+                : (guestId ? 'payload_guestId' : (cookieGuestId ? 'cookie_guestId' : 'auth'));
+            console.log(`[API /customer/lookup] Target User: ${targetUserId} (source: ${source})`);
 
             // Try guest_profiles first
             const guestDoc = await firestore.collection('guest_profiles').doc(targetUserId).get();
@@ -56,7 +84,7 @@ export async function POST(req) {
                 console.log(`[API /customer/lookup] ✅ Guest profile found with ${guestData.addresses?.length || 0} addresses`);
                 return NextResponse.json({
                     name: guestData.name || 'Guest',
-                    phone: guestData.phone || '',
+                    phone: pickPhone(guestData),
                     addresses: guestData.addresses || [],
                     isVerified: false,
                     isGuest: true
@@ -70,7 +98,7 @@ export async function POST(req) {
                 console.log(`[API /customer/lookup] ✅ User found. Addresses: ${userData.addresses?.length || 0}`);
                 return NextResponse.json({
                     name: userData.name || 'User',
-                    phone: userData.phone || '',
+                    phone: pickPhone(userData),
                     addresses: userData.addresses || [],
                     isVerified: true,
                     isGuest: false
@@ -94,7 +122,7 @@ export async function POST(req) {
                 console.log(`[API /customer/lookup] ✅ Guest profile found with ${guestData.addresses?.length || 0} addresses`);
                 return NextResponse.json({
                     name: guestData.name || 'Guest',
-                    phone: guestData.phone || '',
+                    phone: pickPhone(guestData),
                     addresses: guestData.addresses || [],
                     isVerified: false,
                     isGuest: true
@@ -109,7 +137,7 @@ export async function POST(req) {
                     console.log(`[API /customer/lookup] ✅ Found migrated user profile via ref: ${guestId} with ${userData.addresses?.length || 0} addresses`);
                     return NextResponse.json({
                         name: userData.name || 'User',
-                        phone: userData.phone || '',
+                        phone: pickPhone(userData),
                         addresses: userData.addresses || [],
                         isVerified: true,
                         isGuest: false
@@ -142,6 +170,7 @@ export async function POST(req) {
                 userData = guestDoc.data();
                 return NextResponse.json({
                     name: userData.name || 'Guest',
+                    phone: pickPhone(userData, normalizedPhone),
                     addresses: userData.addresses || [],
                     isVerified: false,
                     isGuest: true
@@ -154,8 +183,10 @@ export async function POST(req) {
                 userData = userDoc.data();
                 return NextResponse.json({
                     name: userData.name,
+                    phone: pickPhone(userData, normalizedPhone),
                     addresses: userData.addresses || [],
-                    isVerified: true
+                    isVerified: true,
+                    isGuest: false
                 }, { status: 200 });
             }
         }

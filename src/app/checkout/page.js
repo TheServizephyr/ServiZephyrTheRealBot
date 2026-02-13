@@ -530,9 +530,17 @@ const CheckoutPageInternal = () => {
                         deliveryCharge: menuData.deliveryCharge,
                         deliveryFeeType: menuData.deliveryFeeType,
                         deliveryFixedFee: menuData.deliveryFixedFee,
+                        deliveryBaseDistance: menuData.deliveryBaseDistance,
                         deliveryPerKmFee: menuData.deliveryPerKmFee,
                         deliveryRadius: menuData.deliveryRadius,
                         deliveryFreeThreshold: menuData.deliveryFreeThreshold,
+                        freeDeliveryRadius: menuData.freeDeliveryRadius,
+                        freeDeliveryMinOrder: menuData.freeDeliveryMinOrder,
+                        deliveryTiers: menuData.deliveryTiers,
+                        deliveryOrderSlabRules: menuData.deliveryOrderSlabRules,
+                        deliveryOrderSlabAboveFee: menuData.deliveryOrderSlabAboveFee,
+                        deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance,
+                        deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee,
                         minOrderValue: menuData.minOrderValue,
                         latitude: menuData.latitude,
                         longitude: menuData.longitude,
@@ -635,12 +643,16 @@ const CheckoutPageInternal = () => {
             deliveryChargeType: cartData.deliveryFeeType || 'fixed',
             fixedCharge: cartData.deliveryFixedFee || 30,
             perKmCharge: cartData.deliveryPerKmFee || 5,
-            baseDistance: cartData.baseDistance || 0,
+            baseDistance: cartData.deliveryBaseDistance || cartData.baseDistance || 0,
             freeDeliveryThreshold: cartData.deliveryFreeThreshold || 0,
             freeDeliveryRadius: cartData.freeDeliveryRadius || 0,
             freeDeliveryMinOrder: cartData.freeDeliveryMinOrder || 0,
             roadDistanceFactor: cartData.roadDistanceFactor || 1.3,
-            deliveryTiers: cartData.deliveryTiers || []
+            deliveryTiers: cartData.deliveryTiers || [],
+            orderSlabRules: cartData.deliveryOrderSlabRules || [],
+            orderSlabAboveFee: cartData.deliveryOrderSlabAboveFee || 0,
+            orderSlabBaseDistance: cartData.deliveryOrderSlabBaseDistance || 1,
+            orderSlabPerKmFee: cartData.deliveryOrderSlabPerKmFee || 15
         };
 
         try {
@@ -736,13 +748,28 @@ const CheckoutPageInternal = () => {
         } else {
             // Fallback to static charge (or cart setting)
             // ONLY apply simple threshold if NOT in tiered mode
-            const isTiered = cartData?.deliveryFeeType === 'tiered';
-            const isThresholdMet = !isTiered && cartData?.deliveryFreeThreshold && currentSubtotal >= cartData.deliveryFreeThreshold;
+            const deliveryFeeType = cartData?.deliveryFeeType;
+            const isComplexMode = deliveryFeeType === 'tiered' || deliveryFeeType === 'order-slab-distance';
+            const isThresholdMet = !isComplexMode && cartData?.deliveryFreeThreshold && currentSubtotal >= cartData.deliveryFreeThreshold;
 
             // ✅ Robust fallback: Use deliveryFixedFee -> fixedCharge -> deliveryCharge -> 0
-            const baseFee = Number(cartData?.deliveryFixedFee ?? cartData?.fixedCharge ?? cartData?.deliveryCharge ?? 0);
+            let baseFee = Number(cartData?.deliveryFixedFee ?? cartData?.fixedCharge ?? cartData?.deliveryCharge ?? 0);
+            if (deliveryFeeType === 'order-slab-distance') {
+                const rules = Array.isArray(cartData?.deliveryOrderSlabRules)
+                    ? [...cartData.deliveryOrderSlabRules]
+                        .map((rule) => ({
+                            maxOrder: Number(rule?.maxOrder) || 0,
+                            fee: Number(rule?.fee) || 0
+                        }))
+                        .filter((rule) => rule.maxOrder > 0)
+                        .sort((a, b) => a.maxOrder - b.maxOrder)
+                    : [];
+                const aboveFee = Number(cartData?.deliveryOrderSlabAboveFee) || 0;
+                const matchedRule = rules.find((rule) => currentSubtotal < rule.maxOrder);
+                baseFee = matchedRule ? matchedRule.fee : aboveFee;
+            }
             deliveryCharge = isThresholdMet ? 0 : baseFee;
-            console.log('[Checkout Debug] Using Fallback Charge:', deliveryCharge, 'isTiered:', isTiered);
+            console.log('[Checkout Debug] Using Fallback Charge:', deliveryCharge, 'deliveryFeeType:', deliveryFeeType);
         }
 
         const isDeliveryFree = deliveryCharge === 0 && deliveryType === 'delivery';

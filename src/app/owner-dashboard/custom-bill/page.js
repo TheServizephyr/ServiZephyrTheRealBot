@@ -421,14 +421,9 @@ function CustomBillPage() {
             }
 
             if (!data?.duplicateRequest) {
-                await printReceiptToUsb({
-                    items: cart,
-                    customer: customerDetails,
-                    billDetails: { subtotal, cgst, sgst, grandTotal },
-                    orderDate: new Date(),
-                    notifyUser: false,
-                    silentOnNoDeviceSelection: true,
-                });
+                if (billPrintRef.current && handlePrint) {
+                    handlePrint();
+                }
             }
 
             setCart([]);

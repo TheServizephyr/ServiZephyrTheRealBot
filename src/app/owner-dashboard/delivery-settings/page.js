@@ -17,6 +17,37 @@ import { auth } from '@/lib/firebase';
 
 export const dynamic = 'force-dynamic';
 
+const DEFAULT_ORDER_SLAB_RULES = [
+    { maxOrder: 100, fee: 10 },
+    { maxOrder: 200, fee: 20 }
+];
+
+const normalizeOrderSlabRules = (rules = []) => {
+    if (!Array.isArray(rules) || rules.length === 0) {
+        return [...DEFAULT_ORDER_SLAB_RULES];
+    }
+
+    const normalized = rules
+        .map((rule) => ({
+            maxOrder: Number(rule?.maxOrder) || 0,
+            fee: Number(rule?.fee) || 0
+        }))
+        .filter((rule) => rule.maxOrder > 0)
+        .sort((a, b) => a.maxOrder - b.maxOrder);
+
+    if (normalized.length === 0) {
+        return [...DEFAULT_ORDER_SLAB_RULES];
+    }
+
+    if (normalized.length === 1) {
+        const fallbackRule = DEFAULT_ORDER_SLAB_RULES[1];
+        const fallbackMax = Math.max(normalized[0].maxOrder + 1, fallbackRule.maxOrder);
+        return [normalized[0], { maxOrder: fallbackMax, fee: fallbackRule.fee }];
+    }
+
+    return normalized.slice(0, 2);
+};
+
 function DeliverySettingsPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -37,6 +68,11 @@ function DeliverySettingsPageContent() {
         freeDeliveryMinOrder: 0,
         // NEW: Tiered charges
         deliveryTiers: [], // Array of { minOrder: number, fee: number }
+        // NEW: Order slab + distance engine
+        deliveryOrderSlabRules: [...DEFAULT_ORDER_SLAB_RULES],
+        deliveryOrderSlabAboveFee: 0,
+        deliveryOrderSlabBaseDistance: 1,
+        deliveryOrderSlabPerKmFee: 15,
     });
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -91,6 +127,10 @@ function DeliverySettingsPageContent() {
                         minOrder: toNum(t?.minOrder, 0),
                         fee: toNum(t?.fee, 0),
                     })),
+                    deliveryOrderSlabRules: normalizeOrderSlabRules(data.deliveryOrderSlabRules),
+                    deliveryOrderSlabAboveFee: toNum(data.deliveryOrderSlabAboveFee, 0),
+                    deliveryOrderSlabBaseDistance: Math.max(0, toNum(data.deliveryOrderSlabBaseDistance, 1)),
+                    deliveryOrderSlabPerKmFee: Math.max(0, toNum(data.deliveryOrderSlabPerKmFee, 15)),
                 });
             } catch (error) {
                 setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load settings: ${error.message}` });
@@ -136,6 +176,12 @@ function DeliverySettingsPageContent() {
                     : toNum(settings.freeDeliveryMinOrder, 0),
                 // NEW: Tiered charges
                 deliveryTiers: settings.deliveryTiers.map(t => ({ minOrder: toNum(t.minOrder, 0), fee: toNum(t.fee, 0) })),
+                // NEW: Order slab + distance engine
+                deliveryOrderSlabRules: normalizeOrderSlabRules(settings.deliveryOrderSlabRules)
+                    .map(rule => ({ maxOrder: toNum(rule.maxOrder, 0), fee: toNum(rule.fee, 0) })),
+                deliveryOrderSlabAboveFee: toNum(settings.deliveryOrderSlabAboveFee, 0),
+                deliveryOrderSlabBaseDistance: Math.max(0, toNum(settings.deliveryOrderSlabBaseDistance, 1)),
+                deliveryOrderSlabPerKmFee: Math.max(0, toNum(settings.deliveryOrderSlabPerKmFee, 15)),
             };
 
             const queryParams = new URLSearchParams();
@@ -190,6 +236,16 @@ function DeliverySettingsPageContent() {
                 next.deliveryFreeThreshold = Number(prev.freeDeliveryMinOrder) || 0;
             }
 
+            if (key === 'deliveryFeeType' && value === 'order-slab-distance') {
+                next.deliveryOrderSlabRules = normalizeOrderSlabRules(prev.deliveryOrderSlabRules);
+                next.deliveryOrderSlabBaseDistance = Number(prev.deliveryOrderSlabBaseDistance) > 0
+                    ? Number(prev.deliveryOrderSlabBaseDistance)
+                    : 1;
+                next.deliveryOrderSlabPerKmFee = Number(prev.deliveryOrderSlabPerKmFee) >= 0
+                    ? Number(prev.deliveryOrderSlabPerKmFee)
+                    : 15;
+            }
+
             return next;
         });
     }
@@ -216,6 +272,33 @@ function DeliverySettingsPageContent() {
         });
     };
 
+    const updateOrderSlabRule = (index, field, value) => {
+        setSettings(prev => {
+            const normalizedRules = normalizeOrderSlabRules(prev.deliveryOrderSlabRules);
+            normalizedRules[index] = {
+                ...normalizedRules[index],
+                [field]: value
+            };
+
+            if (field === 'maxOrder' && index === 1) {
+                const firstMax = Number(normalizedRules[0]?.maxOrder) || DEFAULT_ORDER_SLAB_RULES[0].maxOrder;
+                if ((Number(normalizedRules[1]?.maxOrder) || 0) <= firstMax) {
+                    normalizedRules[1].maxOrder = firstMax + 1;
+                }
+            }
+
+            if (field === 'maxOrder' && index === 0) {
+                const firstMax = Number(normalizedRules[0]?.maxOrder) || DEFAULT_ORDER_SLAB_RULES[0].maxOrder;
+                const secondMax = Number(normalizedRules[1]?.maxOrder) || DEFAULT_ORDER_SLAB_RULES[1].maxOrder;
+                if (secondMax <= firstMax) {
+                    normalizedRules[1].maxOrder = firstMax + 1;
+                }
+            }
+
+            return { ...prev, deliveryOrderSlabRules: normalizedRules };
+        });
+    };
+
     if (loading) {
         return (
             <div className="flex h-screen w-full items-center justify-center">
@@ -223,6 +306,17 @@ function DeliverySettingsPageContent() {
             </div>
         )
     }
+
+    const orderSlabRules = normalizeOrderSlabRules(settings.deliveryOrderSlabRules);
+    const firstOrderSlab = orderSlabRules[0] || DEFAULT_ORDER_SLAB_RULES[0];
+    const secondOrderSlab = orderSlabRules[1] || DEFAULT_ORDER_SLAB_RULES[1];
+    const sampleDistanceForSlabMode = Number(settings.deliveryOrderSlabBaseDistance || 1) + 2;
+    const extraSampleKm = Math.max(0, sampleDistanceForSlabMode - Number(settings.deliveryOrderSlabBaseDistance || 1));
+    const sampleSlabBase = Number(firstOrderSlab.fee || 0);
+    const sampleSlabCharge = sampleSlabBase + (extraSampleKm * Number(settings.deliveryOrderSlabPerKmFee || 0));
+    const isOverrideEngineLocked =
+        settings.deliveryFeeType === 'tiered' ||
+        settings.deliveryFeeType === 'order-slab-distance';
 
     return (
         <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto pb-24">
@@ -326,12 +420,13 @@ function DeliverySettingsPageContent() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                     {[
                         { id: 'fixed', label: 'Fixed Fee', icon: <IndianRupee className="h-5 w-5" />, desc: 'Simple flat rate' },
                         { id: 'per-km', label: 'Distance Based', icon: <Truck className="h-5 w-5" />, desc: 'Pay per Kilometre' },
                         { id: 'free-over', label: 'Free Over Amount', icon: <ToggleRight className="h-5 w-5" />, desc: 'Free for large orders' },
-                        { id: 'tiered', label: 'Tiered Charges', icon: <Settings className="h-5 w-5" />, desc: 'Advanced rules' }
+                        { id: 'tiered', label: 'Tiered Charges', icon: <Settings className="h-5 w-5" />, desc: 'Advanced rules' },
+                        { id: 'order-slab-distance', label: 'Order Slab + KM', icon: <Truck className="h-5 w-5" />, desc: 'Amount slab + extra KM' }
                     ].map((strat) => {
                         const isActive = settings.deliveryFeeType === strat.id;
                         return (
@@ -487,6 +582,116 @@ function DeliverySettingsPageContent() {
                                 </div>
                             )}
 
+                            {settings.deliveryFeeType === 'order-slab-distance' && (
+                                <div className="max-w-4xl mx-auto space-y-8">
+                                    <div className="text-center space-y-2">
+                                        <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Order Slab + Distance Pricing</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            First {settings.deliveryOrderSlabBaseDistance || 1}km gets amount-based base fare, then add per-km fee.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="space-y-3">
+                                            <Label className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">Order Under</Label>
+                                            <div className="space-y-2">
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-50">â‚¹</span>
+                                                    <Input
+                                                        type="number"
+                                                        className="h-11 pl-8 text-lg font-bold rounded-xl text-center"
+                                                        value={firstOrderSlab.maxOrder}
+                                                        onChange={(e) => updateOrderSlabRule(0, 'maxOrder', Number(e.target.value))}
+                                                    />
+                                                </div>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-50">â‚¹</span>
+                                                    <Input
+                                                        type="number"
+                                                        className="h-11 pl-8 text-lg font-bold rounded-xl text-center"
+                                                        value={firstOrderSlab.fee}
+                                                        onChange={(e) => updateOrderSlabRule(0, 'fee', Number(e.target.value))}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-center font-medium text-muted-foreground italic">e.g. Under Rs {firstOrderSlab.maxOrder} to Rs {firstOrderSlab.fee}</p>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <Label className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">Order Under</Label>
+                                            <div className="space-y-2">
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-50">â‚¹</span>
+                                                    <Input
+                                                        type="number"
+                                                        className="h-11 pl-8 text-lg font-bold rounded-xl text-center"
+                                                        value={secondOrderSlab.maxOrder}
+                                                        onChange={(e) => updateOrderSlabRule(1, 'maxOrder', Number(e.target.value))}
+                                                    />
+                                                </div>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-50">â‚¹</span>
+                                                    <Input
+                                                        type="number"
+                                                        className="h-11 pl-8 text-lg font-bold rounded-xl text-center"
+                                                        value={secondOrderSlab.fee}
+                                                        onChange={(e) => updateOrderSlabRule(1, 'fee', Number(e.target.value))}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-center font-medium text-muted-foreground italic">e.g. Under Rs {secondOrderSlab.maxOrder} to Rs {secondOrderSlab.fee}</p>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <Label className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">Above Second Slab</Label>
+                                            <div className="space-y-2">
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-50">â‚¹</span>
+                                                    <Input
+                                                        type="number"
+                                                        className="h-11 pl-8 text-lg font-bold rounded-xl text-center"
+                                                        value={settings.deliveryOrderSlabAboveFee}
+                                                        onChange={(e) => handleSettingChange('deliveryOrderSlabAboveFee', Number(e.target.value))}
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="relative">
+                                                        <Input
+                                                            type="number"
+                                                            className="h-11 pr-10 text-lg font-bold rounded-xl text-center"
+                                                            value={settings.deliveryOrderSlabBaseDistance}
+                                                            onChange={(e) => handleSettingChange('deliveryOrderSlabBaseDistance', Number(e.target.value))}
+                                                        />
+                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">km</span>
+                                                    </div>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold opacity-50">â‚¹</span>
+                                                        <Input
+                                                            type="number"
+                                                            className="h-11 pl-8 pr-10 text-lg font-bold rounded-xl text-center"
+                                                            value={settings.deliveryOrderSlabPerKmFee}
+                                                            onChange={(e) => handleSettingChange('deliveryOrderSlabPerKmFee', Number(e.target.value))}
+                                                        />
+                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-primary">/km</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-center font-medium text-muted-foreground italic">Base for first {settings.deliveryOrderSlabBaseDistance || 1}km, then Rs {settings.deliveryOrderSlabPerKmFee || 0}/km</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-primary/5 border border-primary/10 rounded-2xl p-5">
+                                        <h4 className="text-xs font-black uppercase tracking-widest text-primary mb-2">Sample Preview</h4>
+                                        <p className="text-sm font-medium">
+                                            Under Rs {firstOrderSlab.maxOrder} and {settings.deliveryOrderSlabBaseDistance || 1}km: Rs {sampleSlabBase}
+                                        </p>
+                                        <p className="text-sm font-medium">
+                                            Under Rs {firstOrderSlab.maxOrder} and {sampleDistanceForSlabMode}km: Rs {sampleSlabCharge}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             {settings.deliveryFeeType === 'free-over' && (
                                 <div className="max-w-md mx-auto space-y-4 text-center">
                                     <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-4">Threshold Setup</p>
@@ -609,19 +814,21 @@ function DeliverySettingsPageContent() {
                 transition={{ duration: 0.4, delay: 0.2 }}
                 className={cn(
                     "transition-all duration-500",
-                    settings.deliveryFeeType === 'tiered' ? "opacity-40 grayscale pointer-events-none" : "opacity-100"
+                    isOverrideEngineLocked ? "opacity-40 grayscale pointer-events-none" : "opacity-100"
                 )}
             >
                 <div className="flex items-center gap-3 px-1 mb-6">
                     <div className={cn(
                         "flex h-8 w-8 items-center justify-center rounded-full font-black text-sm shadow-lg transition-colors",
-                        settings.deliveryFeeType === 'tiered' ? "bg-muted text-muted-foreground" : "bg-green-500 text-white shadow-green-500/20"
+                        isOverrideEngineLocked ? "bg-muted text-muted-foreground" : "bg-green-500 text-white shadow-green-500/20"
                     )}>2</div>
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                             <h2 className="text-xl font-bold tracking-tight">Bonus Overrides</h2>
-                            {settings.deliveryFeeType === 'tiered' && (
-                                <span className="px-2 py-0.5 rounded-full bg-muted text-[10px] font-black uppercase text-muted-foreground border">Disabled in Tiered Mode</span>
+                            {isOverrideEngineLocked && (
+                                <span className="px-2 py-0.5 rounded-full bg-muted text-[10px] font-black uppercase text-muted-foreground border">
+                                    Disabled in Current Mode
+                                </span>
                             )}
                         </div>
                         <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Global rules that skip the base fee</p>
@@ -630,27 +837,27 @@ function DeliverySettingsPageContent() {
 
                 <Card className={cn(
                     "border-2 shadow-sm overflow-hidden transition-colors",
-                    settings.deliveryFeeType === 'tiered' ? "border-muted" : "border-green-500/20"
+                    isOverrideEngineLocked ? "border-muted" : "border-green-500/20"
                 )}>
                     <CardHeader className={cn(
                         "transition-colors",
-                        settings.deliveryFeeType === 'tiered' ? "bg-muted/10" : "bg-green-500/5 border-b border-green-500/10"
+                        isOverrideEngineLocked ? "bg-muted/10" : "bg-green-500/5 border-b border-green-500/10"
                     )}>
                         <CardTitle className={cn(
                             "flex items-center gap-3 text-xl transition-colors",
-                            settings.deliveryFeeType === 'tiered' ? "text-muted-foreground" : "text-green-600 dark:text-green-400"
+                            isOverrideEngineLocked ? "text-muted-foreground" : "text-green-600 dark:text-green-400"
                         )}>
                             <div className={cn(
                                 "p-2 rounded-xl transition-colors",
-                                settings.deliveryFeeType === 'tiered' ? "bg-muted/20" : "bg-green-500/10"
+                                isOverrideEngineLocked ? "bg-muted/20" : "bg-green-500/10"
                             )}>
                                 <Truck className="h-5 w-5" />
                             </div>
                             Fast & Free Zone
                         </CardTitle>
                         <CardDescription className="text-base">
-                            {settings.deliveryFeeType === 'tiered'
-                                ? "Tiered rules handle all delivery logic. Global overrides are not needed."
+                            {isOverrideEngineLocked
+                                ? "Current engine already handles complete delivery logic. Global overrides are disabled."
                                 : "Reward nearby or big orders with zero delivery fees."}
                         </CardDescription>
                     </CardHeader>

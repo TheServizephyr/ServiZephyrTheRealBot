@@ -465,6 +465,10 @@ export async function createOrderV2(req, options = {}) {
                     freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
                     roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
                     deliveryTiers: getSetting('deliveryTiers', []),
+                    orderSlabRules: getSetting('deliveryOrderSlabRules', getSetting('orderSlabRules', [])),
+                    orderSlabAboveFee: getSetting('deliveryOrderSlabAboveFee', getSetting('orderSlabAboveFee', 0)),
+                    orderSlabBaseDistance: getSetting('deliveryOrderSlabBaseDistance', getSetting('orderSlabBaseDistance', 1)),
+                    orderSlabPerKmFee: getSetting('deliveryOrderSlabPerKmFee', getSetting('orderSlabPerKmFee', 15)),
                 };
 
                 if (settings.deliveryEnabled === false) {

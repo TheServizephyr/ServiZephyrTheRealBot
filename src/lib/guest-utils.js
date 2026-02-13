@@ -42,7 +42,10 @@ export const deobfuscateGuestId = (publicRef) => {
         if (!publicRef || publicRef.length < 5) return null;
 
         // 1. Remove 4-char prefix
-        const encoded = publicRef.substring(4);
+        const encodedRaw = publicRef.substring(4);
+        // Base64 strings in URLs may lose "=" padding; restore it.
+        const paddingNeeded = (4 - (encodedRaw.length % 4)) % 4;
+        const encoded = `${encodedRaw}${'='.repeat(paddingNeeded)}`;
 
         // 2. Base64 decode
         const saltedId = Buffer.from(encoded, 'base64').toString('utf-8');
