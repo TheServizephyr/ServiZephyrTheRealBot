@@ -800,6 +800,7 @@ const OrderPageInternal = () => {
     const activeOrderId = searchParams.get('activeOrderId');
     const activeOrderToken = searchParams.get('token');
     const [liveOrder, setLiveOrder] = useState(null);
+    const [storedOrders, setStoredOrders] = useState([]);
 
     // ADDRESS SELECTION STATE
     const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
@@ -968,7 +969,10 @@ const OrderPageInternal = () => {
 
         const pollStatus = async () => {
             const raw = localStorage.getItem(liveOrderKey);
-            if (!raw) return;
+            if (!raw) {
+                setStoredOrders([]);
+                return;
+            }
 
             let allOrders = [];
             try {
@@ -977,6 +981,7 @@ const OrderPageInternal = () => {
             } catch (e) {
                 console.error("Failed to parse live orders", e);
                 localStorage.removeItem(liveOrderKey);
+                setStoredOrders([]);
                 return;
             }
 
@@ -987,6 +992,7 @@ const OrderPageInternal = () => {
 
             if (allOrders.length === 0) {
                 localStorage.removeItem(liveOrderKey);
+                setStoredOrders([]);
                 return;
             }
 
@@ -1027,6 +1033,7 @@ const OrderPageInternal = () => {
                     latestActiveOrder = order;
                 }
             }
+            setStoredOrders(activeOrders);
 
             if (activeOrders.length !== allOrders.length) {
                 console.log("[Poll] Cleaning up completed orders. Remaining:", activeOrders.length);
@@ -1057,14 +1064,15 @@ const OrderPageInternal = () => {
 
         const checkActiveOrder = async () => {
             const storedRaw = localStorage.getItem(liveOrderKey);
-            let storedOrders = [];
+            let localStoredOrders = [];
             try {
                 const parsed = storedRaw ? JSON.parse(storedRaw) : [];
-                storedOrders = Array.isArray(parsed) ? parsed : [];
+                localStoredOrders = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
             } catch (e) {
                 console.warn("Error parsing stored orders, resetting:", e);
-                storedOrders = [];
+                localStoredOrders = [];
             }
+            setStoredOrders(localStoredOrders);
 
             // Check if we have identifiers (Phone OR Ref)
             const identifierParam = ref ? `ref=${ref}` : (phone ? `phone=${phone}` : null);
@@ -1086,7 +1094,8 @@ const OrderPageInternal = () => {
                             const formattedOrders = serverOrders.map(o => ({
                                 orderId: o.orderId || o.id,
                                 trackingToken: o.trackingToken || token,
-                                restaurantId: restaurantId,
+                                restaurantId: o.restaurantId || restaurantId,
+                                restaurantName: o.restaurantName || 'Restaurant', // ✅ Map restaurant name
                                 status: o.status,
                                 deliveryType: o.deliveryType || 'delivery',
                                 timestamp: Date.now()
@@ -1094,8 +1103,9 @@ const OrderPageInternal = () => {
                             const deliveryOrder = formattedOrders.find(o => o.deliveryType?.toLowerCase() === 'delivery');
                             if (deliveryOrder) {
                                 console.log("%c[Restore] ✅ Found Active DELIVERY Order:", "color: green; font-weight: bold;", deliveryOrder);
-                                const mergedOrders = [...storedOrders.filter(so => !formattedOrders.find(fo => fo.orderId === so.orderId)), ...formattedOrders];
+                                const mergedOrders = [...localStoredOrders.filter(so => !formattedOrders.find(fo => fo.orderId === so.orderId)), ...formattedOrders];
                                 localStorage.setItem(liveOrderKey, JSON.stringify(mergedOrders));
+                                setStoredOrders(mergedOrders);
                                 setLiveOrder(deliveryOrder);
                             } else {
                                 console.log("%c[Restore] ❌ No Standard Delivery Order Found.", "color: orange; font-weight: bold;");
@@ -2475,7 +2485,11 @@ const OrderPageInternal = () => {
                                                         whileHover={{ scale: 1.05 }}
                                                     >
                                                         <Navigation size={16} className="mr-2" />
-                                                        <span className="text-sm font-bold hidden sm:inline">Track</span>
+                                                        <span className="text-sm font-bold">
+                                                            {storedOrders.length > 1
+                                                                ? `Track ${storedOrders.length} Orders`
+                                                                : `Track ${liveOrder.restaurantId === restaurantId ? '' : (liveOrder.restaurantName || 'Order')}`.trim() || 'Track'}
+                                                        </span>
                                                     </motion.div>
                                                 </Link>
                                             </div>

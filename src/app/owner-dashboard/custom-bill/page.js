@@ -259,6 +259,94 @@ function CustomBillPage() {
         return entries;
     }, [menu, normalizedSearchQuery]);
 
+    const printReceiptToUsb = async ({
+        items,
+        customer,
+        billDetails,
+        orderDate = new Date(),
+        closeBillModalOnSuccess = false,
+        notifyUser = false,
+        silentOnNoDeviceSelection = false,
+    }) => {
+        try {
+            let device = usbDevice;
+            if (!device || !device.opened) {
+                device = await connectPrinter();
+                setUsbDevice(device);
+            }
+
+            const encoder = new EscPosEncoder();
+
+            // Header
+            encoder.initialize().align('center')
+                .bold(true).text(restaurant?.name || 'Restaurant').newline()
+                .bold(false).text(restaurant?.address?.street || restaurant?.address || '').newline()
+                .text('--------------------------------').newline()
+                .align('left').bold(true)
+                .text(`Bill To: ${customer?.name || 'Guest'}`).newline()
+                .bold(false)
+                .text(`Date: ${new Date(orderDate).toLocaleString('en-IN')}`).newline()
+                .text('--------------------------------').newline();
+
+            // Items
+            items.forEach(item => {
+                const qty = Number(item?.quantity || 0);
+                const safeQty = qty > 0 ? qty : 1;
+                const itemTotal = Number(item?.totalPrice || 0);
+                const unitPrice = (itemTotal / safeQty).toFixed(0);
+                const total = itemTotal.toFixed(0);
+
+                encoder.text(item?.name || 'Item').newline();
+                encoder.text(`  ${safeQty} x ${unitPrice}`).align('right').text(total).align('left').newline();
+            });
+
+            const safeSubtotal = Number(billDetails?.subtotal || 0);
+            const safeCgst = Number(billDetails?.cgst || 0);
+            const safeSgst = Number(billDetails?.sgst || 0);
+            const safeGrandTotal = Number(billDetails?.grandTotal || safeSubtotal + safeCgst + safeSgst);
+
+            // Totals
+            encoder.text('--------------------------------').newline()
+                .align('right');
+
+            encoder.text(`Subtotal: ${safeSubtotal.toFixed(0)}`).newline();
+            if (safeCgst > 0) encoder.text(`CGST: ${safeCgst.toFixed(0)}`).newline();
+            if (safeSgst > 0) encoder.text(`SGST: ${safeSgst.toFixed(0)}`).newline();
+
+            encoder.bold(true).size('large')
+                .text(`TOTAL: ${safeGrandTotal.toFixed(0)}`).newline()
+                .size('normal').bold(false).align('center')
+                .newline()
+                .text('Thank you!').newline()
+                .newline().newline().newline()
+                .cut();
+
+            await printData(device, encoder.encode());
+
+            if (closeBillModalOnSuccess) {
+                setIsBillModalOpen(false);
+            }
+
+            if (notifyUser) {
+                setInfoDialog({ isOpen: true, title: 'Printed', message: 'Receipt sent to thermal printer.' });
+            }
+
+            return { ok: true };
+        } catch (error) {
+            console.error(error);
+
+            if (silentOnNoDeviceSelection && String(error?.message || '').toLowerCase() === 'no device selected') {
+                return { ok: false, error, ignored: true };
+            }
+
+            if (notifyUser) {
+                setInfoDialog({ isOpen: true, title: 'Print Failed', message: `Could not print: ${error.message}. Ensure printer is USB connected.` });
+            }
+
+            return { ok: false, error };
+        }
+    };
+
     const submitCreateOrder = async () => {
         try {
             const user = auth.currentUser;
@@ -266,6 +354,11 @@ function CustomBillPage() {
             const idToken = await user.getIdToken();
 
             setIsCreatingOrder(true);
+
+            const cartSnapshot = cart.map((item) => ({ ...item }));
+            const customerSnapshot = { ...customerDetails };
+            const billSnapshot = { subtotal, cgst, sgst, grandTotal };
+            const receiptOrderDate = new Date();
 
             const orderItems = cart.map((item) => ({
                 id: item.id,
@@ -302,10 +395,25 @@ function CustomBillPage() {
             const whatsappStatus = data.whatsappSent
                 ? 'WhatsApp notification sent.'
                 : `WhatsApp not sent: ${data.whatsappError || 'Unknown reason'}`;
+
+            let printStatus = 'Bill auto-print skipped.';
+            if (!data?.duplicateRequest) {
+                const printResult = await printReceiptToUsb({
+                    items: cartSnapshot,
+                    customer: customerSnapshot,
+                    billDetails: billSnapshot,
+                    orderDate: receiptOrderDate,
+                    notifyUser: false,
+                });
+                printStatus = printResult.ok
+                    ? 'Bill auto-printed (Direct USB).'
+                    : `Bill auto-print failed: ${printResult?.error?.message || 'Unknown reason'}`;
+            }
+
             setInfoDialog({
                 isOpen: true,
                 title: 'Order Created',
-                message: `Order ID: ${data.orderId}\n\n${whatsappStatus}`,
+                message: `Order ID: ${data.orderId}\n\n${whatsappStatus}\n${printStatus}`,
             });
 
             setCart([]);
@@ -340,63 +448,15 @@ function CustomBillPage() {
 
 
     const handleDirectPrint = async () => {
-        try {
-            let device = usbDevice;
-            if (!device || !device.opened) {
-                try {
-                    device = await connectPrinter();
-                    setUsbDevice(device);
-                } catch (err) {
-                    return; // User cancelled
-                }
-            }
-
-            const encoder = new EscPosEncoder();
-
-            // Header
-            encoder.initialize().align('center')
-                .bold(true).text(restaurant?.name || 'Restaurant').newline()
-                .bold(false).text(restaurant?.address?.street || restaurant?.address || '').newline()
-                .text('--------------------------------').newline()
-                .align('left').bold(true)
-                .text(`Bill To: ${customerDetails.name || 'Guest'}`).newline()
-                .bold(false)
-                .text(`Date: ${new Date().toLocaleString('en-IN')}`).newline()
-                .text('--------------------------------').newline();
-
-            // Items
-            cart.forEach(item => {
-                const qty = item.quantity;
-                const unitPrice = (item.totalPrice / qty).toFixed(0);
-                const total = item.totalPrice.toFixed(0);
-                encoder.text(item.name).newline();
-                encoder.text(`  ${qty} x ${unitPrice}`).align('right').text(total).align('left').newline();
-            });
-
-            // Totals
-            encoder.text('--------------------------------').newline()
-                .align('right');
-
-            encoder.text(`Subtotal: ${subtotal.toFixed(0)}`).newline();
-            if (cgst > 0) encoder.text(`CGST: ${cgst.toFixed(0)}`).newline();
-            if (sgst > 0) encoder.text(`SGST: ${sgst.toFixed(0)}`).newline();
-
-            encoder.bold(true).size('large')
-                .text(`TOTAL: ${grandTotal.toFixed(0)}`).newline()
-                .size('normal').bold(false).align('center')
-                .newline()
-                .text('Thank you!').newline()
-                .newline().newline().newline()
-                .cut();
-
-            await printData(device, encoder.encode());
-            setInfoDialog({ isOpen: true, title: 'Printed', message: 'Receipt sent to thermal printer.' });
-            setIsBillModalOpen(false);
-
-        } catch (error) {
-            console.error(error);
-            setInfoDialog({ isOpen: true, title: 'Print Failed', message: `Could not print: ${error.message}. Ensure printer is USB connected.` });
-        }
+        await printReceiptToUsb({
+            items: cart,
+            customer: customerDetails,
+            billDetails: { subtotal, cgst, sgst, grandTotal },
+            orderDate: new Date(),
+            closeBillModalOnSuccess: true,
+            notifyUser: true,
+            silentOnNoDeviceSelection: true,
+        });
     };
 
     return (
