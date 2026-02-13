@@ -355,11 +355,6 @@ function CustomBillPage() {
 
             setIsCreatingOrder(true);
 
-            const cartSnapshot = cart.map((item) => ({ ...item }));
-            const customerSnapshot = { ...customerDetails };
-            const billSnapshot = { subtotal, cgst, sgst, grandTotal };
-            const receiptOrderDate = new Date();
-
             const orderItems = cart.map((item) => ({
                 id: item.id,
                 name: item.name,
@@ -392,29 +387,11 @@ function CustomBillPage() {
                 throw new Error(data?.message || 'Failed to create order.');
             }
 
-            const whatsappStatus = data.whatsappSent
-                ? 'WhatsApp notification sent.'
-                : `WhatsApp not sent: ${data.whatsappError || 'Unknown reason'}`;
-
-            let printStatus = 'Bill auto-print skipped.';
             if (!data?.duplicateRequest) {
-                const printResult = await printReceiptToUsb({
-                    items: cartSnapshot,
-                    customer: customerSnapshot,
-                    billDetails: billSnapshot,
-                    orderDate: receiptOrderDate,
-                    notifyUser: false,
-                });
-                printStatus = printResult.ok
-                    ? 'Bill auto-printed (Direct USB).'
-                    : `Bill auto-print failed: ${printResult?.error?.message || 'Unknown reason'}`;
+                if (billPrintRef.current && handlePrint) {
+                    handlePrint();
+                }
             }
-
-            setInfoDialog({
-                isOpen: true,
-                title: 'Order Created',
-                message: `Order ID: ${data.orderId}\n\n${whatsappStatus}\n${printStatus}`,
-            });
 
             setCart([]);
             setItemHistory([]);
@@ -500,7 +477,7 @@ function CustomBillPage() {
 
             <Dialog open={isBillModalOpen} onOpenChange={setIsBillModalOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
-                    <div ref={billPrintRef}>
+                    <div>
                         <BillToPrint
                             order={{ orderDate: new Date() }}
                             restaurant={restaurant}
@@ -708,7 +685,7 @@ function CustomBillPage() {
 
                     <div className="bg-card border border-border rounded-xl flex-grow flex flex-col">
                         <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
-                            <div className="preview-bill">
+                            <div ref={billPrintRef} className="preview-bill">
                                 <BillToPrint
                                     order={{ orderDate: new Date() }}
                                     restaurant={restaurant}
