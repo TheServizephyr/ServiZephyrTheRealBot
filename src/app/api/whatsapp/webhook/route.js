@@ -384,19 +384,27 @@ const sendWelcomeMessageWithOptions = async (
         }
     }
 
-    console.log(`[Webhook WA] Sending interactive welcome message to ${customerPhoneWithCode}`);
+    console.log(`[Webhook WA] Sending interactive welcome CTA message to ${customerPhoneWithCode}`);
+
+    const { orderPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
+    const orderUrl = toAbsoluteWelcomeUrl(orderPath);
+    const headerText = String(business.data.name || 'ServiZephyr').slice(0, 60);
 
     const payload = {
         type: "interactive",
         interactive: {
-            type: "button",
+            type: "cta_url",
+            header: { type: 'text', text: headerText },
             body: {
                 text: welcomeBody
             },
+            footer: { text: 'Powered by ServiZephyr' },
             action: {
-                buttons: [
-                    { type: "reply", reply: { id: `action_order_${business.id}`, title: ORDER_NOW_BUTTON_TEXT } }
-                ]
+                name: 'cta_url',
+                parameters: {
+                    display_text: ORDER_NOW_BUTTON_TEXT,
+                    url: orderUrl
+                }
             }
         }
     };
@@ -759,13 +767,12 @@ const maybeFallbackWelcomeMenuOnTemplateFailure = async ({
         }
 
         const customerName = conversationData.customerName || 'Customer';
-        const fallbackBody = `Welcome to ${business.data.name || 'ServiZephyr'}!\n\nWhat would you like to do today?`;
 
         await sendWelcomeMessageWithOptions(
             recipientId,
             business,
             botPhoneNumberId,
-            fallbackBody,
+            null,
             {
                 bypassRateLimit: true,
                 forceInteractive: true,
