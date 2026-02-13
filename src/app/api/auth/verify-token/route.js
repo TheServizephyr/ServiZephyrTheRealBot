@@ -20,7 +20,7 @@ export async function POST(req) {
         const tokenDoc = await tokenRef.get();
 
         if (!tokenDoc.exists) {
-            console.warn(`[API verify-token] Token not found: ${token}`);
+            console.warn('[API verify-token] Token not found.');
             return NextResponse.json({ message: 'Invalid or expired session token.' }, { status: 403 });
         }
 
@@ -28,7 +28,7 @@ export async function POST(req) {
         const expiresAt = tokenData.expiresAt.toDate();
 
         if (new Date() > expiresAt) {
-            console.warn(`[API verify-token] Token expired: ${token}`);
+            console.warn('[API verify-token] Token expired.');
             await tokenRef.delete();
             return NextResponse.json({ message: 'Your session has expired. Please request a new link.' }, { status: 403 });
         }

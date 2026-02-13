@@ -6,6 +6,16 @@ import crypto from 'crypto';
 const WEBHOOK_USERNAME = process.env.PHONEPE_WEBHOOK_USERNAME;
 const WEBHOOK_PASSWORD = process.env.PHONEPE_WEBHOOK_PASSWORD;
 
+function timingSafeEqualHex(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const left = Buffer.from(a, 'hex');
+    const right = Buffer.from(b, 'hex');
+    if (left.length === 0 || right.length === 0 || left.length !== right.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(left, right);
+}
+
 if (!WEBHOOK_USERNAME || !WEBHOOK_PASSWORD) {
     console.error("[PhonePe Webhook] CRITICAL: Missing webhook credentials in environment variables.");
 }
@@ -33,7 +43,7 @@ export async function POST(req) {
         const receivedHash = authHeader.replace(/^SHA256\s+/i, '').trim();
         const expectedAuthHash = getExpectedHash();
 
-        if (!expectedAuthHash || receivedHash !== expectedAuthHash) {
+        if (!expectedAuthHash || !timingSafeEqualHex(receivedHash, expectedAuthHash)) {
             console.error("[PhonePe Webhook] Authorization failed (Invalid credentials or missing config)");
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }

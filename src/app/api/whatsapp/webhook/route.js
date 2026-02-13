@@ -20,7 +20,10 @@ const WELCOME_CTA_TEMPLATE_NAME = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_NAM
 const WELCOME_CTA_TEMPLATE_LANGUAGE = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_LANGUAGE || 'en').trim();
 const WELCOME_TEMPLATE_FALLBACK_COOLDOWN_MS = 15000;
 const WELCOME_CTA_BASE_URL = String(process.env.WHATSAPP_CTA_BASE_URL || 'https://www.servizephyr.com').trim().replace(/\/+$/g, '');
-const USE_SESSION_CTA_WELCOME = String(process.env.WHATSAPP_USE_SESSION_CTA_WELCOME || 'true').trim().toLowerCase() !== 'false';
+// Session CTA sends 3 separate messages (Order CTA + Track CTA + Need Help quick reply).
+// Keep it opt-in only. Default to template-first single-message flow.
+const USE_SESSION_CTA_WELCOME = String(process.env.WHATSAPP_USE_SESSION_CTA_WELCOME || 'false').trim().toLowerCase() === 'true';
+const ORDER_NOW_BUTTON_TEXT = 'Order Now';
 
 /**
  * Normalizes phone numbers to 10 digits (removes +91 or 91 prefix)
@@ -117,8 +120,7 @@ const toTemplateButtonSuffix = (pathWithQuery = '') => {
 const buildWelcomeCtaTemplatePayload = ({
     restaurantName,
     customerName,
-    orderPath,
-    trackPath
+    orderPath
 }) => {
     if (!WELCOME_CTA_TEMPLATE_NAME) return null;
 
@@ -143,12 +145,6 @@ const buildWelcomeCtaTemplatePayload = ({
                 index: '0',
                 parameters: [{ type: 'text', text: toTemplateButtonSuffix(orderPath) }],
             },
-            {
-                type: 'button',
-                sub_type: 'url',
-                index: '1',
-                parameters: [{ type: 'text', text: toTemplateButtonSuffix(trackPath) }],
-            },
         ],
     };
 };
@@ -165,7 +161,7 @@ const resolveActionIdFromTemplateReply = (rawId, businessId) => {
     if (normalized === 'end chat') {
         return 'action_end_chat';
     }
-    if (normalized === 'order food' || normalized === 'food order') {
+    if (normalized === 'order now' || normalized === 'order food' || normalized === 'food order') {
         return `action_order_${businessId}`;
     }
     if (normalized === 'track last order' || normalized === 'track order') {
@@ -298,7 +294,11 @@ const sendWelcomeMessageWithOptions = async (
         }
     }
 
-    const welcomeBody = customMessage || `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`;
+    const defaultWelcomeBody =
+        `Welcome to ${business.data.name} (Powered by ServiZephyr)\n\n` +
+        `• To place an order, tap *${ORDER_NOW_BUTTON_TEXT}*.\n` +
+        `• For assistance from the restaurant, type *Need Help*.`;
+    const welcomeBody = customMessage || defaultWelcomeBody;
     const collectionName = business.ref.parent.id;
     const sendInteractiveMessageWithLogging = async (payload, fallbackText) => {
         const response = await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
@@ -320,9 +320,8 @@ const sendWelcomeMessageWithOptions = async (
 
     if (USE_SESSION_CTA_WELCOME && !forceInteractive) {
         try {
-            const { orderPath, trackPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
+            const { orderPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
             const orderUrl = toAbsoluteWelcomeUrl(orderPath);
-            const trackUrl = toAbsoluteWelcomeUrl(trackPath);
             const headerText = String(business.data.name || 'ServiZephyr').slice(0, 60);
 
             const orderCtaPayload = {
@@ -330,53 +329,18 @@ const sendWelcomeMessageWithOptions = async (
                 interactive: {
                     type: 'cta_url',
                     header: { type: 'text', text: headerText },
-                    body: { text: `Hi ${options?.customerName || 'Customer'}! Start your order instantly.` },
+                    body: { text: welcomeBody },
                     footer: { text: 'Powered by ServiZephyr' },
                     action: {
                         name: 'cta_url',
                         parameters: {
-                            display_text: 'Order Food',
+                            display_text: ORDER_NOW_BUTTON_TEXT,
                             url: orderUrl
                         }
                     }
                 }
             };
-
-            const trackCtaPayload = {
-                type: 'interactive',
-                interactive: {
-                    type: 'cta_url',
-                    header: { type: 'text', text: headerText },
-                    body: { text: 'Track your latest order in one tap.' },
-                    footer: { text: 'Powered by ServiZephyr' },
-                    action: {
-                        name: 'cta_url',
-                        parameters: {
-                            display_text: 'Track Last Order',
-                            url: trackUrl
-                        }
-                    }
-                }
-            };
-
-            const helpQuickReplyPayload = {
-                type: "interactive",
-                interactive: {
-                    type: "button",
-                    body: {
-                        text: "Need personal help from restaurant? Tap below."
-                    },
-                    action: {
-                        buttons: [
-                            { type: "reply", reply: { id: `action_help`, title: "Need Help?" } }
-                        ]
-                    }
-                }
-            };
-
             await sendInteractiveMessageWithLogging(orderCtaPayload, `Order now: ${orderUrl}`);
-            await sendInteractiveMessageWithLogging(trackCtaPayload, `Track last order: ${trackUrl}`);
-            await sendInteractiveMessageWithLogging(helpQuickReplyPayload, 'Need Help?');
 
             await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
             console.log(`[Webhook WA] Session CTA welcome sent to ${customerPhoneWithCode}`);
@@ -389,12 +353,11 @@ const sendWelcomeMessageWithOptions = async (
     if (WELCOME_CTA_TEMPLATE_NAME && !forceInteractive) {
         try {
             const customerName = options?.customerName || 'Customer';
-            const { orderPath, trackPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
+            const { orderPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
             const templatePayload = buildWelcomeCtaTemplatePayload({
                 restaurantName: business.data.name,
                 customerName,
-                orderPath,
-                trackPath
+                orderPath
             });
 
             if (templatePayload) {
@@ -432,9 +395,7 @@ const sendWelcomeMessageWithOptions = async (
             },
             action: {
                 buttons: [
-                    { type: "reply", reply: { id: `action_order_${business.id}`, title: "Order Food" } },
-                    { type: "reply", reply: { id: `action_track_${business.id}`, title: "Track Last Order" } },
-                    { type: "reply", reply: { id: `action_help`, title: "Need Help?" } }
+                    { type: "reply", reply: { id: `action_order_${business.id}`, title: ORDER_NOW_BUTTON_TEXT } }
                 ]
             }
         }
@@ -551,7 +512,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
     // We infer the text based on button type
     let userSelectionText = '';
     switch (type) {
-        case 'order': userSelectionText = 'Selected: \uD83C\uDF7D\uFE0F Order Food'; break;
+        case 'order': userSelectionText = 'Selected: \uD83C\uDF7D\uFE0F Order Now'; break;
         case 'track': userSelectionText = 'Selected: \uD83D\uDCE6 Track Last Order'; break;
         case 'help': userSelectionText = 'Selected: \u2753 Need Help?'; break;
         case 'end': userSelectionText = 'Selected: \uD83D\uDED1 End Chat'; break;
@@ -1055,7 +1016,17 @@ export async function POST(request) {
 
                 // ✅ 2. COMMAND PROCESSING: Handle specific keywords after logging
                 if (message.type === 'text') {
-                    const textBody = message.text.body.trim().toLowerCase();
+                    const rawTextBody = message.text.body || '';
+                    const textBody = rawTextBody.trim().toLowerCase();
+
+                    // Need Help (case-insensitive) should always enter direct chat flow.
+                    const needHelpMatch =
+                        rawTextBody.match(/^["']?\s*need\s*help\??\s*["']?$/i) ||
+                        rawTextBody.match(/^["']?\s*help\s*["']?$/i);
+                    if (needHelpMatch) {
+                        await activateDirectChat(fromNumber, business, botPhoneNumberId);
+                        continue; // Process next message in batch
+                    }
 
                     // End Chat (Flexible Regex: handle case, spaces, and optional quotes)
                     const endChatMatch = textBody.match(/^["]?\s*end\s*chat\s*["]?$/i);
@@ -1082,6 +1053,20 @@ export async function POST(request) {
                     // Dine-in
                     const isDineInHandled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
                     if (isDineInHandled) continue;
+
+                    // Greeting keyword should send single order CTA welcome.
+                    const greetingMatch = rawTextBody.match(/^\s*(hi+|hii+|hello+|hey+|hlo+)\b[\s!.?]*$/i);
+                    if (greetingMatch && conversationData.state !== 'direct_chat' && conversationData.state !== 'browsing_order') {
+                        await conversationRef.set({ state: 'menu' }, { merge: true });
+                        await sendWelcomeMessageWithOptions(
+                            fromNumber,
+                            business,
+                            botPhoneNumberId,
+                            null,
+                            { customerName: customerNameFromPayload }
+                        );
+                        continue; // Process next message in batch
+                    }
                 }
 
                 // ✅ 3. Media Processing
@@ -1120,12 +1105,12 @@ export async function POST(request) {
                 }
                 // Handle text messages in Menu mode (Strict Enforcement)
                 else if (message.type === 'text') {
-                    const promptText = `Please select an option from the menu below to proceed:`;
+                    // For any text in menu mode, always show the same single Order CTA welcome.
                     await sendWelcomeMessageWithOptions(
                         fromNumber,
                         business,
                         botPhoneNumberId,
-                        promptText,
+                        null,
                         { customerName: customerNameFromPayload }
                     );
                 }

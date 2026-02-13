@@ -8,6 +8,28 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const nextConfig = {
+  async headers() {
+    const baseHeaders = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
+    ];
+
+    if (process.env.NODE_ENV === 'production') {
+      baseHeaders.push({
+        key: 'Strict-Transport-Security',
+        value: 'max-age=31536000; includeSubDomains; preload',
+      });
+    }
+
+    return [
+      {
+        source: '/:path*',
+        headers: baseHeaders,
+      },
+    ];
+  },
   env: {
     NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
   },

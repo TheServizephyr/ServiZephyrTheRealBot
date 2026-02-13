@@ -7,6 +7,16 @@ import crypto from 'crypto';
 import https from 'https';
 import { nanoid } from 'nanoid';
 
+function timingSafeEqualHex(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const left = Buffer.from(a, 'hex');
+    const right = Buffer.from(b, 'hex');
+    if (left.length === 0 || right.length === 0 || left.length !== right.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(left, right);
+}
+
 
 const generateSecureToken = async (firestore, customerPhone) => {
     console.log(`[Webhook RZP] generateSecureToken for identifier (Redacted)`);
@@ -248,8 +258,8 @@ export async function POST(req) {
         shasum.update(body);
         const digest = shasum.digest('hex');
 
-        if (digest !== signature) {
-            console.warn(`[Webhook RZP] Invalid signature. Digest: ${digest}, Signature: ${signature}`);
+        if (!timingSafeEqualHex(digest, signature || '')) {
+            console.warn('[Webhook RZP] Invalid signature.');
             return NextResponse.json({ message: 'Invalid signature' }, { status: 403 });
         }
         console.log("[Webhook RZP] Signature verified successfully.");

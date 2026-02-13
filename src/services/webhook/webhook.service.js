@@ -12,6 +12,17 @@ import { handleRazorpayWebhook } from './razorpay.handler';
 import { handlePhonePeWebhook } from './phonepe.handler';
 import { logger } from '@/lib/logger';
 import { incrementMetric, METRICS } from '@/lib/metrics';
+import crypto from 'crypto';
+
+function timingSafeEqualHex(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const left = Buffer.from(a, 'hex');
+    const right = Buffer.from(b, 'hex');
+    if (left.length === 0 || right.length === 0 || left.length !== right.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(left, right);
+}
 
 /**
  * Process webhook (main entry point)
@@ -134,12 +145,11 @@ async function verifyWebhookSignature(gateway, payload, signature) {
  * Verify Razorpay webhook signature
  */
 function verifyRazorpaySignature(payload, signature) {
-    const crypto = require('crypto');
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
 
     if (!secret) {
-        logger.warn('Razorpay webhook secret not configured');
-        return true; // Skip verification if not configured
+        logger.error('Razorpay webhook secret not configured');
+        return false;
     }
 
     const expectedSignature = crypto
@@ -147,19 +157,18 @@ function verifyRazorpaySignature(payload, signature) {
         .update(JSON.stringify(payload))
         .digest('hex');
 
-    return signature === expectedSignature;
+    return timingSafeEqualHex(signature, expectedSignature);
 }
 
 /**
  * Verify PhonePe webhook signature
  */
 function verifyPhonePeSignature(payload, signature) {
-    const crypto = require('crypto');
     const secret = process.env.PHONEPE_WEBHOOK_SECRET;
 
     if (!secret) {
-        logger.warn('PhonePe webhook secret not configured');
-        return true; // Skip verification
+        logger.error('PhonePe webhook secret not configured');
+        return false;
     }
 
     const expectedSignature = crypto
@@ -167,7 +176,7 @@ function verifyPhonePeSignature(payload, signature) {
         .update(JSON.stringify(payload) + secret)
         .digest('hex');
 
-    return signature === expectedSignature;
+    return timingSafeEqualHex(signature, expectedSignature);
 }
 
 /**
