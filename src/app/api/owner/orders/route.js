@@ -107,6 +107,59 @@ function normalizeIndianPhone(value) {
     return digits.length >= 10 ? digits.slice(-10) : digits;
 }
 
+function parseMaybeJson(value) {
+    if (!value) return null;
+    if (typeof value === 'object') return value;
+    if (typeof value !== 'string') return null;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+}
+
+function resolveCustomerPhoneForNotification(orderData = {}) {
+    const directCandidates = [
+        orderData.customerPhone,
+        orderData.phone,
+        orderData.customer?.phone,
+        orderData.customerDetails?.phone
+    ];
+
+    for (const candidate of directCandidates) {
+        const normalized = normalizeIndianPhone(candidate);
+        if (normalized && normalized.length >= 10) return normalized;
+    }
+
+    const legacyCustomerDetails = parseMaybeJson(orderData.customer_details) || parseMaybeJson(orderData.customerDetails);
+    if (legacyCustomerDetails) {
+        const normalizedLegacy = normalizeIndianPhone(legacyCustomerDetails.phone);
+        if (normalizedLegacy && normalizedLegacy.length >= 10) return normalizedLegacy;
+    }
+
+    return null;
+}
+
+function resolveCustomerNameForNotification(orderData = {}) {
+    const directCandidates = [
+        orderData.customerName,
+        orderData.name,
+        orderData.customer?.name,
+        orderData.customerDetails?.name
+    ];
+
+    for (const candidate of directCandidates) {
+        if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    }
+
+    const legacyCustomerDetails = parseMaybeJson(orderData.customer_details) || parseMaybeJson(orderData.customerDetails);
+    if (legacyCustomerDetails?.name && String(legacyCustomerDetails.name).trim()) {
+        return String(legacyCustomerDetails.name).trim();
+    }
+
+    return 'Customer';
+}
+
 async function resolveRiderForNotification(firestore, collectionName, businessId, riderId) {
     if (!riderId) return null;
 
@@ -530,7 +583,8 @@ export async function PATCH(req) {
                         const effects = [];
 
                         // A. Notifications
-                        if (orderData.customerPhone) {
+                        const customerPhoneForNotification = resolveCustomerPhoneForNotification(orderData);
+                        if (businessData.botPhoneNumberId && customerPhoneForNotification) {
                             const riderIdForNotification = resolvedDeliveryBoyId || orderData.deliveryBoyId || null;
                             const riderForNotification = await resolveRiderForNotification(
                                 firestore,
@@ -540,9 +594,9 @@ export async function PATCH(req) {
                             );
 
                             effects.push(sendOrderStatusUpdateToCustomer({
-                                customerPhone: orderData.customerPhone,
+                                customerPhone: customerPhoneForNotification,
                                 botPhoneNumberId: businessData.botPhoneNumberId,
-                                customerName: orderData.customerName,
+                                customerName: resolveCustomerNameForNotification(orderData),
                                 orderId: id,
                                 customerOrderId: orderData.customerOrderId,
                                 restaurantName: businessData.name,
@@ -555,6 +609,12 @@ export async function PATCH(req) {
                                 amount: orderData.totalAmount || 0,
                                 orderDate: orderData.orderDate
                             }));
+                        } else {
+                            console.warn(
+                                `[Owner Orders] Skipping status notification for ${id}. Missing ${
+                                    !businessData.botPhoneNumberId ? 'botPhoneNumberId' : 'customerPhone'
+                                }.`
+                            );
                         }
 
                         // B. Auto-Close Restaurant on Rejection (Only if reason matches)

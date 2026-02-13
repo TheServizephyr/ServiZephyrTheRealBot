@@ -31,6 +31,16 @@ const resolveBusinessByBotPhoneId = async (firestore, botPhoneNumberId) => {
         return { doc, collectionName: 'shops' };
     }
 
+    const streetVendors = await firestore
+        .collection('street_vendors')
+        .where('botPhoneNumberId', '==', botPhoneNumberId)
+        .limit(1)
+        .get();
+    if (!streetVendors.empty) {
+        const doc = streetVendors.docs[0];
+        return { doc, collectionName: 'street_vendors' };
+    }
+
     return null;
 };
 
@@ -97,6 +107,12 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         return;
     }
     const customerPhoneWithCode = '91' + normalizedCustomerPhone;
+    const safeCustomerName = (typeof customerName === 'string' && customerName.trim())
+        ? customerName.trim()
+        : 'Customer';
+    const safeRestaurantName = (typeof restaurantName === 'string' && restaurantName.trim())
+        ? restaurantName.trim()
+        : 'ServiZephyr';
 
     // Use Customer-facing ID if available, else fallback to truncated Firestore ID
     const displayOrderId = customerOrderId ? `#${customerOrderId}` : `#${orderId.substring(0, 8)}`;
@@ -125,15 +141,15 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         case 'rider_arrived':
             templateName = 'rider_arrived';
             const arrivedParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: deliveryBoy?.name || 'Delivery Partner' },
                 { type: "text", text: deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A' }
             ];
             components.push({ type: "body", parameters: arrivedParams });
 
-            fullMessageText = `Hi ${customerName} 👋\n\nYour order ${displayOrderId} from ${restaurantName} is arriving! 🛵\n\nOur delivery partner, ${deliveryBoy?.name || 'Delivery Partner'}, has reached your location.\nYou can call them on ${deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A'} to coordinate.\n\nPlease collect your order!`;
+            fullMessageText = `Hi ${safeCustomerName} 👋\n\nYour order ${displayOrderId} from ${safeRestaurantName} is arriving! 🛵\n\nOur delivery partner, ${deliveryBoy?.name || 'Delivery Partner'}, has reached your location.\nYou can call them on ${deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A'} to coordinate.\n\nPlease collect your order!`;
 
             console.log(`[Notification Lib] Using template '${templateName}' - Rider arrived at location.`);
             break;
@@ -143,14 +159,14 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             if (deliveryType === 'delivery' && !hasCustomerLocation) {
                 templateName = 'order_status_update';
                 const noLocationParams = [
-                    { type: "text", text: customerName },
+                    { type: "text", text: safeCustomerName },
                     { type: "text", text: displayOrderId },
-                    { type: "text", text: restaurantName },
+                    { type: "text", text: safeRestaurantName },
                     { type: "text", text: "Your order is on the way. Please share your delivery location to enable live tracking." },
                 ];
                 components.push({ type: "body", parameters: noLocationParams });
 
-                fullMessageText = `Hi ${customerName}! 👋\n\nYour order ${displayOrderId} from ${restaurantName} is on the way.\n\nPlease share your delivery location to enable live tracking.`;
+                fullMessageText = `Hi ${safeCustomerName}! 👋\n\nYour order ${displayOrderId} from ${safeRestaurantName} is on the way.\n\nPlease share your delivery location to enable live tracking.`;
                 console.log(`[Notification Lib] Tracking URL suppressed for ${orderId} because customer location is missing.`);
                 break;
             }
@@ -161,16 +177,16 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             const trackingUrl = `https://servizephyr.com/track/delivery/${orderId}${tokenParam}`;
 
             const bodyParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
                 { type: "text", text: deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A' },
                 { type: "text", text: trackingUrl }
             ];
             components.push({ type: "body", parameters: bodyParams });
 
-            fullMessageText = `Hi ${customerName}! 👋\n\nYour order ${displayOrderId} from ${restaurantName} is on its way! 🛵\n\nOur delivery partner, ${deliveryBoy?.name || 'Our delivery partner'}, will be arriving at your location shortly.\nYou can call them on ${deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A'} if needed.\n\nTrack your order live here:\n${trackingUrl}\n\nEnjoy your meal!`;
+            fullMessageText = `Hi ${safeCustomerName}! 👋\n\nYour order ${displayOrderId} from ${safeRestaurantName} is on its way! 🛵\n\nOur delivery partner, ${deliveryBoy?.name || 'Our delivery partner'}, will be arriving at your location shortly.\nYou can call them on ${deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A'} if needed.\n\nTrack your order live here:\n${trackingUrl}\n\nEnjoy your meal!`;
 
             console.log(`[Notification Lib] Using template '${templateName}' with secure tracking URL.`);
             break;
@@ -184,14 +200,14 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             const finalConfirmedMsg = `${confirmedMessage} View Bill: ${billUrl}`;
 
             const confirmedParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: finalConfirmedMsg },
             ];
             components.push({ type: "body", parameters: confirmedParams });
 
-            fullMessageText = `Hi ${customerName}, here's an update on your order ${displayOrderId} from ${restaurantName}.\n\nStatus: ${finalConfirmedMsg}\n\nWe'll keep you posted!`;
+            fullMessageText = `Hi ${safeCustomerName}, here's an update on your order ${displayOrderId} from ${safeRestaurantName}.\n\nStatus: ${finalConfirmedMsg}\n\nWe'll keep you posted!`;
 
             console.log(`[Notification Lib] Reverted to standard '${templateName}' for order confirmed.`);
             break;
@@ -199,14 +215,14 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         case 'preparing':
             templateName = 'order_status_update';
             const preparingParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: preparingMessage },
             ];
             components.push({ type: "body", parameters: preparingParams });
 
-            fullMessageText = `Hi ${customerName}, here's an update on your order ${displayOrderId} from ${restaurantName}.\n\nStatus: ${preparingMessage}\n\nWe'll keep you posted!`;
+            fullMessageText = `Hi ${safeCustomerName}, here's an update on your order ${displayOrderId} from ${safeRestaurantName}.\n\nStatus: ${preparingMessage}\n\nWe'll keep you posted!`;
 
             console.log(`[Notification Lib] Using template '${templateName}' for 'preparing' status.`);
             break;
@@ -215,13 +231,13 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             templateName = 'order_status_update';
             const deliveredMessage = "Your order has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.";
             const deliveredParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: deliveredMessage },
             ];
             components.push({ type: "body", parameters: deliveredParams });
-            fullMessageText = `Hi ${customerName}, your order ${displayOrderId} from ${restaurantName} has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.`;
+            fullMessageText = `Hi ${safeCustomerName}, your order ${displayOrderId} from ${safeRestaurantName} has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.`;
             console.log(`[Notification Lib] Using template '${templateName}' for delivered status.`);
             break;
 
@@ -237,14 +253,14 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             console.log(`[Notification Lib] No specific template configured for status: '${status}'. Using default 'order_status_update'.`);
             templateName = 'order_status_update';
             const defaultParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: capitalizedStatus },
             ];
             components.push({ type: "body", parameters: defaultParams });
 
-            fullMessageText = `Hi ${customerName}, here's an update on your order ${displayOrderId} from ${restaurantName}.\n\nStatus: ${capitalizedStatus}\n\nWe'll keep you posted!`;
+            fullMessageText = `Hi ${safeCustomerName}, here's an update on your order ${displayOrderId} from ${safeRestaurantName}.\n\nStatus: ${capitalizedStatus}\n\nWe'll keep you posted!`;
             break;
 
         case 'failed_delivery':
@@ -254,15 +270,15 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             const supportPhone = deliveryBoy?.supportPhone || '+91 9999999999';
 
             const failureParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: failureReason },
                 { type: "text", text: supportPhone }
             ];
             components.push({ type: "body", parameters: failureParams });
 
-            fullMessageText = `Hi ${customerName}, we have an update on your order ${displayOrderId} from ${restaurantName}.\n\nStatus: Delivery Failed ❌\nReason: ${failureReason}\n\nPlease contact support at ${supportPhone} for assistance.`;
+            fullMessageText = `Hi ${safeCustomerName}, we have an update on your order ${displayOrderId} from ${safeRestaurantName}.\n\nStatus: Delivery Failed ❌\nReason: ${failureReason}\n\nPlease contact support at ${supportPhone} for assistance.`;
 
             console.log(`[Notification Lib] Using template '${templateName}' for failed delivery.`);
             break;
@@ -271,14 +287,14 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             console.log(`[Notification Lib] Unknown status: '${status}'. Using default 'order_status_update'.`);
             templateName = 'order_status_update';
             const unknownParams = [
-                { type: "text", text: customerName },
+                { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
-                { type: "text", text: restaurantName },
+                { type: "text", text: safeRestaurantName },
                 { type: "text", text: capitalizedStatus },
             ];
             components.push({ type: "body", parameters: unknownParams });
 
-            fullMessageText = `Hi ${customerName}, here's an update on your order ${displayOrderId} from ${restaurantName}.\n\nStatus: ${capitalizedStatus}\n\nWe'll keep you posted!`;
+            fullMessageText = `Hi ${safeCustomerName}, here's an update on your order ${displayOrderId} from ${safeRestaurantName}.\n\nStatus: ${capitalizedStatus}\n\nWe'll keep you posted!`;
             break;
     }
 
@@ -350,7 +366,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                     businessName,
                     businessContext.collectionName,
                     {
-                        customerName,
+                        customerName: safeCustomerName,
                         conversationPreview: `Order ${displayOrderId}: ${capitalizedStatus}`
                     }
                 );
@@ -359,6 +375,14 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             }
 
             console.error("[Notification Lib] Fallback skipped: business lookup by botPhoneNumberId failed.");
+            // Last-resort delivery: send plain text without conversation persistence.
+            // This keeps customer updates working even if business lookup path changes.
+            await sendWhatsAppMessage(
+                customerPhoneWithCode,
+                fullMessageText || `Order ${displayOrderId} status updated: ${capitalizedStatus}`,
+                botPhoneNumberId
+            );
+            console.log(`[Notification Lib] Last-resort plain-text fallback sent for order ${orderId}.`);
         } catch (fallbackErr) {
             console.error("[Notification Lib] CRITICAL: Text fallback also failed.", fallbackErr);
         }

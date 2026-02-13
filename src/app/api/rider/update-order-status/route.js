@@ -3,6 +3,60 @@ import { getFirestore, getDatabase, verifyAndGetUid, FieldValue } from '@/lib/fi
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 import { kv } from '@vercel/kv';
 
+function normalizeIndianPhone(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return null;
+    if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
+function parseMaybeJson(value) {
+    if (!value) return null;
+    if (typeof value === 'object') return value;
+    if (typeof value !== 'string') return null;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+}
+
+function resolveCustomerPhoneForNotification(orderData = {}) {
+    const directCandidates = [
+        orderData.customerPhone,
+        orderData.phone,
+        orderData.customer?.phone,
+        orderData.customerDetails?.phone
+    ];
+    for (const candidate of directCandidates) {
+        const normalized = normalizeIndianPhone(candidate);
+        if (normalized && normalized.length >= 10) return normalized;
+    }
+    const legacyCustomerDetails = parseMaybeJson(orderData.customer_details) || parseMaybeJson(orderData.customerDetails);
+    if (legacyCustomerDetails?.phone) {
+        const normalized = normalizeIndianPhone(legacyCustomerDetails.phone);
+        if (normalized && normalized.length >= 10) return normalized;
+    }
+    return null;
+}
+
+function resolveCustomerNameForNotification(orderData = {}) {
+    const directCandidates = [
+        orderData.customerName,
+        orderData.name,
+        orderData.customer?.name,
+        orderData.customerDetails?.name
+    ];
+    for (const candidate of directCandidates) {
+        if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    }
+    const legacyCustomerDetails = parseMaybeJson(orderData.customer_details) || parseMaybeJson(orderData.customerDetails);
+    if (legacyCustomerDetails?.name && String(legacyCustomerDetails.name).trim()) {
+        return String(legacyCustomerDetails.name).trim();
+    }
+    return 'Customer';
+}
+
 export async function PATCH(req) {
     console.log("[API update-order-status] Request received.");
     try {
@@ -31,7 +85,9 @@ export async function PATCH(req) {
         const orderData = orderDoc.data();
         const restaurantId = orderData.restaurantId;
         const businessType = orderData.businessType || 'restaurant';
-        const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+        const collectionName = businessType === 'shop'
+            ? 'shops'
+            : (businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
 
         // Security Check: Ensure the order is actually assigned to this rider
         if (orderData.deliveryBoyId !== uid) {
@@ -171,8 +227,9 @@ export async function PATCH(req) {
             const restaurantData = restaurantDoc.data();
             const driverDoc = await driverRef.get();
             const driverData = driverDoc.data();
+            const customerPhoneForNotification = resolveCustomerPhoneForNotification(orderData);
 
-            if (restaurantData?.botPhoneNumberId && orderData.customerPhone) {
+            if (restaurantData?.botPhoneNumberId && customerPhoneForNotification) {
                 const hasCustomerLocation = !!(
                     orderData.customerLocation &&
                     (
@@ -187,9 +244,9 @@ export async function PATCH(req) {
                     )
                 );
                 await sendOrderStatusUpdateToCustomer({
-                    customerPhone: orderData.customerPhone,
+                    customerPhone: customerPhoneForNotification,
                     botPhoneNumberId: restaurantData.botPhoneNumberId,
-                    customerName: orderData.customerName,
+                    customerName: resolveCustomerNameForNotification(orderData),
                     orderId: orderId,
                     customerOrderId: orderData.customerOrderId, // ✅ Pass Customer-facing ID
                     restaurantName: restaurantData.name || 'Restaurant',
@@ -204,6 +261,12 @@ export async function PATCH(req) {
                     hasCustomerLocation
                 });
                 console.log(`[API update-order-status] WhatsApp notification sent for status: ${newStatus}`);
+            } else {
+                console.warn(
+                    `[API update-order-status] WhatsApp skipped for ${orderId}. Missing ${
+                        !restaurantData?.botPhoneNumberId ? 'botPhoneNumberId' : 'customerPhone'
+                    }.`
+                );
             }
         } catch (notifError) {
             console.error('[API update-order-status] WhatsApp notification failed:', notifError);
