@@ -183,7 +183,26 @@ function CustomBillPage() {
         if (existingItem) {
             setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1, totalPrice: (i.totalPrice / i.quantity) * (i.quantity + 1) } : i));
         } else {
-            setCart([...cart, { ...item, portion, quantity: 1, cartItemId, price: portion.price, totalPrice: portion.price }]);
+            // Check if item has multiple portions
+            const hasMultiplePortions = item.portions && item.portions.length > 1;
+
+            // Exclude portions array from cart item to avoid confusion
+            const { portions, ...itemWithoutPortions } = item;
+
+            const cartItem = {
+                ...itemWithoutPortions,
+                quantity: 1,
+                cartItemId,
+                price: portion.price,
+                totalPrice: portion.price
+            };
+
+            // Only add portion data if there are multiple portions
+            if (hasMultiplePortions) {
+                cartItem.portion = portion;
+            }
+
+            setCart([...cart, cartItem]);
         }
     };
 
@@ -208,6 +227,11 @@ function CustomBillPage() {
                 return newCart.filter(i => i.cartItemId !== lastItemId);
             }
         });
+    };
+
+    const handleClear = () => {
+        setCart([]);
+        setItemHistory([]);
     };
 
     const updateQuantity = (cartItemId, change) => {
@@ -479,7 +503,7 @@ function CustomBillPage() {
     };
 
     return (
-        <div className="p-1 md:p-2 text-foreground min-h-screen bg-background">
+        <div className="text-foreground bg-background h-screen overflow-hidden">
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
@@ -560,7 +584,7 @@ function CustomBillPage() {
                                         <div className="flex-grow">
                                             <p className="font-semibold text-sm">{item.name}</p>
                                             <p className="text-[10px] text-muted-foreground">
-                                                {item.portion.name} • {formatCurrency(item.price)}
+                                                {item.portion ? `${item.portion.name} • ` : ''}{formatCurrency(item.price)}
                                             </p>
                                         </div>
 
@@ -619,15 +643,12 @@ function CustomBillPage() {
                 }
             `}</style>
 
-            <div className="flex items-center justify-between mb-2">
-                <h1 className="text-xl font-bold tracking-tight">Manual Bill Generator</h1>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 mt-2">
+            <div className="grid grid-cols-1 lg:grid-cols-10 gap-4">
                 {/* Left Side: Menu Selection (70%) */}
                 <div className="lg:col-span-7 bg-card border border-border rounded-xl p-3">
-                    <div className="flex items-center gap-2 mb-3">
-                        <div className="relative flex-grow">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <h1 className="text-lg font-bold tracking-tight whitespace-nowrap">Manual Billing</h1>
+                        <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                             <input
                                 type="text"
@@ -638,10 +659,19 @@ function CustomBillPage() {
                             />
                         </div>
                         <Button
+                            onClick={handleClear}
+                            disabled={cart.length === 0}
+                            variant="outline"
+                            className="h-10 px-4 gap-2 border-2 border-destructive/60 text-destructive hover:bg-destructive/10 font-bold transition-all shadow-sm whitespace-nowrap"
+                            title="Clear entire cart"
+                        >
+                            <Trash2 size={16} /> Clear
+                        </Button>
+                        <Button
                             onClick={handleUndo}
                             disabled={itemHistory.length === 0}
                             variant="outline"
-                            className="h-10 px-4 gap-2 border-2 border-primary/60 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
+                            className="h-10 px-4 gap-2 border-2 border-primary/60 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm whitespace-nowrap"
                             title="Undo last item added"
                         >
                             <RotateCcw size={16} /> Undo
@@ -680,26 +710,54 @@ function CustomBillPage() {
                                     <p>Loading menu...</p>
                                 </div>
                             ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
-                                <div key={categoryId} id={`cat-${categoryId}`} className="mb-4 pt-1">
-                                    <h3 className="font-bold text-base sticky top-0 bg-card py-1.5 z-10 capitalize border-b border-border/50 mb-2">
+                                <div key={categoryId} id={`cat-${categoryId}`} className="mb-5 pt-1">
+                                    <h3 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
                                         {categoryId.replace('-', ' ')}
                                     </h3>
-                                    {filteredItems.map(item => (
-                                        <div key={item.id} className="mb-1.5 p-2 bg-muted/40 hover:bg-muted/60 rounded-xl border border-border/30 transition-colors">
-                                            <p className="font-semibold text-foreground">{item.name}</p>
-                                            <div className="flex w-full gap-2 mt-2">
-                                                {item.portions.map(portion => (
-                                                    <button
-                                                        key={portion.name}
-                                                        onClick={() => addToCart(item, portion)}
-                                                        className="flex-1 text-xs px-3 py-2 rounded-lg bg-background border border-border hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-1 font-medium"
-                                                    >
-                                                        <Plus size={12} /> {item.portions.length > 1 ? `${portion.name} - ` : 'Add - '} {formatCurrency(portion.price)}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {filteredItems.map(item => (
+                                            <motion.div
+                                                key={item.id}
+                                                whileHover={{ y: -4, scale: 1.02 }}
+                                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                className="p-5 bg-gradient-to-br from-card via-card to-card/90 hover:from-card hover:via-muted/20 hover:to-card rounded-2xl border-2 border-border/40 hover:border-primary/50 transition-all shadow-md hover:shadow-xl hover:shadow-primary/10 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                            >
+                                                <div className="flex-1 mb-3">
+                                                    <p className="font-bold text-foreground text-base leading-tight">
+                                                        {item.name}
+                                                    </p>
+                                                </div>
+                                                <div className={`grid gap-2.5 mt-auto ${item.portions.length === 1 ? 'grid-cols-1' :
+                                                    item.portions.length === 2 ? 'grid-cols-2' :
+                                                        'grid-cols-3'
+                                                    }`}>
+                                                    {item.portions.map(portion => (
+                                                        <motion.button
+                                                            key={portion.name}
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                            onClick={() => addToCart(item, portion)}
+                                                            className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
+                                                        >
+                                                            {/* Subtle gradient overlay on hover */}
+                                                            <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+
+                                                            {item.portions.length > 1 && (
+                                                                <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
+                                                                    {portion.name}
+                                                                </span>
+                                                            )}
+                                                            <div className="flex items-center justify-center relative z-10">
+                                                                <span className="text-base font-black">
+                                                                    {formatCurrency(portion.price)}
+                                                                </span>
+                                                            </div>
+                                                        </motion.button>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        ))}
+                                    </div>
                                 </div>
                             ))}
                         </div>
