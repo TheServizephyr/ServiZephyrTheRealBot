@@ -4,7 +4,15 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { auth, googleProvider } from "@/lib/firebase";
-import { signInWithPopup, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { signInWithPopup, signInWithRedirect, getRedirectResult, setPersistence, browserLocalPersistence } from "firebase/auth";
+
+const getSafeRedirectPath = (value) => {
+    if (!value || typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === "/") return null;
+    if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null;
+    return trimmed;
+};
 
 function LoginPageContent() {
     const [loading, setLoading] = useState(false);
@@ -12,7 +20,7 @@ function LoginPageContent() {
     const [msg, setMsg] = useState(""); // Message to show user
     const router = useRouter();
     const searchParams = useSearchParams();
-    const redirectTo = searchParams.get("redirect") || "/";
+    const redirectTo = getSafeRedirectPath(searchParams.get("redirect"));
     const hasProcessedRedirect = useRef(false); // Prevent React Strict Mode double call
 
     // Handle redirect result when user returns from Google
@@ -48,6 +56,14 @@ function LoginPageContent() {
                         setMsg("Verifying user details...");
                         sessionStorage.removeItem('isLoggingIn');
                         await handleAuthSuccess(auth.currentUser);
+                    } else if (auth.currentUser) {
+                        // iOS/Safari can drop sessionStorage during redirect hops.
+                        // If user is already authenticated, continue login flow anyway.
+                        console.log("[Login] Auth user exists without login flag (likely iOS/Safari). Continuing...");
+                        hasProcessedRedirect.current = true;
+                        setLoading(true);
+                        setMsg("Restoring login session...");
+                        await handleAuthSuccess(auth.currentUser);
                     } else {
                         console.log("[Login] No processing needed");
                     }
@@ -79,6 +95,7 @@ function LoginPageContent() {
                 await handleAuthSuccess(result.user);
             } else {
                 console.log("[Login] Production - using redirect...");
+                await setPersistence(auth, browserLocalPersistence);
                 sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
                 await signInWithRedirect(auth, googleProvider);
             }

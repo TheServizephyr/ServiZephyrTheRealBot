@@ -56,46 +56,92 @@ const TableBadge = ({ table, isSelected, onClick }) => {
     );
 };
 
-// Fast MenuItem for list view
-const FastMenuItem = ({ item, quantity, onIncrement, onDecrement }) => {
+// Menu Item Card for grid view - optimized for fast billing
+const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
+    const hasQuantity = quantity > 0;
+
     return (
-        <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
-                        <div className={`w-1.5 h-1.5 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
-                    </div>
-                    <p className="font-medium text-foreground truncate">{item.name}</p>
+        <motion.div
+            layout
+            whileTap={{ scale: 0.97 }}
+            className={cn(
+                "relative flex flex-col gap-2 p-4 rounded-2xl border-2 transition-all cursor-pointer min-h-[140px]",
+                "backdrop-blur-sm",
+                hasQuantity
+                    ? "bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary shadow-lg shadow-primary/20 ring-2 ring-primary/30"
+                    : "bg-gradient-to-br from-card to-card/80 border-border/40 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/10"
+            )}
+            onClick={() => !hasQuantity && onIncrement(item)}
+            style={{
+                transform: hasQuantity ? 'translateY(-2px)' : 'none'
+            }}
+        >
+            {/* Veg/Non-veg indicator - top left with glow */}
+            <div className="absolute top-3 left-3">
+                <div className={cn(
+                    "w-6 h-6 border-2 flex items-center justify-center rounded-md shadow-sm",
+                    item.isVeg
+                        ? 'border-green-500 bg-green-500/10 shadow-green-500/30'
+                        : 'border-red-500 bg-red-500/10 shadow-red-500/30'
+                )}>
+                    <div className={cn(
+                        "w-3 h-3 rounded-full shadow-sm",
+                        item.isVeg ? 'bg-green-500 shadow-green-500/50' : 'bg-red-500 shadow-red-500/50'
+                    )}></div>
                 </div>
-                <p className="text-sm text-primary ml-5">{formatCurrency(item.price)}</p>
             </div>
-            <div className="flex items-center gap-2">
-                {quantity > 0 ? (
-                    <div className="flex items-center gap-2 bg-primary/10 rounded-full p-1">
+
+            {/* Quantity badge - top right with gradient */}
+            {hasQuantity && (
+                <motion.div
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                    className="absolute -top-2 -right-2 bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm shadow-lg shadow-primary/50 border-2 border-background"
+                >
+                    {quantity}
+                </motion.div>
+            )}
+
+            {/* Item details - centered */}
+            <div className="flex-1 flex flex-col justify-center items-center text-center mt-6">
+                <p className="font-bold text-foreground line-clamp-2 leading-tight mb-2 px-1 text-base">
+                    {item.name}
+                </p>
+                <p className="text-xl font-extrabold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                    {formatCurrency(item.price)}
+                </p>
+            </div>
+
+            {/* Action buttons - bottom */}
+            <div className="flex items-center justify-center mt-auto" onClick={(e) => e.stopPropagation()}>
+                {hasQuantity ? (
+                    <div className="flex items-center gap-3 bg-background/90 backdrop-blur-md rounded-full px-2 py-1.5 border-2 border-primary/30 shadow-md">
                         <button
                             onClick={() => onDecrement(item.id)}
-                            className="w-8 h-8 rounded-full bg-background flex items-center justify-center text-foreground hover:bg-muted"
+                            className="w-9 h-9 rounded-full bg-gradient-to-br from-muted to-muted/70 flex items-center justify-center text-foreground hover:from-destructive/20 hover:to-destructive/10 hover:text-destructive active:scale-90 transition-all shadow-sm"
                         >
-                            <Minus size={16} />
+                            <Minus size={18} strokeWidth={3} />
                         </button>
-                        <span className="w-6 text-center font-bold text-foreground">{quantity}</span>
+                        <span className="w-10 text-center font-black text-foreground text-xl">{quantity}</span>
                         <button
                             onClick={() => onIncrement(item)}
-                            className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground"
+                            className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-primary-foreground hover:from-primary hover:to-primary shadow-md hover:shadow-lg hover:shadow-primary/30 active:scale-90 transition-all"
                         >
-                            <Plus size={16} />
+                            <Plus size={18} strokeWidth={3} />
                         </button>
                     </div>
                 ) : (
                     <button
                         onClick={() => onIncrement(item)}
-                        className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+                        className="w-full h-11 rounded-xl bg-gradient-to-r from-primary via-primary to-primary/90 flex items-center justify-center gap-2 text-primary-foreground font-bold hover:shadow-lg hover:shadow-primary/40 active:scale-98 transition-all shadow-md text-sm tracking-wide"
                     >
-                        <Plus size={20} />
+                        <Plus size={20} strokeWidth={3} />
+                        <span>ADD TO CART</span>
                     </button>
                 )}
             </div>
-        </div>
+        </motion.div>
     );
 };
 
@@ -601,28 +647,48 @@ function WaiterOrderContent() {
                                 )}
                             </div>
 
-                            {/* Fast Menu List */}
+                            {/* Menu Grid */}
                             <div className="bg-card rounded-lg border border-border p-4">
-                                <h4 className="font-semibold text-sm text-muted-foreground mb-2">
+                                <h4 className="font-semibold text-sm text-muted-foreground mb-3">
                                     MENU ({filteredItems.length} items)
                                 </h4>
-                                <div className="max-h-[calc(100vh-500px)] overflow-y-auto">
-                                    {filteredItems.map(item => (
-                                        <FastMenuItem
-                                            key={item.id}
-                                            item={item}
-                                            quantity={cart[item.id]?.quantity || 0}
-                                            onIncrement={handleIncrement}
-                                            onDecrement={handleDecrement}
-                                        />
-                                    ))}
-                                    {filteredItems.length === 0 && (
-                                        <p className="text-center text-muted-foreground py-8">
+                                <div className="max-h-[calc(100vh-480px)] overflow-y-auto pr-2 custom-scrollbar">
+                                    {filteredItems.length === 0 ? (
+                                        <p className="text-center text-muted-foreground py-12">
                                             No items found
                                         </p>
+                                    ) : (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                            {filteredItems.map(item => (
+                                                <MenuItemCard
+                                                    key={item.id}
+                                                    item={item}
+                                                    quantity={cart[item.id]?.quantity || 0}
+                                                    onIncrement={handleIncrement}
+                                                    onDecrement={handleDecrement}
+                                                />
+                                            ))}
+                                        </div>
                                     )}
                                 </div>
                             </div>
+
+                            {/* Custom Scrollbar Styles */}
+                            <style jsx>{`
+                                .custom-scrollbar::-webkit-scrollbar {
+                                    width: 6px;
+                                }
+                                .custom-scrollbar::-webkit-scrollbar-track {
+                                    background: transparent;
+                                }
+                                .custom-scrollbar::-webkit-scrollbar-thumb {
+                                    background: hsl(var(--muted-foreground) / 0.3);
+                                    border-radius: 3px;
+                                }
+                                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                                    background: hsl(var(--muted-foreground) / 0.5);
+                                }
+                            `}</style>
                         </div>
                     </>
                 ) : (

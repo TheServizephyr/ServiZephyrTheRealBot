@@ -852,7 +852,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                             </span>
                         )}
                         {isAddressPendingDeliveryOrder && (
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 border-2 border-amber-600">
                                 Address Not Filled Yet
                             </span>
                         )}
@@ -1511,10 +1511,15 @@ export default function LiveOrdersPage() {
             sortableItems = sortableItems.filter(order => {
                 const matchesId = order.id.toLowerCase().includes(lowercasedQuery);
                 const matchesCustomerOrderId = (order.customerOrderId || '').toString().toLowerCase().includes(lowercasedQuery);
-                const matchesCustomerName = (order.customer || '').toLowerCase().includes(lowercasedQuery);
-                const matchesCustomerPhone = (order.customerPhone || '').includes(searchQuery);
-                const matchesCustomerAddress = (order.customerAddress || '').toLowerCase().includes(lowercasedQuery);
-                const matchesItems = (order.items || []).some(item => item.name.toLowerCase().includes(lowercasedQuery));
+                // Check both customerName and customer fields
+                const matchesCustomerName = (order.customerName || order.customer || '').toLowerCase().includes(lowercasedQuery);
+                // Check both customerPhone and phoneNumber fields
+                const matchesCustomerPhone = (order.customerPhone || order.phoneNumber || '').includes(searchQuery);
+                const matchesCustomerAddress = (order.customerAddress || order.deliveryAddress || '').toLowerCase().includes(lowercasedQuery);
+                const matchesItems = (order.items || []).some(item => {
+                    const itemName = item.name || item.itemName || '';
+                    return itemName.toLowerCase().includes(lowercasedQuery);
+                });
 
                 return matchesId || matchesCustomerOrderId || matchesCustomerName || matchesCustomerPhone || matchesCustomerAddress || matchesItems;
             });
@@ -1751,12 +1756,12 @@ export default function LiveOrdersPage() {
                                                     order.deliveryType !== 'pickup' &&
                                                     order.deliveryType !== 'dine-in' &&
                                                     !isAddressPendingForDelivery(order) && (
-                                                    <Checkbox
-                                                        checked={selectedOrders.includes(order.id)}
-                                                        onCheckedChange={() => handleSelectOrder(order.id)}
-                                                        aria-label={`Select order ${order.id}`}
-                                                    />
-                                                )}
+                                                        <Checkbox
+                                                            checked={selectedOrders.includes(order.id)}
+                                                            onCheckedChange={() => handleSelectOrder(order.id)}
+                                                            aria-label={`Select order ${order.id}`}
+                                                        />
+                                                    )}
                                             </td>
                                             <td className="p-4 align-top">
                                                 <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.customerOrderId || order.id}</div>
