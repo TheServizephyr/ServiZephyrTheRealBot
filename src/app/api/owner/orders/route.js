@@ -402,7 +402,7 @@ export async function GET(req) {
 export async function PATCH(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, businessSnap, uid, callerRole, callerPermissions } = await verifyOwnerWithAudit(req, 'update_orders_patch', {}, true);
+        const { businessId, businessSnap, uid, collectionName, callerRole, callerPermissions } = await verifyOwnerWithAudit(req, 'update_orders_patch', {}, true);
         const userRole = callerRole;
 
         const {
