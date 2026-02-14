@@ -472,6 +472,8 @@ function SettingsPageContent() {
                 pickupPodEnabled: editedUser.pickupPodEnabled,
                 dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
                 dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
+                upiId: editedUser.upiId || '',
+                upiPayeeName: editedUser.upiPayeeName || '',
             }
         } else if (section === 'gst') {
             payload = {
@@ -773,6 +775,43 @@ function SettingsPageContent() {
                                     </div>
                                 </div>
                             )}
+
+                            <div className="border-t border-border pt-6">
+                                <Label className="font-semibold text-lg">Manual UPI Collection (WhatsApp)</Label>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    Configure UPI details used when you send payment requests from live orders.
+                                </p>
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <div>
+                                        <Label htmlFor="upiId" className="flex items-center gap-2">
+                                            <Wallet size={14} /> UPI ID
+                                        </Label>
+                                        <input
+                                            id="upiId"
+                                            value={editedUser.upiId || ''}
+                                            onChange={e => setEditedUser({ ...editedUser, upiId: e.target.value })}
+                                            disabled={!isEditingPayment}
+                                            className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed"
+                                            placeholder="e.g. paytmqr1rw46198hu@paytm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="upiPayeeName" className="flex items-center gap-2">
+                                            <User size={14} /> UPI Payee Name
+                                        </Label>
+                                        <input
+                                            id="upiPayeeName"
+                                            value={editedUser.upiPayeeName || ''}
+                                            onChange={e => setEditedUser({ ...editedUser, upiPayeeName: e.target.value })}
+                                            disabled={!isEditingPayment}
+                                            className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed"
+                                            placeholder="e.g. ServiZephyr"
+                                        />
+                                    </div>
+                                </div>
+
+                            </div>
+
                             <div>
                                 <Label className="font-semibold text-lg">Order Types</Label>
                                 <p className="text-sm text-muted-foreground mb-4">Choose which types of orders your business will accept.</p>

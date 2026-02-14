@@ -5,6 +5,8 @@ import { getAuth, getFirestore, getDatabase, FieldValue, verifyAndGetUid } from 
 import { sendOrderStatusUpdateToCustomer, sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS, hasPermission } from '@/lib/permissions';
+import { sendSystemMessage } from '@/lib/whatsapp';
+import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-upi-payment';
 import Razorpay from 'razorpay';
 
 
@@ -213,6 +215,17 @@ function redactOrderForViewer(orderData = {}, canViewCustomerDetails = true, can
         delete redacted.paymentDetails;
         delete redacted.paymentMethod;
         delete redacted.paymentStatus;
+        delete redacted.paymentRequestSentAt;
+        delete redacted.paymentRequestSentBy;
+        delete redacted.paymentRequestSentByRole;
+        delete redacted.paymentRequestStatus;
+        delete redacted.paymentRequestLink;
+        delete redacted.paymentRequestImage;
+        delete redacted.paymentRequestAmount;
+        delete redacted.paymentRequestCount;
+        delete redacted.paymentConfirmedVia;
+        delete redacted.paymentConfirmedBy;
+        delete redacted.paymentConfirmedAt;
         delete redacted.subtotal;
         delete redacted.cgst;
         delete redacted.sgst;
@@ -403,6 +416,7 @@ export async function PATCH(req) {
     try {
         const firestore = await getFirestore();
         const { businessId, businessSnap, uid, collectionName, callerRole, callerPermissions } = await verifyOwnerWithAudit(req, 'update_orders_patch', {}, true);
+        const requestBaseUrl = new URL(req.url).origin;
         const userRole = callerRole;
 
         const {
@@ -451,6 +465,158 @@ export async function PATCH(req) {
         const batch = firestore.batch();
         const sideEffects = [];
         const businessData = businessSnap.data();
+
+        // --- Special Action: Send Manual UPI Payment Request on WhatsApp ---
+        if (action === 'send_payment_request') {
+            if (!callerHasPermission(userRole, callerPermissions, PERMISSIONS.PROCESS_PAYMENT)) {
+                return NextResponse.json({ message: 'Access Denied: You cannot request payments.' }, { status: 403 });
+            }
+
+            const targetOrderId = finalIdsToUpdate[0];
+            if (!targetOrderId || finalIdsToUpdate.length !== 1) {
+                return NextResponse.json({ message: 'Exactly one order is required for payment request.' }, { status: 400 });
+            }
+
+            const targetOrderSnap = orderMap.get(targetOrderId);
+            if (!targetOrderSnap) {
+                return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
+            }
+
+            const targetOrder = targetOrderSnap.data() || {};
+            if (targetOrder.restaurantId !== businessId) {
+                return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
+            }
+
+            if (targetOrder.paymentStatus === 'paid') {
+                return NextResponse.json({ message: 'Order is already marked as paid.' }, { status: 400 });
+            }
+
+            const configuredUpiId = sanitizeUpiId(businessData?.upiId);
+            if (!configuredUpiId || !configuredUpiId.includes('@')) {
+                return NextResponse.json({ message: 'Please configure a valid UPI ID in settings before sending payment requests.' }, { status: 400 });
+            }
+
+            const paymentRequest = await sendManualPaymentRequestToCustomer({
+                orderData: targetOrder,
+                orderId: targetOrderId,
+                businessData,
+                businessId,
+                collectionName,
+                baseUrl: requestBaseUrl
+            });
+
+            await targetOrderSnap.ref.update({
+                paymentRequestSentAt: FieldValue.serverTimestamp(),
+                paymentRequestSentBy: uid,
+                paymentRequestSentByRole: 'owner',
+                paymentRequestStatus: 'sent',
+                paymentRequestLink: paymentRequest.upiLink,
+                paymentRequestImage: paymentRequest.qrCardUrl,
+                paymentRequestAmount: paymentRequest.amount,
+                paymentRequestCount: FieldValue.increment(1),
+            });
+
+            try {
+                const { kv } = await import('@vercel/kv');
+                if (process.env.KV_REST_API_URL) {
+                    await kv.del(`order_status:${targetOrderId}`);
+                }
+            } catch (cacheErr) {
+                console.warn('[Owner Orders] Payment request cache invalidation failed:', cacheErr?.message || cacheErr);
+            }
+
+            return NextResponse.json({
+                message: 'Payment request sent to customer on WhatsApp.',
+                orderId: targetOrderId,
+                upiLink: paymentRequest.upiLink
+            }, { status: 200 });
+        }
+
+        // --- Special Action: Mark Manual UPI Payment as Paid ---
+        if (action === 'mark_manual_paid') {
+            if (!callerHasPermission(userRole, callerPermissions, PERMISSIONS.PROCESS_PAYMENT)) {
+                return NextResponse.json({ message: 'Access Denied: You cannot confirm payments.' }, { status: 403 });
+            }
+
+            const targetOrderId = finalIdsToUpdate[0];
+            if (!targetOrderId || finalIdsToUpdate.length !== 1) {
+                return NextResponse.json({ message: 'Exactly one order is required to mark paid.' }, { status: 400 });
+            }
+
+            const targetOrderSnap = orderMap.get(targetOrderId);
+            if (!targetOrderSnap) {
+                return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
+            }
+
+            const targetOrder = targetOrderSnap.data() || {};
+            if (targetOrder.restaurantId !== businessId) {
+                return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
+            }
+
+            if (targetOrder.paymentStatus === 'paid') {
+                return NextResponse.json({ message: 'Order is already marked as paid.' }, { status: 400 });
+            }
+
+            if (!targetOrder.paymentRequestSentAt) {
+                return NextResponse.json({ message: 'Send payment request first, then mark this order as paid.' }, { status: 400 });
+            }
+
+            const amount = Number(targetOrder.totalAmount || targetOrder.amount || 0);
+            const amountSafe = Number.isFinite(amount) ? amount : 0;
+
+            await targetOrderSnap.ref.update({
+                paymentStatus: 'paid',
+                paymentMethod: 'upi_manual',
+                paymentConfirmedVia: 'manual_upi',
+                paymentConfirmedBy: uid,
+                paymentConfirmedAt: FieldValue.serverTimestamp(),
+                paymentRequestStatus: 'completed',
+                paidAmount: amountSafe,
+                paymentDetails: FieldValue.arrayUnion({
+                    method: 'upi_manual',
+                    amount: amountSafe,
+                    status: 'paid',
+                    confirmedBy: uid,
+                    timestamp: new Date()
+                })
+            });
+
+            const customerPhone = resolveCustomerPhoneForNotification(targetOrder);
+            if (customerPhone && businessData?.botPhoneNumberId) {
+                const customerOrderDisplay = targetOrder.customerOrderId ? `#${targetOrder.customerOrderId}` : `#${targetOrderId.slice(0, 8)}`;
+                const customerPhoneWithCode = customerPhone.startsWith('91') ? customerPhone : `91${customerPhone}`;
+                try {
+                    await sendSystemMessage(
+                        customerPhoneWithCode,
+                        `Payment received successfully for order ${customerOrderDisplay}. We are now processing your order.`,
+                        businessData.botPhoneNumberId,
+                        businessId,
+                        businessData.name || 'ServiZephyr',
+                        collectionName,
+                        {
+                            customerName: resolveCustomerNameForNotification(targetOrder),
+                            conversationPreview: `Payment received for ${customerOrderDisplay}`
+                        }
+                    );
+                } catch (notifyErr) {
+                    console.warn('[Owner Orders] Failed to notify customer after mark-paid:', notifyErr?.message || notifyErr);
+                }
+            }
+
+            try {
+                const { kv } = await import('@vercel/kv');
+                if (process.env.KV_REST_API_URL) {
+                    await kv.del(`order_status:${targetOrderId}`);
+                }
+            } catch (cacheErr) {
+                console.warn('[Owner Orders] Mark-paid cache invalidation failed:', cacheErr?.message || cacheErr);
+            }
+
+            return NextResponse.json({
+                message: 'Order marked as paid successfully.',
+                orderId: targetOrderId
+            }, { status: 200 });
+        }
 
         // --- 2. Handle Cash Refund ---
         if (effectiveIsCashRefund && effectiveCashRefundIds.length > 0) {

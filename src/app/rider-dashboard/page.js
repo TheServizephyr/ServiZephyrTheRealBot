@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle, Navigation, TrendingDown, Fuel, DollarSign, CreditCard } from 'lucide-react';
+import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle, Navigation, TrendingDown, Fuel, DollarSign, CreditCard, Send } from 'lucide-react';
 import { auth, db, rtdb } from '@/lib/firebase';
 import { doc, onSnapshot, collection, query, where, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { ref, set, serverTimestamp, remove } from 'firebase/database'; // ✅ RTDB for location tracking
@@ -43,10 +43,86 @@ const InvitationCard = ({ invite, onAccept, onDecline }) => {
     )
 }
 
+const sanitizeUpiId = (value) => String(value || '').trim().toLowerCase();
+
+const buildRiderManualUpiLink = ({ upiId, payeeName, amount, customerName, orderId }) => {
+    const cleanedUpiId = sanitizeUpiId(upiId);
+    if (!cleanedUpiId || !cleanedUpiId.includes('@')) return null;
+
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) return null;
+
+    const amountFixed = numericAmount.toFixed(2);
+    const params = new URLSearchParams({
+        pa: cleanedUpiId,
+        pn: String(payeeName || 'ServiZephyr').trim().slice(0, 50),
+        am: amountFixed,
+        cu: 'INR',
+        tn: `Order by ${String(customerName || 'Customer').trim().slice(0, 30)}`,
+        tr: `ORD${String(orderId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-12)}${Date.now().toString().slice(-4)}`
+    });
+    return `upi://pay?${params.toString()}`;
+};
+
+const buildRiderPaymentQrCardUrl = ({ order, restaurantData }) => {
+    const upiId = sanitizeUpiId(restaurantData?.upiId);
+    const payeeName = String(restaurantData?.upiPayeeName || restaurantData?.name || 'ServiZephyr').trim();
+    const amount = Number(order?.totalAmount || order?.amount || 0);
+    const amountFixed = Number.isFinite(amount) ? amount.toFixed(2) : null;
+    if (!upiId || !upiId.includes('@') || !amountFixed) return null;
+
+    const orderDisplayId = order?.customerOrderId ? `#${order.customerOrderId}` : `#${String(order?.id || '').slice(0, 8)}`;
+    const upiLink = buildRiderManualUpiLink({
+        upiId,
+        payeeName,
+        amount,
+        customerName: order?.customerName || 'Customer',
+        orderId: order?.id
+    });
+    if (!upiLink) return null;
+
+    const baseUrl = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin.replace(/\/+$/g, '')
+        : '';
+    if (!baseUrl) return null;
+
+    const upiQueryIndex = String(upiLink || '').indexOf('?');
+    const upiParams = upiQueryIndex >= 0
+        ? new URLSearchParams(String(upiLink).slice(upiQueryIndex + 1))
+        : new URLSearchParams();
+    const params = new URLSearchParams({
+        am: amountFixed,
+        upi: upiId,
+        pn: payeeName,
+        rn: String(restaurantData?.name || 'Restaurant').trim(),
+        oid: orderDisplayId,
+        tn: String(upiParams.get('tn') || '').trim(),
+        tr: String(upiParams.get('tr') || '').trim()
+    });
+
+    return {
+        imageUrl: `${baseUrl}/api/payment/upi-qr-card?${params.toString()}`,
+        upiLink,
+        amountFixed,
+        orderDisplayId
+    };
+};
+
 
 
 // 🎨 PREMIUM DELIVERY CARD - Modern Gradients, 3D Effects, Sequence Badges
-const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading, sequenceNumber, paymentQRCode, onShowQR, onShowInfo }) => {
+const DeliveryCard = ({
+    order,
+    isPrimary,
+    onStatusAction,
+    isLoading,
+    sequenceNumber,
+    onShowQR,
+    onShowInfo,
+    isUpiConfigured,
+    onSendPaymentRequestToCustomer,
+    isSendingPaymentRequest
+}) => {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
 
     const handleMarkPaid = async (method) => {
@@ -169,7 +245,14 @@ const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading, sequenceNum
                     "p-4 rounded-xl mb-4 text-center transition-all duration-300",
                     "shadow-inner bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 border-2 border-blue-400"
                 )}>
-                    {order.paymentMethod === 'cod' ? (
+                    {order.paymentStatus === 'paid' ? (
+                        <>
+                            <p className="text-2xl font-black bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">✅ PAYMENT DONE</p>
+                            <p className="text-sm font-bold text-green-700 mt-1">
+                                {order.paymentMethod === 'cash' ? 'Collected in Cash' : 'Paid Online'}
+                            </p>
+                        </>
+                    ) : order.paymentMethod === 'cod' ? (
                         <>
                             <p className="text-2xl font-black bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">💵 COLLECT CASH</p>
                             <p className="text-4xl font-black bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent mt-1">
@@ -181,13 +264,38 @@ const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading, sequenceNum
                     )}
 
                     {/* QR Code & Mark Paid Actions (For BOTH COD and Online) */}
-                    <div className="flex gap-2 justify-center mt-3">
-                        {paymentQRCode && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                        {isUpiConfigured && order.paymentStatus !== 'paid' && (
                             <button
-                                onClick={() => onShowQR(paymentQRCode)}
-                                className="flex-1 bg-white hover:bg-gray-100 text-foreground border border-border font-bold py-2 px-3 rounded-lg shadow-sm transition-all"
+                                onClick={() => onShowQR(order)}
+                                className="w-full bg-white hover:bg-gray-100 text-foreground border border-border font-bold py-2 px-3 rounded-lg shadow-sm transition-all"
                             >
                                 📲 Show QR
+                            </button>
+                        )}
+
+                        {isUpiConfigured && order.paymentStatus !== 'paid' && (
+                            <button
+                                onClick={() => onSendPaymentRequestToCustomer?.(order.id)}
+                                disabled={isSendingPaymentRequest}
+                                className={cn(
+                                    "w-full border font-bold py-2 px-3 rounded-lg shadow-sm transition-all flex items-center justify-center gap-2",
+                                    isSendingPaymentRequest
+                                        ? "bg-slate-200 text-slate-500 border-slate-300 cursor-not-allowed"
+                                        : "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700"
+                                )}
+                            >
+                                {isSendingPaymentRequest ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin" />
+                                        Sending...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send size={14} />
+                                        Send to Customer
+                                    </>
+                                )}
                             </button>
                         )}
 
@@ -196,7 +304,7 @@ const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading, sequenceNum
                             <>
                                 <button
                                     onClick={() => setShowPaymentModal(true)}
-                                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-2 px-3 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:scale-95"
+                                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-2 px-3 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:scale-95 sm:col-span-2"
                                 >
                                     ✅ Mark Paid
                                 </button>
@@ -241,7 +349,7 @@ const DeliveryCard = ({ order, isPrimary, onStatusAction, isLoading, sequenceNum
                                 </AnimatePresence>
                             </>
                         ) : (
-                            <div className="flex-1 flex items-center justify-center bg-green-100 text-green-800 font-bold py-2 px-3 rounded-lg border border-green-200">
+                            <div className="w-full flex items-center justify-center bg-green-100 text-green-800 font-bold py-2 px-3 rounded-lg border border-green-200 sm:col-span-2">
                                 <CheckCircle size={16} className="mr-2" />
                                 {order.paymentMethod === 'cash' ? 'Paid (Cash)' : 'Paid (Online)'}
                             </div>
@@ -358,7 +466,8 @@ export default function RiderDashboardPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [restaurantData, setRestaurantData] = useState(null); // ✅ Store full restaurant data
     const [isRestaurantActive, setIsRestaurantActive] = useState(false);
-    const [qrModalOpen, setQrModalOpen] = useState(false); // ✅ QR Modal State
+    const [qrPreview, setQrPreview] = useState({ isOpen: false, imageUrl: '', orderDisplayId: '', amountFixed: '' });
+    const [sendingPaymentRequestOrderId, setSendingPaymentRequestOrderId] = useState(null);
     const [isOnline, setIsOnline] = useState(true); // ✅ STEP 8C: Network status
     const [actionLoading, setActionLoading] = useState(null); // 🔥 POLISH 1: Button locking
     const [gpsPermission, setGpsPermission] = useState('granted'); // 🔥 POLISH 2: GPS warning
@@ -544,7 +653,7 @@ export default function RiderDashboardPage() {
         prevAssignedOrderIdsRef.current = currentIds;
     }, [activeOrders]);
 
-    // Helper: One-time restaurant data fetch (checks active status + gets settings like QR)
+    // Helper: One-time restaurant data fetch (checks active status + gets UPI settings)
     const fetchRestaurantData = useCallback(async (restaurantId) => {
         if (!restaurantId) {
             setIsRestaurantActive(false);
@@ -553,37 +662,19 @@ export default function RiderDashboardPage() {
         }
 
         try {
-            // Optimized: Try 'restaurants' first, then 'shops' to save reads
+            // Optimized: Try 'restaurants' first, then fall back to other business collections.
             let restSnap = await getDoc(doc(db, 'restaurants', restaurantId));
-            let finalCollectionName = 'restaurants';
 
             if (!restSnap.exists()) {
                 restSnap = await getDoc(doc(db, 'shops', restaurantId));
-                finalCollectionName = 'shops';
+            }
+
+            if (!restSnap.exists()) {
+                restSnap = await getDoc(doc(db, 'street_vendors', restaurantId));
             }
 
             if (restSnap.exists()) {
-                let restData = restSnap.data();
-
-                // ✅ FETCH SPECIFIC RIDER DATA (QR Code) from the restaurant's subcollection
-                if (user?.uid) {
-                    try {
-                        const riderSubRef = doc(db, finalCollectionName, restaurantId, 'deliveryBoys', user.uid);
-                        const riderSubSnap = await getDoc(riderSubRef);
-
-                        // Per-Rider QR Logic
-                        if (riderSubSnap.exists() && riderSubSnap.data().paymentQRCode) {
-                            restData = { ...restData, paymentQRCode: riderSubSnap.data().paymentQRCode };
-                        } else {
-                            // User Requirement: "alag alag qr". If removal needed, we set null.
-                            restData.paymentQRCode = null;
-                        }
-                    } catch (subErr) {
-                        console.error("Error fetching rider specific details:", subErr);
-                        restData.paymentQRCode = null;
-                    }
-                }
-
+                const restData = restSnap.data();
                 setIsRestaurantActive(true);
                 setRestaurantData(restData);
             } else {
@@ -594,7 +685,7 @@ export default function RiderDashboardPage() {
             console.error('[RiderDash] Restaurant fetch error:', error);
             setIsRestaurantActive(false);
         }
-    }, [user?.uid]);
+    }, []);
 
     // Helper: One-time invites fetch (not a listener!)
     const fetchInvitesOnce = useCallback(async (userId) => {
@@ -710,6 +801,62 @@ export default function RiderDashboardPage() {
             setInfoDialog({ isOpen: true, title: 'Error', message: "Failed to decline invitation." });
         }
     }
+
+    const isRestaurantUpiConfigured = useMemo(() => {
+        const upiId = sanitizeUpiId(restaurantData?.upiId);
+        return upiId.includes('@');
+    }, [restaurantData?.upiId]);
+
+    const handleOpenQrPreview = useCallback((order) => {
+        const qrData = buildRiderPaymentQrCardUrl({ order, restaurantData });
+        if (!qrData) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'UPI Not Configured',
+                message: 'Restaurant UPI is missing or order amount is invalid. Please ask owner to set UPI ID and payee name in settings.'
+            });
+            return;
+        }
+
+        setQrPreview({
+            isOpen: true,
+            imageUrl: qrData.imageUrl,
+            orderDisplayId: qrData.orderDisplayId,
+            amountFixed: qrData.amountFixed
+        });
+    }, [restaurantData]);
+
+    const handleSendPaymentRequestToCustomer = useCallback(async (orderId) => {
+        if (!orderId || sendingPaymentRequestOrderId) return;
+        setSendingPaymentRequestOrderId(orderId);
+
+        const previousOrders = activeOrders;
+        setActiveOrders(prev =>
+            prev.map(order =>
+                order.id === orderId
+                    ? { ...order, paymentRequestSentAt: new Date() }
+                    : order
+            )
+        );
+
+        try {
+            const result = await handleApiCall('/api/rider/send-payment-request', 'POST', { orderId });
+            setInfoDialog({
+                isOpen: true,
+                title: 'Payment Request Sent',
+                message: result?.message || 'Payment QR and Pay Now CTA sent to customer on WhatsApp.'
+            });
+        } catch (error) {
+            setActiveOrders(previousOrders);
+            setInfoDialog({
+                isOpen: true,
+                title: 'Failed',
+                message: error?.message || 'Could not send payment request to customer.'
+            });
+        } finally {
+            setSendingPaymentRequestOrderId(null);
+        }
+    }, [activeOrders, handleApiCall, sendingPaymentRequestOrderId]);
 
     // 🔥 POLISH 1 & 4: Unified Status Action Handler with Button Locking + Auto Scroll
     const handleStatusAction = async (orderId, currentStatus) => {
@@ -1121,9 +1268,11 @@ export default function RiderDashboardPage() {
                             onStatusAction={handleStatusAction}
                             isLoading={actionLoading === primaryDelivery.id}
                             sequenceNumber={deliverySequenceMap.get(primaryDelivery.id)}
-                            paymentQRCode={restaurantData?.paymentQRCode} // ✅ Pass QR Code
-                            onShowQR={() => setQrModalOpen(true)}
+                            onShowQR={handleOpenQrPreview}
                             onShowInfo={setInfoDialog}
+                            isUpiConfigured={isRestaurantUpiConfigured}
+                            onSendPaymentRequestToCustomer={handleSendPaymentRequestToCustomer}
+                            isSendingPaymentRequest={sendingPaymentRequestOrderId === primaryDelivery.id}
                         />
                     </div>
                 )}
@@ -1147,9 +1296,11 @@ export default function RiderDashboardPage() {
                                         onStatusAction={handleStatusAction}
                                         isLoading={actionLoading === order.id}
                                         sequenceNumber={deliverySequenceMap.get(order.id)}
-                                        paymentQRCode={restaurantData?.paymentQRCode} // ✅ Pass QR Code
-                                        onShowQR={() => setQrModalOpen(true)}
+                                        onShowQR={handleOpenQrPreview}
                                         onShowInfo={setInfoDialog}
+                                        isUpiConfigured={isRestaurantUpiConfigured}
+                                        onSendPaymentRequestToCustomer={handleSendPaymentRequestToCustomer}
+                                        isSendingPaymentRequest={sendingPaymentRequestOrderId === order.id}
                                     />
                                 </div>
                             ))}
@@ -1172,27 +1323,37 @@ export default function RiderDashboardPage() {
 
                 {/* QR Code Modal */}
                 <AnimatePresence>
-                    {qrModalOpen && restaurantData?.paymentQRCode && (
+                    {qrPreview.isOpen && qrPreview.imageUrl && (
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-                            onClick={() => setQrModalOpen(false)}
+                            onClick={() => setQrPreview({ isOpen: false, imageUrl: '', orderDisplayId: '', amountFixed: '' })}
                         >
                             <motion.div
                                 initial={{ scale: 0.9, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0.9, opacity: 0 }}
-                                className="bg-white p-6 rounded-2xl max-w-sm w-full shadow-2xl text-center"
+                                className="bg-white p-6 rounded-2xl max-w-md w-full shadow-2xl text-center"
                                 onClick={e => e.stopPropagation()}
                             >
-                                <h3 className="text-xl font-bold mb-4 text-black">Scan to Pay</h3>
-                                <div className="bg-gray-100 p-4 rounded-xl inline-block mb-4">
-                                    <img src={restaurantData.paymentQRCode} alt="Payment QR" className="w-64 h-64 object-contain" />
+                                <h3 className="text-xl font-bold mb-2 text-black">Scan to Pay</h3>
+                                {qrPreview.orderDisplayId && (
+                                    <p className="text-sm text-gray-600 mb-3">Order {qrPreview.orderDisplayId}</p>
+                                )}
+                                <div className="bg-gray-100 p-3 rounded-xl inline-block mb-4">
+                                    <img src={qrPreview.imageUrl} alt="Payment QR" className="w-72 h-auto object-contain rounded-lg" />
                                 </div>
-                                <p className="text-gray-500 text-sm mb-6">Show this QR code to the customer for payment.</p>
-                                <Button onClick={() => setQrModalOpen(false)} className="w-full">Close</Button>
+                                <p className="text-gray-500 text-sm mb-6">
+                                    Show this QR to customer. Amount is fixed at INR {qrPreview.amountFixed || '0.00'}.
+                                </p>
+                                <Button
+                                    onClick={() => setQrPreview({ isOpen: false, imageUrl: '', orderDisplayId: '', amountFixed: '' })}
+                                    className="w-full"
+                                >
+                                    Close
+                                </Button>
                             </motion.div>
                         </motion.div>
                     )}

@@ -459,7 +459,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, initialSelectedOrders, ri
     );
 };
 
-const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, employeeOfOwnerId, impersonatedOwnerId, userRole }) => {
+const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, onSendPaymentRequest, onMarkManualPaid, employeeOfOwnerId, impersonatedOwnerId, userRole }) => {
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
@@ -468,6 +468,9 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     const currentIndex = statusFlow.indexOf(status);
 
     const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
+    const canProcessPayment = impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.PROCESS_PAYMENT);
+    const showPaymentRequestAction = !isDineIn && !isFinalStatus && order.paymentStatus !== 'paid' && canProcessPayment;
+    const showMarkPaidAction = showPaymentRequestAction && !!order.paymentRequestSentAt;
 
     if (isUpdating) {
         return (
@@ -658,6 +661,28 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                     </Button>
                 )}
             </div>
+
+            {showPaymentRequestAction && (
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button
+                        onClick={() => onSendPaymentRequest?.(order.id)}
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-3 text-xs font-semibold whitespace-nowrap"
+                    >
+                        Send Pay Link
+                    </Button>
+                    {showMarkPaidAction && (
+                        <Button
+                            onClick={() => onMarkManualPaid?.(order.id)}
+                            size="sm"
+                            className="h-8 px-3 text-xs font-semibold whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white"
+                        >
+                            Mark Paid
+                        </Button>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
@@ -800,8 +825,10 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
 };
 
 const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelected }) => {
-    const isPaidOnline = (order.paymentMethod === 'razorpay' || order.paymentMethod === 'phonepe' || order.paymentMethod === 'online') && order.paymentStatus === 'paid';
-    const isCOD = !isPaidOnline;
+    const isPaid = order.paymentStatus === 'paid';
+    const isPaidOnline = isPaid && ['razorpay', 'phonepe', 'online', 'upi_manual'].includes(order.paymentMethod);
+    const isCOD = !isPaid && (!order.paymentMethod || order.paymentMethod === 'cod' || order.paymentMethod === 'cash');
+    const isPaymentRequested = !!order.paymentRequestSentAt;
     const canAssignFromCard = actionButtonProps?.impersonatedOwnerId || hasPermission(actionButtonProps?.userRole, PERMISSIONS.ASSIGN_RIDER);
     const isChefRole = (actionButtonProps?.userRole || '').toLowerCase() === 'chef';
     const customerDisplayName = isChefRole ? 'Customer Hidden' : (order.customerName || order.customer || 'Guest');
@@ -873,10 +900,12 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             {!isChefRole && (
                 <div className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border w-fit",
-                    isPaidOnline ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                    isPaid ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-orange-500/10 text-orange-500 border-orange-500/20"
                 )}>
-                    {isPaidOnline ? (
-                        <><Check size={12} className="stroke-[3]" /> PAID ONLINE</>
+                    {isPaid ? (
+                        <><Check size={12} className="stroke-[3]" /> PAYMENT DONE</>
+                    ) : isPaymentRequested ? (
+                        <><Wallet size={12} className="stroke-[3]" /> PAYMENT LINK SENT</>
                     ) : (
                         <><Wallet size={12} className="stroke-[3]" /> PAY ON DELIVERY (COD)</>
                     )}
@@ -963,9 +992,9 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                         <>
                             <span className={cn(
                                 "block text-[10px] font-bold uppercase tracking-wider mb-0.5",
-                                isCOD ? "text-orange-500" : "text-muted-foreground"
+                                isPaid ? "text-green-500" : (isCOD ? "text-orange-500" : "text-muted-foreground")
                             )}>
-                                {isCOD ? "Collect Cash" : "Total Amount"}
+                                {isPaid ? "Paid" : (isPaymentRequested ? "Awaiting Payment" : (isCOD ? "Collect Cash" : "Total Amount"))}
                             </span>
                             <span className="text-2xl font-black tracking-tight">₹{Math.round(order.totalAmount || 0)}</span>
                         </>
@@ -1456,6 +1485,66 @@ export default function LiveOrdersPage() {
         }
     };
 
+    const handleSendPaymentRequest = async (orderId) => {
+        setUpdatingOrderId(orderId);
+        const previousOrders = orders;
+
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                order.id === orderId
+                    ? { ...order, paymentRequestSentAt: new Date() }
+                    : order
+            )
+        );
+
+        try {
+            const result = await handleAPICall('PATCH', { orderId, action: 'send_payment_request' });
+            if (impersonatedOwnerId || employeeOfOwnerId) {
+                await fetchInitialData(true);
+            }
+            setInfoDialog({
+                isOpen: true,
+                title: 'Payment Request Sent',
+                message: result?.message || 'Payment link and QR have been sent to the customer on WhatsApp.'
+            });
+        } catch (error) {
+            setOrders(previousOrders);
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to send payment request: ${error.message}` });
+        } finally {
+            setUpdatingOrderId(null);
+        }
+    };
+
+    const handleMarkManualPaid = async (orderId) => {
+        setUpdatingOrderId(orderId);
+        const previousOrders = orders;
+
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                order.id === orderId
+                    ? { ...order, paymentStatus: 'paid', paymentMethod: 'upi_manual' }
+                    : order
+            )
+        );
+
+        try {
+            const result = await handleAPICall('PATCH', { orderId, action: 'mark_manual_paid' });
+            if (impersonatedOwnerId || employeeOfOwnerId) {
+                await fetchInitialData(true);
+            }
+            setInfoDialog({
+                isOpen: true,
+                title: 'Payment Updated',
+                message: result?.message || 'Order marked as paid successfully.'
+            });
+        } catch (error) {
+            setOrders(previousOrders);
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to mark payment as paid: ${error.message}` });
+        } finally {
+            setUpdatingOrderId(null);
+        }
+    };
+
     const handleDetailClick = async (orderId, customerId) => {
         try {
             const data = await handleAPICall('GET', { id: orderId, customerId });
@@ -1705,6 +1794,8 @@ export default function LiveOrdersPage() {
                                         onRejectClick: (order) => setRejectionModalData({ isOpen: true, order: order }),
                                         onPrintClick: () => setPrintModalData({ isOpen: true, order: order }),
                                         onAssignClick: (orders) => setAssignModalData({ isOpen: true, orders }),
+                                        onSendPaymentRequest: handleSendPaymentRequest,
+                                        onMarkManualPaid: handleMarkManualPaid,
                                         employeeOfOwnerId,
                                         impersonatedOwnerId,
                                         userRole
@@ -1858,6 +1949,8 @@ export default function LiveOrdersPage() {
                                                     onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
                                                     onPrintClick={() => setPrintModalData({ isOpen: true, order: order })}
                                                     onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
+                                                    onSendPaymentRequest={handleSendPaymentRequest}
+                                                    onMarkManualPaid={handleMarkManualPaid}
                                                     employeeOfOwnerId={employeeOfOwnerId}
                                                     impersonatedOwnerId={impersonatedOwnerId}
                                                     userRole={userRole}

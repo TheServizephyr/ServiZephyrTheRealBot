@@ -77,6 +77,47 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
 };
 
 /**
+ * Uploads media to WhatsApp and returns media ID.
+ * This avoids public URL fetch dependency for media delivery.
+ * @param {{buffer: Buffer|Uint8Array, filename?: string, mimeType?: string, businessPhoneNumberId: string}} params
+ * @returns {Promise<string>} mediaId
+ */
+export const uploadWhatsAppMediaFromBuffer = async ({
+    buffer,
+    filename = 'media.png',
+    mimeType = 'image/png',
+    businessPhoneNumberId
+}) => {
+    console.log(`[WhatsApp Lib] Uploading media to WhatsApp for Bot ID ${businessPhoneNumberId}...`);
+    if (!ACCESS_TOKEN || !businessPhoneNumberId) {
+        throw new Error('WhatsApp credentials are not configured.');
+    }
+    if (!buffer || !(buffer.length > 0)) {
+        throw new Error('Media buffer is empty.');
+    }
+
+    const formData = new FormData();
+    formData.append('messaging_product', 'whatsapp');
+    formData.append('file', new Blob([buffer], { type: mimeType }), filename);
+
+    const response = await fetch(`https://graph.facebook.com/v19.0/${businessPhoneNumberId}/media`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${ACCESS_TOKEN}`
+        },
+        body: formData
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.id) {
+        throw new Error(JSON.stringify(data?.error || data || { message: 'Failed to upload WhatsApp media' }));
+    }
+
+    console.log(`[WhatsApp Lib] Media uploaded successfully. Media ID: ${data.id}`);
+    return data.id;
+};
+
+/**
  * Downloads media from WhatsApp using the Media ID.
  * @param {string} mediaId The WhatsApp Media ID.
  * @returns {Promise<{buffer: Buffer, mimeType: string}>} The media buffer and mime type.

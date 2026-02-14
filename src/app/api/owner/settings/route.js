@@ -192,6 +192,8 @@ export async function GET(req) {
             merchantId: businessData?.merchantId || '',
             customerId: userData?.customerId || '',
             paymentQRCode: businessData?.paymentQRCode || null, // ✅ Return QR Code URL
+            upiId: businessData?.upiId || '',
+            upiPayeeName: businessData?.upiPayeeName || businessData?.name || '',
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -254,6 +256,8 @@ export async function PATCH(req) {
         }
         // ✅ Payment QR Code
         if (updates.paymentQRCode !== undefined) businessUpdateData.paymentQRCode = updates.paymentQRCode;
+        if (updates.upiId !== undefined) businessUpdateData.upiId = String(updates.upiId || '').trim();
+        if (updates.upiPayeeName !== undefined) businessUpdateData.upiPayeeName = String(updates.upiPayeeName || '').trim();
 
         // NOTE: Delivery Settings are now handled by /api/owner/delivery-settings
         // We will NOT write them to parent doc anymore to ensure single source of truth (sub-collection)
@@ -447,6 +451,9 @@ export async function PATCH(req) {
             merchantId: finalBusinessData?.merchantId || '',
             customerId: finalUserData?.customerId || '',
             gstPercentage: finalBusinessData?.gstPercentage || finalBusinessData?.gstRate || 0,
+            paymentQRCode: finalBusinessData?.paymentQRCode || null,
+            upiId: finalBusinessData?.upiId || '',
+            upiPayeeName: finalBusinessData?.upiPayeeName || finalBusinessData?.name || '',
         };
 
         return NextResponse.json(responseData, { status: 200 });
