@@ -516,6 +516,32 @@ export async function PATCH(req) {
                 paymentRequestCount: FieldValue.increment(1),
             });
 
+            // LOGGING: Add to WhatsApp Direct Chat History
+            if (targetOrder.customerId && collectionName) {
+                try {
+                    const messageData = {
+                        text: `Payment Link Sent\nAmount: ₹${paymentRequest.amountFixed}`,
+                        sender: 'owner', // Appears as sent by owner
+                        timestamp: FieldValue.serverTimestamp(),
+                        type: 'image', // Show QR Card
+                        mediaUrl: paymentRequest.qrCardUrl,
+                        status: 'sent',
+                        isPaymentRequest: true,
+                        orderId: targetOrderId
+                    };
+                    await firestore
+                        .collection(collectionName)
+                        .doc(businessId)
+                        .collection('customers')
+                        .doc(targetOrder.customerId)
+                        .collection('messages')
+                        .add(messageData);
+                } catch (logErr) {
+                    console.warn('[Owner Orders] Failed to log payment message to chat:', logErr);
+                    // Non-blocking error
+                }
+            }
+
             try {
                 const { kv } = await import('@vercel/kv');
                 if (process.env.KV_REST_API_URL) {
@@ -777,8 +803,7 @@ export async function PATCH(req) {
                             }));
                         } else {
                             console.warn(
-                                `[Owner Orders] Skipping status notification for ${id}. Missing ${
-                                    !businessData.botPhoneNumberId ? 'botPhoneNumberId' : 'customerPhone'
+                                `[Owner Orders] Skipping status notification for ${id}. Missing ${!businessData.botPhoneNumberId ? 'botPhoneNumberId' : 'customerPhone'
                                 }.`
                             );
                         }

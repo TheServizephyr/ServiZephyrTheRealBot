@@ -1,5 +1,5 @@
 // ServiZephyr Service Worker - Basic PWA Support
-const CACHE_VERSION = '2025-12-12-16-20'; // Update this on each deployment
+const CACHE_VERSION = '2026-02-14-22-25'; // Update this on each deployment
 const CACHE_NAME = `servizephyr-v${CACHE_VERSION}`;
 const urlsToCache = [
     '/offline.html'
@@ -47,14 +47,28 @@ self.addEventListener('fetch', (event) => {
 
     // CRITICAL: Skip API calls - don't cache them!
     if (event.request.url.includes('/api/')) {
-        event.respondWith(fetch(event.request));
+        event.respondWith(
+            fetch(event.request).catch(() =>
+                new Response('Network error', {
+                    status: 503,
+                    statusText: 'Service Unavailable'
+                })
+            )
+        );
         return;
     }
 
     // CRITICAL: Skip Next.js static assets - they have version hashes
     // Caching these causes stale chunk issues after deployments
     if (event.request.url.includes('/_next/')) {
-        event.respondWith(fetch(event.request));
+        event.respondWith(
+            fetch(event.request).catch(() =>
+                new Response('Asset unavailable', {
+                    status: 503,
+                    statusText: 'Service Unavailable'
+                })
+            )
+        );
         return;
     }
 
@@ -62,12 +76,22 @@ self.addEventListener('fetch', (event) => {
     // Only use cache as fallback for offline
     event.respondWith(
         fetch(event.request)
-            .catch(() => {
+            .catch(async () => {
                 // Network failed, try cache for navigation requests
                 if (event.request.mode === 'navigate') {
-                    return caches.match('/offline.html');
+                    const offlinePage = await caches.match('/offline.html');
+                    if (offlinePage) return offlinePage;
+                    return new Response('Offline', {
+                        status: 503,
+                        headers: { 'Content-Type': 'text/plain; charset=UTF-8' }
+                    });
                 }
-                return caches.match(event.request);
+                const cachedResponse = await caches.match(event.request);
+                if (cachedResponse) return cachedResponse;
+                return new Response('Resource unavailable', {
+                    status: 503,
+                    statusText: 'Service Unavailable'
+                });
             })
     );
 });

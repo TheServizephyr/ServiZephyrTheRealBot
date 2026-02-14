@@ -459,7 +459,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, initialSelectedOrders, ri
     );
 };
 
-const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, onSendPaymentRequest, onMarkManualPaid, employeeOfOwnerId, impersonatedOwnerId, userRole }) => {
+const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, onSendPaymentRequest, onMarkManualPaid, employeeOfOwnerId, impersonatedOwnerId, userRole, hidePaymentActions }) => {
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
@@ -469,7 +469,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
 
     const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
     const canProcessPayment = impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.PROCESS_PAYMENT);
-    const showPaymentRequestAction = !isDineIn && !isFinalStatus && order.paymentStatus !== 'paid' && canProcessPayment;
+    const showPaymentRequestAction = !hidePaymentActions && !isDineIn && !isFinalStatus && order.paymentStatus !== 'paid' && canProcessPayment;
     const showMarkPaidAction = showPaymentRequestAction && !!order.paymentRequestSentAt;
 
     if (isUpdating) {
@@ -834,6 +834,13 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
     const customerDisplayName = isChefRole ? 'Customer Hidden' : (order.customerName || order.customer || 'Guest');
     const customerDisplayPhone = isChefRole ? '' : (order.customerPhone || '');
 
+    // Payment Action Logic for Card Header/Footer placement
+    const { onSendPaymentRequest, onMarkManualPaid, impersonatedOwnerId, userRole } = actionButtonProps || {};
+    const isFinalStatus = order.status === 'delivered' || order.status === 'rejected' || order.status === 'picked_up';
+    const canProcessPayment = impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.PROCESS_PAYMENT);
+    const showPaymentRequestAction = order.deliveryType !== 'dine-in' && !isFinalStatus && order.paymentStatus !== 'paid' && canProcessPayment;
+    const showMarkPaidAction = showPaymentRequestAction && !!order.paymentRequestSentAt;
+
     const isAddressPendingDeliveryOrder = isAddressPendingForDelivery(order);
     // Show checkbox only for rider-assignable delivery orders with valid location.
     const showCheckbox =
@@ -1000,11 +1007,35 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                         </>
                     )}
                 </div>
-                <div className={cn(
-                    "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground",
-                    statusConfig[order.status]?.color?.split(' ')[1] // Extract text color class if possible, or fallback
-                )}>
-                    {order.status.replace('_', ' ')}
+
+                <div className="flex flex-col items-end gap-2">
+                    {showPaymentRequestAction && (
+                        <div className="flex items-center gap-2">
+                            <Button
+                                onClick={(e) => { e.stopPropagation(); onSendPaymentRequest?.(order.id); }}
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[10px] font-bold whitespace-nowrap bg-yellow-500 hover:bg-yellow-600 text-black border-none transition-all"
+                            >
+                                Send Pay Link
+                            </Button>
+                            {showMarkPaidAction && (
+                                <Button
+                                    onClick={(e) => { e.stopPropagation(); onMarkManualPaid?.(order.id); }}
+                                    size="sm"
+                                    className="h-7 px-2 text-[10px] font-semibold whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white"
+                                >
+                                    Mark Paid
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                    <div className={cn(
+                        "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground w-fit",
+                        statusConfig[order.status]?.color?.split(' ')[1] // Extract text color class if possible, or fallback
+                    )}>
+                        {order.status.replace('_', ' ')}
+                    </div>
                 </div>
             </div>
 
@@ -1015,9 +1046,10 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                     order={order}
                     status={order.status}
                     className="w-full" // Pass class for full width
+                    hidePaymentActions={true}
                 />
             </div>
-        </motion.div>
+        </motion.div >
     );
 };
 

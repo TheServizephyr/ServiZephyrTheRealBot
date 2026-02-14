@@ -184,8 +184,11 @@ function OwnerDashboardContent({ children }) {
       return;
     }
 
-    // REMOVED AUTH REDIRECT - Let RedirectHandler on main page handle all auth
-    // Dashboard should always load if user reaches it
+    if (!isUserLoading && !user) {
+      const nextPath = pathname || '/owner-dashboard';
+      router.replace(`/?redirect=${encodeURIComponent(nextPath)}`);
+      return;
+    }
 
     // Log impersonation when detected
     if (user && impersonatedOwnerId) {
@@ -317,7 +320,7 @@ function OwnerDashboardContent({ children }) {
       fetchUserRole();
     }
 
-  }, [user, isUserLoading, authChecked, effectiveOwnerId, router]);
+  }, [user, isUserLoading, authChecked, effectiveOwnerId, router, pathname, employeeOfOwnerId, impersonatedOwnerId]);
 
   if ((isUserLoading || !authChecked) && !user) {
     return (
@@ -328,7 +331,11 @@ function OwnerDashboardContent({ children }) {
   }
 
   if (!user) {
-    return null;
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <GoldenCoinSpinner />
+      </div>
+    );
   }
 
   const renderStatusScreen = () => {
