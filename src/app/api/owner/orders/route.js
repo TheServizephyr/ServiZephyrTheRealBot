@@ -502,7 +502,8 @@ export async function PATCH(req) {
                 businessData,
                 businessId,
                 collectionName,
-                baseUrl: requestBaseUrl
+                // Prefer explicitly configured public base URL in lib; use request origin only as fallback.
+                baseUrl: process.env.WHATSAPP_CTA_BASE_URL || requestBaseUrl
             });
 
             await targetOrderSnap.ref.update({

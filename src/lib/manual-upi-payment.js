@@ -18,6 +18,19 @@ function normalizeBaseUrl(value) {
 }
 
 export function resolvePaymentPublicBaseUrl(explicitBaseUrl = '') {
+    const configuredBaseUrl = normalizeBaseUrl(
+        process.env.WHATSAPP_CTA_BASE_URL
+        || process.env.NEXT_PUBLIC_BASE_URL
+        || process.env.NEXT_PUBLIC_APP_URL
+    );
+    const configuredIsLocalLike = /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(configuredBaseUrl);
+    if (
+        (configuredBaseUrl.startsWith('http://') || configuredBaseUrl.startsWith('https://'))
+        && !configuredIsLocalLike
+    ) {
+        return configuredBaseUrl;
+    }
+
     const normalizedExplicit = normalizeBaseUrl(explicitBaseUrl);
     const isLocalLike = /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(normalizedExplicit);
     if ((normalizedExplicit.startsWith('http://') || normalizedExplicit.startsWith('https://')) && !isLocalLike) {

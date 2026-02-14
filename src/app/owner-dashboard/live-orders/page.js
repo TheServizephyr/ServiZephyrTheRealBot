@@ -460,7 +460,24 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, initialSelectedOrders, ri
     );
 };
 
-const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick, onSendPaymentRequest, onMarkManualPaid, employeeOfOwnerId, impersonatedOwnerId, userRole, hidePaymentActions }) => {
+const ActionButton = ({
+    status,
+    onNext,
+    onRevert,
+    order,
+    onRejectClick,
+    isUpdating,
+    onPrintClick,
+    onAssignClick,
+    onSendPaymentRequest,
+    onMarkManualPaid,
+    isPaymentRequestLoading,
+    isMarkManualPaidLoading,
+    employeeOfOwnerId,
+    impersonatedOwnerId,
+    userRole,
+    hidePaymentActions
+}) => {
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
@@ -664,22 +681,38 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
             </div>
 
             {showPaymentRequestAction && (
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 w-full">
                     <Button
                         onClick={() => onSendPaymentRequest?.(order.id)}
                         size="sm"
                         variant="outline"
-                        className="h-8 px-3 text-xs font-semibold whitespace-nowrap"
+                        disabled={isPaymentRequestLoading}
+                        className="h-8 w-[110px] px-2 text-[11px] font-semibold whitespace-nowrap justify-center"
                     >
-                        Send Pay Link
+                        {isPaymentRequestLoading ? (
+                            <>
+                                <Loader2 size={12} className="mr-1.5 animate-spin" />
+                                Sending...
+                            </>
+                        ) : (
+                            'Send Pay Link'
+                        )}
                     </Button>
                     {showMarkPaidAction && (
                         <Button
                             onClick={() => onMarkManualPaid?.(order.id)}
                             size="sm"
-                            className="h-8 px-3 text-xs font-semibold whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white"
+                            disabled={isMarkManualPaidLoading || isPaymentRequestLoading}
+                            className="h-8 w-[96px] px-2 text-xs font-semibold whitespace-nowrap justify-center ml-auto bg-emerald-600 hover:bg-emerald-700 text-white"
                         >
-                            Mark Paid
+                            {isMarkManualPaidLoading ? (
+                                <>
+                                    <Loader2 size={12} className="mr-1.5 animate-spin" />
+                                    Updating...
+                                </>
+                            ) : (
+                                'Mark Paid'
+                            )}
                         </Button>
                     )}
                 </div>
@@ -836,7 +869,14 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
     const customerDisplayPhone = isChefRole ? '' : (order.customerPhone || '');
 
     // Payment Action Logic for Card Header/Footer placement
-    const { onSendPaymentRequest, onMarkManualPaid, impersonatedOwnerId, userRole } = actionButtonProps || {};
+    const {
+        onSendPaymentRequest,
+        onMarkManualPaid,
+        isPaymentRequestLoading,
+        isMarkManualPaidLoading,
+        impersonatedOwnerId,
+        userRole
+    } = actionButtonProps || {};
     const isFinalStatus = order.status === 'delivered' || order.status === 'rejected' || order.status === 'picked_up';
     const canProcessPayment = impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.PROCESS_PAYMENT);
     const showPaymentRequestAction = order.deliveryType !== 'dine-in' && !isFinalStatus && order.paymentStatus !== 'paid' && canProcessPayment;
@@ -987,57 +1027,74 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             </div>
 
             {/* Bill Summary */}
-            <div className="border-t border-border pt-4 mt-auto flex justify-between items-end">
-                <div>
-                    {isChefRole ? (
-                        <>
-                            <span className="block text-[10px] font-bold uppercase tracking-wider mb-0.5 text-muted-foreground">
-                                Payment
-                            </span>
-                            <span className="text-lg font-extrabold tracking-tight text-muted-foreground">Hidden</span>
-                        </>
-                    ) : (
-                        <>
-                            <span className={cn(
-                                "block text-[10px] font-bold uppercase tracking-wider mb-0.5",
-                                isPaid ? "text-green-500" : (isCOD ? "text-orange-500" : "text-muted-foreground")
-                            )}>
-                                {isPaid ? "Paid" : (isPaymentRequested ? "Awaiting Payment" : (isCOD ? "Collect Cash" : "Total Amount"))}
-                            </span>
-                            <span className="text-2xl font-black tracking-tight">₹{Math.round(order.totalAmount || 0)}</span>
-                        </>
-                    )}
-                </div>
+            <div className="border-t border-border pt-4 mt-auto flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        {isChefRole ? (
+                            <>
+                                <span className="block text-[10px] font-bold uppercase tracking-wider mb-0.5 text-muted-foreground">
+                                    Payment
+                                </span>
+                                <span className="text-lg font-extrabold tracking-tight text-muted-foreground">Hidden</span>
+                            </>
+                        ) : (
+                            <>
+                                <span className={cn(
+                                    "block text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                                    isPaid ? "text-green-500" : (isCOD ? "text-orange-500" : "text-muted-foreground")
+                                )}>
+                                    {isPaid ? "Paid" : (isPaymentRequested ? "Awaiting Payment" : (isCOD ? "Collect Cash" : "Total Amount"))}
+                                </span>
+                                <span className="text-2xl font-black tracking-tight">₹{Math.round(order.totalAmount || 0)}</span>
+                            </>
+                        )}
+                    </div>
 
-                <div className="flex flex-col items-end gap-2">
-                    {showPaymentRequestAction && (
-                        <div className="flex items-center gap-2">
-                            <Button
-                                onClick={(e) => { e.stopPropagation(); onSendPaymentRequest?.(order.id); }}
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-[10px] font-bold whitespace-nowrap bg-yellow-500 hover:bg-yellow-600 text-black border-none transition-all"
-                            >
-                                Send Pay Link
-                            </Button>
-                            {showMarkPaidAction && (
-                                <Button
-                                    onClick={(e) => { e.stopPropagation(); onMarkManualPaid?.(order.id); }}
-                                    size="sm"
-                                    className="h-7 px-2 text-[10px] font-semibold whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white"
-                                >
-                                    Mark Paid
-                                </Button>
-                            )}
-                        </div>
-                    )}
                     <div className={cn(
                         "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground w-fit",
-                        statusConfig[order.status]?.color?.split(' ')[1] // Extract text color class if possible, or fallback
+                        statusConfig[order.status]?.color?.split(' ')[1]
                     )}>
                         {order.status.replace('_', ' ')}
                     </div>
                 </div>
+
+                {showPaymentRequestAction && (
+                    <div className="flex items-center gap-2 w-full">
+                        <Button
+                            onClick={(e) => { e.stopPropagation(); onSendPaymentRequest?.(order.id); }}
+                            size="sm"
+                            variant="outline"
+                            disabled={isPaymentRequestLoading}
+                            className="h-8 w-[110px] px-2 text-[11px] font-bold whitespace-nowrap justify-center bg-yellow-500 hover:bg-yellow-600 text-black border-none transition-all"
+                        >
+                            {isPaymentRequestLoading ? (
+                                <>
+                                    <Loader2 size={13} className="mr-1.5 animate-spin" />
+                                    Sending...
+                                </>
+                            ) : (
+                                'Send Pay Link'
+                            )}
+                        </Button>
+                        {showMarkPaidAction && (
+                            <Button
+                                onClick={(e) => { e.stopPropagation(); onMarkManualPaid?.(order.id); }}
+                                size="sm"
+                                disabled={isMarkManualPaidLoading || isPaymentRequestLoading}
+                                className="h-8 w-[96px] px-2 text-xs font-semibold whitespace-nowrap justify-center ml-auto bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                                {isMarkManualPaidLoading ? (
+                                    <>
+                                        <Loader2 size={13} className="mr-1.5 animate-spin" />
+                                        Updating...
+                                    </>
+                                ) : (
+                                    'Mark Paid'
+                                )}
+                            </Button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Actions */}
@@ -1061,6 +1118,8 @@ export default function LiveOrdersPage() {
     const [riders, setRiders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [updatingOrderId, setUpdatingOrderId] = useState(null);
+    const [paymentRequestLoadingOrderId, setPaymentRequestLoadingOrderId] = useState(null);
+    const [markManualPaidLoadingOrderId, setMarkManualPaidLoadingOrderId] = useState(null);
     const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
     const [assignModalData, setAssignModalData] = useState({ isOpen: false, orders: [] });
     const [rejectionModalData, setRejectionModalData] = useState({ isOpen: false, order: null });
@@ -1520,7 +1579,7 @@ export default function LiveOrdersPage() {
     };
 
     const handleSendPaymentRequest = async (orderId) => {
-        setUpdatingOrderId(orderId);
+        setPaymentRequestLoadingOrderId(orderId);
         const previousOrders = orders;
 
         setOrders(prevOrders =>
@@ -1545,12 +1604,12 @@ export default function LiveOrdersPage() {
             setOrders(previousOrders);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to send payment request: ${error.message}` });
         } finally {
-            setUpdatingOrderId(null);
+            setPaymentRequestLoadingOrderId(null);
         }
     };
 
     const handleMarkManualPaid = async (orderId) => {
-        setUpdatingOrderId(orderId);
+        setMarkManualPaidLoadingOrderId(orderId);
         const previousOrders = orders;
 
         setOrders(prevOrders =>
@@ -1575,7 +1634,7 @@ export default function LiveOrdersPage() {
             setOrders(previousOrders);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to mark payment as paid: ${error.message}` });
         } finally {
-            setUpdatingOrderId(null);
+            setMarkManualPaidLoadingOrderId(null);
         }
     };
 
@@ -1823,6 +1882,8 @@ export default function LiveOrdersPage() {
                                     onDetailClick={handleDetailClick}
                                     actionButtonProps={{
                                         isUpdating: updatingOrderId === order.id,
+                                        isPaymentRequestLoading: paymentRequestLoadingOrderId === order.id,
+                                        isMarkManualPaidLoading: markManualPaidLoadingOrderId === order.id,
                                         onNext: (newStatus) => handleUpdateStatus(order.id, newStatus),
                                         onRevert: (newStatus) => handleUpdateStatus(order.id, newStatus),
                                         onRejectClick: (order) => setRejectionModalData({ isOpen: true, order: order }),
@@ -1978,6 +2039,8 @@ export default function LiveOrdersPage() {
                                                     order={order}
                                                     status={order.status}
                                                     isUpdating={updatingOrderId === order.id}
+                                                    isPaymentRequestLoading={paymentRequestLoadingOrderId === order.id}
+                                                    isMarkManualPaidLoading={markManualPaidLoadingOrderId === order.id}
                                                     onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                                     onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                                     onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
