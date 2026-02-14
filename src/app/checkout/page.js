@@ -159,6 +159,21 @@ const CheckoutPageInternal = () => {
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [editingItemIndex, setEditingItemIndex] = useState(null);
 
+    const mergeCartDataFromStorage = (storageData) => {
+        setCartData((prev) => {
+            const normalizedStorageCoupons = (Array.isArray(storageData?.availableCoupons) ? storageData.availableCoupons : [])
+                .map(normalizeCoupon)
+                .filter(Boolean);
+            const preservedCoupons = Array.isArray(prev?.availableCoupons) ? prev.availableCoupons : [];
+
+            return {
+                ...(prev || {}),
+                ...(storageData || {}),
+                availableCoupons: normalizedStorageCoupons.length > 0 ? normalizedStorageCoupons : preservedCoupons,
+            };
+        });
+    };
+
     const handleEditItem = (index) => {
         setEditingItemIndex(index);
         setIsEditDrawerOpen(true);
@@ -175,7 +190,7 @@ const CheckoutPageInternal = () => {
         const savedData = safeReadCart(restaurantId);
         savedData.cart = newCart;
         safeWriteCart(restaurantId, savedData);
-        setCartData(savedData);
+        mergeCartDataFromStorage(savedData);
 
         setIsEditDrawerOpen(false);
         setEditingItemIndex(null);
@@ -302,7 +317,7 @@ const CheckoutPageInternal = () => {
             const savedData = safeReadCart(restaurantId);
             savedData.cart = [];
             safeWriteCart(restaurantId, savedData);
-            setCartData(savedData);
+            mergeCartDataFromStorage(savedData);
 
             // Redirect to Order Page
             toast({ title: "Cart Empty", description: "Redirecting to menu..." });
@@ -315,7 +330,7 @@ const CheckoutPageInternal = () => {
         const savedData = safeReadCart(restaurantId);
         savedData.cart = newCart;
         safeWriteCart(restaurantId, savedData);
-        setCartData(savedData); // Trigger re-calc
+        mergeCartDataFromStorage(savedData); // Trigger re-calc without dropping coupons
     };
 
     const handleAddNewAddress = () => {
