@@ -6,6 +6,7 @@ import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Tra
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
 import { useReactToPrint } from 'react-to-print';
@@ -20,6 +21,7 @@ import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
 import { connectSerialPrinter, printSerialData } from '@/services/printer/webSerialPrinter';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const createBillDraftId = () => `cb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
 function CustomBillPage() {
     const [menu, setMenu] = useState({});
@@ -30,6 +32,7 @@ function CustomBillPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const employeeOfOwnerId = searchParams.get('employee_of');
     const billPrintRef = useRef();
 
     const [customerDetails, setCustomerDetails] = useState({
@@ -45,10 +48,22 @@ function CustomBillPage() {
     const [activeCategory, setActiveCategory] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+    const [isSavingBillHistory, setIsSavingBillHistory] = useState(false);
     const [isNoAddressDialogOpen, setIsNoAddressDialogOpen] = useState(false);
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
+    const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
+    const accessQuery = impersonatedOwnerId
+        ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
+        : employeeOfOwnerId
+            ? `employee_of=${encodeURIComponent(employeeOfOwnerId)}`
+            : '';
+    const historyUrl = impersonatedOwnerId
+        ? `/owner-dashboard/custom-bill-history?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
+        : employeeOfOwnerId
+            ? `/owner-dashboard/custom-bill-history?employee_of=${encodeURIComponent(employeeOfOwnerId)}`
+            : '/owner-dashboard/custom-bill-history';
 
     // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
@@ -66,8 +81,8 @@ function CustomBillPage() {
                 if (!user) throw new Error("Authentication required.");
                 const idToken = await user.getIdToken();
 
-                const menuUrl = `/api/owner/menu?compact=1&impersonate_owner_id=${impersonatedOwnerId || ''}`;
-                const settingsUrl = `/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`;
+                const menuUrl = accessQuery ? `/api/owner/menu?compact=1&${accessQuery}` : '/api/owner/menu?compact=1';
+                const settingsUrl = accessQuery ? `/api/owner/settings?${accessQuery}` : '/api/owner/settings';
                 const headers = { 'Authorization': `Bearer ${idToken}` };
 
                 const menuPromise = fetch(menuUrl, { headers });
@@ -133,7 +148,7 @@ function CustomBillPage() {
             isMounted = false;
             unsubscribe();
         };
-    }, [impersonatedOwnerId]);
+    }, [accessQuery]);
 
     // Handle Scroll Spy
     useEffect(() => {
@@ -229,9 +244,14 @@ function CustomBillPage() {
         });
     };
 
-    const handleClear = () => {
+    const resetCurrentBill = () => {
         setCart([]);
         setItemHistory([]);
+        setBillDraftId(createBillDraftId());
+    };
+
+    const handleClear = () => {
+        resetCurrentBill();
     };
 
     const updateQuantity = (cartItemId, change) => {
@@ -413,6 +433,52 @@ function CustomBillPage() {
         return { ok: false, error: lastError };
     };
 
+    const saveCustomBillHistory = async (printedVia = 'browser') => {
+        const user = auth.currentUser;
+        if (!user) throw new Error('Authentication required.');
+        const idToken = await user.getIdToken();
+
+        const historyItems = cart.map((item) => ({
+            id: item.id,
+            name: item.name,
+            categoryId: item.categoryId,
+            quantity: item.quantity,
+            price: item.price,
+            totalPrice: item.totalPrice,
+            portion: item.portion || null,
+        }));
+
+        const endpoint = accessQuery ? `/api/owner/custom-bill/history?${accessQuery}` : '/api/owner/custom-bill/history';
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+                billDraftId,
+                printedVia,
+                customerDetails,
+                items: historyItems,
+                billDetails: {
+                    subtotal,
+                    cgst,
+                    sgst,
+                    grandTotal,
+                },
+            }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data?.message || 'Failed to save bill history.');
+        }
+        if (!data?.duplicateRequest) {
+            setBillDraftId(createBillDraftId());
+        }
+        return data;
+    };
+
     const submitCreateOrder = async () => {
         try {
             const user = auth.currentUser;
@@ -434,7 +500,7 @@ function CustomBillPage() {
                 selectedAddOns: item.selectedAddOns || [],
             }));
 
-            const endpoint = `/api/owner/custom-bill/create-order?impersonate_owner_id=${impersonatedOwnerId || ''}`;
+            const endpoint = accessQuery ? `/api/owner/custom-bill/create-order?${accessQuery}` : '/api/owner/custom-bill/create-order';
             const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
@@ -459,8 +525,7 @@ function CustomBillPage() {
                 }
             }
 
-            setCart([]);
-            setItemHistory([]);
+            resetCurrentBill();
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Create Order Failed', message: error.message });
         } finally {
@@ -490,16 +555,71 @@ function CustomBillPage() {
     };
 
 
+    const handleBrowserPrintForBill = async () => {
+        if (!cart.length) return;
+
+        setIsSavingBillHistory(true);
+        let saveError = null;
+        try {
+            await saveCustomBillHistory('browser');
+        } catch (error) {
+            saveError = error;
+            console.error('[Custom Bill] Failed to save browser-print history:', error);
+        } finally {
+            setIsSavingBillHistory(false);
+        }
+
+        if (billPrintRef.current && handlePrint) {
+            handlePrint();
+        }
+
+        if (saveError) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Printed (History Pending)',
+                message: `Bill print ho gaya, lekin history save nahi hui: ${saveError.message}`,
+            });
+        }
+    };
+
     const handleDirectPrint = async () => {
-        await printReceiptToUsb({
-            items: cart,
-            customer: customerDetails,
-            billDetails: { subtotal, cgst, sgst, grandTotal },
-            orderDate: new Date(),
-            closeBillModalOnSuccess: true,
-            notifyUser: true,
-            silentOnNoDeviceSelection: true,
-        });
+        if (!cart.length) return;
+
+        setIsSavingBillHistory(true);
+        try {
+            const printResult = await printReceiptToUsb({
+                items: cart,
+                customer: customerDetails,
+                billDetails: { subtotal, cgst, sgst, grandTotal },
+                orderDate: new Date(),
+                closeBillModalOnSuccess: true,
+                notifyUser: false,
+                silentOnNoDeviceSelection: true,
+            });
+
+            if (!printResult?.ok) {
+                if (!printResult?.ignored) {
+                    throw new Error(printResult?.error?.message || 'Could not print via USB/Serial.');
+                }
+                return;
+            }
+
+            try {
+                await saveCustomBillHistory('direct_usb');
+                setInfoDialog({ isOpen: true, title: 'Printed', message: 'Receipt printed and saved in bill history.' });
+            } catch (historyError) {
+                console.error('[Custom Bill] Failed to save direct-print history:', historyError);
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Printed (History Pending)',
+                    message: `Receipt print ho gaya, lekin history save nahi hui: ${historyError.message}`,
+                });
+            }
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Print Failed', message: error.message });
+        } finally {
+            setIsSavingBillHistory(false);
+        }
     };
 
     return (
@@ -553,11 +673,21 @@ function CustomBillPage() {
                         />
                     </div>
                     <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">
-                        <Button onClick={handleDirectPrint} variant="secondary" className="bg-slate-800 text-white hover:bg-slate-700">
-                            ⚡ Direct Print (USB)
+                        <Button
+                            onClick={handleDirectPrint}
+                            variant="secondary"
+                            className="bg-slate-800 text-white hover:bg-slate-700"
+                            disabled={isSavingBillHistory}
+                        >
+                            {isSavingBillHistory ? 'Saving...' : '⚡ Direct Print (USB)'}
                         </Button>
-                        <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
-                            <Printer className="mr-2 h-4 w-4" /> Browser Print
+                        <Button
+                            onClick={handleBrowserPrintForBill}
+                            className="bg-primary hover:bg-primary/90"
+                            disabled={isSavingBillHistory}
+                        >
+                            <Printer className="mr-2 h-4 w-4" />
+                            {isSavingBillHistory ? 'Saving...' : 'Browser Print'}
                         </Button>
                     </div>
                 </DialogContent>
@@ -647,7 +777,18 @@ function CustomBillPage() {
                 {/* Left Side: Menu Selection (70%) */}
                 <div className="lg:col-span-7 bg-card border border-border rounded-xl p-3">
                     <div className="flex items-center justify-between gap-3 mb-3">
-                        <h1 className="text-lg font-bold tracking-tight whitespace-nowrap">Manual Billing</h1>
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                            <h1 className="text-lg font-bold tracking-tight">Manual Billing</h1>
+                            <Link href={historyUrl}>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-9 px-3 text-xs font-semibold"
+                                >
+                                    View Bill History
+                                </Button>
+                            </Link>
+                        </div>
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                             <input

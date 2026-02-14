@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, Suspense } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, Sector, ScatterChart, Scatter, Legend, ReferenceLine, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IndianRupee, Hash, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban } from 'lucide-react';
+import { IndianRupee, Hash, Phone, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NextImage from 'next/image';
 import { cn } from "@/lib/utils";
@@ -69,6 +69,100 @@ const SalesOverview = ({ data, loading }) => {
                 )}
                 {isRejection && <div className="text-xs mt-1 text-muted-foreground">in selected period</div>}
             </motion.div>
+        );
+    };
+
+    const SourceSplitCard = ({ title, count, revenue, icon: Icon, tone }) => {
+        const toneClasses = {
+            green: 'border-green-500/30 bg-green-500/5 text-green-300',
+            blue: 'border-blue-500/30 bg-blue-500/5 text-blue-300',
+            yellow: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-300',
+        };
+        const style = toneClasses[tone] || toneClasses.blue;
+
+        if (loading) {
+            return (
+                <div className="bg-card border border-border p-4 rounded-xl animate-pulse">
+                    <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                    <div className="h-7 bg-muted rounded w-2/3 mb-2"></div>
+                    <div className="h-3 bg-muted rounded w-1/2"></div>
+                </div>
+            );
+        }
+
+        return (
+            <div className={cn('border p-4 rounded-xl', style)}>
+                <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs uppercase tracking-wide">{title}</p>
+                    <Icon size={16} />
+                </div>
+                <p className="text-2xl font-bold">{Number(count || 0).toLocaleString('en-IN')}</p>
+                <p className="text-xs opacity-80">Revenue: {formatCurrency(revenue || 0)}</p>
+            </div>
+        );
+    };
+
+    const OrderSourceChart = () => {
+        const COLORS = ['#22c55e', '#3b82f6', '#eab308'];
+        const sourceData = data?.orderSourceBreakdown || [];
+
+        if (loading) {
+            return (
+                <div className="bg-card border border-border p-5 rounded-xl h-[350px] animate-pulse">
+                    <div className="h-6 bg-muted w-3/4 mb-4"></div>
+                    <div className="flex items-center justify-center h-full">
+                        <div className="w-48 h-48 bg-muted rounded-full"></div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (sourceData.length === 0) {
+            return (
+                <div className="bg-card border border-border p-5 rounded-xl h-[350px] flex flex-col items-center justify-center">
+                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Source Mix</h3>
+                    <p className="text-muted-foreground text-sm">No source data available.</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="bg-card border border-border p-5 rounded-xl h-[350px]">
+                <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Source Mix</h3>
+                <ResponsiveContainer width="100%" height="90%">
+                    <PieChart>
+                        <Pie
+                            data={sourceData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={"60%"}
+                            outerRadius={"80%"}
+                            paddingAngle={5}
+                            dataKey="value"
+                            nameKey="name"
+                            stroke="hsl(var(--card))"
+                            strokeWidth={2}
+                        >
+                            {sourceData.map((entry, index) => (
+                                <Cell key={`order-source-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </Pie>
+                        <Tooltip
+                            contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px',
+                                color: 'hsl(var(--popover-foreground))'
+                            }}
+                            formatter={(value, _name, payload) => {
+                                const revenue = payload?.payload?.revenue || 0;
+                                return [`${value} orders • ${formatCurrency(revenue)}`, 'Volume'];
+                            }}
+                        />
+                        <Legend iconType="circle" layout="vertical" align="right" verticalAlign="middle" formatter={(value) => <span className="text-muted-foreground text-sm">{value}</span>} />
+                    </PieChart>
+                </ResponsiveContainer>
+            </div>
         );
     };
 
@@ -246,12 +340,37 @@ const SalesOverview = ({ data, loading }) => {
     return (
         <div className="space-y-6">
             <ModalContent />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
                 <KpiCard title="Total Revenue" value={data?.kpis?.totalRevenue || 0} change={data?.kpis?.revenueChange || 0} icon={IndianRupee} isCurrency={true} modalTitle="Revenue Details" modalType="revenue" loading={loading} />
                 <KpiCard title="Total Orders" value={data?.kpis?.totalOrders || 0} change={data?.kpis?.ordersChange || 0} icon={ShoppingBasket} modalTitle="Order Details" modalType="orders" loading={loading} />
                 <KpiCard title="Average Order Value" value={data?.kpis?.avgOrderValue || 0} change={data?.kpis?.avgValueChange || 0} icon={FileBarChart} isCurrency={true} modalTitle="Order Value Details" modalType="orders" loading={loading} />
-                <KpiCard title="New Customers" value={data?.kpis?.newCustomers || 0} change={data?.kpis?.customersChange || 0} icon={UserPlus} modalTitle="New Customer Details" modalType="customers" loading={loading} />
+                <KpiCard title="Online Orders" value={data?.kpis?.onlineOrders || 0} icon={TrendingUp} loading={loading} />
+                <KpiCard title="Call Orders" value={data?.kpis?.manualCallOrders || 0} icon={Phone} loading={loading} />
                 <KpiCard title="Total Rejections" value={data?.kpis?.totalRejections || 0} icon={Ban} isRejection={true} loading={loading} />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <SourceSplitCard
+                    title="Online Orders"
+                    count={data?.kpis?.onlineOrders || 0}
+                    revenue={data?.kpis?.onlineOrderRevenue || 0}
+                    icon={TrendingUp}
+                    tone="green"
+                />
+                <SourceSplitCard
+                    title="Manual Call Orders"
+                    count={data?.kpis?.manualCallOrders || 0}
+                    revenue={data?.kpis?.manualCallRevenue || 0}
+                    icon={Phone}
+                    tone="blue"
+                />
+                <SourceSplitCard
+                    title="Offline Counter Bills"
+                    count={data?.kpis?.counterBills || 0}
+                    revenue={data?.kpis?.counterBillRevenue || 0}
+                    icon={Hash}
+                    tone="yellow"
+                />
             </div>
 
             {/* Sales Trend - Full Width */}
@@ -260,7 +379,8 @@ const SalesOverview = ({ data, loading }) => {
             </div>
 
             {/* Pie Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <OrderSourceChart />
                 <PaymentModeChart />
                 <RejectionReasonChart />
             </div>
@@ -402,12 +522,88 @@ const CustomerRelationshipHub = ({ data, loading }) => {
                 </div>
             </section>
             <section>
-                <h3 className="text-xl font-bold mb-4">❤️ Your VIP Lounge</h3>
-                {loading ? <div className="bg-card border border-border rounded-xl h-64 animate-pulse"></div> : (
+                <h3 className="text-xl font-bold mb-4">UID vs Guest Channel Split</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <CustomerStatCard
+                        title="UID Online Orders"
+                        value={data?.customerStats?.customerTypeMix?.uid?.onlineOrders || 0}
+                        icon={Users}
+                        detail="Logged-in users placing online orders"
+                    />
+                    <CustomerStatCard
+                        title="UID Call Orders"
+                        value={data?.customerStats?.customerTypeMix?.uid?.manualCallOrders || 0}
+                        icon={Phone}
+                        detail="Logged-in users via manual call-create flow"
+                    />
+                    <CustomerStatCard
+                        title="UID Counter Bills"
+                        value={data?.customerStats?.customerTypeMix?.uid?.counterBills || 0}
+                        icon={Hash}
+                        detail="Logged-in users billed at counter"
+                    />
+                    <CustomerStatCard
+                        title="Guest Online Orders"
+                        value={data?.customerStats?.customerTypeMix?.guest?.onlineOrders || 0}
+                        icon={UserPlus}
+                        detail="Guest users placing online orders"
+                    />
+                    <CustomerStatCard
+                        title="Guest Call Orders"
+                        value={data?.customerStats?.customerTypeMix?.guest?.manualCallOrders || 0}
+                        icon={Phone}
+                        detail="Guest users via manual call-create flow"
+                    />
+                    <CustomerStatCard
+                        title="Guest Counter Bills"
+                        value={data?.customerStats?.customerTypeMix?.guest?.counterBills || 0}
+                        icon={Hash}
+                        detail="Guest users billed at counter"
+                    />
+                </div>
+            </section>
+            <section>
+                <h3 className="text-xl font-bold mb-4">Customer Channel Mix (Current Filter)</h3>
+                {loading ? (
+                    <div className="bg-card border border-border rounded-xl h-64 animate-pulse"></div>
+                ) : (
                     <div className="bg-card border border-border rounded-xl overflow-hidden">
-                        <table className="w-full text-left">
-                            {/* Table content as before, but using live data */}
-                        </table>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-muted/40 border-b border-border">
+                                    <tr>
+                                        <th className="px-4 py-3 font-semibold">Customer</th>
+                                        <th className="px-4 py-3 font-semibold">Type</th>
+                                        <th className="px-4 py-3 font-semibold">Phone</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Online</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Call</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Counter</th>
+                                        <th className="px-4 py-3 font-semibold text-right">Spend</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(data?.customerStats?.customerOrderMix || []).length === 0 ? (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                                                No customer channel data in selected range.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        (data?.customerStats?.customerOrderMix || []).map((row) => (
+                                            <tr key={row.customerKey} className="border-b border-border/60">
+                                                <td className="px-4 py-3 font-medium">{row.name || 'Customer'}</td>
+                                                <td className="px-4 py-3 uppercase text-xs tracking-wide text-muted-foreground">{row.customerType || 'guest'}</td>
+                                                <td className="px-4 py-3 text-muted-foreground">{row.phone || '-'}</td>
+                                                <td className="px-4 py-3 text-center">{row.onlineOrders || 0}</td>
+                                                <td className="px-4 py-3 text-center">{row.manualCallOrders || 0}</td>
+                                                <td className="px-4 py-3 text-center">{row.counterBills || 0}</td>
+                                                <td className="px-4 py-3 text-right font-semibold">{formatCurrency(row.totalSpent || 0)}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
             </section>

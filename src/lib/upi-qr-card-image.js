@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { ImageResponse } from 'next/og';
 import qrcode from 'qr.js';
 import { promises as fs } from 'fs';
@@ -133,7 +134,7 @@ export async function createUpiQrCardImageResponse({
     const safeAmount = normalizeAmount(amountFixed);
     const safeUpiId = sanitizeUpiId(upiId);
     const qrSvgDataUri = buildQrSvgDataUri(upiLink);
-    const qrSize = 430;
+    const qrSize = 360;
 
     return new ImageResponse(
         (
@@ -144,58 +145,210 @@ export async function createUpiQrCardImageResponse({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
-                    padding: 48,
+                    background: 'linear-gradient(145deg, #f5f7fa 0%, #dbe7ff 55%, #eef2ff 100%)',
+                    padding: 26,
                     fontFamily: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
                 }}
             >
                 <div
                     style={{
-                        width: 760,
+                        width: '100%',
+                        height: '100%',
                         display: 'flex',
-                        flexDirection: 'column',
-                        borderRadius: 32,
+                        flexDirection: 'row',
+                        alignItems: 'stretch',
+                        justifyContent: 'space-between',
+                        borderRadius: 28,
                         background: '#ffffff',
-                        padding: '44px 38px',
-                        boxShadow: '0 24px 48px rgba(15, 23, 42, 0.16)',
-                        border: '1px solid rgba(255,255,255,0.35)'
+                        padding: '34px 40px',
+                        boxShadow: '0 20px 42px rgba(15, 23, 42, 0.16)',
+                        border: '1px solid rgba(17, 24, 39, 0.08)',
                     }}
                 >
                     <div
                         style={{
-                            width: '100%',
+                            width: '44%',
                             display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 62,
-                            lineHeight: 1.05,
-                            fontWeight: 800,
-                            color: '#1a1a1a',
-                            textAlign: 'center'
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            paddingRight: 20,
                         }}
                     >
-                        {safeRestaurantName}
+                        <div
+                            style={{
+                                width: '100%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-start',
+                                justifyContent: 'flex-start'
+                            }}
+                        >
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'flex-start',
+                                    fontSize: 52,
+                                    fontWeight: 900,
+                                    color: '#111827',
+                                    letterSpacing: '0.3px',
+                                    lineHeight: 1
+                                }}
+                            >
+                                SCAN TO PAY
+                            </div>
+
+                            <div
+                                style={{
+                                    marginTop: 10,
+                                    display: 'flex',
+                                    fontSize: 24,
+                                    color: '#4b5563',
+                                    lineHeight: 1.25
+                                }}
+                            >
+                                Open any UPI app and pay this exact amount
+                            </div>
+
+                            <div
+                                style={{
+                                    marginTop: 28,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'flex-start',
+                                    width: '100%'
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        fontSize: 18,
+                                        color: '#6b7280',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.8px'
+                                    }}
+                                >
+                                    Restaurant
+                                </div>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        marginTop: 5,
+                                        fontSize: 40,
+                                        lineHeight: 1.05,
+                                        fontWeight: 800,
+                                        color: '#111827'
+                                    }}
+                                >
+                                    {safeRestaurantName}
+                                </div>
+                            </div>
+
+                            <div
+                                style={{
+                                    marginTop: 22,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    width: '100%'
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        fontSize: 18,
+                                        color: '#6b7280',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.8px'
+                                    }}
+                                >
+                                    UPI ID
+                                </div>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        marginTop: 6,
+                                        fontSize: 28,
+                                        color: '#1f2937',
+                                        lineHeight: 1.12
+                                    }}
+                                >
+                                    {safeText(safeUpiId, 'Not Set', 48)}
+                                </div>
+                            </div>
+
+                            {safeOrderId ? (
+                                <div
+                                    style={{
+                                        marginTop: 18,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: 22,
+                                        color: '#374151',
+                                        background: '#f3f4f6',
+                                        padding: '8px 16px',
+                                        borderRadius: 999
+                                    }}
+                                >
+                                    Order ID: {safeOrderId}
+                                </div>
+                            ) : null}
+                        </div>
+                        <div
+                            style={{
+                                width: '100%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'flex-end'
+                            }}
+                        >
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    fontSize: 20,
+                                    color: '#6b7280',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '1px'
+                                }}
+                            >
+                                Payable Amount
+                            </div>
+                            <div
+                                style={{
+                                    marginTop: 8,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: 86,
+                                    fontWeight: 900,
+                                    color: '#047857',
+                                    textAlign: 'center',
+                                    lineHeight: 1
+                                }}
+                            >
+                                Rs {safeAmount}
+                            </div>
+
+                            <div
+                                style={{
+                                    marginTop: 10,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: 20,
+                                    color: '#64748b'
+                                }}
+                            >
+                                Powered by ServiZephyr
+                            </div>
+                        </div>
                     </div>
 
                     <div
                         style={{
-                            width: '100%',
-                            marginTop: 8,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 22,
-                            color: '#666666',
-                            textAlign: 'center'
-                        }}
-                    >
-                        {safeText(safeUpiId, 'Not Set', 48)}
-                    </div>
-
-                    <div
-                        style={{
-                            width: '100%',
-                            marginTop: 32,
+                            width: '56%',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center'
@@ -209,8 +362,8 @@ export async function createUpiQrCardImageResponse({
                                 justifyContent: 'center',
                                 borderRadius: 24,
                                 padding: 22,
-                                border: '3px solid #edf2f7',
-                                background: '#f8f9fb'
+                                border: '3px solid #e5e7eb',
+                                background: '#f8fafc'
                             }}
                         >
                             <div
@@ -220,7 +373,7 @@ export async function createUpiQrCardImageResponse({
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    borderRadius: 14,
+                                    borderRadius: 16,
                                     background: '#ffffff',
                                     overflow: 'hidden'
                                 }}
@@ -237,14 +390,14 @@ export async function createUpiQrCardImageResponse({
                             <div
                                 style={{
                                     position: 'absolute',
-                                    width: 88,
-                                    height: 88,
-                                    borderRadius: 16,
+                                    width: 104,
+                                    height: 104,
+                                    borderRadius: 20,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     background: '#000000',
-                                    border: '4px solid #ffffff',
+                                    border: '5px solid #ffffff',
                                     overflow: 'hidden'
                                 }}
                             >
@@ -252,8 +405,8 @@ export async function createUpiQrCardImageResponse({
                                     <img
                                         src={logoDataUri}
                                         alt="ServiZephyr"
-                                        width={62}
-                                        height={62}
+                                        width={74}
+                                        height={74}
                                         style={{ objectFit: 'contain' }}
                                     />
                                 ) : (
@@ -261,7 +414,7 @@ export async function createUpiQrCardImageResponse({
                                         style={{
                                             display: 'flex',
                                             color: '#facc15',
-                                            fontSize: 30,
+                                            fontSize: 34,
                                             fontWeight: 800
                                         }}
                                     >
@@ -271,116 +424,12 @@ export async function createUpiQrCardImageResponse({
                             </div>
                         </div>
                     </div>
-
-                    <div
-                        style={{
-                            width: '100%',
-                            marginTop: 28,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexDirection: 'column'
-                        }}
-                    >
-                        <div
-                            style={{
-                                fontSize: 20,
-                                color: '#888888',
-                                textTransform: 'uppercase',
-                                letterSpacing: '1px',
-                                fontWeight: 600
-                            }}
-                        >
-                            Payable Amount
-                        </div>
-
-                        <div
-                            style={{
-                                marginTop: 10,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: 86,
-                                fontWeight: 800,
-                                color: '#059669',
-                                textAlign: 'center',
-                                lineHeight: 1.1
-                            }}
-                        >
-                            Rs {safeAmount}
-                        </div>
-                    </div>
-
-                    {safeOrderId ? (
-                        <div
-                            style={{
-                                marginTop: 22,
-                                width: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}
-                        >
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: 22,
-                                    color: '#6b7280',
-                                    background: '#f1f5f9',
-                                    padding: '10px 18px',
-                                    borderRadius: 999
-                                }}
-                            >
-                                Order ID: {safeOrderId}
-                            </div>
-                        </div>
-                    ) : null}
-
-                    <div
-                        style={{
-                            width: '100%',
-                            marginTop: 30,
-                            borderTop: '1px solid #eeeeee',
-                            paddingTop: 20,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}
-                    >
-                        <div
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: 20,
-                                color: '#aaaaaa'
-                            }}
-                        >
-                            Powered by <span style={{ fontWeight: 700, color: '#4a5568' }}>ServiZephyr</span>
-                        </div>
-
-                        <div
-                            style={{
-                                marginTop: 10,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: 18,
-                                color: '#9ca3af'
-                            }}
-                        >
-                            GPay • PhonePe • Paytm
-                        </div>
-                    </div>
                 </div>
             </div>
         ),
         {
-            width: 1080,
-            height: 1080
+            width: 1200,
+            height: 800
         }
     );
 }

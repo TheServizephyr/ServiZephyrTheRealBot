@@ -1,18 +1,193 @@
-
-
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
+const LOST_ORDER_STATUSES = new Set(['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant']);
+
+const toAmount = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+};
+
+const normalizePhone = (phone) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+};
+
+const timestampToDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if (typeof value?.toDate === 'function') {
+        const date = value.toDate();
+        return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isGuestUserId = (userId) => {
+    const value = String(userId || '').trim();
+    return !value || value.startsWith('g_') || value.startsWith('anon_');
+};
+
+const isManualCallOrder = (order) =>
+    order?.isManualCallOrder === true ||
+    String(order?.orderSource || '').toLowerCase() === 'manual_call';
+
+const isLostOrder = (status) => LOST_ORDER_STATUSES.has(String(status || '').toLowerCase());
+
+const calcChange = (current, previous) => {
+    if (!Number.isFinite(previous) || previous === 0) return current > 0 ? 100 : 0;
+    return ((current - previous) / previous) * 100;
+};
+
+const detectOnlinePayment = (order) => {
+    let isOnline = false;
+
+    if (Array.isArray(order?.paymentDetails)) {
+        isOnline = order.paymentDetails.some((payment) =>
+            (payment?.method === 'razorpay' || payment?.method === 'phonepe') &&
+            (payment?.status === 'completed' || payment?.status === 'success' || payment?.status === 'paid')
+        );
+    } else if (order?.paymentDetails?.method) {
+        isOnline = order.paymentDetails.method === 'razorpay' || order.paymentDetails.method === 'phonepe';
+    }
+
+    if (!isOnline && order?.paymentMethod) {
+        isOnline = order.paymentMethod === 'razorpay' || order.paymentMethod === 'phonepe' || order.paymentMethod === 'online';
+    }
+
+    if (order?.paymentStatus === 'paid') isOnline = true;
+    return isOnline;
+};
+
+const getOrderCustomerIdentity = (order, fallbackId = '') => {
+    const rawUserId = String(order?.userId || order?.customerId || '').trim();
+    const phone = normalizePhone(order?.customerPhone || order?.phone || '');
+    const name = String(order?.customerName || order?.name || 'Guest').trim() || 'Guest';
+
+    if (rawUserId && !isGuestUserId(rawUserId)) {
+        return {
+            key: `uid:${rawUserId}`,
+            customerType: 'uid',
+            customerId: rawUserId,
+            name,
+            phone,
+        };
+    }
+
+    if (phone) {
+        return {
+            key: `guest:${phone}`,
+            customerType: 'guest',
+            customerId: phone,
+            name,
+            phone,
+        };
+    }
+
+    if (rawUserId) {
+        return {
+            key: `guest:${rawUserId}`,
+            customerType: 'guest',
+            customerId: rawUserId,
+            name,
+            phone: '',
+        };
+    }
+
+    return {
+        key: `guest:unknown:${fallbackId || 'na'}`,
+        customerType: 'guest',
+        customerId: fallbackId || null,
+        name,
+        phone: '',
+    };
+};
+
+const getCounterBillCustomerIdentity = (bill, fallbackId = '') => {
+    const explicitType = String(bill?.customerType || '').toLowerCase() === 'uid' ? 'uid' : 'guest';
+    const rawCustomerId = String(bill?.customerId || '').trim();
+    const phone = normalizePhone(bill?.customerPhone || bill?.phone || '');
+    const name = String(bill?.customerName || bill?.name || 'Walk-in').trim() || 'Walk-in';
+
+    if (explicitType === 'uid' && rawCustomerId) {
+        return {
+            key: `uid:${rawCustomerId}`,
+            customerType: 'uid',
+            customerId: rawCustomerId,
+            name,
+            phone,
+        };
+    }
+
+    if (phone) {
+        return {
+            key: `guest:${phone}`,
+            customerType: 'guest',
+            customerId: phone,
+            name,
+            phone,
+        };
+    }
+
+    if (rawCustomerId) {
+        return {
+            key: `guest:${rawCustomerId}`,
+            customerType: 'guest',
+            customerId: rawCustomerId,
+            name,
+            phone: '',
+        };
+    }
+
+    return {
+        key: `guest:counter:${fallbackId || 'na'}`,
+        customerType: 'guest',
+        customerId: fallbackId || null,
+        name,
+        phone: '',
+    };
+};
+
+const getOrCreateCustomerMix = (map, identity) => {
+    if (!map.has(identity.key)) {
+        map.set(identity.key, {
+            customerKey: identity.key,
+            customerType: identity.customerType,
+            customerId: identity.customerId || null,
+            name: identity.name || 'Customer',
+            phone: identity.phone || '',
+            onlineOrders: 0,
+            manualCallOrders: 0,
+            counterBills: 0,
+            onlineRevenue: 0,
+            manualCallRevenue: 0,
+            counterBillRevenue: 0,
+            totalSpent: 0,
+        });
+    }
+    return map.get(identity.key);
+};
+
+const addSalesByDay = (salesByDay, salesDayOrder, date, amount) => {
+    if (!date || !Number.isFinite(amount)) return;
+    const dayKey = format(date, 'dd/MM');
+    salesByDay[dayKey] = (salesByDay[dayKey] || 0) + amount;
+    if (!salesDayOrder[dayKey]) {
+        salesDayOrder[dayKey] = date.getTime();
+    }
+};
+
 export async function GET(req) {
     try {
         const firestore = await getFirestore();
 
-        // Use centralized resolver with request-level caching
         const { businessId: restaurantId, businessSnap, collectionName } = await verifyOwnerWithAudit(
             req,
             'view_analytics',
@@ -20,20 +195,20 @@ export async function GET(req) {
             false,
             PERMISSIONS.VIEW_ANALYTICS
         );
-        const restaurantData = businessSnap.data();
-        const businessType = restaurantData.businessType || collectionName.slice(0, -1);
+        const restaurantData = businessSnap.data() || {};
 
         const url = new URL(req.url, `http://${req.headers.host}`);
         const filter = url.searchParams.get('filter') || 'This Month';
         const fromDate = url.searchParams.get('from');
         const toDate = url.searchParams.get('to');
 
-        let startDate, prevStartDate;
+        let startDate;
+        let prevStartDate;
         const now = new Date();
 
         if (filter === 'Custom Range' && fromDate && toDate) {
             startDate = new Date(fromDate);
-            const duration = new Date(toDate).getTime() - startDate.getTime();
+            const duration = Math.max(0, new Date(toDate).getTime() - startDate.getTime());
             prevStartDate = new Date(startDate.getTime() - duration);
         } else {
             switch (filter) {
@@ -56,32 +231,59 @@ export async function GET(req) {
                     break;
             }
         }
-        startDate.setHours(0, 0, 0, 0);
 
-        const endDate = (filter === 'Custom Range' && toDate) ? new Date(toDate) : new Date();
+        startDate.setHours(0, 0, 0, 0);
+        prevStartDate.setHours(0, 0, 0, 0);
+
+        const endDate = filter === 'Custom Range' && toDate ? new Date(toDate) : new Date();
         endDate.setHours(23, 59, 59, 999);
 
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
+        const businessCollectionName = collectionName;
+        const businessRef = firestore.collection(businessCollectionName).doc(restaurantId);
+        const customBillHistoryRef = businessRef.collection('custom_bill_history');
 
-        let businessCollectionName;
-        if (businessType === 'restaurant') businessCollectionName = 'restaurants';
-        else if (businessType === 'shop') businessCollectionName = 'shops';
-        else if (businessType === 'street-vendor') businessCollectionName = 'street_vendors';
-
-        // OPTIMIZED QUERY: Fetch ALL orders for the period, filter in memory
-        const [currentPeriodOrdersSnap, prevPeriodOrdersSnap, allMenuSnap, allCustomersSnap] = await Promise.all([
+        const [
+            currentPeriodOrdersSnap,
+            prevPeriodOrdersSnap,
+            currentCounterBillsSnap,
+            prevCounterBillsSnap,
+            allMenuSnap,
+            allCustomersSnap,
+        ] = await Promise.all([
             ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).get(),
             ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).get(),
-            firestore.collection(businessCollectionName).doc(restaurantId).collection('menu').get(),
-            firestore.collection(businessCollectionName).doc(restaurantId).collection('customers').get(),
+            customBillHistoryRef.where('printedAt', '>=', startDate).where('printedAt', '<=', endDate).get(),
+            customBillHistoryRef.where('printedAt', '>=', prevStartDate).where('printedAt', '<', startDate).get(),
+            businessRef.collection('menu').get(),
+            businessRef.collection('customers').get(),
         ]);
 
-        // ---- METRICS CALCULATION ----
-        let currentSales = 0, currentOrdersCount = 0, salesByDay = {}, cashRevenue = 0, onlineRevenue = 0;
-        const paymentMethodCounts = { Online: 0, Cash: 0 }; // Simplified groups: Online vs Cash
+        // ---- SALES METRICS ----
+        let currentSales = 0;
+        let currentOrdersCount = 0;
+        let cashRevenue = 0;
+        let onlineRevenue = 0;
+        const paymentMethodCounts = { Online: 0, Cash: 0 };
         const hourlyOrders = Array(24).fill(0);
         const prepTimes = [];
         const customerOrderDates = {};
+        const uniqueCustomerPhonesThisPeriod = new Set();
+        const customerOrderMixMap = new Map();
+        const salesByDay = {};
+        const salesDayOrder = {};
+
+        let onlineOrderCount = 0;
+        let onlineOrderRevenue = 0;
+        let manualCallOrderCount = 0;
+        let manualCallOrderRevenue = 0;
+        let counterBillCount = 0;
+        let counterBillRevenue = 0;
+
+        const customerTypeMix = {
+            uid: { onlineOrders: 0, manualCallOrders: 0, counterBills: 0 },
+            guest: { onlineOrders: 0, manualCallOrders: 0, counterBills: 0 },
+        };
 
         // Rejection Metrics
         let totalRejections = 0;
@@ -89,206 +291,269 @@ export async function GET(req) {
         const missedItems = {};
         const rejectionReasons = {};
 
-        // Helper: Check for "Lost" orders (Rejected, Cancelled, Failed)
-        const isLostOrder = (status) => ['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant'].includes(status);
-
-        currentPeriodOrdersSnap.forEach(doc => {
+        currentPeriodOrdersSnap.forEach((doc) => {
             const data = doc.data();
             const status = data.status || 'pending';
 
-            // 1. REJECTION METRICS (Lost Orders)
             if (isLostOrder(status)) {
-                totalRejections++;
+                totalRejections += 1;
                 const reason = data.rejectionReason || data.cancellationReason || 'Other';
                 rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
+                missedRevenue += toAmount(data.totalAmount);
 
-                if (data.totalAmount) missedRevenue += data.totalAmount;
-
-                if (reason === 'out_of_stock' && data.items) {
-                    data.items.forEach(item => {
-                        const itemName = item.name.split(' (')[0];
-                        if (!missedItems[itemName]) {
-                            missedItems[itemName] = { count: 0, revenue: 0 };
+                if (reason === 'out_of_stock' && Array.isArray(data.items)) {
+                    data.items.forEach((item) => {
+                        const baseItemName = String(item?.name || 'Item').split(' (')[0];
+                        if (!missedItems[baseItemName]) {
+                            missedItems[baseItemName] = { count: 0, revenue: 0 };
                         }
-                        missedItems[itemName].count++;
-                        missedItems[itemName].revenue += (item.price * item.quantity) || 0;
+                        missedItems[baseItemName].count += 1;
+                        missedItems[baseItemName].revenue += toAmount(item?.price) * toAmount(item?.quantity || 1);
                     });
                 }
+                return;
             }
-            // 2. SUCCESSFUL ORDERS (Revenue, Counts)
-            // Explicitly exclude lost orders from Revenue calculation
-            else {
-                currentOrdersCount++;
-                currentSales += data.totalAmount || 0;
 
-                const dayKey = format(data.orderDate.toDate(), 'dd/MM');
-                salesByDay[dayKey] = (salesByDay[dayKey] || 0) + data.totalAmount;
+            const amount = toAmount(data.totalAmount);
+            const orderDate = timestampToDate(data.orderDate);
+            currentOrdersCount += 1;
+            currentSales += amount;
+            addSalesByDay(salesByDay, salesDayOrder, orderDate, amount);
 
-                // Hourly Distribution
-                const utcDate = data.orderDate.toDate();
-                const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
-                const hour = istDate.getHours();
-                hourlyOrders[hour]++;
+            if (orderDate) {
+                const istDate = new Date(orderDate.getTime() + 5.5 * 60 * 60 * 1000);
+                hourlyOrders[istDate.getHours()] += 1;
+            }
 
-                // Payment Analysis
-                let isOnlinePayment = false;
-                if (Array.isArray(data.paymentDetails)) {
-                    isOnlinePayment = data.paymentDetails.some(p =>
-                        (p.method === 'razorpay' || p.method === 'phonepe') &&
-                        (p.status === 'completed' || p.status === 'success' || p.status === 'paid')
-                    );
-                } else if (data.paymentDetails?.method) {
-                    isOnlinePayment = (data.paymentDetails.method === 'razorpay' || data.paymentDetails.method === 'phonepe');
-                }
+            const manualCallOrder = isManualCallOrder(data);
+            if (manualCallOrder) {
+                manualCallOrderCount += 1;
+                manualCallOrderRevenue += amount;
+            } else {
+                onlineOrderCount += 1;
+                onlineOrderRevenue += amount;
+            }
 
-                // Fallback check
-                if (!isOnlinePayment && data.paymentMethod) {
-                    isOnlinePayment = (data.paymentMethod === 'razorpay' || data.paymentMethod === 'phonepe' || data.paymentMethod === 'online');
-                }
+            const isOnlinePayment = detectOnlinePayment(data);
+            if (isOnlinePayment) {
+                paymentMethodCounts.Online += 1;
+                onlineRevenue += amount;
+            } else {
+                paymentMethodCounts.Cash += 1;
+                cashRevenue += amount;
+            }
 
-                // Also check raw 'paymentStatus' for valid confirmation
-                if (data.paymentStatus === 'paid') isOnlinePayment = true;
+            const readyAt = timestampToDate(data.readyAt);
+            if (readyAt && orderDate) {
+                const prepTime = (readyAt.getTime() - orderDate.getTime()) / (1000 * 60);
+                if (prepTime > 0 && prepTime < 120) prepTimes.push(prepTime);
+            }
 
+            const normalizedPhone = normalizePhone(data.customerPhone || data.phone);
+            if (normalizedPhone) {
+                uniqueCustomerPhonesThisPeriod.add(normalizedPhone);
+                if (!customerOrderDates[normalizedPhone]) customerOrderDates[normalizedPhone] = [];
+                if (orderDate) customerOrderDates[normalizedPhone].push(orderDate);
+            }
 
-                if (isOnlinePayment) {
-                    paymentMethodCounts.Online++;
-                    onlineRevenue += data.totalAmount || 0;
-                } else {
-                    paymentMethodCounts.Cash++;
-                    cashRevenue += data.totalAmount || 0;
-                }
-
-                // Prep Times
-                if (data.readyAt && data.orderDate) {
-                    const prepTime = (data.readyAt.toDate() - data.orderDate.toDate()) / (1000 * 60);
-                    if (prepTime > 0 && prepTime < 120) prepTimes.push(prepTime);
-                }
-
-                // Customer Loyalty
-                if (data.phone) {
-                    if (!customerOrderDates[data.phone]) customerOrderDates[data.phone] = [];
-                    customerOrderDates[data.phone].push(data.orderDate.toDate());
-                }
+            const customerIdentity = getOrderCustomerIdentity(data, doc.id);
+            const customerMix = getOrCreateCustomerMix(customerOrderMixMap, customerIdentity);
+            customerMix.totalSpent += amount;
+            if (manualCallOrder) {
+                customerMix.manualCallOrders += 1;
+                customerMix.manualCallRevenue += amount;
+                customerTypeMix[customerIdentity.customerType].manualCallOrders += 1;
+            } else {
+                customerMix.onlineOrders += 1;
+                customerMix.onlineRevenue += amount;
+                customerTypeMix[customerIdentity.customerType].onlineOrders += 1;
             }
         });
 
-        // Previous Period Comparison (Approximate: Revenue only for now)
+        currentCounterBillsSnap.forEach((doc) => {
+            const data = doc.data();
+            const amount = toAmount(data.totalAmount || data.grandTotal);
+            const printedAt = timestampToDate(data.printedAt) || timestampToDate(data.createdAt);
+
+            counterBillCount += 1;
+            counterBillRevenue += amount;
+            addSalesByDay(salesByDay, salesDayOrder, printedAt, amount);
+
+            const customerIdentity = getCounterBillCustomerIdentity(data, doc.id);
+            const customerMix = getOrCreateCustomerMix(customerOrderMixMap, customerIdentity);
+            customerMix.counterBills += 1;
+            customerMix.counterBillRevenue += amount;
+            customerMix.totalSpent += amount;
+            customerTypeMix[customerIdentity.customerType].counterBills += 1;
+        });
+
+        // ---- PREVIOUS PERIOD COMPARISON ----
         let prevSales = 0;
         let prevOrdersCount = 0;
-        prevPeriodOrdersSnap.forEach(doc => {
-            const d = doc.data();
-            if (!isLostOrder(d.status)) { // Filter prev period too!
-                prevSales += d.totalAmount || 0;
-                prevOrdersCount++;
-            }
+        let prevCounterBillRevenue = 0;
+        let prevCounterBillCount = 0;
+
+        prevPeriodOrdersSnap.forEach((doc) => {
+            const data = doc.data();
+            if (isLostOrder(data.status)) return;
+            prevSales += toAmount(data.totalAmount);
+            prevOrdersCount += 1;
         });
 
-        const calcChange = (current, previous) => {
-            if (previous === 0) return current > 0 ? 100 : 0;
-            return ((current - previous) / previous) * 100;
-        };
+        prevCounterBillsSnap.forEach((doc) => {
+            const data = doc.data();
+            prevCounterBillRevenue += toAmount(data.totalAmount || data.grandTotal);
+            prevCounterBillCount += 1;
+        });
 
-        const salesTrend = Object.entries(salesByDay).map(([day, sales]) => ({ day, sales }));
-        const paymentMethodsData = Object.entries(paymentMethodCounts).map(([name, value]) => ({ name, value })); // For Pie Chart
+        const totalBusinessRevenue = currentSales + counterBillRevenue;
+        const prevTotalBusinessRevenue = prevSales + prevCounterBillRevenue;
+        const totalBusinessOrders = currentOrdersCount + counterBillCount;
+        const prevTotalBusinessOrders = prevOrdersCount + prevCounterBillCount;
+
+        const salesTrend = Object.entries(salesByDay)
+            .sort((a, b) => (salesDayOrder[a[0]] || 0) - (salesDayOrder[b[0]] || 0))
+            .map(([day, sales]) => ({ day, sales }));
+
+        const paymentMethodsData = Object.entries(paymentMethodCounts).map(([name, value]) => ({ name, value }));
         const rejectionReasonsData = Object.entries(rejectionReasons).map(([name, value]) => ({ name, value }));
         const missedItemsData = Object.entries(missedItems)
             .map(([name, data]) => ({ name, ...data }))
             .sort((a, b) => b.revenue - a.revenue)
             .slice(0, 5);
 
-        const avgPrepTime = prepTimes.length > 0 ? prepTimes.reduce((a, b) => a + b, 0) / prepTimes.length : 0;
-        const peakHours = hourlyOrders.map((count, hour) => ({ hour, count })).filter(h => h.count > 0).sort((a, b) => b.count - a.count);
+        const avgPrepTime = prepTimes.length > 0 ? prepTimes.reduce((sum, value) => sum + value, 0) / prepTimes.length : 0;
+        const peakHours = hourlyOrders
+            .map((count, hour) => ({ hour, count }))
+            .filter((entry) => entry.count > 0)
+            .sort((a, b) => b.count - a.count);
+
+        const orderSourceBreakdown = [
+            { name: 'Online Orders', value: onlineOrderCount, revenue: onlineOrderRevenue },
+            { name: 'Manual Call Orders', value: manualCallOrderCount, revenue: manualCallOrderRevenue },
+            { name: 'Offline Counter Bills', value: counterBillCount, revenue: counterBillRevenue },
+        ];
 
         const salesData = {
             kpis: {
-                totalRevenue: currentSales,
-                totalOrders: currentOrdersCount,
-                avgOrderValue: currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0,
+                totalRevenue: totalBusinessRevenue,
+                totalOrders: totalBusinessOrders,
+                avgOrderValue: totalBusinessOrders > 0 ? totalBusinessRevenue / totalBusinessOrders : 0,
                 cashRevenue,
                 onlineRevenue,
-                revenueChange: calcChange(currentSales, prevSales),
-                ordersChange: calcChange(currentOrdersCount, prevOrdersCount),
-                avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersCount > 0 ? prevSales / prevOrdersCount : 0),
-                totalRejections, // Now includes cancelled
+                revenueChange: calcChange(totalBusinessRevenue, prevTotalBusinessRevenue),
+                ordersChange: calcChange(totalBusinessOrders, prevTotalBusinessOrders),
+                avgValueChange: calcChange(
+                    totalBusinessOrders > 0 ? totalBusinessRevenue / totalBusinessOrders : 0,
+                    prevTotalBusinessOrders > 0 ? prevTotalBusinessRevenue / prevTotalBusinessOrders : 0
+                ),
+                totalRejections,
                 missedRevenue,
                 avgPrepTime: Math.round(avgPrepTime),
+                onlineOrders: onlineOrderCount,
+                manualCallOrders: manualCallOrderCount,
+                counterBills: counterBillCount,
+                onlineOrderRevenue,
+                manualCallRevenue: manualCallOrderRevenue,
+                counterBillRevenue,
             },
             salesTrend,
             paymentMethods: paymentMethodsData,
             rejectionReasons: rejectionReasonsData,
             peakHours,
             missedOpportunities: missedItemsData,
+            orderSourceBreakdown,
         };
 
-        // ... REMAINING LOGIC FOR MENU AND CUSTOMERS (unchanged largely, just menu mapping) ...
-        const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // ---- MENU PERFORMANCE ----
+        const menuItems = allMenuSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         const itemSales = {};
 
-        // Count items ONLY from successful orders
-        currentPeriodOrdersSnap.forEach(doc => {
+        currentPeriodOrdersSnap.forEach((doc) => {
             const data = doc.data();
-            if (!isLostOrder(data.status)) {
-                (data.items || []).forEach(item => {
-                    const baseName = item.name.split(' (')[0];
-                    if (!itemSales[baseName]) itemSales[baseName] = 0;
-                    itemSales[baseName] += item.quantity || 0;
-                });
-            }
+            if (isLostOrder(data.status)) return;
+            (data.items || []).forEach((item) => {
+                const baseName = String(item?.name || 'Item').split(' (')[0];
+                if (!itemSales[baseName]) itemSales[baseName] = 0;
+                itemSales[baseName] += toAmount(item?.quantity || 0);
+            });
         });
 
-        const menuPerformance = menuItems.map(item => {
+        const menuPerformance = menuItems.map((item) => {
             const unitsSold = itemSales[item.name] || 0;
-            const price = item.portions?.[0]?.price || 0;
+            const price = toAmount(item?.portions?.[0]?.price || 0);
             const foodCost = price * 0.4;
             const revenue = unitsSold * price;
             const totalCost = unitsSold * foodCost;
             const totalProfit = revenue - totalCost;
             const profitMargin = revenue > 0 ? (totalProfit / revenue) * 100 : 0;
             return {
-                ...item, unitsSold, revenue, totalCost, totalProfit, profitMargin,
-                popularity: unitsSold, profitability: profitMargin
+                ...item,
+                unitsSold,
+                revenue,
+                totalCost,
+                totalProfit,
+                profitMargin,
+                popularity: unitsSold,
+                profitability: profitMargin,
             };
         });
 
-        // ... REMAINING LOGIC FOR CUSTOMERS ...
-        const allCustomers = allCustomersSnap.docs.map(doc => ({ phone: doc.id, ...doc.data() }));
-        const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
-        const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
+        // ---- CUSTOMER STATS ----
+        const allCustomers = allCustomersSnap.docs.map((doc) => ({ phone: doc.id, ...doc.data() }));
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const newThisMonth = allCustomers.filter((customer) => {
+            const joinedAt = timestampToDate(customer.joinedAt);
+            return joinedAt && joinedAt > monthStart;
+        });
+        const repeatCustomers = allCustomers.filter((customer) => toAmount(customer.totalOrders) > 1);
 
-        const uniqueCustomersThisPeriod = new Set(Object.keys(customerOrderDates));
-        const returningThisPeriod = Array.from(uniqueCustomersThisPeriod).filter(phone => {
-            const customer = allCustomers.find(c => c.phone === phone);
-            return customer && customer.joinedAt && customer.joinedAt.toDate() < startDate;
+        const returningThisPeriod = Array.from(uniqueCustomerPhonesThisPeriod).filter((phone) => {
+            const customer = allCustomers.find((entry) => entry.phone === phone);
+            const joinedAt = timestampToDate(customer?.joinedAt);
+            return joinedAt && joinedAt < startDate;
         });
 
         const topLoyalCustomers = allCustomers
-            .filter(c => (c.totalOrders || 0) > 0)
-            .sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0))
+            .filter((customer) => toAmount(customer.totalOrders) > 0)
+            .sort((a, b) => toAmount(b.totalOrders) - toAmount(a.totalOrders))
             .slice(0, 5)
-            .map(c => ({
-                name: c.name || 'Customer',
-                phone: c.phone,
-                orders: c.totalOrders || 0,
-                totalSpent: c.totalSpent || 0
+            .map((customer) => ({
+                name: customer.name || 'Customer',
+                phone: customer.phone,
+                orders: toAmount(customer.totalOrders),
+                totalSpent: toAmount(customer.totalSpent),
             }));
+
+        const customerOrderMix = Array.from(customerOrderMixMap.values())
+            .map((row) => ({
+                ...row,
+                totalInteractions: row.onlineOrders + row.manualCallOrders + row.counterBills,
+            }))
+            .sort((a, b) => {
+                if (b.totalInteractions !== a.totalInteractions) return b.totalInteractions - a.totalInteractions;
+                return b.totalSpent - a.totalSpent;
+            })
+            .slice(0, 20);
 
         const customerStats = {
             totalCustomers: allCustomers.length,
             newThisMonth: newThisMonth.length,
             repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
-            newThisPeriod: uniqueCustomersThisPeriod.size - returningThisPeriod.length,
+            newThisPeriod: Math.max(0, uniqueCustomerPhonesThisPeriod.size - returningThisPeriod.length),
             returningThisPeriod: returningThisPeriod.length,
             topLoyalCustomers,
+            customerTypeMix,
+            customerOrderMix,
         };
 
-        // ... AI INSIGHTS ...
+        // ---- AI INSIGHTS ----
         const aiInsights = [];
-
         if (missedRevenue > 0 && missedItemsData.length > 0) {
             const topMissed = missedItemsData[0];
             aiInsights.push({
                 type: 'warning',
-                message: `Boss, aaj aapne ₹${Math.round(missedRevenue)} ka nuksan kiya kyunki '${topMissed.name}' cancel hua. Stock check karo!`
+                message: `Boss, aaj aapne ₹${Math.round(missedRevenue)} ka nuksan kiya kyunki '${topMissed.name}' cancel hua. Stock check karo!`,
             });
         }
         if (peakHours.length > 0) {
@@ -296,34 +561,43 @@ export async function GET(req) {
             const peakTime = peak.hour >= 12 ? `${peak.hour > 12 ? peak.hour - 12 : peak.hour} PM` : `${peak.hour} AM`;
             aiInsights.push({
                 type: 'tip',
-                message: `Aapka sabse busy time ${peakTime} hai (${peak.count} orders). Uss time se pehle ready raho!`
+                message: `Aapka sabse busy time ${peakTime} hai (${peak.count} orders). Uss time se pehle ready raho!`,
             });
         }
-        const aov = currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0;
+        const aov = totalBusinessOrders > 0 ? totalBusinessRevenue / totalBusinessOrders : 0;
         if (aov > 0 && aov < 100) {
             aiInsights.push({
                 type: 'suggestion',
-                message: `Average order value ₹${Math.round(aov)} hai. Combo offers dalo toh zyada paisa banega!`
+                message: `Average order value ₹${Math.round(aov)} hai. Combo offers dalo toh zyada paisa banega!`,
+            });
+        }
+        if (manualCallOrderCount > onlineOrderCount && manualCallOrderCount > 0) {
+            aiInsights.push({
+                type: 'suggestion',
+                message: `Call orders (${manualCallOrderCount}) online orders (${onlineOrderCount}) se zyada hain. WhatsApp CTA push karke conversion aur improve ho sakta hai.`,
             });
         }
         if (customerStats.repeatRate > 50) {
             aiInsights.push({
                 type: 'success',
-                message: `Badhiya! ${customerStats.repeatRate}% customers wapas aa rahe hain. Matlab khana accha hai! 🔥`
+                message: `Badhiya! ${customerStats.repeatRate}% customers wapas aa rahe hain. Matlab khana accha hai!`,
             });
         }
 
-        return NextResponse.json({
-            salesData,
-            menuPerformance,
-            customerStats,
-            aiInsights,
-        }, { status: 200 });
-
+        return NextResponse.json(
+            {
+                salesData,
+                menuPerformance,
+                customerStats,
+                aiInsights,
+                businessInfo: {
+                    businessType: restaurantData.businessType || collectionName.slice(0, -1),
+                },
+            },
+            { status: 200 }
+        );
     } catch (error) {
-        console.error("ANALYTICS API ERROR:", error);
+        console.error('ANALYTICS API ERROR:', error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-
