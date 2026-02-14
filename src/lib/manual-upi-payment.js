@@ -311,6 +311,8 @@ export async function sendManualPaymentRequestToCustomer({
         console.log(`[Manual UPI] Final QR image URL prepared for ${orderDisplayId}.`);
     }
 
+    let qrSent = false;
+
     const ctaPayloadWithImageByUrl = {
         type: 'interactive',
         interactive: {
@@ -363,12 +365,10 @@ export async function sendManualPaymentRequestToCustomer({
 
     const qrCaption = `Scan this QR to pay for ${orderDisplayId}\nAmount: Rs ${amountFixed}`;
     let sentCombinedCard = false;
-    let qrSent = false;
 
     try {
         await sendWhatsAppMessage(customerPhoneWithCode, ctaPayloadWithImageByUrl, botPhoneNumberId);
         sentCombinedCard = true;
-        qrSent = true;
         console.log(`[Manual UPI] Sent combined QR + Pay Now card for order ${orderDisplayId}.`);
     } catch (combinedCardErr) {
         console.warn('[Manual UPI] Combined QR+CTA card failed. Falling back to separate QR and CTA.', combinedCardErr?.message || combinedCardErr);
@@ -390,8 +390,8 @@ export async function sendManualPaymentRequestToCustomer({
                         caption: qrCaption
                     }
                 }, botPhoneNumberId);
+                console.log(`[Manual UPI] Sent QR image via WhatsApp media upload (fallback) for order ${orderDisplayId}.`);
                 qrSent = true;
-                console.log(`[Manual UPI] Sent QR image via WhatsApp media upload for order ${orderDisplayId}.`);
             } catch (mediaUploadErr) {
                 console.warn('[Manual UPI] Media upload QR send failed, will try URL-based image send:', mediaUploadErr?.message || mediaUploadErr);
             }
