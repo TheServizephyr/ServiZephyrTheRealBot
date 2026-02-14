@@ -7,6 +7,7 @@ import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 import { kv } from '@vercel/kv';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +123,7 @@ export async function GET(req) {
         console.log(`[API /settings] Owner verified: ${uid} for business ${businessId}`);
         const businessRef = businessSnap.ref;
         const businessData = businessSnap.data();
+        const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
 
         // FETCH DELIVERY SETTINGS FROM SUB-COLLECTION
         const deliveryConfigSnap = await businessRef.collection('delivery_settings').doc('config').get();
@@ -170,7 +172,10 @@ export async function GET(req) {
             pickupPodEnabled: fallback('pickupPodEnabled', true),
             dineInOnlinePaymentEnabled: fallback('dineInOnlinePaymentEnabled', true),
             dineInPayAtCounterEnabled: fallback('dineInPayAtCounterEnabled', true),
-            isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
+            isOpen: effectiveIsOpen,
+            autoScheduleEnabled: businessData?.autoScheduleEnabled || false,
+            openingTime: businessData?.openingTime || '09:00',
+            closingTime: businessData?.closingTime || '22:00',
             dineInModel: businessData?.dineInModel || 'post-paid',
             // Add-on Charges Configuration
             gstEnabled: businessData?.gstEnabled || false,
@@ -232,6 +237,7 @@ export async function PATCH(req) {
         }
 
         const businessUpdateData = {};
+        const isValidTime = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || '').trim());
         if (updates.restaurantName !== undefined) businessUpdateData.name = updates.restaurantName;
         if (updates.gstin !== undefined) businessUpdateData.gstin = updates.gstin;
         if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
@@ -288,6 +294,22 @@ export async function PATCH(req) {
 
         if (updates.phone !== undefined && updates.phone !== businessData?.ownerPhone) {
             businessUpdateData.ownerPhone = updates.phone;
+        }
+
+        if (updates.autoScheduleEnabled !== undefined) {
+            businessUpdateData.autoScheduleEnabled = Boolean(updates.autoScheduleEnabled);
+        }
+        if (updates.openingTime !== undefined) {
+            if (!isValidTime(updates.openingTime)) {
+                return NextResponse.json({ message: 'Invalid opening time. Use HH:mm format.' }, { status: 400 });
+            }
+            businessUpdateData.openingTime = String(updates.openingTime).trim();
+        }
+        if (updates.closingTime !== undefined) {
+            if (!isValidTime(updates.closingTime)) {
+                return NextResponse.json({ message: 'Invalid closing time. Use HH:mm format.' }, { status: 400 });
+            }
+            businessUpdateData.closingTime = String(updates.closingTime).trim();
         }
 
         // Add-on Charges Configuration
@@ -369,6 +391,7 @@ export async function PATCH(req) {
         const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
         const fallback = (key, defaultVal) => deliveryConfig[key] ?? finalBusinessData[key] ?? defaultVal;
 
+        const finalIsOpen = getEffectiveBusinessOpenStatus(finalBusinessData);
         const responseData = {
             name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
             role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
@@ -404,7 +427,10 @@ export async function PATCH(req) {
             pickupPodEnabled: fallback('pickupPodEnabled', true),
             dineInOnlinePaymentEnabled: fallback('dineInOnlinePaymentEnabled', true),
             dineInPayAtCounterEnabled: fallback('dineInPayAtCounterEnabled', true),
-            isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
+            isOpen: finalIsOpen,
+            autoScheduleEnabled: finalBusinessData?.autoScheduleEnabled || false,
+            openingTime: finalBusinessData?.openingTime || '09:00',
+            closingTime: finalBusinessData?.closingTime || '22:00',
             dineInModel: finalBusinessData?.dineInModel || 'post-paid',
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
             // Add-on Charges Configuration

@@ -10,6 +10,7 @@ import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 import { deobfuscateGuestId } from '@/lib/guest-utils';
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from '@/services/order/orderPricing';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 const generateSecureToken = async (firestore, identifier) => {
     console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
@@ -184,6 +185,52 @@ export async function processOrderV1(body, firestore) {
         if (existingOrderId && items && items.length > 0) {
             console.log(`[API /order/create] ADD-ON FLOW: Adding items to existing order ${existingOrderId}`);
             console.log(`[API /order/create] ADD-ON FLOW: Payment Method: ${paymentMethod}`);
+
+            const resolveBusinessDocForOpenCheck = async (targetRestaurantId, preferredCollection) => {
+                const normalizedId = String(targetRestaurantId || '').trim();
+                if (!normalizedId) return null;
+                const collections = preferredCollection
+                    ? [preferredCollection, 'restaurants', 'shops', 'street_vendors']
+                    : ['restaurants', 'shops', 'street_vendors'];
+                const uniqueCollections = [...new Set(collections)];
+
+                for (const collection of uniqueCollections) {
+                    const docSnap = await firestore.collection(collection).doc(normalizedId).get();
+                    if (docSnap.exists) return docSnap;
+                }
+                return null;
+            };
+
+            try {
+                let resolvedRestaurantId = String(restaurantId || '').trim();
+                let preferredCollection = getBusinessCollection(businessType);
+
+                const existingOrderSnap = await firestore.collection('orders').doc(existingOrderId).get();
+                if (existingOrderSnap.exists) {
+                    const existingOrderData = existingOrderSnap.data() || {};
+                    if (existingOrderData.restaurantId) {
+                        resolvedRestaurantId = String(existingOrderData.restaurantId).trim();
+                    }
+                    preferredCollection = getBusinessCollection(existingOrderData.businessType || businessType);
+                }
+
+                const businessDocForOpenCheck = await resolveBusinessDocForOpenCheck(
+                    resolvedRestaurantId,
+                    preferredCollection
+                );
+
+                if (businessDocForOpenCheck && !getEffectiveBusinessOpenStatus(businessDocForOpenCheck.data())) {
+                    console.warn(`[API /order/create] ADD-ON blocked: business closed for ${resolvedRestaurantId}`);
+                    return NextResponse.json({
+                        message: 'Restaurant is currently closed. Please order during opening hours.'
+                    }, { status: 403 });
+                }
+            } catch (openCheckError) {
+                console.error('[API /order/create] ADD-ON open-check failed:', openCheckError);
+                return NextResponse.json({
+                    message: 'Unable to verify restaurant availability. Please try again.'
+                }, { status: 503 });
+            }
 
             // Handle Online Payment for Add-ons
             // Handle Online Payment for Add-ons
@@ -522,6 +569,13 @@ export async function processOrderV1(body, firestore) {
 
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
+        const isBusinessOpenNow = getEffectiveBusinessOpenStatus(businessData);
+        if (!isBusinessOpenNow) {
+            console.warn(`[API /order/create] Business is currently closed for new orders: ${cleanRestaurantId}`);
+            return NextResponse.json({
+                message: 'Restaurant is currently closed. Please order during opening hours.'
+            }, { status: 403 });
+        }
 
         // --- PREFETCH DELIVERY SETTINGS (Fix for Sub-collection Migration) ---
         let deliverySettings = {};

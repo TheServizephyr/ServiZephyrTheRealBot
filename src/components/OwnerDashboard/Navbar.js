@@ -1,10 +1,10 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Sun, Moon, Menu, UserCheck, ShieldCheck } from "lucide-react";
+import { User, Sun, Moon, Menu, UserCheck, ShieldCheck, Clock3 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import { useTheme } from "next-themes";
 import { auth } from "@/lib/firebase";
@@ -33,30 +33,58 @@ const MotionDiv = motion.div;
 export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, restaurantLogo, userRole }) {
   const [restaurantStatus, setRestaurantStatus] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(true);
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [autoScheduleEnabled, setAutoScheduleEnabled] = useState(false);
+  const [openingTime, setOpeningTime] = useState('09:00');
+  const [closingTime, setClosingTime] = useState('22:00');
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const [isSystemStatusOpen, setSystemStatusOpen] = useState(false);
   const { user } = useUser();
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-      try {
-        const idToken = await currentUser.getIdToken();
-        const res = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
-        if (res.ok) {
-          const data = await res.json();
-          setRestaurantStatus(data.isOpen);
-        }
-      } catch (error) {
-        console.error("Failed to fetch restaurant status:", error);
-      } finally {
-        setLoadingStatus(false);
+  const normalizeTime = (value, fallback) => {
+    const timeValue = String(value || '').trim();
+    return /^([01]\d|2[0-3]):([0-5]\d)$/.test(timeValue) ? timeValue : fallback;
+  };
+
+  const fetchOwnerSettings = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    try {
+      const idToken = await currentUser.getIdToken();
+      const res = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setRestaurantStatus(data.isOpen !== false);
+        setAutoScheduleEnabled(data.autoScheduleEnabled === true);
+        setOpeningTime(normalizeTime(data.openingTime, '09:00'));
+        setClosingTime(normalizeTime(data.closingTime, '22:00'));
       }
-    };
-    fetchStatus();
+    } catch (error) {
+      console.error("Failed to fetch owner settings:", error);
+    } finally {
+      setLoadingStatus(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOwnerSettings();
+  }, [fetchOwnerSettings]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 767.98px)');
+    const applyView = (event) => setIsMobileView(event.matches);
+    setIsMobileView(mediaQuery.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', applyView);
+      return () => mediaQuery.removeEventListener('change', applyView);
+    }
+    mediaQuery.addListener(applyView);
+    return () => mediaQuery.removeListener(applyView);
   }, []);
 
   const handleLogout = async () => {
@@ -103,6 +131,42 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
     }
   };
 
+  const handleSaveSchedule = async () => {
+    setSavingSchedule(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Not authenticated");
+      const idToken = await currentUser.getIdToken();
+
+      const payload = {
+        autoScheduleEnabled,
+        openingTime: normalizeTime(openingTime, '09:00'),
+        closingTime: normalizeTime(closingTime, '22:00')
+      };
+
+      const res = await fetch('/api/owner/settings', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to save schedule");
+      }
+
+      setInfoDialog({ isOpen: true, title: "Saved", message: "Schedule updated successfully." });
+      setShowScheduleEditor(false);
+    } catch (error) {
+      setInfoDialog({ isOpen: true, title: "Error", message: `Could not save schedule: ${error.message}` });
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
   return (
     <>
       <InfoDialog
@@ -117,8 +181,8 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
         onClose={() => setSystemStatusOpen(false)}
       />
 
-      <div className="flex items-center justify-between w-full">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between w-full gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {/* ... (existing logo code) ... */}
           <button
             className={`${styles.iconButton} md:hidden`}
@@ -126,25 +190,27 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
           >
             <Menu size={22} />
           </button>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             {restaurantLogo && (
               <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-border flex-shrink-0">
                 <Image src={restaurantLogo} alt="Restaurant Logo" layout="fill" objectFit="cover" />
               </div>
             )}
-            <h2 className="text-lg md:text-2xl font-bold text-foreground tracking-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] sm:max-w-none">{restaurantName}</h2>
+            <h2 className="text-lg md:text-2xl font-bold text-foreground tracking-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-[92px] sm:max-w-[180px] md:max-w-none">
+              {restaurantName}
+            </h2>
           </div>
           {/* Role Badge - Owner or Employee */}
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${userRole ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+          <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full ${userRole ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
             <UserCheck className={`h-4 w-4 ${userRole ? 'text-blue-500' : 'text-amber-500'}`} />
-            <span className={`hidden sm:inline text-xs sm:text-sm font-semibold capitalize ${userRole ? 'text-blue-500' : 'text-amber-500'}`}>
+            <span className={`hidden md:inline text-xs md:text-sm font-semibold capitalize ${userRole ? 'text-blue-500' : 'text-amber-500'}`}>
               {userRole || 'Owner'}
             </span>
           </div>
         </div>
 
-        <div className={styles.navActions}>
-          <AppNotificationCenter scope="owner" />
+        <div className={`${styles.navActions} shrink-0`}>
+          {!isMobileView && <AppNotificationCenter scope="owner" />}
 
           <button
             onClick={() => setSystemStatusOpen(true)}
@@ -173,22 +239,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
 
           <DropdownMenu onOpenChange={(open) => {
             if (open) {
-              // Refresh restaurant status when dropdown opens
-              const refreshStatus = async () => {
-                const currentUser = auth.currentUser;
-                if (!currentUser) return;
-                try {
-                  const idToken = await currentUser.getIdToken();
-                  const res = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                  if (res.ok) {
-                    const data = await res.json();
-                    setRestaurantStatus(data.isOpen);
-                  }
-                } catch (error) {
-                  console.error("Failed to refresh restaurant status:", error);
-                }
-              };
-              refreshStatus();
+              fetchOwnerSettings();
             }
           }}>
             <DropdownMenuTrigger asChild>
@@ -203,6 +254,9 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
               <DropdownMenuLabel>
                 <p className="font-semibold">{user?.displayName}</p>
                 <p className="text-xs text-muted-foreground font-normal">{user?.email}</p>
+                <p className="text-[11px] text-muted-foreground font-medium mt-1 md:hidden">
+                  Role: {userRole || 'Owner'}
+                </p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <div className="p-2">
@@ -221,9 +275,83 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
                     aria-label="Toggle restaurant open/closed status"
                   />
                 </Label>
+
+                <button
+                  type="button"
+                  className="mt-2 text-xs text-primary font-semibold hover:underline inline-flex items-center gap-1"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowScheduleEditor((prev) => !prev);
+                  }}
+                >
+                  <Clock3 className="h-3.5 w-3.5" />
+                  Make a Schedule
+                </button>
+
+                {showScheduleEditor && (
+                  <div className="mt-3 p-3 rounded-md border border-border bg-muted/40 space-y-3">
+                    <Label htmlFor="auto-schedule-header" className="flex items-center justify-between cursor-pointer">
+                      <span className="text-xs font-medium">Enable Auto Schedule</span>
+                      <Switch
+                        id="auto-schedule-header"
+                        checked={autoScheduleEnabled}
+                        onCheckedChange={setAutoScheduleEnabled}
+                        disabled={savingSchedule}
+                        aria-label="Toggle auto schedule"
+                      />
+                    </Label>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[11px] text-muted-foreground font-medium">Opening</span>
+                        <input
+                          type="time"
+                          value={openingTime}
+                          onChange={(e) => setOpeningTime(e.target.value)}
+                          className="h-8 rounded border border-input bg-background px-2 text-xs"
+                          disabled={savingSchedule}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[11px] text-muted-foreground font-medium">Closing</span>
+                        <input
+                          type="time"
+                          value={closingTime}
+                          onChange={(e) => setClosingTime(e.target.value)}
+                          className="h-8 rounded border border-input bg-background px-2 text-xs"
+                          disabled={savingSchedule}
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full h-8 text-xs font-semibold"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleSaveSchedule();
+                      }}
+                      disabled={savingSchedule}
+                    >
+                      {savingSchedule ? 'Saving...' : 'Save Schedule'}
+                    </Button>
+                  </div>
+                )}
               </div>
               <DropdownMenuSeparator />
               <div className="md:hidden">
+                {isMobileView && (
+                  <>
+                    <div className="px-2 py-1">
+                      <p className="text-[11px] text-muted-foreground font-medium mb-2">Notifications</p>
+                      <AppNotificationCenter scope="owner" />
+                    </div>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={() => setSystemStatusOpen(true)} className="cursor-pointer">
                   <ShieldCheck className="mr-2 h-4 w-4 text-primary" /> System Permissions
                 </DropdownMenuItem>

@@ -503,7 +503,7 @@ function CustomBillPage() {
     };
 
     return (
-        <div className="text-foreground bg-background h-screen overflow-hidden">
+        <div className="text-foreground bg-background min-h-screen">
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}

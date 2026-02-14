@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
 import { sendNewOrderToOwner } from '@/lib/notifications';
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
@@ -95,6 +96,11 @@ export async function POST(req) {
         
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
+        if (!getEffectiveBusinessOpenStatus(businessData)) {
+            return NextResponse.json({
+                message: 'Restaurant is currently closed. Please order during opening hours.'
+            }, { status: 403 });
+        }
 
         // --- Post-paid Dine-In ---
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {

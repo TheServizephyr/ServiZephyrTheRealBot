@@ -31,6 +31,7 @@ import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
 import { findBusinessById } from '@/services/business/businessService';
 import { paymentService } from '@/services/payment/payment.service';
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 // Repositories
 import { orderRepository } from '@/repositories/order.repository';
@@ -240,6 +241,12 @@ export async function createOrderV2(req, options = {}) {
         }
 
         console.log(`[createOrderV2] Business found: ${business.data.name}`);
+        if (!getEffectiveBusinessOpenStatus(business.data)) {
+            return buildErrorResponse({
+                message: 'Restaurant is currently closed. Please order during opening hours.',
+                status: 403
+            });
+        }
 
         // ========================================
         // STEP 3: IDEMPOTENCY CHECK

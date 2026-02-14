@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
@@ -67,6 +68,8 @@ export async function GET(req, { params }) {
             console.log(`[Menu API] ✅ Found active business in ${collectionName} (v${menuVersion})`);
         }
 
+        const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
+
         // STEP 2: Build version-based cache key
         // PATCH: Added _patch4 to force cache refresh for new delivery fee engine fields
         const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch4`;
@@ -87,11 +90,9 @@ export async function GET(req, { params }) {
             if (cachedData) {
                 console.log(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
                 console.log(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
+                const payload = { ...cachedData, isOpen: effectiveIsOpen };
 
-                // DEBUG: Force logs to show what we are serving
-                console.log(`[Menu API]    └─ Cached isOpen: ${cachedData.isOpen}`);
-
-                return NextResponse.json(cachedData, {
+                return NextResponse.json(payload, {
                     status: 200,
                     headers: {
                         'X-Cache': 'HIT',
@@ -237,7 +238,7 @@ export async function GET(req, { params }) {
             businessAddress: businessData.address,
             businessType: businessType,
             dineInModel: businessData.dineInModel,
-            isOpen: businessData.isOpen === true,
+            isOpen: effectiveIsOpen,
         };
 
         // STEP 5: Cache with version-based key and 12-hour TTL
@@ -255,6 +256,7 @@ export async function GET(req, { params }) {
                 'X-Menu-Version': menuVersion.toString(),
                 'X-Debug-Source-Collection': collectionName,
                 'X-Debug-DB-IsOpen': String(businessData.isOpen),
+                'X-Debug-Effective-IsOpen': String(effectiveIsOpen),
                 // CDN Cache: Fresh for 60s, serve stale for 10m
                 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
                 'Vary': 'Accept-Encoding'

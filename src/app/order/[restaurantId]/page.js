@@ -699,17 +699,21 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
 };
 
 
-const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
+const BannerCarousel = ({ images, onClick, onLogoClick, onIndexChange, restaurantName, logoUrl }) => {
     const [index, setIndex] = useState(0);
     const { theme, setTheme } = useTheme();
 
     useEffect(() => {
         if (images.length <= 1) return;
         const interval = setInterval(() => {
-            setIndex(prev => (prev + 1) % images.length);
+            setIndex(prev => {
+                const next = (prev + 1) % images.length;
+                if (onIndexChange) onIndexChange(next);
+                return next;
+            });
         }, 5000);
         return () => clearInterval(interval);
-    }, [images.length]);
+    }, [images.length, onIndexChange]);
 
     return (
         <div className="relative h-48 w-full group">
@@ -733,12 +737,18 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
                     </motion.div>
                 </AnimatePresence>
             </div>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
-            <div className="absolute bottom-[-0.5rem] left-0 right-0 px-4">
-                <div className="container mx-auto bg-card shadow-lg border border-border rounded-xl p-3 flex items-center justify-between">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none"></div>
+            <div className="absolute bottom-0 translate-y-1/2 left-0 right-0 px-4 z-20 pointer-events-none">
+                <div className="container mx-auto bg-card shadow-lg border border-border rounded-xl p-3 flex items-center justify-between pointer-events-auto">
                     <div className="flex items-center gap-3">
                         {logoUrl && (
-                            <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0">
+                            <div
+                                className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0 cursor-pointer"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onLogoClick) onLogoClick();
+                                }}
+                            >
                                 <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                             </div>
                         )}
@@ -776,6 +786,8 @@ const OrderPageInternal = () => {
 
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
+    const [isLogoExpanded, setIsLogoExpanded] = useState(false);
+    const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
 
@@ -2261,7 +2273,13 @@ const OrderPageInternal = () => {
                 {isBannerExpanded && (
                     <motion.div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBannerExpanded(false)}>
                         <motion.div className="relative w-full max-w-4xl" style={{ aspectRatio: '16 / 9' }} onClick={(e) => e.stopPropagation()}>
-                            <Image src={restaurantData.bannerUrls[0]} alt="Banner Expanded" layout="fill" objectFit="contain" unoptimized />
+                            <Image
+                                src={restaurantData.bannerUrls[currentBannerIndex] || restaurantData.bannerUrls[0]}
+                                alt="Banner Expanded"
+                                layout="fill"
+                                objectFit="contain"
+                                unoptimized
+                            />
                         </motion.div>
                         <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white" onClick={() => setIsBannerExpanded(false)}><X /></Button>
                     </motion.div>
@@ -2366,9 +2384,46 @@ const OrderPageInternal = () => {
                     <BackButtonHandler onClose={handleCloseAddressSelector} />
                 )}
 
-                <header>
-                    <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
+                <header className="mb-16">
+                    <BannerCarousel
+                        images={restaurantData.bannerUrls}
+                        onClick={() => setIsBannerExpanded(true)}
+                        onIndexChange={setCurrentBannerIndex}
+                        onLogoClick={() => setIsLogoExpanded(true)}
+                        restaurantName={restaurantData.name}
+                        logoUrl={restaurantData.logoUrl}
+                    />
                 </header>
+
+                {/* Logo Expansion Modal */}
+                <AnimatePresence>
+                    {isLogoExpanded && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+                            onClick={() => setIsLogoExpanded(false)}
+                        >
+                            <div className="relative w-full max-w-sm aspect-square bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <Image
+                                    src={restaurantData.logoUrl}
+                                    alt={restaurantData.name}
+                                    layout="fill"
+                                    objectFit="cover"
+                                />
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-2 right-2 bg-black/20 hover:bg-black/40 text-white rounded-full"
+                                    onClick={() => setIsLogoExpanded(false)}
+                                >
+                                    <X size={20} />
+                                </Button>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* NEW: Welcome Message for Dine-In Users */}
                 {showWelcome && detailsProvided && userDetails && tableIdFromUrl && (
