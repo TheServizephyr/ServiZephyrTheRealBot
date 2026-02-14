@@ -1,7 +1,8 @@
-import { sendSystemMessage, sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendSystemMessage, sendWhatsAppMessage, uploadWhatsAppMediaFromBuffer } from '@/lib/whatsapp';
 import { generateUpiQrCardPngBuffer } from '@/lib/upi-qr-card-image';
 import { getStorage } from 'firebase-admin/storage';
 import { firebaseConfig } from '@/firebase/config';
+import { randomUUID } from 'crypto';
 
 const DEFAULT_PAYMENT_BASE_URL = String(
     process.env.WHATSAPP_CTA_BASE_URL
@@ -217,20 +218,20 @@ async function uploadQrPngAndGetReadableUrl({ buffer, businessId, orderId }) {
     const orderSegment = sanitizeStoragePathSegment(orderId, 'order');
     const filePath = `payment_qr_dynamic/${businessSegment}/${orderSegment}_${Date.now()}.png`;
     const file = bucket.file(filePath);
+    const downloadToken = randomUUID();
 
     await file.save(buffer, {
         metadata: {
             contentType: 'image/png',
-            cacheControl: 'public, max-age=300'
+            cacheControl: 'public, max-age=31536000, immutable',
+            metadata: {
+                firebaseStorageDownloadTokens: downloadToken
+            }
         }
     });
 
-    const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + (15 * 60 * 1000)
-    });
-
-    return signedUrl;
+    const encodedPath = encodeURIComponent(filePath);
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
 }
 
 export async function sendManualPaymentRequestToCustomer({
@@ -280,9 +281,10 @@ export async function sendManualPaymentRequestToCustomer({
     const note = String(upiParams.get('tn') || `Order ${orderDisplayId}`).trim();
     const transactionRef = String(upiParams.get('tr') || '').trim();
 
+    let qrBuffer = null;
     let uploadedQrImageUrl = '';
     try {
-        const qrBuffer = await generateUpiQrCardPngBuffer({
+        qrBuffer = await generateUpiQrCardPngBuffer({
             upiId,
             payeeName,
             restaurantName: businessData?.name || payeeName || 'Restaurant',
@@ -359,18 +361,66 @@ export async function sendManualPaymentRequestToCustomer({
         }
     };
 
+    const qrCaption = `Scan this QR to pay for ${orderDisplayId}\nAmount: Rs ${amountFixed}`;
+    let sentCombinedCard = false;
+    let qrSent = false;
+
     try {
         await sendWhatsAppMessage(customerPhoneWithCode, ctaPayloadWithImageByUrl, botPhoneNumberId);
-        console.log(`[Manual UPI] Sent CTA with URL header image for order ${orderDisplayId}.`);
-    } catch (imageCtaError) {
-        console.warn('[Manual UPI] CTA with image failed. Sending text-header CTA fallback.', imageCtaError?.message || imageCtaError);
+        sentCombinedCard = true;
+        qrSent = true;
+        console.log(`[Manual UPI] Sent combined QR + Pay Now card for order ${orderDisplayId}.`);
+    } catch (combinedCardErr) {
+        console.warn('[Manual UPI] Combined QR+CTA card failed. Falling back to separate QR and CTA.', combinedCardErr?.message || combinedCardErr);
+    }
+
+    if (!sentCombinedCard) {
+        if (qrBuffer) {
+            try {
+                const mediaId = await uploadWhatsAppMediaFromBuffer({
+                    buffer: qrBuffer,
+                    filename: `payment_qr_${String(orderId || 'order')}.png`,
+                    mimeType: 'image/png',
+                    businessPhoneNumberId: botPhoneNumberId
+                });
+                await sendWhatsAppMessage(customerPhoneWithCode, {
+                    type: 'image',
+                    image: {
+                        id: mediaId,
+                        caption: qrCaption
+                    }
+                }, botPhoneNumberId);
+                qrSent = true;
+                console.log(`[Manual UPI] Sent QR image via WhatsApp media upload for order ${orderDisplayId}.`);
+            } catch (mediaUploadErr) {
+                console.warn('[Manual UPI] Media upload QR send failed, will try URL-based image send:', mediaUploadErr?.message || mediaUploadErr);
+            }
+        }
+
+        if (!qrSent) {
+            try {
+                await sendWhatsAppMessage(customerPhoneWithCode, {
+                    type: 'image',
+                    image: {
+                        link: finalQrImageUrl,
+                        caption: qrCaption
+                    }
+                }, botPhoneNumberId);
+                qrSent = true;
+                console.log(`[Manual UPI] Sent QR image via URL for order ${orderDisplayId}.`);
+            } catch (urlImageErr) {
+                console.warn('[Manual UPI] URL-based QR image send failed:', urlImageErr?.message || urlImageErr);
+            }
+        }
+
         try {
             await sendWhatsAppMessage(customerPhoneWithCode, ctaPayloadTextOnlyFallback, botPhoneNumberId);
+            console.log(`[Manual UPI] Sent Pay Now CTA for order ${orderDisplayId}.`);
         } catch (textHeaderCtaError) {
-            console.warn('[Manual UPI] Text-header CTA fallback failed. Sending plain text fallback.', textHeaderCtaError?.message || textHeaderCtaError);
+            console.warn('[Manual UPI] Pay Now CTA failed. Sending plain text fallback.', textHeaderCtaError?.message || textHeaderCtaError);
             await sendSystemMessage(
                 customerPhoneWithCode,
-                `${paymentMessage}\n\nUPI Link:\n${upiLink}`,
+                `${paymentMessage}\n\nUPI Link:\n${upiLink}${qrSent ? '' : `\n\nQR Image:\n${finalQrImageUrl}`}`,
                 botPhoneNumberId,
                 businessId,
                 businessData?.name || 'ServiZephyr',

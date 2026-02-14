@@ -515,27 +515,67 @@ export async function PATCH(req) {
                 paymentRequestAmount: paymentRequest.amount,
                 paymentRequestCount: FieldValue.increment(1),
             });
-
             // LOGGING: Add to WhatsApp Direct Chat History
-            if (targetOrder.customerId && collectionName) {
+            const conversationId = normalizeIndianPhone(
+                paymentRequest.customerPhone || resolveCustomerPhoneForNotification(targetOrder)
+            );
+            if (conversationId && collectionName) {
                 try {
-                    const messageData = {
-                        text: `Payment Link Sent\nAmount: ₹${paymentRequest.amountFixed}`,
-                        sender: 'owner', // Appears as sent by owner
+                    const conversationRef = firestore
+                        .collection(collectionName)
+                        .doc(businessId)
+                        .collection('conversations')
+                        .doc(conversationId);
+
+                    const now = Date.now();
+                    const qrMessageId = `payreq_qr_${targetOrderId}_${now}`;
+                    const linkMessageId = `payreq_link_${targetOrderId}_${now + 1}`;
+                    const amountText = String(paymentRequest.amountFixed || paymentRequest.amount || '0.00');
+                    const orderDisplayId = String(
+                        paymentRequest.orderDisplayId ||
+                        targetOrder.orderDisplayId ||
+                        targetOrder.orderNumber ||
+                        targetOrderId
+                    );
+                    const qrText = `Payment request sent\nOrder: ${orderDisplayId}\nAmount: Rs ${amountText}`;
+                    const linkText = `Pay via link:\n${paymentRequest.upiLink}`;
+
+                    const batch = firestore.batch();
+
+                    batch.set(conversationRef.collection('messages').doc(qrMessageId), {
+                        id: qrMessageId,
+                        text: qrText,
+                        sender: 'owner',
                         timestamp: FieldValue.serverTimestamp(),
-                        type: 'image', // Show QR Card
+                        type: 'image',
                         mediaUrl: paymentRequest.qrCardUrl,
                         status: 'sent',
                         isPaymentRequest: true,
-                        orderId: targetOrderId
-                    };
-                    await firestore
-                        .collection(collectionName)
-                        .doc(businessId)
-                        .collection('customers')
-                        .doc(targetOrder.customerId)
-                        .collection('messages')
-                        .add(messageData);
+                        orderId: targetOrderId,
+                        upiLink: paymentRequest.upiLink
+                    });
+
+                    batch.set(conversationRef.collection('messages').doc(linkMessageId), {
+                        id: linkMessageId,
+                        text: linkText,
+                        sender: 'owner',
+                        timestamp: FieldValue.serverTimestamp(),
+                        type: 'text',
+                        status: 'sent',
+                        isPaymentRequest: true,
+                        orderId: targetOrderId,
+                        upiLink: paymentRequest.upiLink
+                    });
+
+                    batch.set(conversationRef, {
+                        customerName: resolveCustomerNameForNotification(targetOrder),
+                        customerPhone: conversationId,
+                        lastMessage: linkText,
+                        lastMessageType: 'text',
+                        lastMessageTimestamp: FieldValue.serverTimestamp()
+                    }, { merge: true });
+
+                    await batch.commit();
                 } catch (logErr) {
                     console.warn('[Owner Orders] Failed to log payment message to chat:', logErr);
                     // Non-blocking error
@@ -903,3 +943,4 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+

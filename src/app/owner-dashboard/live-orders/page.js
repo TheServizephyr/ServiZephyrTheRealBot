@@ -26,6 +26,7 @@ import { useReactToPrint } from 'react-to-print';
 import { usePolling } from '@/lib/usePolling';
 import { emitAppNotification } from '@/lib/appNotifications';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
+import { useToast } from "@/components/ui/use-toast";
 
 
 export const dynamic = 'force-dynamic';
@@ -1055,6 +1056,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
 
 // Main Board Component
 export default function LiveOrdersPage() {
+    const { toast } = useToast();
     const [orders, setOrders] = useState([]);
     const [riders, setRiders] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1534,10 +1536,10 @@ export default function LiveOrdersPage() {
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);
             }
-            setInfoDialog({
-                isOpen: true,
-                title: 'Payment Request Sent',
-                message: result?.message || 'Payment link and QR have been sent to the customer on WhatsApp.'
+            toast({
+                title: "Payment Request Sent",
+                description: result?.message || 'Payment link sent on WhatsApp.',
+                duration: 3000,
             });
         } catch (error) {
             setOrders(previousOrders);
@@ -1564,10 +1566,10 @@ export default function LiveOrdersPage() {
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);
             }
-            setInfoDialog({
-                isOpen: true,
-                title: 'Payment Updated',
-                message: result?.message || 'Order marked as paid successfully.'
+            toast({
+                title: "Payment Updated",
+                description: result?.message || 'Order marked as paid successfully.',
+                duration: 3000,
             });
         } catch (error) {
             setOrders(previousOrders);
