@@ -888,6 +888,50 @@ const CheckoutPageInternal = () => {
             return 0;
         }));
     }, [cartData, subtotal]);
+    const nextCouponUnlockMessage = useMemo(() => {
+        const coupons = (cartData?.availableCoupons || []).map(normalizeCoupon).filter(Boolean);
+        if (!coupons.length) return '';
+
+        const upcomingCoupons = coupons
+            .filter((coupon) => {
+                if (!coupon?.code) return false;
+                if (coupon.type === 'free_delivery' && deliveryType !== 'delivery') return false;
+                return currentSubtotal < (Number(coupon.minOrder) || 0);
+            })
+            .map((coupon) => {
+                const minOrder = Number(coupon.minOrder) || 0;
+                const shortBy = Math.max(0, minOrder - currentSubtotal);
+                return { coupon, shortBy };
+            });
+
+        if (!upcomingCoupons.length) return '';
+
+        upcomingCoupons.sort((a, b) => {
+            if (a.shortBy !== b.shortBy) {
+                return a.shortBy - b.shortBy;
+            }
+            return (Number(b.coupon?.value) || 0) - (Number(a.coupon?.value) || 0);
+        });
+
+        const best = upcomingCoupons[0];
+        const shortAmount = Math.ceil(best.shortBy);
+        const coupon = best.coupon || {};
+        const couponType = normalizeCouponType(coupon.type);
+
+        let rewardText = String(coupon.code || 'this offer');
+        if (couponType === 'percentage') {
+            const percentValue = Number(coupon.value) || 0;
+            const normalizedPercent = Number.isInteger(percentValue) ? String(percentValue) : percentValue.toFixed(1).replace(/\.0$/, '');
+            rewardText = `${normalizedPercent}% OFF`;
+        } else if (couponType === 'flat') {
+            const flatValue = Math.max(0, Math.round(Number(coupon.value) || 0));
+            rewardText = `Rs ${flatValue} OFF`;
+        } else if (couponType === 'free_delivery') {
+            rewardText = 'FREE delivery';
+        }
+
+        return `Add Rs ${shortAmount} more to get ${rewardText}`;
+    }, [cartData, currentSubtotal, deliveryType]);
 
     const getCouponEligibility = (coupon) => {
         const normalizedCoupon = normalizeCoupon(coupon);
@@ -907,7 +951,7 @@ const CheckoutPageInternal = () => {
             const shortBy = Math.max(0, normalizedCoupon.minOrder - currentSubtotal);
             return {
                 eligible: false,
-                message: `Coupon valid on ₹${normalizedCoupon.minOrder}+ order. Add ₹${shortBy.toFixed(0)} more.`
+                message: `Coupon valid on Rs ${normalizedCoupon.minOrder}+ order. Add Rs ${shortBy.toFixed(0)} more.`
             };
         }
 
@@ -1993,7 +2037,7 @@ const CheckoutPageInternal = () => {
                                 <div className="flex flex-col">
                                     <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Use Coupons / View Offers</span>
                                     <span className="text-[11px] text-emerald-500 font-semibold mt-0.5">
-                                        {maxSavings > 0 ? `Save up to ₹${maxSavings.toFixed(0)} on this order` : 'View available offers'}
+                                        {nextCouponUnlockMessage || (maxSavings > 0 ? `Save up to Rs ${maxSavings.toFixed(0)} on this order` : 'View available offers')}
                                     </span>
                                 </div>
                             </div>
@@ -2602,3 +2646,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+
