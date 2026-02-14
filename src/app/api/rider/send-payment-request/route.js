@@ -74,7 +74,7 @@ export async function POST(req) {
             businessData,
             businessId,
             collectionName,
-            baseUrl: requestBaseUrl
+            baseUrl: process.env.WHATSAPP_CTA_BASE_URL || requestBaseUrl
         });
 
         await orderRef.update({
@@ -93,8 +93,7 @@ export async function POST(req) {
             try {
                 const conversationRef = businessRef.collection('conversations').doc(conversationId);
                 const now = Date.now();
-                const qrMessageId = `payreq_qr_${orderId}_${now}`;
-                const linkMessageId = `payreq_link_${orderId}_${now + 1}`;
+                const paymentMessageId = `payreq_card_${orderId}_${now}`;
                 const amountText = String(paymentRequest.amountFixed || paymentRequest.amount || '0.00');
                 const orderDisplayId = String(
                     paymentRequest.orderDisplayId ||
@@ -102,30 +101,17 @@ export async function POST(req) {
                     orderData.orderNumber ||
                     orderId
                 );
-                const qrText = `Payment request sent\nOrder: ${orderDisplayId}\nAmount: Rs ${amountText}`;
-                const linkText = `Pay via link:\n${paymentRequest.upiLink}`;
+                const paymentText = `Payment request sent\nOrder: ${orderDisplayId}\nAmount: INR ${amountText}\nQR + Pay Now card sent on WhatsApp.`;
 
                 const batch = firestore.batch();
 
-                batch.set(conversationRef.collection('messages').doc(qrMessageId), {
-                    id: qrMessageId,
-                    text: qrText,
+                batch.set(conversationRef.collection('messages').doc(paymentMessageId), {
+                    id: paymentMessageId,
+                    text: paymentText,
                     sender: 'owner',
                     timestamp: FieldValue.serverTimestamp(),
-                    type: 'image',
+                    type: 'payment_request',
                     mediaUrl: paymentRequest.qrCardUrl,
-                    status: 'sent',
-                    isPaymentRequest: true,
-                    orderId,
-                    upiLink: paymentRequest.upiLink
-                });
-
-                batch.set(conversationRef.collection('messages').doc(linkMessageId), {
-                    id: linkMessageId,
-                    text: linkText,
-                    sender: 'owner',
-                    timestamp: FieldValue.serverTimestamp(),
-                    type: 'text',
                     status: 'sent',
                     isPaymentRequest: true,
                     orderId,
@@ -135,8 +121,8 @@ export async function POST(req) {
                 batch.set(conversationRef, {
                     customerName: String(orderData.customerName || orderData.customer?.name || 'Customer').trim(),
                     customerPhone: conversationId,
-                    lastMessage: linkText,
-                    lastMessageType: 'text',
+                    lastMessage: paymentText,
+                    lastMessageType: 'payment_request',
                     lastMessageTimestamp: FieldValue.serverTimestamp()
                 }, { merge: true });
 

@@ -297,6 +297,9 @@ export async function createUpiQrCardImageResponse({
                         <div
                             style={{
                                 marginTop: 10,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
                                 fontSize: 86,
                                 fontWeight: 800,
                                 color: '#059669',
@@ -349,6 +352,9 @@ export async function createUpiQrCardImageResponse({
                     >
                         <div
                             style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
                                 fontSize: 20,
                                 color: '#aaaaaa'
                             }}
