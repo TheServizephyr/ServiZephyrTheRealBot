@@ -110,7 +110,8 @@ export async function POST(req) {
         const subtotal = toAmount(billDetails?.subtotal, subtotalFromItems);
         const cgst = toAmount(billDetails?.cgst, 0);
         const sgst = toAmount(billDetails?.sgst, 0);
-        const totalAmount = toAmount(billDetails?.grandTotal, subtotal + cgst + sgst);
+        const deliveryCharge = toAmount(billDetails?.deliveryCharge, 0);
+        const totalAmount = toAmount(billDetails?.grandTotal, subtotal + cgst + sgst + deliveryCharge);
 
         const customerName = sanitizeText(customerDetails?.name, 'Walk-in Customer') || 'Walk-in Customer';
         const customerAddress = sanitizeText(customerDetails?.address, '');
@@ -168,6 +169,7 @@ export async function POST(req) {
             subtotal,
             cgst,
             sgst,
+            deliveryCharge,
             totalAmount,
             createdAt: FieldValue.serverTimestamp(),
             printedAt: FieldValue.serverTimestamp(),
@@ -271,6 +273,7 @@ export async function GET(req) {
                 subtotal: toAmount(data.subtotal, 0),
                 cgst: toAmount(data.cgst, 0),
                 sgst: toAmount(data.sgst, 0),
+                deliveryCharge: toAmount(data.deliveryCharge, 0),
                 totalAmount: amount,
                 itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 0)),
                 items: Array.isArray(data.items) ? data.items : [],

@@ -612,6 +612,183 @@ const CustomerRelationshipHub = ({ data, loading }) => {
     );
 };
 
+const RiderAnalyticsHub = ({ data, loading }) => {
+    const riderAnalytics = data?.riderAnalytics || {};
+    const riders = riderAnalytics.riders || [];
+    const combinedDayWise = riderAnalytics.combinedDayWise || [];
+    const combinedWeekWise = riderAnalytics.combinedWeekWise || [];
+
+    const StatCard = ({ title, value, icon: Icon, sub }) => (
+        <div className="bg-card border border-border p-5 rounded-xl">
+            {loading ? (
+                <div className="animate-pulse">
+                    <div className="h-4 bg-muted w-3/4 rounded mb-2"></div>
+                    <div className="h-8 bg-muted w-1/2 rounded"></div>
+                </div>
+            ) : (
+                <>
+                    <div className="flex items-center justify-between">
+                        <p className="text-sm text-muted-foreground">{title}</p>
+                        <Icon className="text-muted-foreground" size={18} />
+                    </div>
+                    <p className="text-3xl font-bold mt-2 text-foreground">{value}</p>
+                    {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+                </>
+            )}
+        </div>
+    );
+
+    return (
+        <div className="space-y-8">
+            <section>
+                <h3 className="text-xl font-bold mb-4">Rider Snapshot</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                    <StatCard title="Total Riders" value={riderAnalytics.totalRiders || 0} icon={Users} />
+                    <StatCard title="Active Riders" value={riderAnalytics.activeRidersInPeriod || 0} icon={TrendingUp} sub="In selected period" />
+                    <StatCard title="Assigned Orders" value={riderAnalytics.totalAssignedOrders || 0} icon={ShoppingBasket} />
+                    <StatCard title="Completed Orders" value={riderAnalytics.totalCompletedOrders || 0} icon={Sparkles} />
+                    <StatCard title="Total Collection" value={formatCurrency(riderAnalytics.totalCollection || 0)} icon={IndianRupee} />
+                </div>
+            </section>
+
+            <section>
+                <h3 className="text-xl font-bold mb-4">All Riders Day Wise</h3>
+                {loading ? (
+                    <div className="bg-card border border-border rounded-xl h-52 animate-pulse"></div>
+                ) : (
+                    <div className="bg-card border border-border rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-muted/40 border-b border-border">
+                                    <tr>
+                                        <th className="px-4 py-3 font-semibold">Date</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Assigned</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Completed</th>
+                                        <th className="px-4 py-3 font-semibold text-right">Collection</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {combinedDayWise.length === 0 ? (
+                                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No rider orders in selected range.</td></tr>
+                                    ) : combinedDayWise.map((row) => (
+                                        <tr key={row.dayKey} className="border-b border-border/60">
+                                            <td className="px-4 py-3 font-medium">{row.date}</td>
+                                            <td className="px-4 py-3 text-center">{row.assignedOrders || 0}</td>
+                                            <td className="px-4 py-3 text-center">{row.completedOrders || 0}</td>
+                                            <td className="px-4 py-3 text-right font-semibold">{formatCurrency(row.collection || 0)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            <section>
+                <h3 className="text-xl font-bold mb-4">All Riders Week Wise</h3>
+                {loading ? (
+                    <div className="bg-card border border-border rounded-xl h-52 animate-pulse"></div>
+                ) : (
+                    <div className="bg-card border border-border rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-muted/40 border-b border-border">
+                                    <tr>
+                                        <th className="px-4 py-3 font-semibold">Week Range</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Assigned</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Completed</th>
+                                        <th className="px-4 py-3 font-semibold text-right">Collection</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {combinedWeekWise.length === 0 ? (
+                                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No rider orders in selected range.</td></tr>
+                                    ) : combinedWeekWise.map((row) => (
+                                        <tr key={row.weekKey} className="border-b border-border/60">
+                                            <td className="px-4 py-3 font-medium">{row.weekStart} to {row.weekEnd}</td>
+                                            <td className="px-4 py-3 text-center">{row.assignedOrders || 0}</td>
+                                            <td className="px-4 py-3 text-center">{row.completedOrders || 0}</td>
+                                            <td className="px-4 py-3 text-right font-semibold">{formatCurrency(row.collection || 0)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            <section>
+                <h3 className="text-xl font-bold mb-4">Rider Wise Breakdown</h3>
+                <div className="space-y-4">
+                    {loading ? (
+                        <div className="bg-card border border-border rounded-xl h-40 animate-pulse"></div>
+                    ) : riders.length === 0 ? (
+                        <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">No rider-wise data found in selected range.</div>
+                    ) : riders.map((rider) => (
+                        <div key={rider.riderId} className="bg-card border border-border rounded-xl p-5">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+                                <div>
+                                    <h4 className="text-lg font-semibold">{rider.riderName || 'Rider'}</h4>
+                                    <p className="text-xs text-muted-foreground">{rider.riderPhone || 'No phone'}</p>
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                    Completion: <span className="text-foreground font-semibold">{rider.completionRate || 0}%</span>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="rounded-lg border border-border p-3">
+                                    <p className="text-xs text-muted-foreground">Assigned Orders</p>
+                                    <p className="text-xl font-bold">{rider.totalAssignedOrders || 0}</p>
+                                </div>
+                                <div className="rounded-lg border border-border p-3">
+                                    <p className="text-xs text-muted-foreground">Completed Orders</p>
+                                    <p className="text-xl font-bold">{rider.totalCompletedOrders || 0}</p>
+                                </div>
+                                <div className="rounded-lg border border-border p-3">
+                                    <p className="text-xs text-muted-foreground">Collection</p>
+                                    <p className="text-xl font-bold">{formatCurrency(rider.totalCollection || 0)}</p>
+                                </div>
+                            </div>
+                            <div className="mt-4">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Recent Orders</p>
+                                <div className="overflow-x-auto rounded-lg border border-border">
+                                    <table className="w-full text-left text-xs">
+                                        <thead className="bg-muted/40 border-b border-border">
+                                            <tr>
+                                                <th className="px-3 py-2 font-semibold">Order ID</th>
+                                                <th className="px-3 py-2 font-semibold">Status</th>
+                                                <th className="px-3 py-2 font-semibold">Date</th>
+                                                <th className="px-3 py-2 font-semibold text-right">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(rider.orders || []).slice(0, 10).map((order) => (
+                                                <tr key={`${rider.riderId}_${order.id}`} className="border-b border-border/60">
+                                                    <td className="px-3 py-2 font-medium">{order.customerOrderId || order.id}</td>
+                                                    <td className="px-3 py-2 uppercase">{order.status || '-'}</td>
+                                                    <td className="px-3 py-2">{formatDate(order.orderDate)}</td>
+                                                    <td className="px-3 py-2 text-right font-semibold">{formatCurrency(order.amount || 0)}</td>
+                                                </tr>
+                                            ))}
+                                            {(rider.orders || []).length === 0 && (
+                                                <tr>
+                                                    <td colSpan={4} className="px-3 py-5 text-center text-muted-foreground">No orders for this rider in selected range.</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </section>
+        </div>
+    );
+};
+
 
 // --- Main Page Component ---
 function AnalyticsPageContent() {
@@ -713,6 +890,7 @@ function AnalyticsPageContent() {
         sales: { label: "Sales Overview" },
         menu: { label: "Menu Analytics" },
         customers: { label: "Customer Insights" },
+        riders: { label: "Rider Analytics" },
     };
 
     const renderActiveTab = () => {
@@ -723,6 +901,8 @@ function AnalyticsPageContent() {
                 return <MenuAnalytics data={analyticsData} loading={loading} />;
             case 'customers':
                 return <CustomerRelationshipHub data={analyticsData} loading={loading} />;
+            case 'riders':
+                return <RiderAnalyticsHub data={analyticsData} loading={loading} />;
             default:
                 return null;
         }

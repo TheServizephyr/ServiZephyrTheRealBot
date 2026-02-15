@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +15,15 @@ export async function POST(req) {
         }
 
         // 🔐 AUTH & OWNERSHIP CHECK
-        const uid = await verifyAndGetUid(req);
-        // Requirement: uid must match restaurantId (Owner) or be an employee (higher complexity)
-        // Audit simpler instruction: enforce ownership.
-        if (uid !== restaurantId) {
-            // Validate if user profile has this restaurantId (if customer) or is owner of this ID
-            console.warn(`[Mark Paid] Unauthorized attempt: User ${uid} for Restaurant ${restaurantId}`);
+        const ownerContext = await verifyOwnerWithAudit(
+            req,
+            'mark_dine_in_paid',
+            { tabId, restaurantId },
+            false,
+            [PERMISSIONS.PROCESS_PAYMENT, PERMISSIONS.MANAGE_DINE_IN]
+        );
+        if (!ownerContext || ownerContext.businessId !== restaurantId) {
+            console.warn(`[Mark Paid] Unauthorized attempt for Restaurant ${restaurantId}`);
             return NextResponse.json({ message: 'Unauthorized. Ownership verification failed.' }, { status: 403 });
         }
 
@@ -61,6 +66,9 @@ export async function POST(req) {
 
     } catch (error) {
         console.error('[Mark Paid] Error:', error);
-        return NextResponse.json({ message: 'Internal Server Error: ' + error.message }, { status: 500 });
+        return NextResponse.json(
+            { message: error?.message || 'Internal Server Error' },
+            { status: error?.status || 500 }
+        );
     }
 }

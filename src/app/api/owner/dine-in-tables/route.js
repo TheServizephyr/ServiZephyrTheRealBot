@@ -598,21 +598,80 @@ export async function PATCH(req) {
         }
 
         if (action === 'mark_cleaned') {
-            await firestore.runTransaction(async (transaction) => {
-                const tableDoc = await transaction.get(tableRef);
-                if (!tableDoc.exists) throw new Error("Table not found.");
+            const tableDoc = await tableRef.get();
+            if (!tableDoc.exists) {
+                return NextResponse.json({ message: 'Table not found.' }, { status: 404 });
+            }
 
-                const activeTabsQuery = businessRef.collection('dineInTabs').where('tableId', '==', tableId).where('status', '==', 'active');
-                const activeTabsSnap = await transaction.get(activeTabsQuery);
+            // 1) Close all non-closed tabs for this table so QR flow does not see stale occupancy.
+            const tabsSnap = await businessRef.collection('dineInTabs')
+                .where('tableId', '==', tableId)
+                .get();
 
-                const newPax = activeTabsSnap.docs.reduce((sum, doc) => sum + (doc.data().pax_count || 0), 0);
+            // 2) Mark delivered dine-in orders as cleaned so customer table-status API
+            // no longer treats old delivered orders as "awaiting cleanup".
+            const deliveredOrdersSnap = await firestore.collection('orders')
+                .where('restaurantId', '==', businessRef.id)
+                .where('deliveryType', '==', 'dine-in')
+                .where('tableId', '==', tableId)
+                .where('status', '==', 'delivered')
+                .get();
 
-                transaction.update(tableRef, {
-                    state: newPax > 0 ? 'occupied' : 'available',
-                    current_pax: newPax
+            let tabsClosed = 0;
+            let ordersMarkedClean = 0;
+            let opCount = 0;
+            let batch = firestore.batch();
+
+            const commitBatchIfNeeded = async (force = false) => {
+                if (opCount === 0) return;
+                if (force || opCount >= 450) {
+                    await batch.commit();
+                    batch = firestore.batch();
+                    opCount = 0;
+                }
+            };
+
+            tabsSnap.forEach((tabDoc) => {
+                const tabData = tabDoc.data() || {};
+                if (tabData.status === 'closed' || tabData.status === 'completed') {
+                    return;
+                }
+                batch.update(tabDoc.ref, {
+                    status: 'closed',
+                    closedAt: FieldValue.serverTimestamp(),
+                    cleanedAt: FieldValue.serverTimestamp()
                 });
+                tabsClosed++;
+                opCount++;
             });
-            return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
+
+            for (const orderDoc of deliveredOrdersSnap.docs) {
+                const orderData = orderDoc.data() || {};
+                if (orderData.cleaned === true) continue;
+                batch.update(orderDoc.ref, {
+                    cleaned: true,
+                    cleanedAt: FieldValue.serverTimestamp()
+                });
+                ordersMarkedClean++;
+                opCount++;
+                await commitBatchIfNeeded();
+            }
+
+            // 3) Final table reset.
+            batch.update(tableRef, {
+                state: 'available',
+                current_pax: 0,
+                cleanedAt: FieldValue.serverTimestamp(),
+                lastClosedAt: FieldValue.serverTimestamp()
+            });
+            opCount++;
+            await commitBatchIfNeeded(true);
+
+            return NextResponse.json({
+                message: `Table ${tableId} cleaned successfully.`,
+                tabsClosed,
+                ordersMarkedClean
+            }, { status: 200 });
         }
 
         return NextResponse.json({ message: 'No valid action or edit data provided.' }, { status: 400 });

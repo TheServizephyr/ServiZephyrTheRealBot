@@ -327,6 +327,13 @@ const CartPageInternal = () => {
                 localStorage.setItem('current_order_key', idempotencyKey);
             }
 
+            const resolvedTableId = String(tableId || cartData?.tableId || '').trim();
+            const resolvedTabId = String(tabId || cartData?.dineInTabId || cartData?.tabId || '').trim();
+
+            if (!resolvedTabId) {
+                throw new Error('Dine-in session missing. Please reopen your table QR and try again.');
+            }
+
             const orderData = {
                 idempotencyKey,
                 restaurantId,
@@ -337,11 +344,11 @@ const CartPageInternal = () => {
                 sgst: sgst,
                 grandTotal: grandTotal,
                 deliveryType: 'dine-in',
-                tableId: tableId,
+                tableId: resolvedTableId || null,
                 businessType: cartData?.businessType || 'restaurant',
                 pax_count: cartData?.pax_count || 1,
                 tab_name: cartData?.tab_name || cartData?.name || 'Guest',
-                dineInTabId: cartData?.dineInTabId || tabId,
+                dineInTabId: resolvedTabId,
                 paymentMethod: 'post-paid',
                 paymentStatus: 'pending',
                 customerName: cartData?.tab_name || cartData?.name || 'Guest',
@@ -371,13 +378,33 @@ const CartPageInternal = () => {
                 trackingToken: data.token,
                 restaurantId: restaurantId,
                 deliveryType: 'dine-in',
+                tableId: resolvedTableId || null,
+                dineInTabId: data.dine_in_tab_id || resolvedTabId,
                 timestamp: Date.now()
             };
-            localStorage.setItem(`liveOrder_${restaurantId}`, JSON.stringify(liveOrderData));
+
+            const liveOrderKey = `liveOrder_${restaurantId}`;
+            let existingOrders = [];
+            try {
+                const raw = localStorage.getItem(liveOrderKey);
+                const parsed = raw ? JSON.parse(raw) : [];
+                existingOrders = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+            } catch {
+                existingOrders = [];
+            }
+            const mergedOrders = [
+                ...existingOrders.filter((order) => order?.orderId !== liveOrderData.orderId),
+                liveOrderData
+            ];
+            localStorage.setItem(liveOrderKey, JSON.stringify(mergedOrders));
             localStorage.removeItem(`cart_${restaurantId}`);
 
             // Redirect to tracking
-            router.push(`/track/dine-in/${data.order_id}?token=${data.token}`);
+            const trackingParams = new URLSearchParams();
+            if (data.token) trackingParams.set('token', data.token);
+            if (resolvedTableId) trackingParams.set('table', resolvedTableId);
+            trackingParams.set('tabId', data.dine_in_tab_id || resolvedTabId);
+            router.push(`/track/dine-in/${data.order_id}?${trackingParams.toString()}`);
         } catch (err) {
             console.error("[Cart Page] Order error:", err.message);
             setOrderState(ORDER_STATE.ERROR);

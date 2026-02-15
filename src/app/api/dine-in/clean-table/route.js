@@ -201,9 +201,11 @@ async function handleCleanTable(req) {
                         updatedAt: FieldValue.serverTimestamp()
                     };
 
-                    // If table is now empty, mark as Available
+                    // Keep table state in sync with current_pax used by dashboard/customer flows.
                     if (newCurrentPax === 0) {
-                        tableUpdate.status = 'Available';
+                        tableUpdate.state = 'available';
+                    } else {
+                        tableUpdate.state = 'occupied';
                     }
 
                     await tableRef.update(tableUpdate);

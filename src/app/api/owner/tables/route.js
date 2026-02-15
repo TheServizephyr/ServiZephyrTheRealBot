@@ -60,16 +60,48 @@ export async function GET(req) {
 
         const tableData = matchedTable;
 
-        // Fetch active tabs for this table
+        // Fetch active tabs for this table.
+        // NOTE: Tab documents can become stale if orders are cancelled/rejected/cleaned.
+        // We therefore validate occupancy from active orders and only then trust tabs for join UI.
         const tabsSnap = await businessInfo.collection('dineInTabs')
             .where('tableId', '==', actualTableId)
             .where('status', '==', 'active')
             .get();
+        const activeTabsRaw = tabsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        const validActiveTabs = tabsSnap.docs.map(doc => doc.data());
+        const activeOrdersQuery = await firestore.collection('orders')
+            .where('restaurantId', '==', businessInfo.id)
+            .where('deliveryType', '==', 'dine-in')
+            .where('tableId', '==', actualTableId)
+            .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'pay_at_counter'])
+            .get();
 
-        // Calculate current pax from active tabs
-        const current_pax = validActiveTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
+        const activePartyPaxMap = new Map();
+        const activeTabIdsFromOrders = new Set();
+        activeOrdersQuery.docs.forEach((doc) => {
+            const orderData = doc.data() || {};
+            const partyKey = orderData.dineInTabId
+                || orderData.tabId
+                || orderData.dineInToken
+                || `${actualTableId}:${String(orderData.tab_name || orderData.customerName || doc.id).toLowerCase()}`;
+            if (!activePartyPaxMap.has(partyKey)) {
+                activePartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
+            }
+
+            if (orderData.dineInTabId) activeTabIdsFromOrders.add(String(orderData.dineInTabId));
+            if (orderData.tabId) activeTabIdsFromOrders.add(String(orderData.tabId));
+        });
+
+        let validActiveTabs = [];
+        if (!activeOrdersQuery.empty && activeTabIdsFromOrders.size > 0) {
+            validActiveTabs = activeTabsRaw.filter(tab => activeTabIdsFromOrders.has(String(tab.id)));
+        } else if (!activeOrdersQuery.empty) {
+            // Legacy fallback: active orders exist but without tab ids.
+            validActiveTabs = activeTabsRaw;
+        }
+
+        // Source of truth: current pax should follow active dine-in orders, not stale tab docs.
+        const current_pax = Array.from(activePartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
 
         // NEW: Check for uncleaned orders (delivered but not cleaned)
         const uncleanedOrdersQuery = await firestore.collection('orders')
@@ -88,15 +120,23 @@ export async function GET(req) {
         const uncleanedOrdersCount = uncleanedOrders.length;
         const hasUncleanedOrders = uncleanedOrdersCount > 0;
 
-        // NEW: Calculate total pax from uncleaned orders (their seats are dirty!)
-        // DEFAULT to 1 pax per order if pax_count is missing (for old orders)
-        const uncleanedPax = uncleanedOrders.reduce((sum, doc) => {
-            const orderData = doc.data();
-            return sum + (orderData.pax_count || 1);  // Fallback to 1 if missing
-        }, 0);
+        // Calculate pax from uncleaned orders by UNIQUE party.
+        // Multiple delivered orders from the same party should not multiply occupied dirty seats.
+        const uncleanedPartyPaxMap = new Map();
+        uncleanedOrders.forEach((doc) => {
+            const orderData = doc.data() || {};
+            const partyKey = orderData.dineInTabId
+                || orderData.tabId
+                || orderData.dineInToken
+                || `${actualTableId}:${String(orderData.tab_name || orderData.customerName || doc.id).toLowerCase()}`;
+            if (!uncleanedPartyPaxMap.has(partyKey)) {
+                uncleanedPartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
+            }
+        });
+        const uncleanedPax = Array.from(uncleanedPartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
 
         // FIXED: Subtract both current_pax AND uncleaned_pax from capacity
-        const availableSeats = tableData.max_capacity - current_pax - uncleanedPax;
+        const availableSeats = Math.max(0, tableData.max_capacity - current_pax - uncleanedPax);
 
         console.log(`[API tables] Table ${actualTableId}: ${uncleanedOrdersCount} uncleaned orders (${uncleanedPax} pax), current: ${current_pax}, available: ${availableSeats}/${tableData.max_capacity}`);
 
@@ -164,19 +204,49 @@ export async function POST(req) {
 
                 const tableData = tableDoc.data();
 
-                // CRITICAL: Calculate live capacity from active tabs, not stale table field!
-                // Query actual active tabs to get accurate current_pax
-                const activeTabsQuery = await businessRef.collection('dineInTabs')
+                // Calculate live occupancy from active dine-in orders and uncleaned delivered orders.
+                const activeOrdersQuery = firestore.collection('orders')
+                    .where('restaurantId', '==', businessRef.id)
+                    .where('deliveryType', '==', 'dine-in')
                     .where('tableId', '==', actualTableId)
-                    .where('status', '==', 'active')
-                    .get();
+                    .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'pay_at_counter']);
+                const activeOrdersSnap = await transaction.get(activeOrdersQuery);
 
-                // Sum pax from all active tabs
-                const current_pax = activeTabsQuery.docs.reduce((sum, doc) => {
-                    return sum + (doc.data().pax_count || 0);
-                }, 0);
+                const activePartyPaxMap = new Map();
+                activeOrdersSnap.docs.forEach((doc) => {
+                    const orderData = doc.data() || {};
+                    const partyKey = orderData.dineInTabId
+                        || orderData.tabId
+                        || orderData.dineInToken
+                        || `${actualTableId}:${String(orderData.tab_name || orderData.customerName || doc.id).toLowerCase()}`;
+                    if (!activePartyPaxMap.has(partyKey)) {
+                        activePartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
+                    }
+                });
+                const currentActivePax = Array.from(activePartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
 
-                const availableCapacity = tableData.max_capacity - current_pax;
+                const uncleanedOrdersQuery = firestore.collection('orders')
+                    .where('restaurantId', '==', businessRef.id)
+                    .where('deliveryType', '==', 'dine-in')
+                    .where('tableId', '==', actualTableId)
+                    .where('status', '==', 'delivered');
+                const uncleanedOrdersSnap = await transaction.get(uncleanedOrdersQuery);
+
+                const uncleanedPartyPaxMap = new Map();
+                uncleanedOrdersSnap.docs.forEach((doc) => {
+                    const orderData = doc.data() || {};
+                    if (orderData.cleaned === true) return;
+                    const partyKey = orderData.dineInTabId
+                        || orderData.tabId
+                        || orderData.dineInToken
+                        || `${actualTableId}:${String(orderData.tab_name || orderData.customerName || doc.id).toLowerCase()}`;
+                    if (!uncleanedPartyPaxMap.has(partyKey)) {
+                        uncleanedPartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
+                    }
+                });
+                const uncleanedPax = Array.from(uncleanedPartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
+
+                const availableCapacity = Math.max(0, tableData.max_capacity - currentActivePax - uncleanedPax);
 
                 if (pax_count > availableCapacity) {
                     throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
@@ -197,7 +267,7 @@ export async function POST(req) {
                 transaction.set(newTabRef, newTabData);
 
                 transaction.update(tableRef, {
-                    current_pax: FieldValue.increment(Number(pax_count)),
+                    current_pax: currentActivePax + Number(pax_count),
                     state: 'occupied'
                 });
             });

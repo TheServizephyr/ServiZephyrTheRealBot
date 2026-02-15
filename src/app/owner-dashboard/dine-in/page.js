@@ -694,8 +694,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     );
                                                                 })()}
 
-                                                                {/* Cancel button for pending/confirmed */}
-                                                                {orderBatch.canCancel && (
+                                                                {/* Cancel button only for truly pre-confirmation states */}
+                                                                {orderBatch.canCancel && ['pending', 'placed', 'accepted'].includes(String(orderBatch.status || '').toLowerCase()) && (
                                                                     <Button
                                                                         size="sm"
                                                                         variant="ghost"

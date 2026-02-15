@@ -246,6 +246,7 @@ export async function GET(request, { params }) {
         let aggregatedSubtotal = orderData.subtotal || 0;
         let aggregatedCgst = orderData.cgst || 0;
         let aggregatedSgst = orderData.sgst || 0;
+        let aggregatedDeliveryCharge = Number(orderData.deliveryCharge || 0);
         let aggregatedTotal = orderData.totalAmount || 0;
         let aggregatedPaymentStatus = orderData.paymentStatus || 'pending'; // Start with current order's status
 
@@ -311,6 +312,7 @@ export async function GET(request, { params }) {
                     aggregatedSubtotal = 0;
                     aggregatedCgst = 0;
                     aggregatedSgst = 0;
+                    aggregatedDeliveryCharge = 0;
                     aggregatedTotal = 0;
                     // Reset payment status to pending before checking all docs (unless we want to prioritize 'paid')
                     // Logic: If ANY order is paid, the bill is PAID.
@@ -358,6 +360,7 @@ export async function GET(request, { params }) {
                             aggregatedSubtotal += tabOrder.subtotal || 0;
                             aggregatedCgst += tabOrder.cgst || 0;
                             aggregatedSgst += tabOrder.sgst || 0;
+                            aggregatedDeliveryCharge += Number(tabOrder.deliveryCharge || 0);
                             aggregatedTotal += tabOrder.totalAmount || 0;
                         }
                     }
@@ -441,6 +444,7 @@ export async function GET(request, { params }) {
                 subtotal: aggregatedSubtotal, // Aggregated subtotal
                 cgst: aggregatedCgst, // Aggregated cgst
                 sgst: aggregatedSgst, // Aggregated sgst
+                deliveryCharge: aggregatedDeliveryCharge,
                 totalAmount: aggregatedTotal, // Aggregated total
                 paymentStatus: aggregatedPaymentStatus, // <--- ADDED THIS FIELD
                 paymentDetails: orderData.paymentDetails,

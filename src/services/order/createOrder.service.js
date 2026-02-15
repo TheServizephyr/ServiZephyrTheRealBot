@@ -114,6 +114,17 @@ const normalizeCouponType = (couponType) => {
     return normalized;
 };
 
+const ACTIVE_DINE_IN_TOKEN_STATUSES = [
+    'pending',
+    'accepted',
+    'confirmed',
+    'preparing',
+    'ready',
+    'ready_for_pickup',
+    'pay_at_counter',
+    'delivered'
+];
+
 /**
  * CREATE ORDER V2 with HYBRID FALLBACK
  * 
@@ -434,6 +445,7 @@ export async function createOrderV2(req, options = {}) {
 
         // Re-validate delivery range/charge on server to prevent client tampering.
         let validatedDeliveryCharge = 0;
+        const requestedDeliveryCharge = Math.max(0, Number(deliveryCharge) || 0);
         if (deliveryType === 'delivery') {
             const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
             const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
@@ -459,7 +471,8 @@ export async function createOrderV2(req, options = {}) {
             // Manual call-order flow: allow creating order first and collect address later.
             if (skipAddressValidation && (customerLat === null || customerLng === null || !address?.full)) {
                 console.log('[createOrderV2] ⚠️ skipAddressValidation enabled - creating delivery order without customer coordinates.');
-                validatedDeliveryCharge = 0;
+                // Keep owner-entered delivery charge for manual/custom-bill orders.
+                validatedDeliveryCharge = requestedDeliveryCharge;
             } else {
 
                 const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
@@ -518,6 +531,10 @@ export async function createOrderV2(req, options = {}) {
         const serverGrandTotal = netSubtotal + serverCgst + serverSgst +
             validatedDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0) +
             (platformFee || 0) + (convenienceFee || 0) + (serviceFee || 0);
+        const ownerManualDeliveryChargeProvided =
+            deliveryType === 'delivery' &&
+            skipAddressValidation === true &&
+            requestedDeliveryCharge > 0;
 
         console.log(`[createOrderV2] Server billing verification: Subtotal=${pricing.serverSubtotal}, Discount=${couponDiscountAmount}, CGST=${serverCgst}, SGST=${serverSgst}, GrandTotal=${serverGrandTotal}`);
 
@@ -765,14 +782,26 @@ export async function createOrderV2(req, options = {}) {
 
             if (dineInTabId) {
                 try {
-                    // Check for existing orders with this tabId to reuse token
-                    const existingOrdersSnapshot = await firestore
-                        .collection('orders')
-                        .where('restaurantId', '==', restaurantId) // Can keep search on restaurantId as long as consistent
-                        .where('dineInTabId', '==', dineInTabId)
-                        .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
-                        .limit(1)
-                        .get();
+                    // Check for existing orders with this tabId to reuse token.
+                    // Use canonical business ID first, then fallback to request ID for legacy data consistency.
+                    const candidateRestaurantIds = [...new Set([business?.id, restaurantId].filter(Boolean))];
+                    let existingOrdersSnapshot = { empty: true, docs: [] };
+
+                    for (const candidateRestaurantId of candidateRestaurantIds) {
+                        const snapshot = await firestore
+                            .collection('orders')
+                            .where('restaurantId', '==', candidateRestaurantId)
+                            .where('dineInTabId', '==', dineInTabId)
+                            .where('status', 'in', ACTIVE_DINE_IN_TOKEN_STATUSES)
+                            .limit(1)
+                            .get();
+
+                        if (!snapshot.empty) {
+                            existingOrdersSnapshot = snapshot;
+                            console.log(`[createOrderV2] Found existing dine-in order for token reuse via restaurantId=${candidateRestaurantId}`);
+                            break;
+                        }
+                    }
 
                     if (!existingOrdersSnapshot.empty) {
                         // REUSE token from existing order
@@ -858,6 +887,10 @@ export async function createOrderV2(req, options = {}) {
             status: effectiveInitialStatus,
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
+            ownerDeliveryChargeProvided: ownerManualDeliveryChargeProvided,
+            deliveryChargeLocked: ownerManualDeliveryChargeProvided,
+            manualDeliveryChargeLocked: ownerManualDeliveryChargeProvided,
+            manualDeliveryCharge: ownerManualDeliveryChargeProvided ? validatedDeliveryCharge : 0,
             // ✅ Dine-in specific fields
             ...(deliveryType === 'dine-in' && {
                 tableId: actualTableId, // Use normalized table ID

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -57,6 +57,25 @@ const hasValidCustomerLocation = (order = {}) => {
 const isAddressPendingForDelivery = (order = {}) =>
     order?.deliveryType === 'delivery' &&
     (order?.customerAddressPending === true || !hasValidCustomerLocation(order));
+
+const toAmount = (value, fallback = 0) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+};
+
+const getOrderGrandTotal = (order = {}) => {
+    const directTotal = toAmount(order?.totalAmount, NaN);
+    if (Number.isFinite(directTotal) && directTotal > 0) return directTotal;
+
+    const billDetails = order?.billDetails || {};
+    const subtotal = toAmount(order?.subtotal, toAmount(billDetails?.subtotal, 0));
+    const cgst = toAmount(order?.cgst, toAmount(billDetails?.cgst, 0));
+    const sgst = toAmount(order?.sgst, toAmount(billDetails?.sgst, 0));
+    const deliveryCharge = toAmount(order?.deliveryCharge, toAmount(billDetails?.deliveryCharge, 0));
+    const discount = toAmount(order?.discount, toAmount(billDetails?.discount, 0));
+    const fallbackTotal = subtotal + cgst + sgst + deliveryCharge - discount;
+    return Math.max(0, fallbackTotal);
+};
 
 
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantClosed, onMarkItemsOutOfStock }) => {
@@ -387,7 +406,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, initialSelectedOrders, ri
                                     <Label htmlFor={`order-${order.id}`} className="cursor-pointer w-full flex flex-col">
                                         <div className="flex justify-between items-center w-full">
                                             <span className="font-bold">#{order.customerOrderId || order.id.substring(0, 5)}</span>
-                                            <span className="text-xs font-mono bg-muted px-1 rounded">₹{Math.round(order.totalAmount)}</span>
+                                            <span className="text-xs font-mono bg-muted px-1 rounded">₹{Math.round(getOrderGrandTotal(order))}</span>
                                         </div>
                                         <div className="flex justify-between text-xs text-muted-foreground mt-1">
                                             <span>{order.customer}</span>
@@ -792,8 +811,8 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
                                 <p><strong>Subtotal:</strong> ₹{order.subtotal?.toFixed(2)}</p>
                                 {order.discount > 0 && <p className="text-green-500"><strong>Discount:</strong> - ₹{order.discount?.toFixed(2)}</p>}
                                 <p><strong>GST:</strong> ₹{(order.cgst + order.sgst).toFixed(2)}</p>
-                                <p><strong>Delivery Charge:</strong> ₹{order.deliveryCharge?.toFixed(2)}</p>
-                                <p className="font-bold text-lg border-t border-dashed mt-2 pt-2"><strong>Grand Total:</strong> ₹{order.totalAmount?.toFixed(2)}</p>
+                                <p><strong>Delivery Charge:</strong> ₹{toAmount(order.deliveryCharge, toAmount(order.billDetails?.deliveryCharge, 0)).toFixed(2)}</p>
+                                <p className="font-bold text-lg border-t border-dashed mt-2 pt-2"><strong>Grand Total:</strong> ₹{getOrderGrandTotal(order).toFixed(2)}</p>
                             </div>
                         ) : (
                             <div className="p-4 bg-muted rounded-lg text-sm text-muted-foreground">
@@ -1045,7 +1064,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                                 )}>
                                     {isPaid ? "Paid" : (isPaymentRequested ? "Awaiting Payment" : (isCOD ? "Collect Cash" : "Total Amount"))}
                                 </span>
-                                <span className="text-2xl font-black tracking-tight">₹{Math.round(order.totalAmount || 0)}</span>
+                                <span className="text-2xl font-black tracking-tight">₹{Math.round(getOrderGrandTotal(order))}</span>
                             </>
                         )}
                     </div>
@@ -1233,7 +1252,7 @@ export default function LiveOrdersPage() {
     }, [staticCacheKey]);
 
 
-    const fetchInitialData = async (isManualRefresh = false) => {
+    const fetchInitialData = useCallback(async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
 
         try {
@@ -1244,6 +1263,7 @@ export default function LiveOrdersPage() {
             let ordersUrl = new URL('/api/owner/orders', window.location.origin);
             let ridersUrl = new URL('/api/owner/delivery', window.location.origin);
             let settingsUrl = new URL('/api/owner/settings', window.location.origin);
+            ridersUrl.searchParams.set('context', 'live_orders');
 
             if (impersonatedOwnerId) {
                 ordersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
@@ -1302,7 +1322,7 @@ export default function LiveOrdersPage() {
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    };
+    }, [employeeOfOwnerId, impersonatedOwnerId, staticCacheKey]);
 
 
     // Use adaptive polling for impersonation/employee access
@@ -1320,6 +1340,13 @@ export default function LiveOrdersPage() {
             return;
         }
 
+        // Impersonation/employee views use API polling only.
+        // Avoid attaching owner's realtime Firestore listener to prevent duplicate reads.
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+            fetchInitialData(false);
+            return;
+        }
+
         // ✅ For owner's own dashboard - use REAL-TIME Firestore listener
         setLoading(true);
 
@@ -1330,8 +1357,10 @@ export default function LiveOrdersPage() {
         const fetchStaticData = async () => {
             try {
                 const idToken = await user.getIdToken();
+                const ridersUrl = new URL('/api/owner/delivery', window.location.origin);
+                ridersUrl.searchParams.set('context', 'live_orders');
                 const [ridersRes, settingsRes] = await Promise.all([
-                    fetch('/api/owner/delivery', { headers: { 'Authorization': `Bearer ${idToken}` } }),
+                    fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
                     fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } })
                 ]);
 
@@ -1470,7 +1499,7 @@ export default function LiveOrdersPage() {
             console.log('[LiveOrders] Cleaning up real-time listener');
             cleanupFn();
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchInitialData]);
 
     // Role-based new order notifications:
     // - Chef only here (owner/manager global notifications are emitted from Sidebar so they work on any page)

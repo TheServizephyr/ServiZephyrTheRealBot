@@ -171,6 +171,31 @@ async function validateAndCalculateItemPrice(item, categoriesMap) {
         basePrice = portion.price || 0;
         console.log(`[OrderPricing] Portion "${portion.name}": ₹${basePrice}`);
 
+    } else if (!item.portion && menuItem.portions && menuItem.portions.length > 0) {
+        // Portion not explicitly provided.
+        // 1) Single-portion menu item: auto-select that one.
+        if (menuItem.portions.length === 1) {
+            const singlePortion = menuItem.portions[0];
+            basePrice = singlePortion?.price || 0;
+            console.log(`[OrderPricing] Auto-selected single portion "${singlePortion?.name}": ₹${basePrice}`);
+        } else {
+            // 2) Multi-portion item: try safe fallback by exact client price match.
+            const clientUnitPrice = Number(item?.price);
+            const matchedByPrice = Number.isFinite(clientUnitPrice)
+                ? menuItem.portions.find((p) => Number(p?.price) === clientUnitPrice)
+                : null;
+
+            if (matchedByPrice) {
+                basePrice = matchedByPrice.price || 0;
+                console.log(`[OrderPricing] Auto-matched portion by price "${matchedByPrice?.name}": ₹${basePrice}`);
+            } else if (Number(menuItem.price) > 0) {
+                // 3) If menu has explicit base price, use it.
+                basePrice = menuItem.price || 0;
+                console.log(`[OrderPricing] Fallback base price (multi-portion item): ₹${basePrice}`);
+            } else {
+                throw new PricingError(`Please select a portion for "${menuItem.name}"`);
+            }
+        }
     } else {
         // Use base item price
         basePrice = menuItem.price || 0;

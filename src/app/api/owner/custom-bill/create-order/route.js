@@ -42,15 +42,14 @@ function normalizeItem(item, index) {
         price: unitPrice,
         totalPrice,
         cartItemId: item?.cartItemId || `${item?.id || 'item'}-${index}`,
-        portion: item?.portion?.name
+        ...(item?.portion?.name
             ? {
-                name: item.portion.name,
-                price: toPositiveNumber(item.portion.price, unitPrice),
+                portion: {
+                    name: item.portion.name,
+                    price: toPositiveNumber(item.portion.price, unitPrice),
+                },
             }
-            : {
-                name: 'Standard',
-                price: unitPrice,
-            },
+            : {}),
         selectedAddOns: Array.isArray(item?.selectedAddOns)
             ? item.selectedAddOns.map((addOn) => ({
                 name: addOn?.name || 'Addon',
@@ -61,7 +60,7 @@ function normalizeItem(item, index) {
     };
 }
 
-function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal }) {
+function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal, deliveryCharge = 0 }) {
     const minuteBucket = Math.floor(Date.now() / 60000);
     const normalizedItems = (items || [])
         .map((item) => {
@@ -73,7 +72,7 @@ function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal }) 
         .sort()
         .join('|');
 
-    const signature = `${businessId}|${phone}|${normalizedItems}|${Number(subtotal || 0).toFixed(2)}|${minuteBucket}`;
+    const signature = `${businessId}|${phone}|${normalizedItems}|${Number(subtotal || 0).toFixed(2)}|${Number(deliveryCharge || 0).toFixed(2)}|${minuteBucket}`;
     const digest = createHash('sha256').update(signature).digest('hex').slice(0, 24);
     return `manual_call_${digest}`;
 }
@@ -235,6 +234,9 @@ export async function POST(req) {
 
         const items = rawItems.map(normalizeItem);
         const subtotal = items.reduce((sum, item) => sum + toPositiveNumber(item.totalPrice, 0), 0);
+        const deliveryCharge = toPositiveNumber(body?.deliveryCharge, 0);
+        const hasOwnerDeliveryChargeOverride = deliveryCharge > 0;
+        const grandTotal = subtotal + deliveryCharge;
 
         const hasProvidedAddress = !!addressText;
         // Owner-entered address is treated as bill-only placeholder.
@@ -258,15 +260,16 @@ export async function POST(req) {
             subtotal,
             cgst: 0,
             sgst: 0,
-            grandTotal: subtotal,
-            deliveryCharge: 0,
+            grandTotal,
+            deliveryCharge,
             skipAddressValidation: true,
             initialStatus: 'confirmed',
             idempotencyKey: buildManualOrderIdempotencyKey({
                 businessId,
                 phone,
                 items,
-                subtotal
+                subtotal,
+                deliveryCharge
             }),
             guestRef,
         };
@@ -295,6 +298,10 @@ export async function POST(req) {
             await firestore.collection('orders').doc(orderId).set({
                 orderSource: 'manual_call',
                 isManualCallOrder: true,
+                ownerDeliveryChargeProvided: hasOwnerDeliveryChargeOverride,
+                deliveryChargeLocked: hasOwnerDeliveryChargeOverride,
+                manualDeliveryChargeLocked: hasOwnerDeliveryChargeOverride,
+                manualDeliveryCharge: hasOwnerDeliveryChargeOverride ? deliveryCharge : 0,
                 addressCaptureRequired: true,
                 addAddressLinkRequired: true,
                 addAddressRequestedAt: new Date(),
@@ -344,6 +351,30 @@ export async function POST(req) {
         } else if (botPhoneNumberId) {
             const customerFacingLink = addAddressShortLink || addAddressLink;
             const fallbackMessage = `Your order has been created successfully.\n\nTo enable live tracking, please add your current delivery location:\n${customerFacingLink}`;
+            const ctaBodyMessage = 'Your order has been created successfully.\n\nPlease add your current delivery location to enable live tracking.';
+            const interactiveCtaPayload = {
+                type: 'interactive',
+                interactive: {
+                    type: 'cta_url',
+                    header: {
+                        type: 'text',
+                        text: 'Address Required',
+                    },
+                    body: {
+                        text: ctaBodyMessage,
+                    },
+                    footer: {
+                        text: 'Powered by ServiZephyr',
+                    },
+                    action: {
+                        name: 'cta_url',
+                        parameters: {
+                            display_text: 'Add Address',
+                            url: customerFacingLink,
+                        },
+                    },
+                },
+            };
 
             // Preferred path: approved WhatsApp template with CTA URL button.
             if (ADD_ADDRESS_TEMPLATE_NAME && addAddressShortCode) {
@@ -380,6 +411,36 @@ export async function POST(req) {
                 } catch (templateErr) {
                     console.warn('[Custom Bill Create Order] Template send failed. Falling back to text message:', templateErr?.message || templateErr);
                     whatsappMode = 'text_fallback';
+                }
+            }
+
+            // Fallback path 1: interactive CTA button message (same single message with button).
+            if (!whatsappSent) {
+                try {
+                    const waResponse = await sendSystemTemplateMessage(
+                        `91${phone}`,
+                        interactiveCtaPayload,
+                        `${ctaBodyMessage}\n\n${customerFacingLink}`,
+                        botPhoneNumberId,
+                        businessId,
+                        businessData.name || 'ServiZephyr',
+                        collectionName,
+                        {
+                            customerName,
+                            conversationPreview: 'Order created. Please add your delivery location.',
+                        }
+                    );
+                    if (waResponse?.messages?.[0]?.id) {
+                        whatsappSent = true;
+                        whatsappMode = 'interactive_cta';
+                    } else {
+                        throw new Error('WhatsApp API did not return a message id for interactive CTA.');
+                    }
+                } catch (interactiveErr) {
+                    console.warn('[Custom Bill Create Order] Interactive CTA send failed. Falling back to text message:', interactiveErr?.message || interactiveErr);
+                    if (!whatsappMode || whatsappMode === 'none') {
+                        whatsappMode = 'text_fallback';
+                    }
                 }
             }
 

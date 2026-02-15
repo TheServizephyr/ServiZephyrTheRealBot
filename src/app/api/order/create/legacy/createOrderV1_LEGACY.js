@@ -40,6 +40,18 @@ const toFiniteNumber = (value) => {
     return Number.isFinite(n) ? n : null;
 };
 
+// Statuses that still belong to the same live dine-in tab token/session.
+const ACTIVE_DINE_IN_TOKEN_STATUSES = [
+    'pending',
+    'accepted',
+    'confirmed',
+    'preparing',
+    'ready',
+    'ready_for_pickup',
+    'pay_at_counter',
+    'delivered'
+];
+
 
 /**
  * LEGACY ORDER CREATE V1
@@ -846,7 +858,7 @@ export async function processOrderV1(body, firestore) {
                         .collection('orders')
                         .where('restaurantId', '==', restaurantId)
                         .where('dineInTabId', '==', dineInTabId)
-                        .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
+                        .where('status', 'in', ACTIVE_DINE_IN_TOKEN_STATUSES)
                         .limit(1)
                         .get();
 
@@ -1433,7 +1445,7 @@ export async function processOrderV1(body, firestore) {
                     .collection('orders')
                     .where('restaurantId', '==', restaurantId)
                     .where('dineInTabId', '==', dineInTabId)
-                    .where('status', 'in', ['pending', 'accepted', 'preparing', 'ready', 'delivered'])
+                    .where('status', 'in', ACTIVE_DINE_IN_TOKEN_STATUSES)
                     .limit(1)
                     .get();
 

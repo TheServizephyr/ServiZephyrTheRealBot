@@ -442,6 +442,12 @@ export default function CustomBillHistoryPage() {
                                     <span className="text-muted-foreground">SGST</span>
                                     <span>{formatCurrency(selectedBill.sgst || 0)}</span>
                                 </div>
+                                {Number(selectedBill.deliveryCharge || 0) > 0 && (
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Delivery Charge</span>
+                                        <span>{formatCurrency(selectedBill.deliveryCharge || 0)}</span>
+                                    </div>
+                                )}
                                 <div className="flex justify-between font-bold text-base border-t pt-2">
                                     <span>Total</span>
                                     <span>{formatCurrency(selectedBill.totalAmount || 0)}</span>
@@ -464,7 +470,7 @@ export default function CustomBillHistoryPage() {
                                 sgst: Number(printBillData.sgst || 0),
                                 grandTotal: Number(printBillData.totalAmount || 0),
                                 discount: 0,
-                                deliveryCharge: 0,
+                                deliveryCharge: Number(printBillData.deliveryCharge || 0),
                             }}
                             items={printableItems}
                             customerDetails={{

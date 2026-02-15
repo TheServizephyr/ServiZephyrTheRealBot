@@ -1099,7 +1099,7 @@ function WhatsAppDirectPageContent() {
 
     // Use adaptive polling for conversations
     usePolling(() => fetchConversations(true), {
-        interval: 30000,
+        interval: 60000,
         enabled: !!auth.currentUser && (!realtimeEligible || !isRealtimeActive),
         deps: [fetchConversations, realtimeEligible, isRealtimeActive]
     });
@@ -1126,8 +1126,31 @@ function WhatsAppDirectPageContent() {
         if (!activeConversation) return;
 
         try {
-            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: activeConversation.id });
-            const msgs = data.messages || [];
+            const lastSeenTimestamp = messages.length > 0 ? messages[messages.length - 1]?.timestamp : null;
+            const params = { conversationId: activeConversation.id };
+            if (lastSeenTimestamp) {
+                params.since = lastSeenTimestamp;
+            }
+            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', params);
+            const incoming = (data.messages || []).map((message) => ({
+                ...message,
+                mediaUrl: normalizeLegacyPaymentQrUrl(message?.mediaUrl),
+            }));
+            const hasIncremental = !!lastSeenTimestamp;
+            const msgs = hasIncremental
+                ? (() => {
+                    if (incoming.length === 0) return messages;
+                    const merged = [...messages];
+                    const seen = new Set(messages.map((m) => m.id));
+                    incoming.forEach((msg) => {
+                        if (!seen.has(msg.id)) {
+                            merged.push(msg);
+                            seen.add(msg.id);
+                        }
+                    });
+                    return merged;
+                })()
+                : incoming;
 
             // Keep only count sync (no local sound while chat screen is open).
             const customerMsgs = msgs.filter(m => m.sender === 'customer');
@@ -1151,7 +1174,7 @@ function WhatsAppDirectPageContent() {
             setLoadingMessages(false);
         }
     }, {
-        interval: 3000,
+        interval: 10000,
         enabled: !!activeConversation && !isRealtimeActive,
         deps: [activeConversation?.id, isRealtimeActive]
     });
@@ -1294,9 +1317,7 @@ function WhatsAppDirectPageContent() {
         if (!isRealtimeActive) {
             fetchMessages(conversation.id);
         }
-        if (conversation.customerPhone) {
-            fetchCustomerDetails(conversation.customerPhone);
-        }
+        // Customer details will be fetched by the activeConversation effect.
     };
 
     const handleSendMessage = async (e) => {
@@ -1561,10 +1582,10 @@ function WhatsAppDirectPageContent() {
     };
 
     useEffect(() => {
-        if (activeConversation && showProfileInfo) {
+        if (showProfileInfo && activeConversation?.customerPhone) {
             fetchCustomerDetails(activeConversation.customerPhone);
         }
-    }, [activeConversation, showProfileInfo, fetchCustomerDetails]);
+    }, [showProfileInfo, activeConversation?.customerPhone, fetchCustomerDetails]);
 
 
     // --- Profile Sidebar Component ---

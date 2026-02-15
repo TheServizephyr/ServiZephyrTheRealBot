@@ -40,6 +40,7 @@ function CustomBillPage() {
         phone: '',
         address: ''
     });
+    const [deliveryChargeInput, setDeliveryChargeInput] = useState('0');
 
     // State to control modal visibility
     const [isBillModalOpen, setIsBillModalOpen] = useState(false);
@@ -272,23 +273,36 @@ function CustomBillPage() {
         });
     };
 
-    const { subtotal, cgst, sgst, grandTotal } = useMemo(() => {
+    const { subtotal, cgst, sgst, deliveryCharge, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
+        const normalizedDeliveryCharge = Math.max(0, Number(deliveryChargeInput) || 0);
         const gstEnabled = !!restaurant?.gstEnabled;
         const gstPercentage = Number(restaurant?.gstPercentage || 0);
         const gstMinAmount = Number(restaurant?.gstMinAmount || 0);
 
         const shouldApplyGst = gstEnabled && gstPercentage > 0 && sub >= gstMinAmount;
         if (!shouldApplyGst) {
-            return { subtotal: sub, cgst: 0, sgst: 0, grandTotal: sub };
+            return {
+                subtotal: sub,
+                cgst: 0,
+                sgst: 0,
+                deliveryCharge: normalizedDeliveryCharge,
+                grandTotal: sub + normalizedDeliveryCharge
+            };
         }
 
         const halfRate = gstPercentage / 2;
         const localCgst = Math.round((sub * halfRate) / 100);
         const localSgst = Math.round((sub * halfRate) / 100);
-        const total = sub + localCgst + localSgst;
-        return { subtotal: sub, cgst: localCgst, sgst: localSgst, grandTotal: total };
-    }, [cart, restaurant]);
+        const total = sub + localCgst + localSgst + normalizedDeliveryCharge;
+        return {
+            subtotal: sub,
+            cgst: localCgst,
+            sgst: localSgst,
+            deliveryCharge: normalizedDeliveryCharge,
+            grandTotal: total
+        };
+    }, [cart, restaurant, deliveryChargeInput]);
 
     const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
     const visibleMenuEntries = useMemo(() => {
@@ -351,7 +365,8 @@ function CustomBillPage() {
         const safeSubtotal = Number(billDetails?.subtotal || 0);
         const safeCgst = Number(billDetails?.cgst || 0);
         const safeSgst = Number(billDetails?.sgst || 0);
-        const safeGrandTotal = Number(billDetails?.grandTotal || safeSubtotal + safeCgst + safeSgst);
+        const safeDeliveryCharge = Number(billDetails?.deliveryCharge || 0);
+        const safeGrandTotal = Number(billDetails?.grandTotal || safeSubtotal + safeCgst + safeSgst + safeDeliveryCharge);
 
         // Totals
         encoder.text('--------------------------------').newline()
@@ -360,6 +375,7 @@ function CustomBillPage() {
         encoder.text(`Subtotal: ${safeSubtotal.toFixed(0)}`).newline();
         if (safeCgst > 0) encoder.text(`CGST: ${safeCgst.toFixed(0)}`).newline();
         if (safeSgst > 0) encoder.text(`SGST: ${safeSgst.toFixed(0)}`).newline();
+        if (safeDeliveryCharge > 0) encoder.text(`Delivery: ${safeDeliveryCharge.toFixed(0)}`).newline();
 
         encoder.bold(true).size('large')
             .text(`TOTAL: ${safeGrandTotal.toFixed(0)}`).newline()
@@ -464,6 +480,7 @@ function CustomBillPage() {
                     subtotal,
                     cgst,
                     sgst,
+                    deliveryCharge,
                     grandTotal,
                 },
             }),
@@ -510,6 +527,7 @@ function CustomBillPage() {
                 body: JSON.stringify({
                     customerDetails,
                     items: orderItems,
+                    deliveryCharge,
                     notes: '',
                 }),
             });
@@ -590,7 +608,7 @@ function CustomBillPage() {
             const printResult = await printReceiptToUsb({
                 items: cart,
                 customer: customerDetails,
-                billDetails: { subtotal, cgst, sgst, grandTotal },
+                billDetails: { subtotal, cgst, sgst, deliveryCharge, grandTotal },
                 orderDate: new Date(),
                 closeBillModalOnSuccess: true,
                 notifyUser: false,
@@ -667,7 +685,7 @@ function CustomBillPage() {
                         <BillToPrint
                             order={{ orderDate: new Date() }}
                             restaurant={restaurant}
-                            billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
+                            billDetails={{ subtotal, cgst, sgst, deliveryCharge, grandTotal, discount: 0 }}
                             items={cart}
                             customerDetails={customerDetails}
                         />
@@ -921,6 +939,19 @@ function CustomBillPage() {
                                 <Label className="flex items-center gap-2"><MapPin size={16} /> Customer Address</Label>
                                 <textarea value={customerDetails.address} onChange={e => setCustomerDetails({ ...customerDetails, address: e.target.value })} className="w-full p-2 border rounded-md bg-input border-border min-h-[60px]" />
                             </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="flex items-center gap-2">Delivery Charge (Optional)</Label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={deliveryChargeInput}
+                                    onChange={(e) => setDeliveryChargeInput(e.target.value)}
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                    className="w-full p-2 border rounded-md bg-input border-border"
+                                    placeholder="Enter delivery charge"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -930,7 +961,7 @@ function CustomBillPage() {
                                 <BillToPrint
                                     order={{ orderDate: new Date() }}
                                     restaurant={restaurant}
-                                    billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
+                                    billDetails={{ subtotal, cgst, sgst, deliveryCharge, grandTotal, discount: 0 }}
                                     items={cart}
                                     customerDetails={customerDetails}
                                 />

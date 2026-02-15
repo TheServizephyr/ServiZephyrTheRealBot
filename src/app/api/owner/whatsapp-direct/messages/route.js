@@ -74,16 +74,29 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const conversationId = searchParams.get('conversationId');
         const syncRealtime = ['1', 'true', 'yes'].includes(String(searchParams.get('syncRealtime') || '').toLowerCase());
+        const since = searchParams.get('since');
 
         if (!conversationId) {
             return NextResponse.json({ message: 'Conversation ID is required.' }, { status: 400 });
         }
 
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
+        const messagesCollection = businessDoc.ref.collection('conversations').doc(conversationId).collection('messages');
+        let messagesQuery = messagesCollection.orderBy('timestamp', 'asc');
 
-        const messagesSnap = await businessDoc.ref.collection('conversations').doc(conversationId).collection('messages')
-            .orderBy('timestamp', 'asc')
-            .get();
+        // Poll optimization: when `since` is supplied, return only new messages after that timestamp.
+        // Keep full fetch for initial load and RTDB backfill sync.
+        if (!syncRealtime && since) {
+            const sinceDate = new Date(since);
+            if (!Number.isNaN(sinceDate.getTime())) {
+                messagesQuery = messagesCollection
+                    .where('timestamp', '>', sinceDate)
+                    .orderBy('timestamp', 'asc')
+                    .limit(250);
+            }
+        }
+
+        const messagesSnap = await messagesQuery.get();
 
         const messages = messagesSnap.docs.map(doc => {
             const data = doc.data();
@@ -136,8 +149,6 @@ export async function GET(req) {
                 console.log(`[WhatsApp Direct] RTDB backfill completed for ${conversationId}: ${recentMessages.length} messages`);
             }
         }
-
-        await businessDoc.ref.collection('conversations').doc(conversationId).set({ unreadCount: 0 }, { merge: true });
 
         return NextResponse.json({ messages }, { status: 200 });
 

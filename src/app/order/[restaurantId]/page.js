@@ -880,6 +880,10 @@ const OrderPageInternal = () => {
 
 
     const handleOpenAddressDrawer = async () => {
+        if (tableIdFromUrl || deliveryType !== 'delivery') {
+            console.log('[handleOpenAddressDrawer] Skipped: address drawer is only allowed for delivery orders without table context.');
+            return;
+        }
         console.log('[handleOpenAddressDrawer] 🚀 CALLED');
         setIsAddressSelectorOpen(true);
         setAddressLoading(true);
@@ -997,11 +1001,53 @@ const OrderPageInternal = () => {
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
         const LIVE_ORDER_TTL_MS = 24 * 60 * 60 * 1000;
+        const normalizeValue = (value) => String(value || '').trim().toLowerCase();
+        const getOrderTableId = (order) => order?.tableId || order?.table || null;
+        const getOrderTabId = (order) => order?.dineInTabId || order?.tabId || order?.dine_in_tab_id || null;
+
+        const getCurrentDineInTabId = () => {
+            if (tabIdFromUrl) return normalizeValue(tabIdFromUrl);
+            if (!tableIdFromUrl) return '';
+            try {
+                const raw = localStorage.getItem(`dineInTab_${restaurantId}_${tableIdFromUrl}`);
+                if (!raw) return '';
+                const parsed = JSON.parse(raw);
+                return normalizeValue(parsed?.id || parsed?.tabId || '');
+            } catch {
+                return '';
+            }
+        };
+
+        const isOrderForCurrentPageContext = (order) => {
+            if (!order?.orderId) return false;
+            if (order?.restaurantId && restaurantId && String(order.restaurantId) !== String(restaurantId)) return false;
+
+            const orderType = normalizeValue(order?.deliveryType || 'delivery');
+
+            // Dine-in table page must only bind to dine-in orders of this exact table/tab.
+            if (tableIdFromUrl) {
+                if (orderType !== 'dine-in') return false;
+
+                const currentTable = normalizeValue(tableIdFromUrl);
+                const orderTable = normalizeValue(getOrderTableId(order));
+                if (currentTable && orderTable && currentTable !== orderTable) return false;
+
+                const currentTab = getCurrentDineInTabId();
+                const orderTab = normalizeValue(getOrderTabId(order));
+                if (!currentTab || !orderTab) return false;
+                return currentTab === orderTab;
+            }
+
+            // Non-table page should not show dine-in tracking cards/toasts.
+            if (orderType === 'dine-in') return false;
+            return true;
+        };
 
         const pollStatus = async () => {
             const raw = localStorage.getItem(liveOrderKey);
             if (!raw) {
                 setStoredOrders([]);
+                if (!activeOrderId) setLiveOrder(null);
                 return;
             }
 
@@ -1016,6 +1062,7 @@ const OrderPageInternal = () => {
                 return;
             }
 
+            const beforeTtlCount = allOrders.length;
             allOrders = allOrders.filter((order) => {
                 if (!order?.timestamp) return true;
                 return (Date.now() - Number(order.timestamp)) < LIVE_ORDER_TTL_MS;
@@ -1024,13 +1071,27 @@ const OrderPageInternal = () => {
             if (allOrders.length === 0) {
                 localStorage.removeItem(liveOrderKey);
                 setStoredOrders([]);
+                if (!activeOrderId) setLiveOrder(null);
+                return;
+            }
+
+            if (allOrders.length !== beforeTtlCount) {
+                localStorage.setItem(liveOrderKey, JSON.stringify(allOrders));
+            }
+
+            const scopedOrders = allOrders.filter(isOrderForCurrentPageContext);
+            const outOfScopeOrders = allOrders.filter((order) => !isOrderForCurrentPageContext(order));
+
+            if (scopedOrders.length === 0) {
+                setStoredOrders([]);
+                if (!activeOrderId) setLiveOrder(null);
                 return;
             }
 
             const activeOrders = [];
             let latestActiveOrder = null;
 
-            for (const order of allOrders) {
+            for (const order of scopedOrders) {
                 try {
                     const statusToken = order?.trackingToken || token;
                     const statusUrl = statusToken
@@ -1070,18 +1131,16 @@ const OrderPageInternal = () => {
             }
             setStoredOrders(activeOrders);
 
-            if (activeOrders.length !== allOrders.length) {
-                console.log("[Poll] Cleaning up completed orders. Remaining:", activeOrders.length);
-                if (activeOrders.length === 0) {
-                    localStorage.removeItem(liveOrderKey);
-                    setLiveOrder(null);
-                } else {
-                    localStorage.setItem(liveOrderKey, JSON.stringify(activeOrders));
-                }
+            const mergedOrders = [...outOfScopeOrders, ...activeOrders];
+            if (mergedOrders.length === 0) {
+                localStorage.removeItem(liveOrderKey);
+            } else {
+                localStorage.setItem(liveOrderKey, JSON.stringify(mergedOrders));
             }
 
             if (activeOrders.length > 0) {
-                if (!activeOrderId && latestActiveOrder) {
+                const shouldAutoAttachActiveOrder = !activeOrderId && !tableIdFromUrl;
+                if (shouldAutoAttachActiveOrder && latestActiveOrder) {
                     console.log("[Order Page] Auto-redirecting to latest active order:", latestActiveOrder.orderId);
                     const newParams = new URLSearchParams(searchParams.toString());
                     newParams.set('activeOrderId', latestActiveOrder.orderId);
@@ -1107,7 +1166,11 @@ const OrderPageInternal = () => {
                 console.warn("Error parsing stored orders, resetting:", e);
                 localStoredOrders = [];
             }
-            setStoredOrders(localStoredOrders);
+            const scopedStoredOrders = localStoredOrders.filter(isOrderForCurrentPageContext);
+            setStoredOrders(scopedStoredOrders);
+
+            // Dine-in table pages should never bind to delivery active-order recovery by phone/ref.
+            if (tableIdFromUrl) return;
 
             // Check if we have identifiers (Phone OR Ref)
             const identifierParam = ref ? `ref=${ref}` : (phone ? `phone=${phone}` : null);
@@ -1138,7 +1201,7 @@ const OrderPageInternal = () => {
                             const deliveryOrder = formattedOrders.find(o => o.deliveryType?.toLowerCase() === 'delivery');
                             if (deliveryOrder) {
                                 console.log("%c[Restore] ✅ Found Active DELIVERY Order:", "color: green; font-weight: bold;", deliveryOrder);
-                                const mergedOrders = [...localStoredOrders.filter(so => !formattedOrders.find(fo => fo.orderId === so.orderId)), ...formattedOrders];
+                                const mergedOrders = [...scopedStoredOrders.filter(so => !formattedOrders.find(fo => fo.orderId === so.orderId)), ...formattedOrders];
                                 localStorage.setItem(liveOrderKey, JSON.stringify(mergedOrders));
                                 setStoredOrders(mergedOrders);
                                 setLiveOrder(deliveryOrder);
@@ -1158,7 +1221,7 @@ const OrderPageInternal = () => {
         pollStatus();
         checkActiveOrder();
 
-    }, [restaurantId, searchParams, activeOrderId, router, phone, token, ref]);
+    }, [restaurantId, searchParams, activeOrderId, router, phone, token, ref, tableIdFromUrl, tabIdFromUrl]);
 
 
     // ... (Existing state hooks: location, restaurantData, etc.) ...
@@ -1200,7 +1263,7 @@ const OrderPageInternal = () => {
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [deliveryType, setDeliveryType] = useState('delivery');
+    const [deliveryType, setDeliveryType] = useState(() => (tableIdFromUrl ? 'dine-in' : 'delivery'));
 
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState("");
@@ -1740,9 +1803,17 @@ const OrderPageInternal = () => {
     // ✅ Auto-open address selector for WhatsApp users (EXACTLY ONCE on first load)
     // Placed HERE after deliveryType state is loaded from cart
     useEffect(() => {
+        let autoOpenTimer = null;
+
         // Skip if we've already attempted auto-open in this component lifecycle
         if (hasAttemptedAutoOpen.current) {
             console.log('[Auto-Open] Already attempted - skipping');
+            return;
+        }
+
+        // Never auto-open delivery address drawer on dine-in table links.
+        if (tableIdFromUrl) {
+            console.log('[Auto-Open] Skipping: dine-in table context detected');
             return;
         }
 
@@ -1779,7 +1850,12 @@ const OrderPageInternal = () => {
             hasAttemptedAutoOpen.current = true;
 
             // Delay to let page fully render
-            setTimeout(() => {
+            autoOpenTimer = setTimeout(() => {
+                // Safety re-check at execution time (prevents stale timer opening in dine-in flow)
+                if (tableIdFromUrl || deliveryType !== 'delivery') {
+                    console.log('[Auto-Open] Timer cancelled by state change (not delivery anymore)');
+                    return;
+                }
                 console.log('[Auto-Open] ✅ OPENING address selector!');
                 localStorage.setItem(`addressAutoOpened_${restaurantId}`, 'true');
                 handleOpenAddressDrawer();
@@ -1792,7 +1868,11 @@ const OrderPageInternal = () => {
                             hasAlreadyAutoOpened ? 'Already opened' : 'Unknown'
             });
         }
-    }, [ref, phone, restaurantId, isTokenValid, loading, deliveryType]);
+
+        return () => {
+            if (autoOpenTimer) clearTimeout(autoOpenTimer);
+        };
+    }, [ref, phone, restaurantId, isTokenValid, loading, deliveryType, tableIdFromUrl]);
 
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
@@ -1969,7 +2049,8 @@ const OrderPageInternal = () => {
             setInfoDialog({
                 isOpen: true,
                 title: "Details Required",
-                message: "Please enter your name and party size before ordering. The modal will open automatically."
+                message: "Please enter your name and party size before ordering. The modal will open automatically.",
+                type: 'warning'
             });
             setIsDineInModalOpen(true); // Force modal open
             return;
@@ -2045,7 +2126,9 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        if (deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
+        const effectiveDeliveryType = tableIdFromUrl ? 'dine-in' : deliveryType;
+
+        if (effectiveDeliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
             setInfoDialog({
                 isOpen: true,
                 title: '🚫 Delivery Not Available',
@@ -2066,7 +2149,7 @@ const OrderPageInternal = () => {
         if (tableIdFromUrl) params.set('table', tableIdFromUrl);
 
         // Use tabIdFromUrl (from Add More button) if present, otherwise use activeTabInfo.id
-        if (deliveryType === 'dine-in') {
+        if (effectiveDeliveryType === 'dine-in') {
             const tabId = tabIdFromUrl || activeTabInfo.id;
             if (tabId) {
                 params.set('tabId', tabId);
@@ -2075,7 +2158,27 @@ const OrderPageInternal = () => {
         // ✅ Keep liveOrder for Track button (works for ALL business types)
         // - For street vendors: Shows LATEST order, track page has tabs for all orders
         // - For restaurants: Can be used for add-on orders
-        if (liveOrder && liveOrder.restaurantId === restaurantId) {
+        const normalizedCurrentTable = String(tableIdFromUrl || '').trim().toLowerCase();
+        const normalizedLiveOrderTable = String(liveOrder?.tableId || liveOrder?.table || '').trim().toLowerCase();
+        const normalizedCurrentTab = String(tabIdFromUrl || activeTabInfo.id || '').trim().toLowerCase();
+        const normalizedLiveOrderTab = String(liveOrder?.dineInTabId || liveOrder?.tabId || '').trim().toLowerCase();
+        const liveOrderType = String(liveOrder?.deliveryType || '').trim().toLowerCase();
+        const canAttachActiveOrder =
+            !!liveOrder &&
+            liveOrder.restaurantId === restaurantId &&
+            (
+                !tableIdFromUrl
+                    ? liveOrderType !== 'dine-in'
+                    : (
+                        liveOrderType === 'dine-in' &&
+                        normalizedCurrentTable &&
+                        normalizedLiveOrderTable === normalizedCurrentTable &&
+                        normalizedCurrentTab &&
+                        normalizedLiveOrderTab === normalizedCurrentTab
+                    )
+            );
+
+        if (canAttachActiveOrder) {
             params.set('activeOrderId', liveOrder.orderId);
             // Overwrite/Ensure the token matches the active order if present, or just use it.
             // Using 'set' avoids duplicates.
@@ -2084,7 +2187,7 @@ const OrderPageInternal = () => {
         }
 
         // Route to appropriate page based on delivery type
-        const targetPage = deliveryType === 'dine-in' ? '/cart' : '/checkout';
+        const targetPage = effectiveDeliveryType === 'dine-in' ? '/cart' : '/checkout';
         const url = `${targetPage}?${params.toString()}`;
         router.push(url);
     };
@@ -2096,7 +2199,8 @@ const OrderPageInternal = () => {
             setInfoDialog({
                 isOpen: true,
                 title: "Details Required",
-                message: "Please enter your name and party size to continue. This helps us provide better service!"
+                message: "Please enter your name and party size to continue. This helps us provide better service!",
+                type: 'warning'
             });
             return; // Prevent closing
         }
@@ -2196,9 +2300,20 @@ const OrderPageInternal = () => {
         const orderDeliveryType = liveOrder.deliveryType || 'delivery';
 
         if (orderDeliveryType === 'dine-in') {
-            let url = `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`;
-            if (ref) url += `&ref=${ref}`;
-            return url;
+            const trackingToken = liveOrder.trackingToken || token;
+            if (!trackingToken) return null;
+
+            const params = new URLSearchParams();
+            params.set('token', trackingToken);
+            if (ref) params.set('ref', ref);
+
+            const tableParam = liveOrder.tableId || liveOrder.table || tableIdFromUrl;
+            if (tableParam) params.set('table', tableParam);
+
+            const tabParam = liveOrder.dineInTabId || liveOrder.tabId || tabIdFromUrl || activeTabInfo?.id;
+            if (tabParam) params.set('tabId', tabParam);
+
+            return `/track/dine-in/${liveOrder.orderId}?${params.toString()}`;
         }
 
         const trackingPath = (restaurantData.businessType === 'street-vendor' || orderDeliveryType === 'street-vendor-pre-order')
@@ -2215,7 +2330,12 @@ const OrderPageInternal = () => {
     };
 
     const trackingUrl = getTrackingUrl();
-    const shouldShowFloatingTrackToast = Boolean(liveOrder && trackingUrl && !customizationItem);
+    const shouldShowFloatingTrackToast = Boolean(
+        liveOrder &&
+        trackingUrl &&
+        !customizationItem &&
+        deliveryType !== 'dine-in'
+    );
     const trackOrdersLabel = storedOrders.length > 1
         ? `Track ${storedOrders.length} Orders`
         : `Track ${liveOrder?.restaurantId === restaurantId ? '' : (liveOrder?.restaurantName || 'Order')}`.trim() || 'Track';
@@ -2592,7 +2712,7 @@ const OrderPageInternal = () => {
 
                     {/* Track Live Order Button - Only for Dine-In with existing order */}
                     {
-                        deliveryType === 'dine-in' && liveOrder && liveOrder.restaurantId === restaurantId && (
+                        deliveryType === 'dine-in' && liveOrder && liveOrder.restaurantId === restaurantId && trackingUrl && (
                             <motion.div
                                 initial={{ opacity: 0, y: -10 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -2612,7 +2732,7 @@ const OrderPageInternal = () => {
                                         asChild
                                         className="bg-white text-black hover:bg-white/90 font-bold"
                                     >
-                                        <a href={`/track/dine-in/${liveOrder.orderId}?tabId=${searchParams.get('tabId') || ''}&token=${liveOrder.trackingToken}`}>
+                                        <a href={trackingUrl}>
                                             Track Order
                                         </a>
                                     </Button>

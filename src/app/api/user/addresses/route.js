@@ -315,14 +315,43 @@ export async function POST(req) {
                                     deliveryResult = calculateDeliveryCharge(aerialDistance, subtotalAmount, settings);
                                 }
 
+                                const isManualCallOrder = Boolean(orderData.isManualCallOrder) || String(orderData.orderSource || '').toLowerCase() === 'manual_call';
+                                const currentOrderCharge = toNum(orderData.deliveryCharge, toNum(orderData.billDetails?.deliveryCharge, 0));
+                                const isOwnerLockedManualCharge =
+                                    Boolean(orderData.ownerDeliveryChargeProvided) ||
+                                    Boolean(orderData.deliveryChargeLocked) ||
+                                    Boolean(orderData.manualDeliveryChargeLocked) ||
+                                    toNum(orderData.manualDeliveryCharge, 0) > 0 ||
+                                    (isManualCallOrder && currentOrderCharge > 0);
+                                const lockedCharge = toNum(
+                                    orderData.manualDeliveryCharge,
+                                    toNum(orderData.billDetails?.deliveryCharge, toNum(orderData.deliveryCharge, 0))
+                                );
                                 const validatedCharge = toNum(deliveryResult.charge, 0);
-                                const recalculatedGrandTotal = calculateGrandTotalFromOrder(orderData, validatedCharge);
+                                const effectiveDeliveryCharge = isOwnerLockedManualCharge
+                                    ? lockedCharge
+                                    : validatedCharge;
+                                const recalculatedGrandTotal = calculateGrandTotalFromOrder(orderData, effectiveDeliveryCharge);
+                                console.log(
+                                    `[API][user/addresses] Delivery charge resolution for order ${activeOrderId}:`,
+                                    {
+                                        isManualCallOrder,
+                                        ownerDeliveryChargeProvided: Boolean(orderData.ownerDeliveryChargeProvided),
+                                        deliveryChargeLocked: Boolean(orderData.deliveryChargeLocked),
+                                        manualDeliveryChargeLocked: Boolean(orderData.manualDeliveryChargeLocked),
+                                        currentOrderCharge,
+                                        manualDeliveryCharge: toNum(orderData.manualDeliveryCharge, 0),
+                                        validatedCharge,
+                                        effectiveDeliveryCharge,
+                                    }
+                                );
 
-                                patchData.deliveryCharge = validatedCharge;
+                                patchData.deliveryCharge = effectiveDeliveryCharge;
                                 patchData.totalAmount = recalculatedGrandTotal;
                                 patchData.deliveryValidation = {
                                     success: true,
                                     ...deliveryResult,
+                                    ownerLockedDeliveryCharge: isOwnerLockedManualCharge,
                                     checkedAt: new Date()
                                 };
                                 patchData.deliveryValidationMessage = deliveryResult.message || null;
@@ -332,9 +361,15 @@ export async function POST(req) {
                                     subtotal: toNum(orderData.subtotal, toNum(orderData.billDetails?.subtotal, 0)),
                                     cgst: toNum(orderData.cgst, toNum(orderData.billDetails?.cgst, 0)),
                                     sgst: toNum(orderData.sgst, toNum(orderData.billDetails?.sgst, 0)),
-                                    deliveryCharge: validatedCharge,
+                                    deliveryCharge: effectiveDeliveryCharge,
                                     grandTotal: recalculatedGrandTotal
                                 };
+                                if (isOwnerLockedManualCharge) {
+                                    patchData.ownerDeliveryChargeProvided = true;
+                                    patchData.deliveryChargeLocked = true;
+                                    patchData.manualDeliveryChargeLocked = true;
+                                    patchData.manualDeliveryCharge = effectiveDeliveryCharge;
+                                }
 
                                 if (!deliveryResult.allowed) {
                                     patchData.deliveryBlocked = true;
@@ -353,7 +388,9 @@ export async function POST(req) {
                                     statusEvents.push({
                                         status: 'delivery_validated',
                                         timestamp: new Date(),
-                                        message: deliveryResult.reason || `Delivery charge set to ₹${validatedCharge}`
+                                        message: isOwnerLockedManualCharge
+                                            ? `Address updated. Owner locked delivery charge retained at ₹${effectiveDeliveryCharge}`
+                                            : (deliveryResult.reason || `Delivery charge set to ₹${effectiveDeliveryCharge}`)
                                     });
                                 }
                             }

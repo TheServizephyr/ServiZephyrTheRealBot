@@ -147,7 +147,7 @@ function DineInTrackingContent() {
         } finally {
             if (!isBackground) setLoading(false);
         }
-    }, [orderId]);
+    }, [orderId, sessionToken]);
 
     // RULE 1: Visibility API
     useEffect(() => {
@@ -165,19 +165,27 @@ function DineInTrackingContent() {
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [fetchData]);
 
+    const getDineInContext = useCallback(() => {
+        const restaurantId = orderData?.restaurant?.id || null;
+        const tableId = orderData?.order?.tableId || orderData?.order?.table || null;
+        const tabId = orderData?.order?.dineInTabId || orderData?.order?.tabId || searchParams.get('tabId') || null;
+        const trackingToken = sessionToken || orderData?.order?.trackingToken || null;
+
+        return { restaurantId, tableId, tabId, trackingToken };
+    }, [orderData, searchParams, sessionToken]);
+
     // ✅ BROWSER BACK BUTTON INTERCEPTION
     // Intercept hardware/browser back to go to order page (not cart/checkout)
     useEffect(() => {
         const handlePopState = (event) => {
             event.preventDefault();
-            const restaurantId = orderData?.restaurant?.id;
-            const tableId = orderData?.order?.tableId || orderData?.order?.table;
-            const tabId = orderData?.order?.dineInTabId;
+            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
 
             if (restaurantId) {
                 const params = new URLSearchParams();
                 if (tableId) params.set('table', tableId);
                 if (tabId) params.set('tabId', tabId);
+                if (trackingToken) params.set('token', trackingToken);
 
                 const url = `/order/${restaurantId}${params.toString() ? '?' + params.toString() : ''}`;
                 console.log('[DineInTrack] Browser back intercepted → redirecting to:', url);
@@ -187,7 +195,7 @@ function DineInTrackingContent() {
 
         window.addEventListener('popstate', handlePopState);
         return () => window.removeEventListener('popstate', handlePopState);
-    }, [orderData, router]);
+    }, [getDineInContext, router]);
 
     // Initial fetch
     useEffect(() => {
@@ -254,14 +262,22 @@ function DineInTrackingContent() {
 
     const handleAddMoreItems = () => {
         console.log('[DineIn Track] Add More Items - orderData:', orderData);
-        console.log('[DineIn Track] tableId:', orderData.order?.tableId);
-        console.log('[DineIn Track] dineInTabId:', orderData.order?.dineInTabId);
+        console.log('[DineIn Track] tableId:', orderData.order?.tableId || orderData.order?.table);
+        console.log('[DineIn Track] dineInTabId:', orderData.order?.dineInTabId || orderData.order?.tabId);
+
+        const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
+
+        if (!restaurantId) {
+            console.warn('[DineIn Track] Add More blocked: missing restaurantId');
+            return;
+        }
 
         const params = new URLSearchParams();
-        if (orderData.restaurant?.id) params.set('table', orderData.order.tableId);
-        if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
+        if (tableId) params.set('table', tableId);
+        if (tabId) params.set('tabId', tabId);
+        if (trackingToken) params.set('token', trackingToken);
 
-        const url = `/order/${orderData.restaurant?.id}?${params.toString()}`;
+        const url = `/order/${restaurantId}?${params.toString()}`;
         console.log('[DineIn Track] Navigating to:', url);
         router.push(url);
     };
@@ -299,10 +315,11 @@ function DineInTrackingContent() {
     };
 
     const handlePayOnline = () => {
+        const { restaurantId, tableId, tabId } = getDineInContext();
         const params = new URLSearchParams();
-        if (orderData.restaurant?.id) params.set('restaurantId', orderData.restaurant.id);
-        if (orderData.order?.tableId) params.set('table', orderData.order.tableId);
-        if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
+        if (restaurantId) params.set('restaurantId', restaurantId);
+        if (tableId) params.set('table', tableId);
+        if (tabId) params.set('tabId', tabId);
         if (sessionToken) params.set('session_token', sessionToken);
         params.set('deliveryType', 'dine-in'); // CRITICAL: Tell checkout this is dine-in
         // Directly navigate to checkout (no modal)
@@ -310,10 +327,11 @@ function DineInTrackingContent() {
     };
 
     const handleSplitBill = () => {
+        const { restaurantId, tableId, tabId } = getDineInContext();
         const params = new URLSearchParams();
-        if (orderData.restaurant?.id) params.set('restaurantId', orderData.restaurant.id);
-        if (orderData.order?.tableId) params.set('table', orderData.order.tableId);
-        if (orderData.order?.dineInTabId) params.set('tabId', orderData.order.dineInTabId);
+        if (restaurantId) params.set('restaurantId', restaurantId);
+        if (tableId) params.set('table', tableId);
+        if (tabId) params.set('tabId', tabId);
         if (sessionToken) params.set('session_token', sessionToken);
         params.set('split', 'true');
         router.push(`/checkout?${params.toString()}`);
@@ -329,7 +347,7 @@ function DineInTrackingContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     restaurantId: orderData.restaurant?.id,
-                    tableId: orderData.order?.tableId,
+                    tableId: orderData.order?.tableId || orderData.order?.table,
                     action: 'customer_done'
                 })
             });
@@ -431,8 +449,7 @@ function DineInTrackingContent() {
                     <Button
                         onClick={() => {
                             // \u2705 CRITICAL: Clear localStorage FIRST!
-                            const restaurantId = orderData.restaurant?.id;
-                            const tableId = orderData.order?.tableId;
+                            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
 
                             if (restaurantId) {
                                 // Remove cancelled order from localStorage
@@ -442,6 +459,8 @@ function DineInTrackingContent() {
 
                                 const params = new URLSearchParams();
                                 if (tableId) params.set('table', tableId);
+                                if (tabId) params.set('tabId', tabId);
+                                if (trackingToken) params.set('token', trackingToken);
                                 router.replace(`/order/${restaurantId}?${params.toString()}`);
                             } else {
                                 router.replace('/');
@@ -510,8 +529,7 @@ function DineInTrackingContent() {
                     <Button
                         onClick={() => {
                             // ✅ CRITICAL: Clear localStorage FIRST!
-                            const restaurantId = orderData.restaurant?.id;
-                            const tableId = orderData.order?.tableId;
+                            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
 
                             if (restaurantId) {
                                 // Remove paid order from localStorage
@@ -521,6 +539,8 @@ function DineInTrackingContent() {
 
                                 const params = new URLSearchParams();
                                 if (tableId) params.set('table', tableId);
+                                if (tabId) params.set('tabId', tabId);
+                                if (trackingToken) params.set('token', trackingToken);
                                 router.replace(`/order/${restaurantId}?${params.toString()}`);
                             } else {
                                 router.replace('/');
@@ -579,14 +599,13 @@ function DineInTrackingContent() {
                     <Button
                         onClick={() => {
                             // ✅ Preserve table & tab context for dine-in session
-                            const restaurantId = orderData.restaurant?.id;
-                            const tableId = orderData.order?.tableId || orderData.order?.table;
-                            const tabId = orderData.order?.dineInTabId;
+                            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
 
                             if (restaurantId) {
                                 const params = new URLSearchParams();
                                 if (tableId) params.set('table', tableId);
                                 if (tabId) params.set('tabId', tabId);
+                                if (trackingToken) params.set('token', trackingToken);
 
                                 const url = `/order/${restaurantId}${params.toString() ? '?' + params.toString() : ''}`;
                                 console.log('[DineInTrack] Back navigation to:', url);

@@ -184,6 +184,62 @@ const addSalesByDay = (salesByDay, salesDayOrder, date, amount) => {
     }
 };
 
+const RIDER_COMPLETED_STATUSES = new Set(['delivered', 'picked_up']);
+
+const getDayKey = (date) => format(date, 'yyyy-MM-dd');
+
+const getWeekRange = (date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() + diffToMonday);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    return { weekStart, weekEnd };
+};
+
+const getWeekKey = (date) => {
+    const { weekStart, weekEnd } = getWeekRange(date);
+    return `${format(weekStart, 'yyyy-MM-dd')}__${format(weekEnd, 'yyyy-MM-dd')}`;
+};
+
+const mapRiderSummary = (bucketMap, type) =>
+    Array.from(bucketMap.entries())
+        .map(([key, row]) => {
+            if (type === 'day') {
+                return {
+                    dayKey: key,
+                    date: key,
+                    assignedOrders: row.assignedOrders,
+                    completedOrders: row.completedOrders,
+                    collection: row.collection,
+                    orders: row.orders.sort((a, b) => b.orderDateTs - a.orderDateTs),
+                };
+            }
+
+            return {
+                weekKey: key,
+                weekStart: row.weekStart,
+                weekEnd: row.weekEnd,
+                assignedOrders: row.assignedOrders,
+                completedOrders: row.completedOrders,
+                collection: row.collection,
+                orders: row.orders.sort((a, b) => b.orderDateTs - a.orderDateTs),
+            };
+        })
+        .sort((a, b) => {
+            const aTs = type === 'day' ? new Date(a.date).getTime() : new Date(a.weekStart).getTime();
+            const bTs = type === 'day' ? new Date(b.date).getTime() : new Date(b.weekStart).getTime();
+            return bTs - aTs;
+        });
+
 export async function GET(req) {
     try {
         const firestore = await getFirestore();
@@ -250,6 +306,7 @@ export async function GET(req) {
             prevCounterBillsSnap,
             allMenuSnap,
             allCustomersSnap,
+            ridersSnap,
         ] = await Promise.all([
             ordersRef
                 .where('orderDate', '>=', startDate)
@@ -272,7 +329,10 @@ export async function GET(req) {
                     'customerName',
                     'name',
                     'userId',
-                    'customerId'
+                    'customerId',
+                    'customerOrderId',
+                    'deliveryBoyId',
+                    'deliveryType'
                 )
                 .get(),
             ordersRef
@@ -303,6 +363,7 @@ export async function GET(req) {
                 .get(),
             businessRef.collection('menu').select('name', 'portions').get(),
             businessRef.collection('customers').select('name', 'joinedAt', 'totalOrders', 'totalSpend', 'phone').get(),
+            businessRef.collection('deliveryBoys').select('name', 'displayName', 'phone').get(),
         ]);
 
         // ---- SALES METRICS ----
@@ -593,6 +654,150 @@ export async function GET(req) {
             customerOrderMix,
         };
 
+        // ---- RIDER ANALYTICS ----
+        const riderMetaById = new Map();
+        ridersSnap.forEach((doc) => {
+            const rider = doc.data() || {};
+            riderMetaById.set(doc.id, {
+                riderId: doc.id,
+                name: rider.displayName || rider.name || 'Rider',
+                phone: normalizePhone(rider.phone || ''),
+            });
+        });
+
+        const riderStatsById = new Map();
+        const combinedDaily = new Map();
+        const combinedWeekly = new Map();
+
+        const createSummaryBucket = () => ({
+            assignedOrders: 0,
+            completedOrders: 0,
+            collection: 0,
+            orders: [],
+        });
+
+        const getOrCreateRider = (riderId) => {
+            if (!riderStatsById.has(riderId)) {
+                const meta = riderMetaById.get(riderId) || { riderId, name: 'Rider', phone: '' };
+                riderStatsById.set(riderId, {
+                    riderId,
+                    name: meta.name || 'Rider',
+                    phone: meta.phone || '',
+                    totalAssignedOrders: 0,
+                    totalCompletedOrders: 0,
+                    totalCollection: 0,
+                    dayWise: new Map(),
+                    weekWise: new Map(),
+                    orders: [],
+                });
+            }
+            return riderStatsById.get(riderId);
+        };
+
+        currentPeriodOrdersSnap.forEach((doc) => {
+            const data = doc.data() || {};
+            const riderId = String(data.deliveryBoyId || '').trim();
+            const status = String(data.status || '').toLowerCase();
+            const orderDate = timestampToDate(data.orderDate);
+
+            if (!riderId || !orderDate || isLostOrder(status)) return;
+
+            const amount = toAmount(data.totalAmount);
+            const completed = RIDER_COMPLETED_STATUSES.has(status);
+            const dayKey = getDayKey(orderDate);
+            const weekKey = getWeekKey(orderDate);
+            const { weekStart, weekEnd } = getWeekRange(orderDate);
+
+            const orderRow = {
+                id: doc.id,
+                customerOrderId: data.customerOrderId || null,
+                customerName: data.customerName || data.name || 'Customer',
+                customerPhone: normalizePhone(data.customerPhone || data.phone || ''),
+                deliveryType: data.deliveryType || null,
+                status,
+                amount,
+                orderDate: orderDate.toISOString(),
+                orderDateTs: orderDate.getTime(),
+            };
+
+            const rider = getOrCreateRider(riderId);
+            rider.totalAssignedOrders += 1;
+            rider.totalCompletedOrders += completed ? 1 : 0;
+            rider.totalCollection += completed ? amount : 0;
+            rider.orders.push(orderRow);
+
+            if (!rider.dayWise.has(dayKey)) rider.dayWise.set(dayKey, createSummaryBucket());
+            const riderDay = rider.dayWise.get(dayKey);
+            riderDay.assignedOrders += 1;
+            riderDay.completedOrders += completed ? 1 : 0;
+            riderDay.collection += completed ? amount : 0;
+            riderDay.orders.push(orderRow);
+
+            if (!rider.weekWise.has(weekKey)) {
+                rider.weekWise.set(weekKey, {
+                    ...createSummaryBucket(),
+                    weekStart: format(weekStart, 'yyyy-MM-dd'),
+                    weekEnd: format(weekEnd, 'yyyy-MM-dd'),
+                });
+            }
+            const riderWeek = rider.weekWise.get(weekKey);
+            riderWeek.assignedOrders += 1;
+            riderWeek.completedOrders += completed ? 1 : 0;
+            riderWeek.collection += completed ? amount : 0;
+            riderWeek.orders.push(orderRow);
+
+            if (!combinedDaily.has(dayKey)) combinedDaily.set(dayKey, createSummaryBucket());
+            const allDay = combinedDaily.get(dayKey);
+            allDay.assignedOrders += 1;
+            allDay.completedOrders += completed ? 1 : 0;
+            allDay.collection += completed ? amount : 0;
+            allDay.orders.push({ ...orderRow, riderId, riderName: rider.name });
+
+            if (!combinedWeekly.has(weekKey)) {
+                combinedWeekly.set(weekKey, {
+                    ...createSummaryBucket(),
+                    weekStart: format(weekStart, 'yyyy-MM-dd'),
+                    weekEnd: format(weekEnd, 'yyyy-MM-dd'),
+                });
+            }
+            const allWeek = combinedWeekly.get(weekKey);
+            allWeek.assignedOrders += 1;
+            allWeek.completedOrders += completed ? 1 : 0;
+            allWeek.collection += completed ? amount : 0;
+            allWeek.orders.push({ ...orderRow, riderId, riderName: rider.name });
+        });
+
+        const riderSummaries = Array.from(riderStatsById.values())
+            .map((rider) => ({
+                riderId: rider.riderId,
+                riderName: rider.name,
+                riderPhone: rider.phone,
+                totalAssignedOrders: rider.totalAssignedOrders,
+                totalCompletedOrders: rider.totalCompletedOrders,
+                totalCollection: rider.totalCollection,
+                completionRate: rider.totalAssignedOrders > 0
+                    ? Math.round((rider.totalCompletedOrders / rider.totalAssignedOrders) * 100)
+                    : 0,
+                dayWise: mapRiderSummary(rider.dayWise, 'day'),
+                weekWise: mapRiderSummary(rider.weekWise, 'week'),
+                orders: rider.orders.sort((a, b) => b.orderDateTs - a.orderDateTs),
+            }))
+            .sort((a, b) => {
+                if (b.totalCollection !== a.totalCollection) return b.totalCollection - a.totalCollection;
+                return b.totalCompletedOrders - a.totalCompletedOrders;
+            });
+
+        const riderAnalytics = {
+            totalRiders: riderMetaById.size,
+            activeRidersInPeriod: riderSummaries.length,
+            totalAssignedOrders: riderSummaries.reduce((sum, rider) => sum + rider.totalAssignedOrders, 0),
+            totalCompletedOrders: riderSummaries.reduce((sum, rider) => sum + rider.totalCompletedOrders, 0),
+            totalCollection: riderSummaries.reduce((sum, rider) => sum + rider.totalCollection, 0),
+            combinedDayWise: mapRiderSummary(combinedDaily, 'day'),
+            combinedWeekWise: mapRiderSummary(combinedWeekly, 'week'),
+            riders: riderSummaries,
+        };
+
         // ---- AI INSIGHTS ----
         const aiInsights = [];
         if (missedRevenue > 0 && missedItemsData.length > 0) {
@@ -635,6 +840,7 @@ export async function GET(req) {
                 salesData,
                 menuPerformance,
                 customerStats,
+                riderAnalytics,
                 aiInsights,
                 businessInfo: {
                     businessType: restaurantData.businessType || collectionName.slice(0, -1),

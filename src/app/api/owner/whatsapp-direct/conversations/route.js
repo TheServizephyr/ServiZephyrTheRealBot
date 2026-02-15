@@ -77,6 +77,7 @@ export async function GET(req) {
 
         const conversationsSnap = await businessRef.collection('conversations')
             .orderBy('lastMessageTimestamp', 'desc')
+            .limit(250)
             .get();
 
         const nowMs = Date.now();
