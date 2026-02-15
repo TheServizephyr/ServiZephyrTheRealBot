@@ -6,20 +6,16 @@ import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
-    console.log("[API hub-data] GET request received.");
     try {
         const uid = await verifyAndGetUid(req); // Use central helper
         const firestore = await getFirestore();
 
-        console.log(`[API hub-data] Fetching orders for customerId: ${uid}`);
         const ordersSnap = await firestore.collection('orders')
             .where('customerId', '==', uid)
+            .select('orderDate', 'restaurantName', 'restaurantId', 'items', 'discount')
             .get();
 
-        console.log(`[API hub-data] Found ${ordersSnap.size} orders for user.`);
-
         if (ordersSnap.empty) {
-            console.log("[API hub-data] No orders found, returning empty data.");
             return NextResponse.json({
                 quickReorder: null,
                 myRestaurants: [],
@@ -41,7 +37,6 @@ export async function GET(req) {
             dishName: lastOrder.items[0]?.name || 'your last item',
             restaurantId: lastOrder.restaurantId,
         };
-        console.log("[API hub-data] Quick Reorder data:", quickReorder);
 
         const restaurantMap = new Map();
         orders.forEach(order => {
@@ -50,7 +45,6 @@ export async function GET(req) {
             }
         });
         const myRestaurants = Array.from(restaurantMap.values()).slice(0, 5);
-        console.log("[API hub-data] My Restaurants data:", myRestaurants);
 
         let totalSavings = 0;
         const restaurantFrequency = {};
@@ -67,7 +61,6 @@ export async function GET(req) {
                 }
             });
         });
-        console.log(`[API hub-data] Total Savings calculated: ${totalSavings}`);
 
         const topRestaurant = Object.keys(restaurantFrequency).length > 0 
             ? Object.entries(restaurantFrequency).sort((a, b) => b[1] - a[1])[0][0] 
@@ -76,14 +69,10 @@ export async function GET(req) {
         const topDish = Object.keys(dishFrequency).length > 0 
             ? Object.entries(dishFrequency).sort((a, b) => b[1] - a[1])[0][0]
             : 'N/A';
-        
-        console.log(`[API hub-data] Top Restaurant: ${topRestaurant}, Top Dish: ${topDish}`);
 
         const myStats = { totalSavings, topRestaurant, topDish };
 
         const finalPayload = { quickReorder, myRestaurants, myStats };
-        
-        console.log("[API hub-data] Sending final payload to client:", JSON.stringify(finalPayload, null, 2));
 
         return NextResponse.json(finalPayload, { status: 200 });
 

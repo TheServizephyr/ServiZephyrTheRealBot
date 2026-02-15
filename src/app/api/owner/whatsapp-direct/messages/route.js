@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { sendWhatsAppMessage, markWhatsAppMessageAsRead } from '@/lib/whatsapp';
+import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime } from '@/lib/whatsapp-realtime';
 
 const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
 
@@ -72,6 +73,7 @@ export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
         const conversationId = searchParams.get('conversationId');
+        const syncRealtime = ['1', 'true', 'yes'].includes(String(searchParams.get('syncRealtime') || '').toLowerCase());
 
         if (!conversationId) {
             return NextResponse.json({ message: 'Conversation ID is required.' }, { status: 400 });
@@ -100,6 +102,40 @@ export async function GET(req) {
                 timestamp,
             };
         });
+
+        if (syncRealtime && messages.length > 0) {
+            const recentMessages = messages.slice(-300);
+            const syncResults = await Promise.allSettled(
+                recentMessages.map((message) =>
+                    mirrorWhatsAppMessageToRealtime({
+                        businessId: businessDoc.id,
+                        conversationId,
+                        messageId: message.id,
+                        message: {
+                            id: message.id,
+                            sender: message.sender || 'system',
+                            type: message.type || 'text',
+                            text: message.text || '',
+                            status: message.status || 'sent',
+                            mediaId: message.mediaId || null,
+                            mediaUrl: message.mediaUrl || null,
+                            fileName: message.fileName || null,
+                            interactive_type: message.interactive_type || null,
+                            rawPayload: message.rawPayload || null,
+                            isSystem: message.isSystem === true,
+                            timestamp: message.timestamp || new Date().toISOString(),
+                        }
+                    })
+                )
+            );
+
+            const failedSyncCount = syncResults.filter((result) => result.status === 'rejected').length;
+            if (failedSyncCount > 0) {
+                console.warn(`[WhatsApp Direct] RTDB backfill partially failed for ${conversationId}: ${failedSyncCount}/${recentMessages.length}`);
+            } else {
+                console.log(`[WhatsApp Direct] RTDB backfill completed for ${conversationId}: ${recentMessages.length} messages`);
+            }
+        }
 
         await businessDoc.ref.collection('conversations').doc(conversationId).set({ unreadCount: 0 }, { merge: true });
 
@@ -253,6 +289,7 @@ export async function POST(req) {
             await sendWhatsAppMessage(customerPhoneWithCode, notificationPayload, botPhoneNumberId);
 
             const notificationRef = conversationRef.collection('messages').doc(`sys_${Date.now()}`);
+            const notificationId = notificationRef.id;
             batch.set(notificationRef, {
                 sender: 'system',
                 type: 'system',
@@ -260,6 +297,19 @@ export async function POST(req) {
                 timestamp: FieldValue.serverTimestamp(),
                 status: 'sent',
                 isSystem: true
+            });
+            await mirrorWhatsAppMessageToRealtime({
+                businessId: businessDoc.id,
+                conversationId,
+                messageId: notificationId,
+                message: {
+                    sender: 'system',
+                    type: 'system',
+                    text: activationBody,
+                    status: 'sent',
+                    isSystem: true,
+                    timestamp: new Date().toISOString(),
+                }
             });
             console.log(`[Messages API] Started direct chat session for ${customerPhoneWithCode}`);
         }
@@ -289,6 +339,18 @@ export async function POST(req) {
         batch.set(conversationRef, conversationUpdate, { merge: true });
 
         await batch.commit();
+
+        await mirrorWhatsAppMessageToRealtime({
+            businessId: businessDoc.id,
+            conversationId,
+            messageId: messageDocId,
+            message: {
+                sender: 'owner',
+                status: 'sent',
+                ...firestoreMessageData,
+                timestamp: new Date().toISOString(),
+            }
+        });
 
         return NextResponse.json({ message: 'Message sent successfully!' }, { status: 200 });
 
@@ -333,6 +395,12 @@ export async function PATCH(req) {
             const msgRef = messagesCollection.doc(msgId);
             batch.update(msgRef, { status: 'read' });
             updateCount += 1;
+            await updateWhatsAppMessageStatusInRealtime({
+                businessId: businessDoc.id,
+                conversationId,
+                messageId: msgId,
+                status: 'read'
+            });
         }));
 
         if (updateCount > 0) {

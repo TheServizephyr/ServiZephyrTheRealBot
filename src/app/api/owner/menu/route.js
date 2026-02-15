@@ -32,6 +32,7 @@ export async function GET(req) {
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(req, 'view_menu');
         const requestUrl = new URL(req.url);
         const compactMode = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('compact') || '').toLowerCase());
+        const dashboardMode = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('dashboard') || '').toLowerCase());
 
 
         // (Audit logging handled by verifyOwnerWithAudit internally for impersonation)
@@ -48,6 +49,21 @@ export async function GET(req) {
                 'price',
                 'order',
                 'isDeleted'
+            );
+        } else if (dashboardMode) {
+            menuQuery = menuQuery.select(
+                'name',
+                'description',
+                'categoryId',
+                'isVeg',
+                'isAvailable',
+                'portions',
+                'price',
+                'order',
+                'isDeleted',
+                'imageUrl',
+                'tags',
+                'addOnGroups'
             );
         }
         const menuSnap = await menuQuery.get();
@@ -123,6 +139,7 @@ export async function GET(req) {
             businessType: businessType,
             restaurantId: businessId,
             compact: compactMode,
+            dashboard: dashboardMode,
         }, { status: 200 });
 
     } catch (error) {

@@ -18,6 +18,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 
 export const dynamic = 'force-dynamic';
+const CUSTOMER_HUB_CACHE_TTL_MS = 2 * 60 * 1000;
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -722,20 +723,48 @@ export default function CustomersPage() {
         return data;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
-    const loadCustomers = useCallback(async () => {
+    const loadCustomers = useCallback(async ({ allowCache = true } = {}) => {
         setLoading(true);
         try {
+            const cacheKey = [
+                'owner_customers_v1',
+                impersonatedOwnerId || 'self',
+                employeeOfOwnerId || 'none',
+            ].join(':');
+
+            if (allowCache) {
+                const cachedRaw = sessionStorage.getItem(cacheKey);
+                if (cachedRaw) {
+                    const parsed = JSON.parse(cachedRaw);
+                    if (parsed?.ts && (Date.now() - parsed.ts) < CUSTOMER_HUB_CACHE_TTL_MS && parsed?.payload) {
+                        setCustomers(parsed.payload.customers || []);
+                        setStats(parsed.payload.stats || {});
+                        setLeaderboard(parsed.payload.leaderboard || null);
+                        setLoading(false);
+                        return;
+                    }
+                }
+            }
+
             const data = await handleApiCall('/api/owner/customers', 'GET');
             setCustomers(data.customers || []);
             setStats(data.stats || {});
             setLeaderboard(data.leaderboard || null);
+            sessionStorage.setItem(cacheKey, JSON.stringify({
+                ts: Date.now(),
+                payload: {
+                    customers: data.customers || [],
+                    stats: data.stats || {},
+                    leaderboard: data.leaderboard || null,
+                },
+            }));
         } catch (error) {
             console.error("Failed to fetch customers:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: "Could not load customer data: " + error.message });
         } finally {
             setLoading(false);
         }
-    }, [handleApiCall]);
+    }, [handleApiCall, impersonatedOwnerId, employeeOfOwnerId]);
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -752,7 +781,9 @@ export default function CustomersPage() {
     useEffect(() => {
         if (!auth.currentUser) return undefined;
         const intervalId = setInterval(() => {
-            loadCustomers();
+            if (!document.hidden) {
+                loadCustomers({ allowCache: false });
+            }
         }, 5 * 60 * 1000);
         return () => clearInterval(intervalId);
     }, [loadCustomers]);
@@ -888,6 +919,29 @@ export default function CustomersPage() {
         setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, notes: newNotes } : c));
         if (selectedCustomer && selectedCustomer.id === customerId) {
             setSelectedCustomer(prev => ({ ...prev, notes: newNotes }));
+        }
+        const cacheKey = [
+            'owner_customers_v1',
+            impersonatedOwnerId || 'self',
+            employeeOfOwnerId || 'none',
+        ].join(':');
+        const cachedRaw = sessionStorage.getItem(cacheKey);
+        if (cachedRaw) {
+            try {
+                const parsed = JSON.parse(cachedRaw);
+                const updatedCustomers = (parsed?.payload?.customers || []).map((c) =>
+                    c.id === customerId ? { ...c, notes: newNotes } : c
+                );
+                sessionStorage.setItem(cacheKey, JSON.stringify({
+                    ts: Date.now(),
+                    payload: {
+                        ...(parsed?.payload || {}),
+                        customers: updatedCustomers,
+                    },
+                }));
+            } catch (_) {
+                // Ignore cache corruption and continue with live state.
+            }
         }
     };
 

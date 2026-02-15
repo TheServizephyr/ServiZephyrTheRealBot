@@ -1165,6 +1165,12 @@ export default function LiveOrdersPage() {
     const [restaurantData, setRestaurantData] = useState(null);
     const hasBootstrappedNotificationRef = useRef(false);
     const prevRelevantOrderIdsRef = useRef(new Set());
+    const restaurantIdCacheRef = useRef(null);
+    const staticDataHydratedRef = useRef(false);
+    const staticCacheKey = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `live_orders_static_v1_${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     // Fetch User Role
     useEffect(() => {
@@ -1212,6 +1218,20 @@ export default function LiveOrdersPage() {
         setPrintModalData({ isOpen: true, order });
     };
 
+    useEffect(() => {
+        if (staticDataHydratedRef.current) return;
+        staticDataHydratedRef.current = true;
+        try {
+            const raw = sessionStorage.getItem(staticCacheKey);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.riders)) setRiders(parsed.riders);
+            if (parsed?.restaurantData) setRestaurantData(parsed.restaurantData);
+        } catch {
+            // Ignore malformed cache safely
+        }
+    }, [staticCacheKey]);
+
 
     const fetchInitialData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
@@ -1248,15 +1268,32 @@ export default function LiveOrdersPage() {
             if (ridersRes.ok) {
                 const ridersData = await ridersRes.json();
                 setRiders(ridersData.boys || []);
+                try {
+                    const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
+                    sessionStorage.setItem(staticCacheKey, JSON.stringify({
+                        ...previous,
+                        riders: ridersData.boys || [],
+                        ts: Date.now()
+                    }));
+                } catch { }
             }
 
             if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
-                setRestaurantData({
+                const nextRestaurantData = {
                     name: settingsData.restaurantName,
                     address: settingsData.address,
                     gstin: settingsData.gstin,
-                });
+                };
+                setRestaurantData(nextRestaurantData);
+                try {
+                    const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
+                    sessionStorage.setItem(staticCacheKey, JSON.stringify({
+                        ...previous,
+                        restaurantData: nextRestaurantData,
+                        ts: Date.now()
+                    }));
+                } catch { }
             }
 
         } catch (error) {
@@ -1301,15 +1338,32 @@ export default function LiveOrdersPage() {
                 if (ridersRes.ok) {
                     const ridersData = await ridersRes.json();
                     setRiders(ridersData.boys || []);
+                    try {
+                        const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
+                        sessionStorage.setItem(staticCacheKey, JSON.stringify({
+                            ...previous,
+                            riders: ridersData.boys || [],
+                            ts: Date.now()
+                        }));
+                    } catch { }
                 }
 
                 if (settingsRes.ok) {
                     const settingsData = await settingsRes.json();
-                    setRestaurantData({
+                    const nextRestaurantData = {
                         name: settingsData.restaurantName,
                         address: settingsData.address,
                         gstin: settingsData.gstin,
-                    });
+                    };
+                    setRestaurantData(nextRestaurantData);
+                    try {
+                        const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
+                        sessionStorage.setItem(staticCacheKey, JSON.stringify({
+                            ...previous,
+                            restaurantData: nextRestaurantData,
+                            ts: Date.now()
+                        }));
+                    } catch { }
                 }
             } catch (error) {
                 console.error('[LiveOrders] Error fetching static data:', error);
@@ -1321,22 +1375,36 @@ export default function LiveOrdersPage() {
         // ✅ CRITICAL FIX: Get restaurantId first (orders use restaurantId, not ownerId!)
         const setupListener = async () => {
             try {
-                // Fetch owner's restaurant document to get restaurantId
-                const restaurantsQuery = query(
-                    collection(db, 'restaurants'),
-                    where('ownerId', '==', ownerId),
-                    limit(1)
-                );
-
-                const restaurantSnapshot = await getDocs(restaurantsQuery);
-
-                if (restaurantSnapshot.empty) {
-                    console.error('[LiveOrders] No restaurant found for owner:', ownerId);
-                    setLoading(false);
-                    return;
+                // Reuse resolved restaurantId (session cache + ref) to avoid extra Firestore query on each reload.
+                let restaurantId = restaurantIdCacheRef.current;
+                if (!restaurantId) {
+                    try {
+                        restaurantId = sessionStorage.getItem(`live_orders_restaurant_id_${ownerId}`) || null;
+                    } catch {
+                        restaurantId = null;
+                    }
                 }
 
-                const restaurantId = restaurantSnapshot.docs[0].id;
+                if (!restaurantId) {
+                    const restaurantsQuery = query(
+                        collection(db, 'restaurants'),
+                        where('ownerId', '==', ownerId),
+                        limit(1)
+                    );
+                    const restaurantSnapshot = await getDocs(restaurantsQuery);
+
+                    if (restaurantSnapshot.empty) {
+                        console.error('[LiveOrders] No restaurant found for owner:', ownerId);
+                        setLoading(false);
+                        return;
+                    }
+                    restaurantId = restaurantSnapshot.docs[0].id;
+                    try {
+                        sessionStorage.setItem(`live_orders_restaurant_id_${ownerId}`, restaurantId);
+                    } catch { }
+                }
+
+                restaurantIdCacheRef.current = restaurantId;
                 console.log('[LiveOrders] Found restaurantId:', restaurantId);
 
                 // Real-time listener for ACTIVE orders only (Bandwidth Optimization)
@@ -1402,7 +1470,7 @@ export default function LiveOrdersPage() {
             console.log('[LiveOrders] Cleaning up real-time listener');
             cleanupFn();
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey]);
 
     // Role-based new order notifications:
     // - Chef only here (owner/manager global notifications are emitted from Sidebar so they work on any page)

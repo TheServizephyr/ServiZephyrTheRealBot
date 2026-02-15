@@ -251,12 +251,58 @@ export async function GET(req) {
             allMenuSnap,
             allCustomersSnap,
         ] = await Promise.all([
-            ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).get(),
-            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).get(),
-            customBillHistoryRef.where('printedAt', '>=', startDate).where('printedAt', '<=', endDate).get(),
-            customBillHistoryRef.where('printedAt', '>=', prevStartDate).where('printedAt', '<', startDate).get(),
-            businessRef.collection('menu').get(),
-            businessRef.collection('customers').get(),
+            ordersRef
+                .where('orderDate', '>=', startDate)
+                .where('orderDate', '<=', endDate)
+                .select(
+                    'status',
+                    'rejectionReason',
+                    'cancellationReason',
+                    'totalAmount',
+                    'items',
+                    'orderDate',
+                    'isManualCallOrder',
+                    'orderSource',
+                    'paymentDetails',
+                    'paymentMethod',
+                    'paymentStatus',
+                    'readyAt',
+                    'customerPhone',
+                    'phone',
+                    'customerName',
+                    'name',
+                    'userId',
+                    'customerId'
+                )
+                .get(),
+            ordersRef
+                .where('orderDate', '>=', prevStartDate)
+                .where('orderDate', '<', startDate)
+                .select('status', 'totalAmount')
+                .get(),
+            customBillHistoryRef
+                .where('printedAt', '>=', startDate)
+                .where('printedAt', '<=', endDate)
+                .select(
+                    'totalAmount',
+                    'grandTotal',
+                    'printedAt',
+                    'createdAt',
+                    'customerType',
+                    'customerId',
+                    'customerPhone',
+                    'phone',
+                    'customerName',
+                    'name'
+                )
+                .get(),
+            customBillHistoryRef
+                .where('printedAt', '>=', prevStartDate)
+                .where('printedAt', '<', startDate)
+                .select('totalAmount', 'grandTotal')
+                .get(),
+            businessRef.collection('menu').select('name', 'portions').get(),
+            businessRef.collection('customers').select('name', 'joinedAt', 'totalOrders', 'totalSpend', 'phone').get(),
         ]);
 
         // ---- SALES METRICS ----

@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } fr
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut, Check, CheckCheck, Mic, Trash2, Edit2, Save, User, Calendar as CalendarIcon, DollarSign, ShoppingBag, MoreVertical, Gift, Ticket, Wand2, Play, Pause, StopCircle } from 'lucide-react';
 import Image from 'next/image';
-import { auth, db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { auth, db, rtdb } from '@/lib/firebase';
+import { collection, query, where, orderBy, onSnapshot, limit, getDocs } from 'firebase/firestore';
+import { ref as rtdbRef, query as rtdbQuery, limitToLast, onValue } from 'firebase/database';
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -60,6 +61,96 @@ const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const TUNNEL_HOST_REGEX = /(ngrok|ngrok-free\.app|trycloudflare|loca\.lt|localtunnel|serveo)/i;
+const RTDB_INVALID_KEY_CHARS = /[.#$/\[\]\u0000-\u001F\u007F]/g;
+const toSafeRtdbPathKey = (value) =>
+    String(value || '')
+        .trim()
+        .replace(RTDB_INVALID_KEY_CHARS, (ch) => `_${ch.charCodeAt(0).toString(16).toUpperCase()}_`);
+
+const normalizeLegacyPaymentQrUrl = (mediaUrl) => {
+    const rawUrl = String(mediaUrl || '').trim();
+    if (!rawUrl) return rawUrl;
+
+    try {
+        const parsed = new URL(rawUrl, typeof window !== 'undefined' ? window.location.origin : 'https://www.servizephyr.com');
+        if (parsed.pathname !== '/api/payment/upi-qr-card') return rawUrl;
+        if (!TUNNEL_HOST_REGEX.test(parsed.hostname || '')) return rawUrl;
+
+        const runtimeOrigin = typeof window !== 'undefined' && window.location?.origin
+            ? String(window.location.origin).replace(/\/+$/g, '')
+            : 'https://www.servizephyr.com';
+
+        return `${runtimeOrigin}${parsed.pathname}${parsed.search}`;
+    } catch {
+        return rawUrl;
+    }
+};
+
+const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
+
+const toIsoTimestamp = (value) => {
+    if (!value) return null;
+    try {
+        if (typeof value?.toDate === 'function') {
+            return value.toDate().toISOString();
+        }
+        const dt = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(dt.getTime())) return null;
+        return dt.toISOString();
+    } catch {
+        return null;
+    }
+};
+
+const toDateSafe = (value) => {
+    if (!value) return null;
+    try {
+        if (typeof value?.toDate === 'function') {
+            const dt = value.toDate();
+            return Number.isNaN(dt.getTime()) ? null : dt;
+        }
+        const dt = value instanceof Date ? value : new Date(value);
+        return Number.isNaN(dt.getTime()) ? null : dt;
+    } catch {
+        return null;
+    }
+};
+
+const normalizeConversationForUi = (id, data) => {
+    const enteredDirectChatDate = toDateSafe(data?.enteredDirectChatAt);
+    const timeoutMinutesRaw = Number(data?.directChatTimeoutMinutes);
+    const timeoutMinutes = Number.isFinite(timeoutMinutesRaw) && timeoutMinutesRaw > 0
+        ? timeoutMinutesRaw
+        : DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES;
+
+    let conversationState = data?.state;
+    let timeoutStatus = 'active';
+
+    if (conversationState === 'direct_chat' && enteredDirectChatDate) {
+        const elapsedMinutes = (Date.now() - enteredDirectChatDate.getTime()) / 60000;
+        if (elapsedMinutes >= timeoutMinutes) {
+            timeoutStatus = 'expired';
+            conversationState = 'menu';
+        } else {
+            timeoutStatus = `${Math.max(1, Math.ceil(timeoutMinutes - elapsedMinutes))}m left`;
+        }
+    } else if (conversationState === 'direct_chat' && !enteredDirectChatDate) {
+        timeoutStatus = 'expired';
+        conversationState = 'menu';
+    }
+
+    return {
+        id,
+        ...data,
+        conversationState,
+        timeoutStatus,
+        lastMessageTimestamp: toIsoTimestamp(data?.lastMessageTimestamp),
+        orderLinkAccessedAt: toIsoTimestamp(data?.orderLinkAccessedAt),
+        enteredDirectChatAt: toIsoTimestamp(data?.enteredDirectChatAt),
+    };
 };
 
 
@@ -140,6 +231,7 @@ const ConversationItem = ({ conversation, active, onClick }) => {
 
 const MessageBubbleComponent = ({ message }) => {
     const [imageError, setImageError] = useState(false);
+    const normalizedMediaUrl = normalizeLegacyPaymentQrUrl(message.mediaUrl);
     const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
     const isOwner = message.sender === 'owner';
     const isSystem = message.sender === 'system';
@@ -164,7 +256,7 @@ const MessageBubbleComponent = ({ message }) => {
 
     const renderContent = () => {
         // Image
-        if (message.type === 'image' && message.mediaUrl) {
+        if (message.type === 'image' && normalizedMediaUrl) {
 
             if (imageError) {
                 return (
@@ -177,9 +269,9 @@ const MessageBubbleComponent = ({ message }) => {
 
             return (
                 <div className="p-1">
-                    <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
+                    <a href={normalizedMediaUrl} target="_blank" rel="noopener noreferrer">
                         <Image
-                            src={message.mediaUrl}
+                            src={normalizedMediaUrl}
                             alt="Chat image"
                             width={250}
                             height={250}
@@ -193,11 +285,11 @@ const MessageBubbleComponent = ({ message }) => {
         }
 
         // Video
-        if (message.type === 'video' && message.mediaUrl) {
+        if (message.type === 'video' && normalizedMediaUrl) {
             return (
                 <div className="p-1">
                     <video controls className="rounded-lg max-w-full" style={{ maxHeight: '300px' }}>
-                        <source src={message.mediaUrl} type="video/mp4" />
+                        <source src={normalizedMediaUrl} type="video/mp4" />
                         Your browser does not support video playback.
                     </video>
                     {message.fileName && <p className="text-xs mt-1 opacity-70">{message.fileName}</p>}
@@ -206,11 +298,11 @@ const MessageBubbleComponent = ({ message }) => {
         }
 
         // Audio
-        if (message.type === 'audio' && message.mediaUrl) {
+        if (message.type === 'audio' && normalizedMediaUrl) {
             return (
                 <div className="p-2 w-full max-w-xs">
                     <CustomAudioPlayer
-                        src={message.mediaUrl}
+                        src={normalizedMediaUrl}
                         fileName="Voice Message"
                         className={isOwner ? "bg-transparent text-primary-foreground" : "bg-transparent text-foreground"}
                     />
@@ -219,7 +311,7 @@ const MessageBubbleComponent = ({ message }) => {
         }
 
         // Document
-        if (message.type === 'document' && message.mediaUrl) {
+        if (message.type === 'document' && normalizedMediaUrl) {
             const fileExt = message.fileName?.split('.').pop()?.toLowerCase() || 'file';
             let icon = '📄';
             if (fileExt === 'pdf') icon = '📕';
@@ -229,7 +321,7 @@ const MessageBubbleComponent = ({ message }) => {
             return (
                 <div className="p-3">
                     <a
-                        href={message.mediaUrl}
+                        href={normalizedMediaUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-3 hover:opacity-80 transition-opacity"
@@ -418,6 +510,10 @@ function WhatsAppDirectPageContent() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    // Realtime is now explicit opt-in to avoid empty/partial RTDB stream hiding chats.
+    // Set NEXT_PUBLIC_WHATSAPP_DIRECT_REALTIME=true when webhook + RTDB pipeline is verified.
+    const realtimeFeatureEnabled = process.env.NEXT_PUBLIC_WHATSAPP_DIRECT_REALTIME === 'true';
+    const realtimeEligible = realtimeFeatureEnabled && !impersonatedOwnerId && !employeeOfOwnerId;
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
     const prevMessagesLengthRef = useRef(0); // ✅ Track previous message count
@@ -462,12 +558,20 @@ function WhatsAppDirectPageContent() {
 
     const prevTotalUnreadRef = useRef(0);
     const prevActiveMessagesCountRef = useRef(0);
+    const unreadMarkInFlightRef = useRef(false);
+    const lastUnreadSignatureRef = useRef('');
+    const realtimeEmptyFallbackRef = useRef(new Set());
+    const realtimePartialFallbackRef = useRef(new Set());
 
     // NEW: Audio Engine State
     const [workerBlobUrl, setWorkerBlobUrl] = useState(null);
     const [loadingAudioEngine, setLoadingAudioEngine] = useState(true);
 
     const [restaurantProfile, setRestaurantProfile] = useState(null); // Store fetched profile
+    const [realtimeBusinessTarget, setRealtimeBusinessTarget] = useState(null);
+    const [realtimeResolveAttempted, setRealtimeResolveAttempted] = useState(false);
+    const [realtimeRuntimeBlocked, setRealtimeRuntimeBlocked] = useState(false);
+    const isRealtimeActive = realtimeEligible && !!realtimeBusinessTarget && !realtimeRuntimeBlocked;
 
     // Calculate total unread count
     const totalUnreadCount = useMemo(() => {
@@ -832,6 +936,68 @@ function WhatsAppDirectPageContent() {
         }
     }, [handleApiCall]);
 
+    // Resolve business collection + id for client-side realtime listeners.
+    useEffect(() => {
+        let isCancelled = false;
+
+        const resolveBusinessTarget = async () => {
+            if (!realtimeEligible || !auth.currentUser) {
+                setRealtimeBusinessTarget(null);
+                setRealtimeResolveAttempted(true);
+                return;
+            }
+
+            try {
+                const ownerUid = auth.currentUser.uid;
+
+                const restaurantQuery = query(
+                    collection(db, 'restaurants'),
+                    where('ownerId', '==', ownerUid),
+                    limit(1)
+                );
+                const restaurantSnap = await getDocs(restaurantQuery);
+
+                if (!isCancelled && !restaurantSnap.empty) {
+                    setRealtimeBusinessTarget({
+                        collectionName: 'restaurants',
+                        businessId: restaurantSnap.docs[0].id,
+                    });
+                    setRealtimeResolveAttempted(true);
+                    return;
+                }
+
+                const shopQuery = query(
+                    collection(db, 'shops'),
+                    where('ownerId', '==', ownerUid),
+                    limit(1)
+                );
+                const shopSnap = await getDocs(shopQuery);
+
+                if (!isCancelled && !shopSnap.empty) {
+                    setRealtimeBusinessTarget({
+                        collectionName: 'shops',
+                        businessId: shopSnap.docs[0].id,
+                    });
+                    setRealtimeResolveAttempted(true);
+                    return;
+                }
+            } catch (error) {
+                console.warn('[WhatsApp Direct] Realtime target resolve failed, falling back to polling:', error);
+            }
+
+            if (!isCancelled) {
+                setRealtimeBusinessTarget(null);
+                setRealtimeResolveAttempted(true);
+            }
+        };
+
+        resolveBusinessTarget();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [realtimeEligible]);
+
     const fetchConversations = useCallback(async (isBackgroundRefresh = false) => {
         if (!isBackgroundRefresh) {
             setLoadingConversations(true);
@@ -845,6 +1011,45 @@ function WhatsAppDirectPageContent() {
             if (!isBackgroundRefresh) setLoadingConversations(false);
         }
     }, [handleApiCall]); // Stable reference with handleApiCall dependency
+
+    useEffect(() => {
+        if (!realtimeEligible) {
+            setRealtimeRuntimeBlocked(false);
+        }
+    }, [realtimeEligible]);
+
+    useEffect(() => {
+        if (!isRealtimeActive || !realtimeBusinessTarget?.businessId || !realtimeBusinessTarget?.collectionName) {
+            return;
+        }
+
+        setLoadingConversations(true);
+        const conversationsRef = collection(db, realtimeBusinessTarget.collectionName, realtimeBusinessTarget.businessId, 'conversations');
+        const conversationsQuery = query(
+            conversationsRef,
+            orderBy('lastMessageTimestamp', 'desc'),
+            limit(250)
+        );
+
+        const unsubscribe = onSnapshot(conversationsQuery, (snapshot) => {
+            const nextConversations = snapshot.docs.map((docSnap) =>
+                normalizeConversationForUi(docSnap.id, docSnap.data())
+            );
+            setConversations(nextConversations);
+            setLoadingConversations(false);
+        }, (error) => {
+            console.error('[WhatsApp Direct] Realtime conversations listener failed:', error);
+            setRealtimeRuntimeBlocked(true);
+            setLoadingConversations(false);
+            setInfoDialog({
+                isOpen: true,
+                title: 'Realtime Fallback',
+                message: 'Realtime stream blocked. Switching to polling mode automatically.'
+            });
+        });
+
+        return () => unsubscribe();
+    }, [isRealtimeActive, realtimeBusinessTarget?.businessId, realtimeBusinessTarget?.collectionName]);
 
     // NOTE:
     // Global owner notifications are handled by Navbar/AppNotificationCenter.
@@ -871,12 +1076,22 @@ function WhatsAppDirectPageContent() {
         }
     }, [conversations, activeConversation]);
 
-    const fetchMessages = useCallback(async (conversationId) => {
+    const fetchMessages = useCallback(async (conversationId, options = {}) => {
         try {
-            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId });
-            setMessages(data.messages || []);
+            const params = { conversationId };
+            if (options?.syncRealtime) {
+                params.syncRealtime = '1';
+            }
+            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', params);
+            const fetchedMessages = (data.messages || []).map((message) => ({
+                ...message,
+                mediaUrl: normalizeLegacyPaymentQrUrl(message?.mediaUrl)
+            }));
+            setMessages(fetchedMessages);
+            return fetchedMessages;
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load messages: ' + error.message });
+            return [];
         } finally {
             setLoadingMessages(false);
         }
@@ -885,16 +1100,16 @@ function WhatsAppDirectPageContent() {
     // Use adaptive polling for conversations
     usePolling(() => fetchConversations(true), {
         interval: 30000,
-        enabled: !!auth.currentUser,
-        deps: [fetchConversations]
+        enabled: !!auth.currentUser && (!realtimeEligible || !isRealtimeActive),
+        deps: [fetchConversations, realtimeEligible, isRealtimeActive]
     });
 
     // Initial fetch to clear loading state
     useEffect(() => {
-        if (auth.currentUser) {
+        if (auth.currentUser && (!realtimeEligible || !isRealtimeActive || !realtimeResolveAttempted)) {
             fetchConversations();
         }
-    }, [fetchConversations]);
+    }, [fetchConversations, realtimeEligible, isRealtimeActive, realtimeResolveAttempted]);
 
     // Clear messages when switching conversations
     useEffect(() => {
@@ -937,9 +1152,128 @@ function WhatsAppDirectPageContent() {
         }
     }, {
         interval: 3000,
-        enabled: !!activeConversation,
-        deps: [activeConversation?.id]
+        enabled: !!activeConversation && !isRealtimeActive,
+        deps: [activeConversation?.id, isRealtimeActive]
     });
+
+    useEffect(() => {
+        if (!isRealtimeActive || !activeConversation?.id || !realtimeBusinessTarget?.businessId) {
+            return;
+        }
+
+        const activeConversationId = activeConversation.id;
+        setLoadingMessages(true);
+        const streamPath = `wa_realtime/${toSafeRtdbPathKey(realtimeBusinessTarget.businessId)}/conversations/${toSafeRtdbPathKey(activeConversationId)}/messages`;
+        const liveMessagesQuery = rtdbQuery(rtdbRef(rtdb, streamPath), limitToLast(300));
+
+        const unsubscribe = onValue(liveMessagesQuery, async (snapshot) => {
+            const raw = snapshot.val() || {};
+            const msgs = Object.values(raw)
+                .map((message) => ({
+                    ...message,
+                    id: message?.id || null,
+                    mediaUrl: normalizeLegacyPaymentQrUrl(message?.mediaUrl),
+                    timestamp: message?.timestamp || new Date(message?.timestampMs || Date.now()).toISOString(),
+                    timestampMs: Number(message?.timestampMs || Date.now())
+                }))
+                .filter((message) => !!message.id)
+                .sort((a, b) => (a.timestampMs || 0) - (b.timestampMs || 0));
+
+            const conversationKey = activeConversationId;
+
+            if (msgs.length === 0) {
+                if (!realtimeEmptyFallbackRef.current.has(conversationKey)) {
+                    realtimeEmptyFallbackRef.current.add(conversationKey);
+                    console.info(`[WhatsApp Direct] RTDB stream empty for ${conversationKey}. Falling back to Firestore messages.`);
+                    const fallbackMessages = await fetchMessages(conversationKey, { syncRealtime: true });
+                    if ((fallbackMessages || []).length > 0) {
+                        setRealtimeRuntimeBlocked(true);
+                        setInfoDialog({
+                            isOpen: true,
+                            title: 'Realtime Fallback',
+                            message: 'Realtime data is empty. Switched to polling mode for stable chat history.'
+                        });
+                    }
+                } else {
+                    setLoadingMessages(false);
+                }
+                return;
+            }
+
+            const hasCustomerMessageInRealtime = msgs.some((m) => m.sender === 'customer');
+            if (!hasCustomerMessageInRealtime && !realtimePartialFallbackRef.current.has(conversationKey)) {
+                realtimePartialFallbackRef.current.add(conversationKey);
+                console.info(`[WhatsApp Direct] RTDB partial stream for ${conversationKey}. Hydrating from Firestore + switching to polling.`);
+                const fallbackMessages = await fetchMessages(conversationKey, { syncRealtime: true });
+                if ((fallbackMessages || []).some((m) => m.sender === 'customer')) {
+                    setRealtimeRuntimeBlocked(true);
+                    setInfoDialog({
+                        isOpen: true,
+                        title: 'Realtime Fallback',
+                        message: 'Realtime stream is incomplete. Switched to polling mode to show full customer chat.'
+                    });
+                    setLoadingMessages(false);
+                    return;
+                }
+            }
+
+            realtimeEmptyFallbackRef.current.delete(conversationKey);
+            setMessages(msgs);
+            setLoadingMessages(false);
+
+            const unreadMessageIds = msgs
+                .filter((m) => m.sender === 'customer' && m.status !== 'read')
+                .map((m) => m.id)
+                .sort();
+
+            const signature = unreadMessageIds.join('|');
+            if (!signature) {
+                lastUnreadSignatureRef.current = '';
+                return;
+            }
+
+            if (unreadMarkInFlightRef.current || signature === lastUnreadSignatureRef.current) {
+                return;
+            }
+
+            unreadMarkInFlightRef.current = true;
+            lastUnreadSignatureRef.current = signature;
+            try {
+                await handleApiCall('/api/owner/whatsapp-direct/messages', 'PATCH', {
+                    conversationId: activeConversation.id,
+                    messageIds: unreadMessageIds
+                });
+            } catch (err) {
+                console.error("Failed to mark messages as read (realtime):", err);
+                lastUnreadSignatureRef.current = '';
+            } finally {
+                unreadMarkInFlightRef.current = false;
+            }
+        }, (error) => {
+            console.error('[WhatsApp Direct] RTDB messages listener failed:', error);
+            setRealtimeRuntimeBlocked(true);
+            setLoadingMessages(false);
+            setInfoDialog({
+                isOpen: true,
+                title: 'Realtime Fallback',
+                message: 'Realtime message stream blocked. Switched to polling mode.'
+            });
+        });
+
+        return () => {
+            unreadMarkInFlightRef.current = false;
+            lastUnreadSignatureRef.current = '';
+            realtimePartialFallbackRef.current.delete(activeConversationId);
+            realtimeEmptyFallbackRef.current.delete(activeConversationId);
+            unsubscribe();
+        };
+    }, [
+        isRealtimeActive,
+        activeConversation?.id,
+        realtimeBusinessTarget?.businessId,
+        handleApiCall,
+        fetchMessages
+    ]);
 
     const handleConversationClick = (conversation) => {
         // INSTANT RESET: Clear everything to prevent old data leakage
@@ -957,7 +1291,9 @@ function WhatsAppDirectPageContent() {
         setLoadingDetails(true);
 
         // Individual triggers for safety, though useEffects will also catch these
-        fetchMessages(conversation.id);
+        if (!isRealtimeActive) {
+            fetchMessages(conversation.id);
+        }
         if (conversation.customerPhone) {
             fetchCustomerDetails(conversation.customerPhone);
         }
@@ -978,7 +1314,9 @@ function WhatsAppDirectPageContent() {
                 conversationId: activeConversation.id,
                 text: messageToSend
             });
-            await fetchMessages(activeConversation.id);
+            if (!isRealtimeActive) {
+                await fetchMessages(activeConversation.id);
+            }
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to send message: ' + error.message });
             setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
@@ -1054,7 +1392,9 @@ function WhatsAppDirectPageContent() {
 
             await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', messagePayload);
 
-            await fetchMessages(activeConversation.id);
+            if (!isRealtimeActive) {
+                await fetchMessages(activeConversation.id);
+            }
 
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Upload Failed", message: "Could not send file: " + error.message });

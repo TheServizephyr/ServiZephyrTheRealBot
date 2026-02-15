@@ -129,7 +129,20 @@ async function queryOrdersByRange(firestore, businessId, startDate, endDate) {
         .collection('orders')
         .where('restaurantId', '==', businessId)
         .where('orderDate', '>=', startDate)
-        .where('orderDate', '<=', endDate);
+        .where('orderDate', '<=', endDate)
+        .select(
+            'status',
+            'customerId',
+            'userId',
+            'customerPhone',
+            'phone',
+            'customerName',
+            'customerEmail',
+            'orderDate',
+            'grandTotal',
+            'totalAmount',
+            'amount'
+        );
 
     try {
         const snap = await base.orderBy('orderDate', 'desc').get();

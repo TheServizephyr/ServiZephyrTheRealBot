@@ -10,6 +10,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 
+const CUSTOMER_DASH_CACHE_TTL_MS = 3 * 60 * 1000;
+
 const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
@@ -49,8 +51,19 @@ function CustomerHubContent() {
     useEffect(() => {
         const fetchHubData = async () => {
             if (user) {
-                setLoading(true);
                 try {
+                    const cacheKey = `customer_hub_v1:${user.uid}`;
+                    const cachedRaw = sessionStorage.getItem(cacheKey);
+                    if (cachedRaw) {
+                        const parsed = JSON.parse(cachedRaw);
+                        if (parsed?.ts && (Date.now() - parsed.ts) < CUSTOMER_DASH_CACHE_TTL_MS && parsed?.payload) {
+                            setHubData(parsed.payload);
+                            setLoading(false);
+                            return;
+                        }
+                    }
+
+                    setLoading(true);
                     const idToken = await user.getIdToken();
                     const res = await fetch('/api/customer/hub-data', {
                         headers: { 'Authorization': `Bearer ${idToken}` }
@@ -58,6 +71,7 @@ function CustomerHubContent() {
                     if (!res.ok) throw new Error('Failed to fetch hub data');
                     const data = await res.json();
                     setHubData(data);
+                    sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), payload: data }));
                 } catch (error) {
                     console.error("Error fetching hub data:", error);
                     setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your hub data.' });

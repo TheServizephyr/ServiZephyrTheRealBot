@@ -20,6 +20,7 @@ import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 export const dynamic = 'force-dynamic';
+const ANALYTICS_CACHE_TTL_MS = 2 * 60 * 1000;
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const formatDate = (dateStr) => {
@@ -631,10 +632,30 @@ function AnalyticsPageContent() {
 
     useEffect(() => {
         const fetchAnalyticsData = async () => {
-            setLoading(true);
             try {
                 const user = auth.currentUser;
                 if (!user) throw new Error("User not authenticated");
+
+                const cacheKey = [
+                    'owner_analytics_v1',
+                    activeDateFilter,
+                    date?.from ? date.from.toISOString() : 'na',
+                    date?.to ? date.to.toISOString() : 'na',
+                    impersonatedOwnerId || 'self',
+                    employeeOfOwnerId || 'none',
+                ].join(':');
+
+                const cachedRaw = sessionStorage.getItem(cacheKey);
+                if (cachedRaw) {
+                    const parsed = JSON.parse(cachedRaw);
+                    if (parsed?.ts && (Date.now() - parsed.ts) < ANALYTICS_CACHE_TTL_MS && parsed?.payload) {
+                        setAnalyticsData(parsed.payload);
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                setLoading(true);
                 const idToken = await user.getIdToken();
 
                 let url = new URL('/api/owner/analytics', window.location.origin);
@@ -660,6 +681,7 @@ function AnalyticsPageContent() {
 
                 const data = await res.json();
                 setAnalyticsData(data);
+                sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), payload: data }));
 
             } catch (error) {
                 console.error("Error fetching analytics data:", error);

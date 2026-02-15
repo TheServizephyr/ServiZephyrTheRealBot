@@ -237,12 +237,17 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const prevPendingCountRef = useRef(0);
   const hasBootstrappedWaNotifRef = useRef(false);
   const prevWaUnreadCountRef = useRef(0);
+  const isOnWhatsAppDirectPage = pathname?.includes('/owner-dashboard/whatsapp-direct');
+  const isOnLiveOrdersPage =
+    pathname?.includes('/owner-dashboard/live-orders') ||
+    pathname?.includes('/street-vendor-dashboard');
 
   // Realtime Listener for WhatsApp Unread Count
   useEffect(() => {
     // Only fetch if user is owner or has access (and not impersonating for now to keep it simple/secure in client)
     if (!auth.currentUser) return;
     if (impersonatedOwnerId || employeeOfOwnerId) return; // Skip for now until we handle composite query permissions perfectly
+    if (isOnWhatsAppDirectPage) return; // Page has its own realtime pipeline; avoid duplicate reads
 
     let unsubscribe = () => { };
 
@@ -307,7 +312,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [impersonatedOwnerId, employeeOfOwnerId]);
+  }, [impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage]);
 
   // Fetch Pending Orders Count (Real-time)
   useEffect(() => {
@@ -315,6 +320,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     // Skip if impersonating (too complex to handle multiple listeners properly without context)
     // or if not owner
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
+    if (isOnLiveOrdersPage) return; // Live Orders page already has direct realtime; avoid duplicate listener
 
     let unsubscribe = () => { };
 
@@ -377,7 +383,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
 
   useEffect(() => {
     if (impersonatedOwnerId || employeeOfOwnerId) return;
@@ -388,7 +394,6 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       return;
     }
 
-    const isOnWhatsAppDirectPage = pathname?.includes('/owner-dashboard/whatsapp-direct');
     if (unread > prevWaUnreadCountRef.current && !isOnWhatsAppDirectPage) {
       const delta = unread - prevWaUnreadCountRef.current;
       emitAppNotification({
@@ -402,7 +407,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     }
 
     prevWaUnreadCountRef.current = unread;
-  }, [whatsappUnreadCount, impersonatedOwnerId, employeeOfOwnerId, pathname]);
+  }, [whatsappUnreadCount, impersonatedOwnerId, employeeOfOwnerId, pathname, isOnWhatsAppDirectPage]);
 
 
   return (

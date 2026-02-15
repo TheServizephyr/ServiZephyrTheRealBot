@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson, XCircle, ShoppingBag, Laptop, BookOpen, ToyBrick } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
@@ -831,6 +831,7 @@ export default function MenuPage() {
         confirmText: 'Confirm',
         onConfirm: null
     });
+    const hasHydratedFromCacheRef = useRef(false);
 
     // 🔐 RBAC: Get user role for access control
     const { user: authUser, isLoading: isUserLoading } = useUser();
@@ -844,7 +845,12 @@ export default function MenuPage() {
     const canToggleAvailability = userRole === 'owner' || userRole === 'manager' || userRole === 'chef';
     const isReadOnly = !canEdit && !canDelete;
 
-    const handleApiCall = async (endpoint, method, body) => {
+    const cacheKey = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_menu_cache_v1_${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const handleApiCall = useCallback(async (endpoint, method, body) => {
         const user = auth.currentUser;
         if (!user) throw new Error("User not authenticated.");
         const idToken = await user.getIdToken();
@@ -864,35 +870,71 @@ export default function MenuPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || `API call failed: ${method} ${endpoint}`);
         return data;
-    }
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
-    const fetchMenu = async () => {
-        setLoading(true);
+    const applyMenuPayload = useCallback((data) => {
+        setMenu(data.menu || {});
+        setCustomCategories(data.customCategories || []);
+        setBusinessType(data.businessType || 'restaurant');
+        if (data.menu && Object.keys(data.menu).length > 0) {
+            setOpenCategory(prev => prev || Object.keys(data.menu)[0]);
+        }
+    }, []);
+
+    const fetchMenu = useCallback(async ({ background = false } = {}) => {
+        if (!background) {
+            setLoading(true);
+        }
         try {
             const user = auth.currentUser;
             if (!user) { setLoading(false); return; }
-            const data = await handleApiCall('/api/owner/menu', 'GET');
-            setMenu(data.menu || {});
-            setCustomCategories(data.customCategories || []);
-            setBusinessType(data.businessType || 'restaurant');
-            if (data.menu && Object.keys(data.menu).length > 0) {
-                setOpenCategory(Object.keys(data.menu)[0]);
+            const data = await handleApiCall('/api/owner/menu?dashboard=1', 'GET');
+            applyMenuPayload(data);
+            try {
+                sessionStorage.setItem(cacheKey, JSON.stringify({
+                    ts: Date.now(),
+                    data: {
+                        menu: data.menu || {},
+                        customCategories: data.customCategories || [],
+                        businessType: data.businessType || 'restaurant',
+                    }
+                }));
+            } catch {
+                // Ignore storage write issues silently (private mode/storage quota)
             }
         } catch (error) {
             console.error("Error fetching menu:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: "Could not fetch menu. " + error.message });
         } finally {
-            setLoading(false);
+            if (!background) {
+                setLoading(false);
+            }
         }
-    };
+    }, [handleApiCall, cacheKey, applyMenuPayload]);
 
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) fetchMenu();
-            else setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [impersonatedOwnerId]);
+        if (hasHydratedFromCacheRef.current) return;
+        hasHydratedFromCacheRef.current = true;
+        try {
+            const raw = sessionStorage.getItem(cacheKey);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!parsed?.data) return;
+            applyMenuPayload(parsed.data);
+            setLoading(false);
+        } catch {
+            // Ignore malformed cache
+        }
+    }, [cacheKey, applyMenuPayload]);
+
+    useEffect(() => {
+        if (isUserLoading) return;
+        if (!auth.currentUser) {
+            setLoading(false);
+            return;
+        }
+        fetchMenu({ background: false });
+    }, [isUserLoading, authUser?.uid, impersonatedOwnerId, employeeOfOwnerId, fetchMenu]);
 
     const allCategories = useMemo(() => {
         const categories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };

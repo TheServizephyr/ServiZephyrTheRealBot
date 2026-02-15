@@ -68,6 +68,21 @@
                     ".validate": "newData.isString() || newData.isNumber()"
                 }
             }
+        },
+        "wa_realtime": {
+            "$businessId": {
+                ".read": "auth != null",
+                ".write": false,
+                "conversations": {
+                    "$conversationId": {
+                        "messages": {
+                            "$messageId": {
+                                ".validate": "newData.hasChildren(['id', 'sender', 'type', 'timestampMs'])"
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

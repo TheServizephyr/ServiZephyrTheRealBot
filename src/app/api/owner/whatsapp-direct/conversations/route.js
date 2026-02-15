@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { mirrorWhatsAppMessageToRealtime } from '@/lib/whatsapp-realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -187,6 +188,19 @@ export async function PATCH(req) {
                 status: 'sent',
                 isSystem: true
             });
+            await mirrorWhatsAppMessageToRealtime({
+                businessId: businessDoc.id,
+                conversationId,
+                messageId: `sys_${Date.now()}_ended_by_restaurant`,
+                message: {
+                    sender: 'system',
+                    type: 'system',
+                    text: 'Chat ended by restaurant',
+                    status: 'sent',
+                    isSystem: true,
+                    timestamp: new Date().toISOString(),
+                }
+            });
             await conversationRef.collection('messages').add({
                 sender: 'system',
                 type: 'system',
@@ -194,6 +208,19 @@ export async function PATCH(req) {
                 timestamp: FieldValue.serverTimestamp(),
                 status: 'sent',
                 isSystem: true
+            });
+            await mirrorWhatsAppMessageToRealtime({
+                businessId: businessDoc.id,
+                conversationId,
+                messageId: `sys_${Date.now()}_closure_body`,
+                message: {
+                    sender: 'system',
+                    type: 'system',
+                    text: closureBody,
+                    status: 'sent',
+                    isSystem: true,
+                    timestamp: new Date().toISOString(),
+                }
             });
 
             return NextResponse.json({ message: 'Chat ended and menu sent.' }, { status: 200 });

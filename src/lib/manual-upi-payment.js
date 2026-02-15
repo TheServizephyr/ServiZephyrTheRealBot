@@ -4,12 +4,9 @@ import { getStorage } from 'firebase-admin/storage';
 import { firebaseConfig } from '@/firebase/config';
 import { randomUUID } from 'crypto';
 
-const DEFAULT_PAYMENT_BASE_URL = String(
-    process.env.WHATSAPP_CTA_BASE_URL
-    || process.env.NEXT_PUBLIC_BASE_URL
-    || process.env.NEXT_PUBLIC_APP_URL
-    || 'https://www.servizephyr.com'
-).trim().replace(/\/+$/g, '');
+const DEFAULT_PAYMENT_BASE_URL = 'https://www.servizephyr.com';
+const TUNNEL_HOST_RE = /(ngrok|ngrok-free\.app|trycloudflare|loca\.lt|localtunnel|serveo)/i;
+const LOCAL_HOST_RE = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i;
 
 function normalizeBaseUrl(value) {
     const trimmed = String(value || '').trim();
@@ -17,25 +14,54 @@ function normalizeBaseUrl(value) {
     return trimmed.replace(/\/+$/g, '');
 }
 
+function parseHttpUrl(value) {
+    const normalized = normalizeBaseUrl(value);
+    if (!normalized) return null;
+    try {
+        const parsed = new URL(normalized);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function isLocalHost(hostname = '') {
+    return LOCAL_HOST_RE.test(String(hostname || '').trim());
+}
+
+function isTunnelHost(hostname = '') {
+    return TUNNEL_HOST_RE.test(String(hostname || '').trim());
+}
+
 export function resolvePaymentPublicBaseUrl(explicitBaseUrl = '') {
-    const configuredBaseUrl = normalizeBaseUrl(
-        process.env.WHATSAPP_CTA_BASE_URL
-        || process.env.NEXT_PUBLIC_BASE_URL
-        || process.env.NEXT_PUBLIC_APP_URL
-    );
-    const configuredIsLocalLike = /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(configuredBaseUrl);
-    if (
-        (configuredBaseUrl.startsWith('http://') || configuredBaseUrl.startsWith('https://'))
-        && !configuredIsLocalLike
-    ) {
-        return configuredBaseUrl;
+    const candidates = [
+        process.env.WHATSAPP_CTA_BASE_URL,
+        process.env.NEXT_PUBLIC_BASE_URL,
+        process.env.NEXT_PUBLIC_APP_URL,
+        explicitBaseUrl
+    ];
+
+    for (const candidate of candidates) {
+        const parsed = parseHttpUrl(candidate);
+        if (!parsed) continue;
+
+        const host = parsed.hostname || '';
+        const isLocal = isLocalHost(host);
+        const isTunnel = isTunnelHost(host);
+
+        // Allow localhost in dev, never use random tunnel hosts.
+        if (isTunnel) continue;
+        if (isLocal) return normalizeBaseUrl(parsed.toString());
+
+        // Prefer canonical production domain when available.
+        if (host.endsWith('servizephyr.com')) {
+            return normalizeBaseUrl(parsed.toString());
+        }
+
+        return normalizeBaseUrl(parsed.toString());
     }
 
-    const normalizedExplicit = normalizeBaseUrl(explicitBaseUrl);
-    const isLocalLike = /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(normalizedExplicit);
-    if ((normalizedExplicit.startsWith('http://') || normalizedExplicit.startsWith('https://')) && !isLocalLike) {
-        return normalizedExplicit;
-    }
     return DEFAULT_PAYMENT_BASE_URL;
 }
 

@@ -12,6 +12,7 @@ import { sendOrderStatusUpdateToCustomer, sendNewOrderToOwner } from '@/lib/noti
 import axios from 'axios';
 import { nanoid } from 'nanoid';
 import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
+import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime } from '@/lib/whatsapp-realtime';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -263,6 +264,19 @@ const activateDirectChat = async (fromNumber, business, botPhoneNumberId) => {
         status: 'sent',
         isSystem: true
     });
+    await mirrorWhatsAppMessageToRealtime({
+        businessId: business.id,
+        conversationId: fromPhoneNumber,
+        messageId: `sys_${Date.now()}_activate_direct`,
+        message: {
+            sender: 'system',
+            type: 'system',
+            text: activationBody,
+            status: 'sent',
+            isSystem: true,
+            timestamp: new Date().toISOString(),
+        }
+    });
 };
 
 
@@ -313,6 +327,21 @@ const sendWelcomeMessageWithOptions = async (
                 timestamp: FieldValue.serverTimestamp(),
                 status: 'sent',
                 isSystem: true
+            });
+            await mirrorWhatsAppMessageToRealtime({
+                businessId: business.id,
+                conversationId: fromPhoneNumber,
+                messageId: wamid,
+                message: {
+                    id: wamid,
+                    sender: 'system',
+                    type: 'system',
+                    text: fallbackText || welcomeBody,
+                    interactive_type: payload?.interactive?.type || 'interactive',
+                    status: 'sent',
+                    isSystem: true,
+                    timestamp: new Date().toISOString(),
+                }
             });
         }
         return response;
@@ -537,6 +566,19 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
         status: 'read',
         isSystem: true // Treat as system event for display
     });
+    await mirrorWhatsAppMessageToRealtime({
+        businessId: business.id,
+        conversationId: customerPhone,
+        messageId: `evt_${Date.now()}_${nanoid(6)}`,
+        message: {
+            sender: 'customer',
+            type: 'system_event',
+            text: userSelectionText,
+            status: 'read',
+            isSystem: true,
+            timestamp: new Date().toISOString(),
+        }
+    });
 
 
     try {
@@ -644,6 +686,19 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                         type: 'system',
                         text: 'Chat ended by customer',
                         isSystem: true
+                    });
+                    await mirrorWhatsAppMessageToRealtime({
+                        businessId: business.id,
+                        conversationId: customerPhone,
+                        messageId: `sys_${Date.now()}_ended_by_customer`,
+                        message: {
+                            sender: 'system',
+                            type: 'system',
+                            text: 'Chat ended by customer',
+                            status: 'sent',
+                            isSystem: true,
+                            timestamp: new Date().toISOString(),
+                        }
                     });
                     await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
                 }
@@ -858,6 +913,12 @@ export async function POST(request) {
                                 const doc = await msgRef.get();
                                 if (doc.exists) {
                                     await msgRef.update({ status: status });
+                                    await updateWhatsAppMessageStatusInRealtime({
+                                        businessId: business.id,
+                                        conversationId: phonePath,
+                                        messageId,
+                                        status
+                                    });
                                     console.log(`    - ✅ Status updated to '${status}' on attempt ${i + 1}`);
                                     return true;
                                 } else {
@@ -1001,6 +1062,21 @@ export async function POST(request) {
                     mediaId: mediaId,
                     rawPayload: JSON.stringify(message)
                 }, { merge: true });
+                await mirrorWhatsAppMessageToRealtime({
+                    businessId: business.id,
+                    conversationId: fromPhoneNumber,
+                    messageId: message.id,
+                    message: {
+                        id: message.id,
+                        sender: 'customer',
+                        status: mediaId ? 'media_pending' : 'received',
+                        type: messageType,
+                        text: messageContent,
+                        mediaId,
+                        rawPayload: JSON.stringify(message),
+                        timestamp: waTimestamp.toISOString(),
+                    }
+                });
 
                 const customerNameFromPayload = change.value.contacts?.[0]?.profile?.name || fromPhoneNumber;
                 const shouldIncrementUnreadForOwner = conversationData.state === 'direct_chat';
@@ -1046,6 +1122,19 @@ export async function POST(request) {
                             type: 'system',
                             text: 'Chat ended by customer',
                             isSystem: true
+                        });
+                        await mirrorWhatsAppMessageToRealtime({
+                            businessId: business.id,
+                            conversationId: fromPhoneNumber,
+                            messageId: `sys_${Date.now()}_ended_by_customer_text`,
+                            message: {
+                                sender: 'system',
+                                type: 'system',
+                                text: 'Chat ended by customer',
+                                status: 'sent',
+                                isSystem: true,
+                                timestamp: waTimestamp.toISOString(),
+                            }
                         });
                         await sendWelcomeMessageWithOptions(
                             fromNumber,
