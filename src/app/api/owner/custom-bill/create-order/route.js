@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'crypto';
 import { getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
-import { sendSystemMessage, sendSystemTemplateMessage } from '@/lib/whatsapp';
+import { sendSystemMessage, sendSystemTemplateMessage, sendWhatsAppMessage } from '@/lib/whatsapp';
 import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
 import { createOrderV2 } from '@/services/order/createOrder.service';
 
@@ -376,7 +376,10 @@ export async function POST(req) {
                 },
             };
 
-            // Preferred path: approved WhatsApp template with CTA URL button.
+            // TEMPLATE PATH DISABLED as per user request
+            // User confirmed: CTA button should be primary, no template dependency
+            // Templates remain utility category, but we want guaranteed delivery via CTA
+            /*
             if (ADD_ADDRESS_TEMPLATE_NAME && addAddressShortCode) {
                 try {
                     const templatePayload = buildAddAddressTemplatePayload({
@@ -413,38 +416,78 @@ export async function POST(req) {
                     whatsappMode = 'text_fallback';
                 }
             }
+            */
 
-            // Fallback path 1: interactive CTA button message (same single message with button).
-            if (!whatsappSent) {
-                try {
-                    const waResponse = await sendSystemTemplateMessage(
-                        `91${phone}`,
-                        interactiveCtaPayload,
-                        `${ctaBodyMessage}\n\n${customerFacingLink}`,
-                        botPhoneNumberId,
-                        businessId,
-                        businessData.name || 'ServiZephyr',
-                        collectionName,
-                        {
-                            customerName,
-                            conversationPreview: 'Order created. Please add your delivery location.',
-                        }
-                    );
-                    if (waResponse?.messages?.[0]?.id) {
-                        whatsappSent = true;
-                        whatsappMode = 'interactive_cta';
-                    } else {
-                        throw new Error('WhatsApp API did not return a message id for interactive CTA.');
+            // PRIMARY METHOD: Interactive CTA button message (NO TEMPLATE DEPENDENCY)
+            // This uses sendWhatsAppMessage directly, ensuring guaranteed delivery
+            console.log('[Custom Bill Create Order] 📤 Sending interactive CTA button...');
+            try {
+                const waResponse = await sendWhatsAppMessage(
+                    `91${phone}`,
+                    interactiveCtaPayload,
+                    botPhoneNumberId
+                );
+
+                if (waResponse?.messages?.[0]?.id) {
+                    whatsappSent = true;
+                    whatsappMode = 'interactive_cta';
+                    const wamid = waResponse.messages[0].id;
+                    console.log('[Custom Bill Create Order] ✅ Interactive CTA sent:', wamid);
+
+                    // Store in conversation history
+                    try {
+                        const firestore = await getFirestore();
+                        const cleanPhone = phone;
+
+                        await firestore
+                            .collection(collectionName)
+                            .doc(businessId)
+                            .collection('conversations')
+                            .doc(cleanPhone)
+                            .collection('messages')
+                            .doc(wamid)
+                            .set({
+                                id: wamid,
+                                wamid: wamid,
+                                sender: 'system',
+                                type: 'interactive',
+                                text: `${ctaBodyMessage}\n\n${customerFacingLink}`,
+                                body: ctaBodyMessage,
+                                timestamp: new Date(),
+                                status: 'sent',
+                                isSystem: true,
+                                messageFormat: 'interactive_cta',
+                            });
+
+                        await firestore
+                            .collection(collectionName)
+                            .doc(businessId)
+                            .collection('conversations')
+                            .doc(cleanPhone)
+                            .set({
+                                customerPhone: cleanPhone,
+                                customerName: customerName,
+                                lastMessage: ctaBodyMessage,
+                                lastMessageType: 'interactive',
+                                lastMessageTimestamp: new Date(),
+                            }, { merge: true });
+
+                        console.log('[Custom Bill Create Order] 💾 CTA stored in conversation');
+                    } catch (dbErr) {
+                        console.warn('[Custom Bill Create Order] ⚠️  Failed to store:', dbErr?.message);
                     }
-                } catch (interactiveErr) {
-                    console.warn('[Custom Bill Create Order] Interactive CTA send failed. Falling back to text message:', interactiveErr?.message || interactiveErr);
-                    if (!whatsappMode || whatsappMode === 'none') {
-                        whatsappMode = 'text_fallback';
-                    }
+                } else {
+                    throw new Error('WhatsApp API did not return message ID for CTA');
                 }
+            } catch (interactiveErr) {
+                console.error('[Custom Bill Create Order] ❌ CTA failed:', interactiveErr?.message || interactiveErr);
+                whatsappMode = 'text_fallback';
+                whatsappSent = false;
             }
 
+            // FALLBACK: Plain text message if CTA button fails
             if (!whatsappSent) {
+                console.log('[Custom Bill Create Order] 📝 Attempting text fallback...');
                 try {
                     const waResponse = await sendSystemMessage(
                         `91${phone}`,
@@ -455,23 +498,21 @@ export async function POST(req) {
                         collectionName,
                         {
                             customerName,
-                            conversationPreview: 'Your order has been created successfully. Please add your delivery location for live tracking.',
+                            conversationPreview: 'Order created. Add delivery location for tracking.',
                         }
                     );
                     if (waResponse?.messages?.[0]?.id) {
                         whatsappSent = true;
-                        if (whatsappMode === 'text_fallback') {
-                            whatsappMode = 'text_fallback';
-                        } else if (whatsappMode !== 'template') {
-                            whatsappMode = 'text';
-                        }
+                        whatsappMode = 'text_fallback';
+                        console.log('[Custom Bill Create Order] ✅ Text fallback sent:', waResponse.messages[0].id);
                     } else {
                         whatsappSent = false;
-                        whatsappError = 'WhatsApp API did not return a message id.';
+                        whatsappError = 'WhatsApp API did not return message ID.';
+                        console.error('[Custom Bill Create Order] ❌ Text fallback returned no message ID');
                     }
                 } catch (err) {
                     whatsappError = err?.message || 'Failed to send WhatsApp message.';
-                    console.error('[Custom Bill Create Order] WhatsApp send failed:', err);
+                    console.error('[Custom Bill Create Order] ❌ All WhatsApp attempts failed:', err);
                 }
             }
         } else {
