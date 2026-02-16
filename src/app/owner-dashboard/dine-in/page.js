@@ -1021,7 +1021,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     // Use clear tab directly as "Clean Table" implies finishing the session
-                                                                    onClearTab(group.dineInTabId, tableData.id, group.pax_count);
+                                                                    onClearTab(group.dineInTabId || group.id, tableData.id, group.pax_count);
                                                                 }}
                                                                 className="w-full mt-2 bg-blue-600 hover:bg-blue-700"
                                                             >
@@ -1871,6 +1871,7 @@ const DineInPageContent = () => {
             const cleanupEndpoint = '/api/dine-in/clean-table';
             const payload = {
                 tabId,
+                tableId,
                 restaurantId: restaurantDetails?.id // ✅ Add restaurantId for tab lookup
             };
 

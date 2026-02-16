@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { nanoid } from 'nanoid';
 import { checkIpRateLimit } from '@/lib/rateLimiter';
+import { obfuscateGuestId } from '@/lib/guest-utils';
 
 export async function POST(req) {
     console.log("[API][generate-session-token] POST request received.");
@@ -87,15 +88,17 @@ export async function POST(req) {
         const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
 
         const authTokenRef = firestore.collection('auth_tokens').doc(token);
+        const ref = obfuscateGuestId(uid);
         await authTokenRef.set({
             phone: phone,
             expiresAt: expiresAt,
-            uid: uid,
+            uid: uid, // legacy compatibility
+            userId: uid, // ref-based verification support
             type: 'whatsapp'
         });
         
         console.log(`[API][generate-session-token] Generated new WHATSAPP token for phone: ${phone}`);
-        return NextResponse.json({ phone, token, expiresAt }, { status: 200 });
+        return NextResponse.json({ phone, ref, token, expiresAt }, { status: 200 });
 
     } catch (error) {
         console.error('GENERATE SESSION TOKEN API ERROR:', error);

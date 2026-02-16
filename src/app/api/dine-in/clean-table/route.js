@@ -8,14 +8,34 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
-import { verifyTabIntegrity, areAllOrdersPaid, validateTabToken } from '@/lib/dinein-utils';
+import { verifyTabIntegrity, validateTabToken } from '@/lib/dinein-utils';
+
+async function getBusinessRef(firestore, restaurantId) {
+    if (!restaurantId) return null;
+
+    let businessRef = firestore.collection('restaurants').doc(restaurantId);
+    let businessSnap = await businessRef.get();
+
+    if (businessSnap.exists) {
+        return businessRef;
+    }
+
+    businessRef = firestore.collection('shops').doc(restaurantId);
+    businessSnap = await businessRef.get();
+
+    if (businessSnap.exists) {
+        return businessRef;
+    }
+
+    return null;
+}
 
 async function handleCleanTable(req) {
     try {
         const body = await req.json();
         console.log('[Clean Table] 🔍 Request body:', body);
 
-        const { tabId, token, restaurantId } = body;
+        const { tabId, token, restaurantId, tableId: incomingTableId } = body;
 
         if (!tabId) {
             console.log('[Clean Table] ❌ Missing tabId');
@@ -41,6 +61,9 @@ async function handleCleanTable(req) {
 
         const firestore = await getFirestore();
 
+        const businessRef = await getBusinessRef(firestore, restaurantId);
+        const businessId = businessRef?.id || restaurantId || null;
+
         // ✅ Try to find tab in multiple locations (V1 vs V2 structure)
         let tabRef, tabSnap;
 
@@ -49,56 +72,173 @@ async function handleCleanTable(req) {
         tabSnap = await tabRef.get();
 
         // If not found and restaurantId provided, try restaurant subcollection (V2 structure)
-        if (!tabSnap.exists && restaurantId) {
+        if (!tabSnap.exists && businessRef) {
             console.log(`[Clean Table] Tab not in global collection, checking restaurant subcollection for ${restaurantId}`);
-            tabRef = firestore.collection('restaurants').doc(restaurantId).collection('dineInTabs').doc(tabId);
+            tabRef = businessRef.collection('dineInTabs').doc(tabId);
             tabSnap = await tabRef.get();
         }
 
         if (!tabSnap.exists) {
             console.log(`[Clean Table] ❌ Tab ${tabId} not found in any location`);
 
-            // ✅ CRITICAL: Even if tab doesn't exist, mark orders as cleaned!
-            // This handles old orders that never had tab documents
-            try {
-                const ordersQuery = firestore.collection('orders')
-                    .where('dineInTabId', '==', tabId)
-                    .where('deliveryType', '==', 'dine-in');
+            const sessionOrdersMap = new Map();
 
-                const ordersSnap = await ordersQuery.get();
-
-                if (!ordersSnap.empty) {
-                    const batch = firestore.batch();
-                    ordersSnap.forEach(doc => {
-                        batch.update(doc.ref, {
-                            cleaned: true,
-                            cleanedAt: FieldValue.serverTimestamp()
-                        });
-                    });
-                    await batch.commit();
-                    console.log(`[Clean Table] ✅ Marked ${ordersSnap.size} orders as cleaned (tab doc not found)`);
-
-                    return NextResponse.json({
-                        success: true,
-                        message: 'Orders marked as cleaned (tab not found)',
-                        totalCollected: 0,
-                        integrityVerified: true
-                    }, { status: 200 });
+            const addSessionOrders = async (queryBuilder) => {
+                try {
+                    const snap = await queryBuilder.get();
+                    snap.docs.forEach((doc) => sessionOrdersMap.set(doc.id, doc));
+                } catch (err) {
+                    console.warn('[Clean Table] Session order lookup failed:', err?.message || err);
                 }
-            } catch (err) {
-                console.warn(`[Clean Table] Could not mark orders:`, err.message);
+            };
+
+            // 1) Primary lookup by dineInTabId.
+            let q1 = firestore.collection('orders')
+                .where('deliveryType', '==', 'dine-in')
+                .where('dineInTabId', '==', tabId);
+            if (businessId) q1 = q1.where('restaurantId', '==', businessId);
+            await addSessionOrders(q1);
+
+            // 2) Legacy lookup by tabId.
+            let q2 = firestore.collection('orders')
+                .where('deliveryType', '==', 'dine-in')
+                .where('tabId', '==', tabId);
+            if (businessId) q2 = q2.where('restaurantId', '==', businessId);
+            await addSessionOrders(q2);
+
+            // 3) Group-key token lookup: "<table>_token_<token>".
+            const tokenFromGroupKey = String(tabId).includes('_token_')
+                ? String(tabId).split('_token_')[1]
+                : null;
+            if (tokenFromGroupKey) {
+                let q3 = firestore.collection('orders')
+                    .where('deliveryType', '==', 'dine-in')
+                    .where('dineInToken', '==', tokenFromGroupKey);
+                if (businessId) q3 = q3.where('restaurantId', '==', businessId);
+                await addSessionOrders(q3);
             }
 
-            // Tab doesn't exist and no orders found = already cleaned!
-            return NextResponse.json(
-                {
-                    success: true,
-                    message: 'Tab not found (already cleaned or never existed)',
-                    totalCollected: 0,
-                    integrityVerified: true
-                },
-                { status: 200 }
-            );
+            const sessionOrders = Array.from(sessionOrdersMap.values());
+            if (sessionOrders.length === 0) {
+                return NextResponse.json(
+                    { error: 'Tab session not found. Nothing to clean.' },
+                    { status: 404 }
+                );
+            }
+
+            const firstOrderData = sessionOrders[0]?.data?.() || {};
+            const resolvedTableId = incomingTableId || firstOrderData.tableId || firstOrderData.table || null;
+            const possibleTabIds = new Set();
+            sessionOrders.forEach((doc) => {
+                const data = doc.data() || {};
+                if (data.dineInTabId) possibleTabIds.add(String(data.dineInTabId));
+                if (data.tabId) possibleTabIds.add(String(data.tabId));
+            });
+
+            let actualTableId = null;
+            if (businessRef && resolvedTableId) {
+                const tablesSnap = await businessRef.collection('tables').get();
+                tablesSnap.forEach((doc) => {
+                    if (String(doc.id).toLowerCase() === String(resolvedTableId).toLowerCase()) {
+                        actualTableId = doc.id;
+                    }
+                });
+            }
+
+            const tabIdsToClose = new Set();
+            if (businessRef) {
+                for (const candidateTabId of possibleTabIds) {
+                    if (!candidateTabId) continue;
+                    const candidateTabRef = businessRef.collection('dineInTabs').doc(candidateTabId);
+                    const candidateTabSnap = await candidateTabRef.get();
+                    if (candidateTabSnap.exists) {
+                        tabIdsToClose.add(candidateTabId);
+                    }
+                }
+
+                // Recovery path: when orders carry drifted tabId, resolve the real open tab on the same table.
+                if (tabIdsToClose.size === 0 && actualTableId) {
+                    const openTabsSnap = await businessRef.collection('dineInTabs')
+                        .where('tableId', '==', actualTableId)
+                        .where('status', 'in', ['active', 'inactive'])
+                        .get();
+
+                    const expectedName = String(firstOrderData.tab_name || firstOrderData.customerName || '').trim().toLowerCase();
+                    const expectedPax = Number(firstOrderData.pax_count || 0);
+
+                    const rankedTabs = openTabsSnap.docs
+                        .map((doc) => {
+                            const data = doc.data() || {};
+                            const tabName = String(data.tab_name || '').trim().toLowerCase();
+                            const pax = Number(data.pax_count || 0);
+                            const updatedAt = typeof data.updatedAt?.toMillis === 'function'
+                                ? data.updatedAt.toMillis()
+                                : (typeof data.createdAt?.toMillis === 'function' ? data.createdAt.toMillis() : 0);
+                            let score = 0;
+                            if (expectedName && tabName === expectedName) score += 3;
+                            if (expectedPax > 0 && pax === expectedPax) score += 2;
+                            return { id: doc.id, score, updatedAt };
+                        })
+                        .sort((a, b) => {
+                            if (b.score !== a.score) return b.score - a.score;
+                            return b.updatedAt - a.updatedAt;
+                        });
+
+                    if (rankedTabs.length === 1) {
+                        tabIdsToClose.add(rankedTabs[0].id);
+                    } else if (rankedTabs.length > 1 && rankedTabs[0].score > 0) {
+                        tabIdsToClose.add(rankedTabs[0].id);
+                    }
+                }
+            }
+
+            const batch = firestore.batch();
+            sessionOrders.forEach((doc) => {
+                batch.set(doc.ref, {
+                    cleaned: true,
+                    cleanedAt: FieldValue.serverTimestamp()
+                }, { merge: true });
+            });
+
+            if (businessRef) {
+                for (const candidateTabId of tabIdsToClose) {
+                    const candidateTabRef = businessRef.collection('dineInTabs').doc(candidateTabId);
+                    batch.update(candidateTabRef, {
+                        status: 'completed',
+                        closedAt: FieldValue.serverTimestamp(),
+                        cleanedAt: FieldValue.serverTimestamp()
+                    });
+                }
+            }
+
+            await batch.commit();
+
+            // Sync table occupancy if table resolved.
+            if (businessRef && actualTableId) {
+                const openTabsSnap = await businessRef.collection('dineInTabs')
+                    .where('tableId', '==', actualTableId)
+                    .where('status', 'in', ['active', 'inactive'])
+                    .get();
+
+                const recalculatedPax = openTabsSnap.docs.reduce((sum, doc) => {
+                    return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
+                }, 0);
+
+                await businessRef.collection('tables').doc(actualTableId).set({
+                    current_pax: recalculatedPax,
+                    state: recalculatedPax > 0 ? 'occupied' : 'available',
+                    cleanedAt: FieldValue.serverTimestamp(),
+                    updatedAt: FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+
+            return NextResponse.json({
+                success: true,
+                message: `Session cleaned using order fallback (${sessionOrders.length} orders).`,
+                tabId,
+                cleanedOrders: sessionOrders.length,
+                closedTabIds: Array.from(tabIdsToClose)
+            }, { status: 200 });
         }
 
         console.log(`[Clean Table] ✅ Found tab ${tabId}`);
@@ -163,11 +303,16 @@ async function handleCleanTable(req) {
 
         // ✅ Mark all orders as cleaned (outside transaction for better error handling)
         try {
-            const ordersQuery = firestore.collection('orders')
+            let ordersSnap = await firestore.collection('orders')
+                .where('deliveryType', '==', 'dine-in')
                 .where('dineInTabId', '==', tabId)
-                .where('deliveryType', '==', 'dine-in');
-
-            const ordersSnap = await ordersQuery.get();
+                .get();
+            if (ordersSnap.empty) {
+                ordersSnap = await firestore.collection('orders')
+                    .where('deliveryType', '==', 'dine-in')
+                    .where('tabId', '==', tabId)
+                    .get();
+            }
 
             if (!ordersSnap.empty) {
                 const batch = firestore.batch();
@@ -186,30 +331,41 @@ async function handleCleanTable(req) {
         }
 
         // ✅ CRITICAL: Update table document - decrement current_pax
-        if (result.tableId && restaurantId) {
+        if (result.tableId && businessRef) {
             try {
-                const tableRef = firestore.collection('restaurants').doc(restaurantId).collection('tables').doc(result.tableId);
-                const tableSnap = await tableRef.get();
-
-                if (tableSnap.exists) {
-                    const tableData = tableSnap.data();
-                    const paxToRemove = result.pax_count || 0;
-                    const newCurrentPax = Math.max(0, (tableData.current_pax || 0) - paxToRemove);
-
-                    const tableUpdate = {
-                        current_pax: newCurrentPax,
-                        updatedAt: FieldValue.serverTimestamp()
-                    };
-
-                    // Keep table state in sync with current_pax used by dashboard/customer flows.
-                    if (newCurrentPax === 0) {
-                        tableUpdate.state = 'available';
-                    } else {
-                        tableUpdate.state = 'occupied';
+                const tablesSnap = await businessRef.collection('tables').get();
+                let actualTableId = null;
+                tablesSnap.forEach((doc) => {
+                    if (String(doc.id).toLowerCase() === String(result.tableId).toLowerCase()) {
+                        actualTableId = doc.id;
                     }
+                });
 
-                    await tableRef.update(tableUpdate);
-                    console.log(`[Clean Table] ✅ Updated table ${result.tableId}: current_pax ${tableData.current_pax} → ${newCurrentPax}`);
+                if (actualTableId) {
+                    const tableRef = businessRef.collection('tables').doc(actualTableId);
+                    const tableSnap = await tableRef.get();
+                    const tableData = tableSnap.data() || {};
+
+                    const openTabsSnap = await businessRef.collection('dineInTabs')
+                        .where('tableId', '==', actualTableId)
+                        .where('status', 'in', ['active', 'inactive'])
+                        .get();
+
+                    const recalculatedPax = openTabsSnap.docs.reduce((sum, doc) => {
+                        return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
+                    }, 0);
+
+                    const paxToRemove = result.pax_count || 0;
+                    const fallbackPax = Math.max(0, (tableData.current_pax || 0) - paxToRemove);
+                    const newCurrentPax = openTabsSnap.empty ? fallbackPax : recalculatedPax;
+
+                    await tableRef.set({
+                        current_pax: newCurrentPax,
+                        state: newCurrentPax > 0 ? 'occupied' : 'available',
+                        cleanedAt: FieldValue.serverTimestamp(),
+                        updatedAt: FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    console.log(`[Clean Table] ✅ Updated table ${actualTableId}: current_pax ${tableData.current_pax || 0} → ${newCurrentPax}`);
                 } else {
                     console.warn(`[Clean Table] ⚠️ Table ${result.tableId} not found`);
                 }
@@ -219,23 +375,6 @@ async function handleCleanTable(req) {
             }
         }
 
-
-        // Step 3: Double-check all orders are paid
-        const allPaid = await areAllOrdersPaid(tabId);
-
-        if (!allPaid) {
-            console.error(`[Clean Table] Some orders not paid for tab ${tabId}`);
-            // Revert tab status
-            await firestore.collection('dine_in_tabs').doc(tabId).update({
-                status: 'active',
-                closedAt: null
-            });
-
-            return NextResponse.json(
-                { error: 'Some orders are not paid' },
-                { status: 400 }
-            );
-        }
 
         return NextResponse.json({
             success: true,

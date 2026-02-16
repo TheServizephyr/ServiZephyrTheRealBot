@@ -43,6 +43,11 @@ const VALID_STATUSES = new Set([
 function getAllowedNextStatuses(orderData = {}) {
     const isPickup = orderData.deliveryType === 'pickup';
     const isDelivery = orderData.deliveryType === 'delivery';
+    const isDineIn = orderData.deliveryType === 'dine-in'
+        || orderData.diningPreference === 'dine-in'
+        || !!orderData.tableId
+        || !!orderData.dineInTabId
+        || !!orderData.tabId;
 
     if (isPickup) {
         return {
@@ -50,6 +55,16 @@ function getAllowedNextStatuses(orderData = {}) {
             confirmed: new Set(['preparing']),
             preparing: new Set(['ready_for_pickup']),
             ready_for_pickup: new Set(['picked_up']),
+        };
+    }
+
+    if (isDineIn) {
+        return {
+            pending: new Set(['confirmed', 'rejected']),
+            confirmed: new Set(['preparing']),
+            preparing: new Set(['ready', 'ready_for_pickup']),
+            ready: new Set(['delivered']),
+            ready_for_pickup: new Set(['delivered']),
         };
     }
 
@@ -70,6 +85,7 @@ function getAllowedNextStatuses(orderData = {}) {
         confirmed: new Set(['preparing']),
         preparing: new Set(['ready', 'ready_for_pickup']),
         ready: new Set(['delivered']),
+        ready_for_pickup: new Set(['delivered']),
     };
 }
 
@@ -790,8 +806,16 @@ export async function PATCH(req) {
                     updateData.deliveryBoyId = resolvedDeliveryBoyId;
                 }
 
-                if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
-                    updateData.dineInTabId = `tab_${Date.now()}`;
+                // Never mutate an existing dine-in tab session id during status transitions.
+                // Overwriting this id creates tab drift and breaks clean-table/session closure.
+                if (
+                    orderData.deliveryType === 'dine-in' &&
+                    !orderData.dineInTabId &&
+                    typeof orderData.tabId === 'string' &&
+                    orderData.tabId.startsWith('tab_')
+                ) {
+                    // Safe one-time backfill for legacy records that only stored tabId.
+                    updateData.dineInTabId = orderData.tabId;
                 }
 
                 batch.update(orderSnap.ref, updateData);

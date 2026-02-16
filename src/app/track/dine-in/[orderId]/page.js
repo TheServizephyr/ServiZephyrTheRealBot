@@ -337,25 +337,61 @@ function DineInTrackingContent() {
         router.push(`/checkout?${params.toString()}`);
     };
 
-    const handleMarkDone = async () => {
-        // Customer marking they're done - table goes to needs_cleaning
+    const clearLocalDineInSession = (restaurantId, tableId) => {
+        if (!restaurantId) return;
+        try {
+            localStorage.removeItem(`liveOrder_${restaurantId}`);
+            if (tableId) {
+                localStorage.removeItem(`dineInTab_${restaurantId}_${tableId}`);
+            }
+        } catch (err) {
+            console.warn('[DineIn Track] Failed to clear local session cache:', err?.message || err);
+        }
+    };
+
+    const handleExitTable = async ({ redirectToMenu = true, showAlert = true } = {}) => {
         setIsMarkingDone(true);
         try {
-            // Call API to mark table as needing cleaning
+            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
+            if (!restaurantId || !tableId || !tabId) {
+                throw new Error('Missing table session details.');
+            }
+
             const res = await fetch('/api/owner/tables', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    restaurantId: orderData.restaurant?.id,
-                    tableId: orderData.order?.tableId || orderData.order?.table,
-                    action: 'customer_done'
+                    restaurantId,
+                    tableId,
+                    tabId,
+                    trackingToken,
+                    action: 'customer_exit'
                 })
             });
-            if (res.ok) {
-                alert('Thank you! The staff has been notified to clean your table.');
+            const data = await res.json();
+            if (!res.ok) {
+                if (res.status === 404 && String(data?.message || '').toLowerCase().includes('tab session not found')) {
+                    clearLocalDineInSession(restaurantId, tableId);
+                    if (redirectToMenu) router.replace(`/order/${restaurantId}`);
+                    return;
+                }
+                throw new Error(data?.message || 'Could not close table session.');
+            }
+
+            clearLocalDineInSession(restaurantId, tableId);
+            const restaurantName = orderData?.restaurant?.name || 'our restaurant';
+
+            if (showAlert) {
+                alert(`Thank you for visiting ${restaurantName}. Please come again soon!`);
+            }
+
+            if (redirectToMenu) {
+                try { window.close(); } catch { }
+                router.replace(`/order/${restaurantId}`);
             }
         } catch (err) {
-            console.error('Error marking done:', err);
+            console.error('Error exiting table:', err);
+            alert(err.message || 'Unable to exit table right now.');
         } finally {
             setIsMarkingDone(false);
         }
@@ -447,29 +483,12 @@ function DineInTrackingContent() {
                         {cancellationReason}
                     </p>
                     <Button
-                        onClick={() => {
-                            // \u2705 CRITICAL: Clear localStorage FIRST!
-                            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
-
-                            if (restaurantId) {
-                                // Remove cancelled order from localStorage
-                                const liveOrderKey = `liveOrder_${restaurantId}`;
-                                localStorage.removeItem(liveOrderKey);
-                                console.log('[DineIn Track] Cleared cancelled order from localStorage:', liveOrderKey);
-
-                                const params = new URLSearchParams();
-                                if (tableId) params.set('table', tableId);
-                                if (tabId) params.set('tabId', tabId);
-                                if (trackingToken) params.set('token', trackingToken);
-                                router.replace(`/order/${restaurantId}?${params.toString()}`);
-                            } else {
-                                router.replace('/');
-                            }
-                        }}
+                        onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
                         className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                        disabled={isMarkingDone}
                     >
                         <Home className="mr-2 h-5 w-5" />
-                        Back to Menu
+                        {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
                     </Button>
                 </motion.div>
             </div>
@@ -527,29 +546,12 @@ function DineInTrackingContent() {
                         Thank you for dining with us!
                     </p>
                     <Button
-                        onClick={() => {
-                            // ✅ CRITICAL: Clear localStorage FIRST!
-                            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
-
-                            if (restaurantId) {
-                                // Remove paid order from localStorage
-                                const liveOrderKey = `liveOrder_${restaurantId}`;
-                                localStorage.removeItem(liveOrderKey);
-                                console.log('[DineIn Track] Cleared paid order from localStorage:', liveOrderKey);
-
-                                const params = new URLSearchParams();
-                                if (tableId) params.set('table', tableId);
-                                if (tabId) params.set('tabId', tabId);
-                                if (trackingToken) params.set('token', trackingToken);
-                                router.replace(`/order/${restaurantId}?${params.toString()}`);
-                            } else {
-                                router.replace('/');
-                            }
-                        }}
+                        onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
                         className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                        disabled={isMarkingDone}
                     >
                         <Home className="mr-2 h-5 w-5" />
-                        Back to Menu
+                        {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
                     </Button>
                 </motion.div>
             </div>
@@ -949,42 +951,28 @@ function DineInTrackingContent() {
                             </div>
                         </motion.div>
                     )}
-
-
-                    {/* I'm Done Button - Only show when served */}
-                    {isServed && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.6 }}
-                            className="mt-4"
-                        >
-                            <Button
-                                onClick={handleMarkDone}
-                                variant="outline"
-                                className="w-full h-12 border-green-500 text-green-500 hover:bg-green-500/10"
-                                disabled={isMarkingDone}
-                            >
-                                <CheckCircle className="mr-2 h-5 w-5" />
-                                {isMarkingDone ? 'Notifying Staff...' : "I'm Done - Clear My Table"}
-                            </Button>
-                        </motion.div>
-                    )}
                 </div>
             </main>
 
             <footer className="fixed bottom-0 left-0 w-full bg-background/95 backdrop-blur-lg border-t border-border z-10">
                 <div className="container mx-auto p-4 space-y-3">
-                    {/* Add More Items Button */}
-                    {!isServed && (
-                        <Button
-                            onClick={handleAddMoreItems}
-                            variant="outline"
-                            className="w-full h-12 border-primary text-primary hover:bg-primary/10"
-                        >
-                            <Plus className="mr-2 h-5 w-5" /> Add More Items
-                        </Button>
-                    )}
+                    <Button
+                        onClick={handleAddMoreItems}
+                        variant="outline"
+                        className="w-full h-12 border-primary text-primary hover:bg-primary/10"
+                    >
+                        <Plus className="mr-2 h-5 w-5" /> {isServed ? 'Order Again' : 'Add More Items'}
+                    </Button>
+
+                    <Button
+                        onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
+                        variant="outline"
+                        disabled={isMarkingDone}
+                        className="w-full h-12 border-orange-500 text-orange-500 hover:bg-orange-500/10"
+                    >
+                        <Home className="mr-2 h-5 w-5" />
+                        {isMarkingDone ? 'Closing Session...' : 'Release Seat & Exit'}
+                    </Button>
 
                     {/* Pay Bill Button OR Status Message */}
                     {/* Pay Bill Button OR Status Message */}

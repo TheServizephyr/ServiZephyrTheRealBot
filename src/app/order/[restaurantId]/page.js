@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -408,7 +408,8 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             } else if (tableStatus?.state === 'available') {
                 setActiveModal('new_tab');
             } else if (tableStatus?.state === 'occupied') {
-                setActiveModal('join_or_new');
+                const hasJoinableTabs = Array.isArray(tableStatus?.activeTabs) && tableStatus.activeTabs.length > 0;
+                setActiveModal(hasJoinableTabs ? 'join_or_new' : 'new_tab');
             } else if (tableStatus?.state === 'full') {
                 setActiveModal('full');
             } else {
@@ -476,6 +477,13 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             onStartNewTab(pax, name);
         }
     };
+
+    const modalTotalCapacity = Number(tableStatus?.max_capacity || 0);
+    const modalOccupiedSeats = Number(tableStatus?.current_pax || 0);
+    const modalAvailableSeats = tableStatus?.availableSeats !== undefined
+        ? Number(tableStatus.availableSeats)
+        : Math.max(0, modalTotalCapacity - modalOccupiedSeats);
+    const isTableFullyOccupied = modalTotalCapacity > 0 && modalOccupiedSeats >= modalTotalCapacity;
 
 
     return (
@@ -606,7 +614,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                                     <div className="text-sm font-medium">Current Occupancy</div>
                                                     <div className="text-xs text-muted-foreground">
                                                         {tableStatus?.current_pax || 0} / {tableStatus?.max_capacity} seats occupied
-                                                        {tableStatus?.current_pax >= tableStatus?.max_capacity && (
+                                                        {isTableFullyOccupied && (
                                                             <span className="ml-2 text-destructive font-semibold">Table Full!</span>
                                                         )}
                                                     </div>
@@ -634,7 +642,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                                 </div>
                                             )}
 
-                                            {(tableStatus?.availableSeats !== undefined ? tableStatus.availableSeats : (tableStatus?.max_capacity || 0) - (tableStatus?.current_pax || 0)) <= 0 && (
+                                            {isTableFullyOccupied && (
                                                 <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm font-medium">
                                                     ⚠️ Table is at full capacity!
                                                 </div>
@@ -645,7 +653,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 <div className="px-6 pb-6 space-y-4">
                                     <div>
                                         <Label>How many people are in your group?</Label>
-                                        <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - (tableStatus?.current_pax || 0)} className="mt-1" />
+                                        <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={Math.max(1, modalAvailableSeats)} className="mt-1" />
                                     </div>
                                     <div>
                                         <Label>What&apos;s a name for your tab?</Label>
@@ -663,14 +671,20 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 </DialogHeader>
                                 <div className="px-6 pb-6 space-y-4">
                                     <h4 className="font-semibold text-sm text-muted-foreground">Active Tabs:</h4>
-                                    <div className="space-y-2">
-                                        {(tableStatus.activeTabs || []).map(tab => (
-                                            <Button key={tab.id} variant="outline" className="w-full justify-between h-14" onClick={() => onJoinTab(tab.id)}>
-                                                <span>{tab.tab_name}</span>
-                                                <span className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded-full"><Users size={12} /> {tab.pax_count}</span>
-                                            </Button>
-                                        ))}
-                                    </div>
+                                    {(tableStatus.activeTabs || []).length > 0 ? (
+                                        <div className="space-y-2">
+                                            {(tableStatus.activeTabs || []).map(tab => (
+                                                <Button key={tab.id} variant="outline" className="w-full justify-between h-14" onClick={() => onJoinTab(tab.id)}>
+                                                    <span>{tab.tab_name}</span>
+                                                    <span className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded-full"><Users size={12} /> {tab.pax_count}</span>
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-muted-foreground rounded-md border border-dashed border-border p-3">
+                                            No joinable tab info is available right now. You can start a new separate tab.
+                                        </div>
+                                    )}
                                     <div className="flex items-center gap-4 my-4">
                                         <div className="flex-grow h-px bg-border"></div>
                                         <span className="text-xs text-muted-foreground">OR</span>
@@ -1290,6 +1304,7 @@ const OrderPageInternal = () => {
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
     const [isEditingModal, setIsEditingModal] = useState(false);
+    const [isReleasingSeat, setIsReleasingSeat] = useState(false);
 
     // ✅ NEW: Effect to re-validate when cart/subtotal changes (relocated here)
     useEffect(() => {
@@ -1629,12 +1644,17 @@ const OrderPageInternal = () => {
                         console.log('📊 [DEBUG] Table data received:', tableData);
 
                         // NEW: Smart cleaning status handling
+                        const seatsOccupiedNow = Number(tableData.current_pax || 0);
+                        const tableCapacityNow = Number(tableData.max_capacity || 0);
+                        const seatsLeftForNewGuests = Math.max(0, tableCapacityNow - seatsOccupiedNow);
+
                         if (tableData.hasUncleanedOrders) {
                             console.log('🧹 [DEBUG] Table has uncleaned orders:', tableData.uncleanedOrdersCount);
-                            // ONLY block if NO seats available
-                            if (tableData.availableSeats <= 0) {
+                            // Only block when live occupied seats have already reached table capacity.
+                            // Uncleaned historical orders should not falsely block fresh seating when table still has capacity.
+                            if (seatsLeftForNewGuests <= 0) {
                                 console.log('❌ [DEBUG] No available seats - BLOCKING');
-                                const message = `This table is fully occupied and being cleaned. Please wait or choose another table.\n\n📊 Table Status:\n• Available seats: ${tableData.availableSeats}\n• Orders awaiting cleanup: ${tableData.uncleanedOrdersCount}`;
+                                const message = `This table is temporarily unavailable while previous dine-in orders are being cleaned.\n\n📊 Table Status:\n• Seats currently occupied: ${seatsOccupiedNow}/${tableCapacityNow}\n• Seats available right now: ${seatsLeftForNewGuests}\n• Orders awaiting cleanup: ${tableData.uncleanedOrdersCount}\n\nPlease wait a few minutes or choose another table.`;
                                 setError(message);
                                 setLoading(false);
                                 setDineInState('cleaning_pending');
@@ -1643,21 +1663,29 @@ const OrderPageInternal = () => {
                             } else {
                                 // Seats available - show info but ALLOW ordering
                                 console.log('✅ [DEBUG] Seats available despite cleaning - ALLOWING');
-                                console.log(`[Dine-In] Table ${tableIdFromUrl} has ${tableData.availableSeats} available seats, ${tableData.uncleanedOrdersCount} orders cleaning - ALLOWING order`);
+                                console.log(`[Dine-In] Table ${tableIdFromUrl} has ${seatsLeftForNewGuests} available seats, ${tableData.uncleanedOrdersCount} orders cleaning - ALLOWING order`);
                                 // Optional: Store cleaning info to show later as warning banner
                                 setTableStatus(prev => ({
                                     ...prev,
                                     cleaningWarning: {
-                                        availableSeats: tableData.availableSeats,
+                                        availableSeats: seatsLeftForNewGuests,
                                         uncleanedCount: tableData.uncleanedOrdersCount
                                     }
                                 }));
                             }
                         }
 
+                        // Reset in-memory dine-in identity only when no active tab is selected yet.
+                        if (!tabIdFromUrl) {
+                            setDetailsProvided(false);
+                            setShowWelcome(false);
+                            setUserDetails(null);
+                        }
+
                         // Check localStorage for existing tab AFTER fetching server data
                         const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
                         const savedTabData = localStorage.getItem(dineInTabKey);
+                        let recoveredTabInfo = null;
 
                         if (savedTabData) {
                             try {
@@ -1668,11 +1696,8 @@ const OrderPageInternal = () => {
                                 const isTabStillActive = tableData.activeTabs?.some(tab => tab.id === tabInfo.id);
 
                                 if (isTabStillActive) {
-                                    console.log('[Dine-In] Tab validated as active on server, auto-loading');
-                                    // Auto-load existing tab
-                                    setActiveTabInfo(tabInfo);
-                                    setDineInState('ready');
-                                    return; // Skip modal
+                                    console.log('[Dine-In] Tab validated as active on server, opening setup modal with prefilled details.');
+                                    recoveredTabInfo = tabInfo;
                                 } else {
                                     console.log('[Dine-In] Tab no longer active on server, clearing localStorage');
                                     localStorage.removeItem(dineInTabKey);
@@ -1685,8 +1710,12 @@ const OrderPageInternal = () => {
                         }
                         // Calculate table state
                         let state = 'available';
-                        const occupiedSeats = tableData.current_pax || 0;
-                        if (occupiedSeats >= tableData.max_capacity) state = 'full';
+                        const backendState = String(tableData.state || '').toLowerCase();
+                        const occupiedSeats = Number(tableData.current_pax || 0);
+                        const maxCapacity = Number(tableData.max_capacity || 0);
+                        const isActuallyFull = maxCapacity > 0 && occupiedSeats >= maxCapacity;
+                        if (backendState === 'needs_cleaning') state = 'needs_cleaning';
+                        else if (isActuallyFull) state = 'full';
                         else if (occupiedSeats > 0) state = 'occupied';
 
                         console.log('📊 [DEBUG] Table state calculated:', state);
@@ -1702,24 +1731,29 @@ const OrderPageInternal = () => {
                         if (state === 'full') {
                             console.log('❌ [DEBUG] Table FULL - will NOT open modal');
                             setDineInState('full');
+                        } else if (state === 'needs_cleaning') {
+                            setError('This table is being cleaned right now. Please wait for restaurant staff to mark it clean.');
+                            setLoading(false);
+                            setDineInState('cleaning_pending');
                         } else {
-                            console.log('✅ [DEBUG] Table not full, proceeding to persistent details check...');
-                            // NEW: Check if we already have persistent details (e.g. from previous visit)
-                            // If yes, we skip the modal so the user lands directly on the menu with the Welcome banner
+                            console.log('✅ [DEBUG] Table not full, opening setup modal...');
+                            // Prefill values from stored details for convenience, but always open setup modal on QR table entry.
                             const persistentDetails = getDineInDetails(restaurantId, tableIdFromUrl);
 
                             console.log('🔍 [DEBUG] persistentDetails:', persistentDetails);
                             console.log('🔍 [DEBUG] restaurantId:', restaurantId, 'tableId:', tableIdFromUrl);
 
                             if (persistentDetails) {
-                                console.log('❌ [Dine-In] Persistent details found - SKIPPING MODAL');
-                                setDineInState('ready');
-                                setIsDineInModalOpen(false);
-                            } else {
-                                console.log('✅ [Dine-In] NO persistent details - OPENING MODAL');
-                                setDineInState('ready_to_select'); // Allow starting new tab or joining
-                                setIsDineInModalOpen(true);
+                                setNewTabPax(persistentDetails.pax_count || 1);
+                                setNewTabName(persistentDetails.tab_name || '');
                             }
+                            if (recoveredTabInfo) {
+                                setNewTabPax(recoveredTabInfo.pax_count || 1);
+                                setNewTabName(recoveredTabInfo.name || persistentDetails?.tab_name || '');
+                            }
+                            setIsEditingModal(false);
+                            setDineInState('ready_to_select');
+                            setIsDineInModalOpen(true);
                         }
                     } catch (error) {
                         console.error('[Dine-In] Error fetching table:', error);
@@ -1755,28 +1789,29 @@ const OrderPageInternal = () => {
 
             if (savedDetails) {
                 console.log('[Dine-In] Found saved user details:', savedDetails);
-
-                // Auto-populate details
-                setUserDetails(savedDetails);
-                setDetailsProvided(true);
-                setShowWelcome(true);
-
-                // Auto-populate tab info
-                setActiveTabInfo({
-                    id: savedDetails.tabId || `tab_${Date.now()}`,
-                    name: savedDetails.tab_name,
-                    pax_count: savedDetails.pax_count
-                });
-
-                // Prevent modal from auto-opening
-                // setDineInState('ready'); // ❌ COMMENTED: This causes race condition with handleDineInSetup
-                // Modal control now handled by handleDineInSetup only
+                if (tabIdFromUrl) {
+                    // Deep-link with explicit tab keeps previous session context.
+                    setUserDetails(savedDetails);
+                    setDetailsProvided(true);
+                    setShowWelcome(true);
+                    setActiveTabInfo({
+                        id: savedDetails.tabId || tabIdFromUrl || `tab_${Date.now()}`,
+                        name: savedDetails.tab_name,
+                        pax_count: savedDetails.pax_count
+                    });
+                } else {
+                    // Normal table QR flow: prefill form only, still require modal confirmation.
+                    setNewTabPax(savedDetails.pax_count || 1);
+                    setNewTabName(savedDetails.tab_name || '');
+                    setDetailsProvided(false);
+                    setShowWelcome(false);
+                }
             } else {
                 console.log('[Dine-In] No saved details found - will show modal');
                 // Modal will open from handleDineInSetup
             }
         }
-    }, [tableIdFromUrl, restaurantId, isTokenValid]);
+    }, [tableIdFromUrl, restaurantId, isTokenValid, tabIdFromUrl]);
 
     useEffect(() => {
         if (isTokenValid) {
@@ -2106,6 +2141,96 @@ const OrderPageInternal = () => {
         });
         return quantities;
     }, [cart]);
+
+    const clearLocalDineInSession = () => {
+        try {
+            localStorage.removeItem(`liveOrder_${restaurantId}`);
+            if (tableIdFromUrl) {
+                localStorage.removeItem(`dineInTab_${restaurantId}_${tableIdFromUrl}`);
+            }
+            localStorage.removeItem(`cart_${restaurantId}`);
+        } catch (err) {
+            console.warn('[Dine-In] Failed to clear local session cache:', err?.message || err);
+        }
+    };
+
+    const getEffectiveDineInTabId = () => {
+        const fromActiveTab = String(activeTabInfo?.id || '').trim();
+        if (fromActiveTab) return fromActiveTab;
+
+        const fromLiveOrder = String(liveOrder?.dineInTabId || liveOrder?.tabId || '').trim();
+        if (fromLiveOrder) return fromLiveOrder;
+
+        if (Array.isArray(tableStatus?.activeTabs) && tableStatus.activeTabs.length === 1) {
+            const onlyTabId = String(tableStatus.activeTabs[0]?.id || '').trim();
+            if (onlyTabId) return onlyTabId;
+        }
+
+        return '';
+    };
+
+    const handleReleaseSeat = async () => {
+        if (!restaurantId || !tableIdFromUrl) return;
+
+        const tabId = getEffectiveDineInTabId();
+        if (!tabId) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Session Not Found',
+                message: 'We could not find your active table session. Please ask restaurant staff to clean the table from dashboard.'
+            });
+            return;
+        }
+
+        setIsReleasingSeat(true);
+        try {
+            const trackingToken = token || liveOrder?.trackingToken || activeOrderToken || undefined;
+            const res = await fetch('/api/owner/tables', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'customer_exit',
+                    restaurantId,
+                    tableId: tableIdFromUrl,
+                    tabId,
+                    trackingToken
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data?.message || 'Unable to release table right now.');
+            }
+
+            clearLocalDineInSession();
+            setStoredOrders([]);
+            setLiveOrder(null);
+            setActiveTabInfo({ id: null, name: '', total: 0 });
+            setUserDetails(null);
+            setDetailsProvided(false);
+            setShowWelcome(false);
+
+            const restaurantName = restaurantData?.name || 'our restaurant';
+            setInfoDialog({
+                isOpen: true,
+                title: 'Thank You',
+                message: `Thank you for visiting ${restaurantName}. We hope to serve you again soon!`
+            });
+
+            setTimeout(() => {
+                try { window.close(); } catch { }
+                router.replace(`/order/${restaurantId}`);
+            }, 900);
+        } catch (error) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Exit Failed',
+                message: error?.message || 'Unable to release your seat right now.'
+            });
+        } finally {
+            setIsReleasingSeat(false);
+        }
+    };
 
     const handleCallWaiter = async () => {
         try {
@@ -2698,14 +2823,25 @@ const OrderPageInternal = () => {
                     }
                     {
                         tableIdFromUrl && (
-                            <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
+                            <div className="bg-card p-4 rounded-lg border border-border space-y-3">
                                 <div className="flex items-center gap-2">
                                     <ConciergeBell className="text-primary" />
                                     <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
                                 </div>
-                                <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
-                                    <Bell size={20} className="text-primary" /> Call Waiter
-                                </Button>
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                    <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
+                                        <Bell size={18} className="text-primary" /> Call Waiter
+                                    </Button>
+                                    <Button
+                                        onClick={handleReleaseSeat}
+                                        variant="outline"
+                                        disabled={isReleasingSeat}
+                                        className="flex items-center gap-2 border-orange-500/60 text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 font-semibold"
+                                    >
+                                        {isReleasingSeat ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+                                        {isReleasingSeat ? 'Releasing...' : 'Release Seat'}
+                                    </Button>
+                                </div>
                             </div>
                         )
                     }
