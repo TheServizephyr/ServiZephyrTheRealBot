@@ -418,8 +418,10 @@ export async function POST(req) {
             }
             */
 
-            // PRIMARY METHOD: Interactive CTA button message (NO TEMPLATE DEPENDENCY)
-            // This uses sendWhatsAppMessage directly, ensuring guaranteed delivery
+            // PRIMARY METHOD DISABLED: Interactive CTA button causes Error 131042 on restricted numbers
+            // CTA buttons fail when phone number display name is "In Review"
+            // Using plain text message with link instead
+            /*
             console.log('[Custom Bill Create Order] 📤 Sending interactive CTA button...');
             try {
                 const waResponse = await sendWhatsAppMessage(
@@ -451,7 +453,7 @@ export async function POST(req) {
                                 wamid: wamid,
                                 sender: 'system',
                                 type: 'interactive',
-                                text: `${ctaBodyMessage}\n\n${customerFacingLink}`,
+                                text: `${ctaBodyMessage}\\n\\n${customerFacingLink}`,
                                 body: ctaBodyMessage,
                                 timestamp: new Date(),
                                 status: 'sent',
@@ -484,36 +486,36 @@ export async function POST(req) {
                 whatsappMode = 'text_fallback';
                 whatsappSent = false;
             }
+            */
 
-            // FALLBACK: Plain text message if CTA button fails
-            if (!whatsappSent) {
-                console.log('[Custom Bill Create Order] 📝 Attempting text fallback...');
-                try {
-                    const waResponse = await sendSystemMessage(
-                        `91${phone}`,
-                        fallbackMessage,
-                        botPhoneNumberId,
-                        businessId,
-                        businessData.name || 'ServiZephyr',
-                        collectionName,
-                        {
-                            customerName,
-                            conversationPreview: 'Order created. Add delivery location for tracking.',
-                        }
-                    );
-                    if (waResponse?.messages?.[0]?.id) {
-                        whatsappSent = true;
-                        whatsappMode = 'text_fallback';
-                        console.log('[Custom Bill Create Order] ✅ Text fallback sent:', waResponse.messages[0].id);
-                    } else {
-                        whatsappSent = false;
-                        whatsappError = 'WhatsApp API did not return message ID.';
-                        console.error('[Custom Bill Create Order] ❌ Text fallback returned no message ID');
+            // PRIMARY METHOD: Plain text message with link
+            // Send plain text message with link (PRIMARY METHOD)
+            console.log('[Custom Bill Create Order] 📝 Sending plain text message with link...');
+            try {
+                const waResponse = await sendSystemMessage(
+                    `91${phone}`,
+                    fallbackMessage,
+                    botPhoneNumberId,
+                    businessId,
+                    businessData.name || 'ServiZephyr',
+                    collectionName,
+                    {
+                        customerName,
+                        conversationPreview: 'Order created. Add delivery location for tracking.',
                     }
-                } catch (err) {
-                    whatsappError = err?.message || 'Failed to send WhatsApp message.';
-                    console.error('[Custom Bill Create Order] ❌ All WhatsApp attempts failed:', err);
+                );
+                if (waResponse?.messages?.[0]?.id) {
+                    whatsappSent = true;
+                    whatsappMode = 'text_fallback';
+                    console.log('[Custom Bill Create Order] ✅ Text fallback sent:', waResponse.messages[0].id);
+                } else {
+                    whatsappSent = false;
+                    whatsappError = 'WhatsApp API did not return message ID.';
+                    console.error('[Custom Bill Create Order] ❌ Text fallback returned no message ID');
                 }
+            } catch (err) {
+                whatsappError = err?.message || 'Failed to send WhatsApp message.';
+                console.error('[Custom Bill Create Order] ❌ All WhatsApp attempts failed:', err);
             }
         } else {
             whatsappError = 'Business botPhoneNumberId is not configured.';
