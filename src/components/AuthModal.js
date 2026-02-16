@@ -152,7 +152,7 @@ export default function AuthModal({ isOpen, onClose }) {
         const result = await signInWithPopup(auth, googleProvider);
         const user = result.user;
         console.log("[AuthModal] Popup successful, processing...");
-        sessionStorage.removeItem('isLoggingIn');
+        localStorage.removeItem('isLoggingIn');
         await handleAuthSuccess(user);
       } else {
         console.log("[AuthModal] Production - using redirect...");
@@ -163,7 +163,7 @@ export default function AuthModal({ isOpen, onClose }) {
         await setPersistence(auth, browserLocalPersistence);
         console.log("[AuthModal] ✓ Persistence set before redirect");
 
-        sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+        localStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
         await signInWithRedirect(auth, googleProvider);
         // Page will redirect away
       }
@@ -172,7 +172,7 @@ export default function AuthModal({ isOpen, onClose }) {
       setMsg(`Login Failed: ${err.message}`);
       setMsgType("error");
       setLoading(false);
-      sessionStorage.removeItem('isLoggingIn');
+      localStorage.removeItem('isLoggingIn');
     }
   };
 

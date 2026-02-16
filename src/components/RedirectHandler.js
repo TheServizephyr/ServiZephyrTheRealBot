@@ -33,7 +33,8 @@ export default function RedirectHandler() {
 
         const handleRedirectResult = async () => {
             // Check if we are expecting a login immediately to show loader
-            const initialFlag = sessionStorage.getItem('isLoggingIn');
+            // Use localStorage instead of sessionStorage - iPhone clears sessionStorage during OAuth!
+            const initialFlag = localStorage.getItem('isLoggingIn');
             if (initialFlag) {
                 setLoading(true);
                 setMsg("Finishing login...");
@@ -48,12 +49,24 @@ export default function RedirectHandler() {
 
                 if (result && result.user) {
                     console.log("[RedirectHandler] User returned from redirect:", result.user.email);
-                    sessionStorage.removeItem('isLoggingIn'); // Cleanup
+                    localStorage.removeItem('isLoggingIn'); // Cleanup
                     setLoading(true);
                     setMsg("Verifying login details...");
                     await processLogin(result.user);
                 } else {
                     console.log("[RedirectHandler] No redirect result found. Checking fallback...");
+
+                    // CRITICAL FIX FOR iPHONE: Check auth.currentUser FIRST
+                    // On iPhone, getRedirectResult often returns null but Firebase has already restored the session
+                    const loginFlagData = localStorage.getItem('isLoggingIn');
+                    if (loginFlagData && auth.currentUser) {
+                        console.log("[RedirectHandler] ✓ iPhone/Chrome fallback: User already authenticated:", auth.currentUser.email);
+                        localStorage.removeItem('isLoggingIn');
+                        setLoading(true);
+                        setMsg("Completing login...");
+                        await processLogin(auth.currentUser);
+                        return;
+                    }
 
                     // PWA/Session Restoration Logic - DISABLED per user request
                     // The user wants to land on the landing page even if they have an active session
@@ -70,7 +83,6 @@ export default function RedirectHandler() {
 
                     // Fallback: Check if we are in a 'logging in' state but redirect result was lost
                     // Use timestamp-based validation to avoid stale flags
-                    const loginFlagData = sessionStorage.getItem('isLoggingIn');
                     const isDashboard = window.location.pathname.includes('dashboard');
 
                     if (loginFlagData) {
@@ -82,7 +94,7 @@ export default function RedirectHandler() {
                             if (loginFlagData === 'true') {
                                 // Old format - treat as stale
                                 console.log("[RedirectHandler] Old format flag detected. Clearing.");
-                                sessionStorage.removeItem('isLoggingIn');
+                                localStorage.removeItem('isLoggingIn');
                                 setLoading(false);
                                 return;
                             }
@@ -94,7 +106,7 @@ export default function RedirectHandler() {
                             // Increased from 30s to 180s to account for slow Google redirects
                             if (flagAge > 180) {
                                 console.log(`[RedirectHandler] Stale login flag (${flagAge.toFixed(0)}s old). Clearing.`);
-                                sessionStorage.removeItem('isLoggingIn');
+                                localStorage.removeItem('isLoggingIn');
                                 setLoading(false);
                                 return;
                             }
@@ -103,7 +115,7 @@ export default function RedirectHandler() {
                         } catch (e) {
                             // Invalid format - clear it
                             console.log("[RedirectHandler] Invalid flag format. Clearing.");
-                            sessionStorage.removeItem('isLoggingIn');
+                            localStorage.removeItem('isLoggingIn');
                             setLoading(false);
                             return;
                         }
@@ -111,7 +123,7 @@ export default function RedirectHandler() {
                         // If already logged in or on dashboard, clear flag
                         if (shouldProceed && (auth.currentUser || isDashboard)) {
                             console.log("[RedirectHandler] Already authenticated/on dashboard. Clearing flag.");
-                            sessionStorage.removeItem('isLoggingIn');
+                            localStorage.removeItem('isLoggingIn');
                             setLoading(false);
                             return;
                         }
@@ -120,7 +132,7 @@ export default function RedirectHandler() {
                             // Check if user is already authenticated (Firebase restored the session)
                             if (auth.currentUser) {
                                 console.log(`[RedirectHandler] ✓ User already authenticated: ${auth.currentUser.email}`);
-                                sessionStorage.removeItem('isLoggingIn');
+                                localStorage.removeItem('isLoggingIn');
                                 setLoading(true);
                                 setMsg("Completing login...");
                                 await processLogin(auth.currentUser);
@@ -133,14 +145,14 @@ export default function RedirectHandler() {
                             const timeoutId = setTimeout(() => {
                                 console.log("[RedirectHandler] Auth state timeout (15s). No user authenticated.");
                                 setLoading(false);
-                                sessionStorage.removeItem('isLoggingIn');
+                                localStorage.removeItem('isLoggingIn');
                             }, 15000); // 15 seconds
 
                             unsubscribe = onAuthStateChanged(auth, async (user) => {
                                 if (user) {
                                     console.log("[RedirectHandler] ✓ User authenticated:", user.email);
                                     clearTimeout(timeoutId);
-                                    sessionStorage.removeItem('isLoggingIn');
+                                    localStorage.removeItem('isLoggingIn');
                                     setLoading(true);
                                     setMsg("Recovering login session...");
                                     await processLogin(user);
