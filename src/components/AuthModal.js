@@ -67,10 +67,11 @@ export default function AuthModal({ isOpen, onClose }) {
           setMsgType("success");
           localStorage.setItem("role", "none");
 
-          // Allow state update to reflect before redirecting
+          // Use window.location.href instead of router.push for iPhone/Safari compatibility
+          // router.push doesn't work reliably on iPhone after OAuth redirects
           setTimeout(() => {
             closeModal();
-            router.push("/complete-profile");
+            window.location.href = "/complete-profile";
           }, 500);
           return;
         }
@@ -85,7 +86,7 @@ export default function AuthModal({ isOpen, onClose }) {
         setMsgType("success");
         setTimeout(() => {
           closeModal();
-          router.push("/select-role");
+          window.location.href = "/select-role";
         }, 1000);
         return;
       }
@@ -98,7 +99,7 @@ export default function AuthModal({ isOpen, onClose }) {
         localStorage.setItem("role", data.role || 'employee');
         setTimeout(() => {
           closeModal();
-          router.push(data.redirectTo);
+          window.location.href = data.redirectTo;
         }, 1500);
         return;
       }
@@ -116,15 +117,15 @@ export default function AuthModal({ isOpen, onClose }) {
       setTimeout(() => {
         closeModal();
         if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
-          router.push("/owner-dashboard");
+          window.location.href = "/owner-dashboard";
         } else if (role === "admin") {
-          router.push("/admin-dashboard");
+          window.location.href = "/admin-dashboard";
         } else if (role === "rider") {
-          router.push("/rider-dashboard");
+          window.location.href = "/rider-dashboard";
         } else if (role === "street-vendor") {
-          router.push("/street-vendor-dashboard");
+          window.location.href = "/street-vendor-dashboard";
         } else {
-          router.push("/customer-dashboard");
+          window.location.href = "/customer-dashboard";
         }
       }, 1500);
 
