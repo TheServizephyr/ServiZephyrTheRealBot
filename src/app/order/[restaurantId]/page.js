@@ -2070,6 +2070,7 @@ const OrderPageInternal = () => {
                         portion: normalizedPortion,
                         portionCount,
                         selectedAddOns,
+                        price: totalPrice, // ✅ FIX: Set price = totalPrice for server validation
                         totalPrice,
                         quantity: 1
                     }
