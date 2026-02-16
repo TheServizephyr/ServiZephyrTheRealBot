@@ -40,9 +40,9 @@ async function fetchCollection(firestore, collectionName) {
             }
         }
 
-        // If no timestamp found, log warning and use placeholder
+        // If no timestamp found, log info and use placeholder (expected for legacy documents)
         if (!onboardedDate) {
-            console.warn(`[API] No timestamp found for ${collectionName}/${doc.id}. Available fields:`, Object.keys(data));
+            console.log(`[API] No timestamp found for ${collectionName}/${doc.id} (using 'Unknown')`);
             onboardedDate = 'Unknown';
         }
 

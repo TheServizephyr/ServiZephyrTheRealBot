@@ -46,36 +46,62 @@ export async function GET(request) {
         }
 
         // Check if user is an employee - query ONLY by userId (no composite index needed)
-        const employeesSnapshot = await db.collectionGroup('employees')
-            .where('userId', '==', uid)
-            .get();
-
-        // Filter by status='active' AND ownerId in code (completely avoid Firestore indexes)
-        let matchingEmployees = employeesSnapshot.docs.filter(doc => {
-            const data = doc.data();
-            return data.status === 'active';
-        });
-
-        if (employeeOfOwnerId) {
-            matchingEmployees = matchingEmployees.filter(doc => doc.data().ownerId === employeeOfOwnerId);
-        }
-
-        if (matchingEmployees.length === 0) {
-            // Also check by email for pending employees who just accepted invitation
-            const employeesByEmailSnapshot = await db.collectionGroup('employees')
-                .where('email', '==', email?.toLowerCase())
+        let matchingEmployees = [];
+        try {
+            const employeesSnapshot = await db.collectionGroup('employees')
+                .where('userId', '==', uid)
                 .get();
 
-            let employeesByEmail = employeesByEmailSnapshot.docs.filter(doc => {
+            // Filter by status='active' AND ownerId in code (completely avoid Firestore indexes)
+            matchingEmployees = employeesSnapshot.docs.filter(doc => {
                 const data = doc.data();
                 return data.status === 'active';
             });
 
             if (employeeOfOwnerId) {
-                employeesByEmail = employeesByEmail.filter(doc => doc.data().ownerId === employeeOfOwnerId);
+                matchingEmployees = matchingEmployees.filter(doc => doc.data().ownerId === employeeOfOwnerId);
+            }
+        } catch (employeeQueryError) {
+            console.error('[API /employee/me] ❌ Firestore collection group query failed:', employeeQueryError.message);
+            // Return non-employee response if query fails
+            return Response.json({
+                isEmployee: false,
+                isOwner,
+                hasMultipleRoles: false,
+                uid,
+                email,
+                name: userData.name,
+                role: userRole,
+                outlet: null,
+                error: 'Failed to fetch employee data. Please contact support if this persists.'
+            });
+        }
+
+        if (matchingEmployees.length === 0) {
+            // Also check by email for pending employees who just accepted invitation
+            try {
+                const employeesByEmailSnapshot = await db.collectionGroup('employees')
+                    .where('email', '==', email?.toLowerCase())
+                    .get();
+
+                let employeesByEmail = employeesByEmailSnapshot.docs.filter(doc => {
+                    const data = doc.data();
+                    return data.status === 'active';
+                });
+
+                if (employeeOfOwnerId) {
+                    employeesByEmail = employeesByEmail.filter(doc => doc.data().ownerId === employeeOfOwnerId);
+                }
+
+                if (employeesByEmail.length > 0) {
+                    matchingEmployees = employeesByEmail;
+                }
+            } catch (emailQueryError) {
+                console.error('[API /employee/me] ⚠️ Email-based employee query failed:', emailQueryError.message);
+                // Continue with empty matchingEmployees - will return non-employee response
             }
 
-            if (employeesByEmail.length === 0) {
+            if (matchingEmployees.length === 0) {
                 return Response.json({
                     isEmployee: false,
                     role: null,
