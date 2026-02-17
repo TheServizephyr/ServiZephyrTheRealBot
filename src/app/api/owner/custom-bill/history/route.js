@@ -18,6 +18,7 @@ const normalizePhone = (phone) => {
 
 const sanitizeText = (value, fallback = '') => String(value || fallback).trim();
 const toLowerText = (value) => String(value || '').toLowerCase();
+const isSettlementEligible = (printedVia) => printedVia !== 'create_order';
 
 const normalizeItem = (item, index) => {
     const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
@@ -122,6 +123,7 @@ export async function POST(req) {
         const printedVia = ['browser', 'direct_usb', 'create_order'].includes(printedViaRaw)
             ? printedViaRaw
             : 'browser';
+        const settlementEligible = isSettlementEligible(printedVia);
 
         const historyRef = firestore
             .collection(collectionName)
@@ -171,6 +173,12 @@ export async function POST(req) {
             sgst,
             deliveryCharge,
             totalAmount,
+            settlementEligible,
+            isSettled: false,
+            settledAt: null,
+            settledByUid: null,
+            settledByRole: null,
+            settlementBatchId: null,
             createdAt: FieldValue.serverTimestamp(),
             printedAt: FieldValue.serverTimestamp(),
         });
@@ -225,6 +233,10 @@ export async function GET(req) {
 
         let totalAmount = 0;
         let totalBills = 0;
+        let pendingSettlementAmount = 0;
+        let pendingSettlementBills = 0;
+        let settledAmount = 0;
+        let settledBills = 0;
         const history = [];
 
         snapshot.forEach((doc) => {
@@ -258,18 +270,37 @@ export async function GET(req) {
             totalAmount += amount;
             totalBills += 1;
 
+            const printedVia = data.printedVia || 'browser';
+            const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
+            const isSettled = settlementEligible ? !!data.isSettled : false;
+            if (settlementEligible) {
+                if (isSettled) {
+                    settledAmount += amount;
+                    settledBills += 1;
+                } else {
+                    pendingSettlementAmount += amount;
+                    pendingSettlementBills += 1;
+                }
+            }
+
             history.push({
                 id: doc.id,
                 historyId: data.historyId || doc.id,
                 billDraftId: data.billDraftId || null,
                 source: data.source || 'offline_counter',
                 channel: data.channel || 'custom_bill',
-                printedVia: data.printedVia || 'browser',
+                printedVia,
                 customerName: data.customerName || 'Walk-in Customer',
                 customerPhone: data.customerPhone || null,
                 customerAddress: data.customerAddress || null,
                 customerType: data.customerType || 'guest',
                 customerId: data.customerId || null,
+                settlementEligible,
+                isSettled,
+                settledAt: timestampToDate(data.settledAt)?.toISOString() || null,
+                settledByUid: data.settledByUid || null,
+                settledByRole: data.settledByRole || null,
+                settlementBatchId: data.settlementBatchId || null,
                 subtotal: toAmount(data.subtotal, 0),
                 cgst: toAmount(data.cgst, 0),
                 sgst: toAmount(data.sgst, 0),
@@ -288,10 +319,109 @@ export async function GET(req) {
                 totalBills,
                 totalAmount,
                 avgBillValue: totalBills > 0 ? totalAmount / totalBills : 0,
+                pendingSettlementAmount,
+                pendingSettlementBills,
+                settledAmount,
+                settledBills,
             },
         });
     } catch (error) {
         console.error('[Custom Bill History][GET] Error:', error);
+        return NextResponse.json(
+            { message: `Backend Error: ${error.message}` },
+            { status: error.status || 500 }
+        );
+    }
+}
+
+export async function PATCH(req) {
+    try {
+        const context = await verifyOwnerWithAudit(
+            req,
+            'custom_bill_settle_history',
+            {},
+            false,
+            [PERMISSIONS.MANUAL_BILLING.WRITE, PERMISSIONS.CREATE_ORDER]
+        );
+
+        const { businessId, collectionName, uid, callerRole, adminId = null } = context;
+        const firestore = await getFirestore();
+        const body = await req.json();
+
+        const action = sanitizeText(body?.action, '').toLowerCase();
+        const historyIds = Array.isArray(body?.historyIds)
+            ? [...new Set(body.historyIds.map((id) => sanitizeText(id, '')).filter(Boolean))]
+            : [];
+
+        if (action !== 'settle') {
+            return NextResponse.json({ message: 'Unsupported action.' }, { status: 400 });
+        }
+        if (historyIds.length === 0) {
+            return NextResponse.json({ message: 'At least one bill ID is required.' }, { status: 400 });
+        }
+        if (historyIds.length > 500) {
+            return NextResponse.json({ message: 'You can settle up to 500 bills in one request.' }, { status: 400 });
+        }
+
+        const historyRef = firestore
+            .collection(collectionName)
+            .doc(businessId)
+            .collection('custom_bill_history');
+
+        const nowIso = new Date().toISOString();
+        const actorUid = adminId || uid;
+        const settlementBatchId = createHash('sha256')
+            .update(`${businessId}|${historyIds.sort().join('|')}|${nowIso}`)
+            .digest('hex')
+            .slice(0, 16);
+
+        const docs = await Promise.all(historyIds.map((id) => historyRef.doc(id).get()));
+        const batch = firestore.batch();
+        let settledCount = 0;
+        let settledAmount = 0;
+        let skippedCount = 0;
+
+        docs.forEach((docSnap) => {
+            if (!docSnap.exists) {
+                skippedCount += 1;
+                return;
+            }
+
+            const data = docSnap.data() || {};
+            const printedVia = data.printedVia || 'browser';
+            const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
+            if (!settlementEligible || data.isSettled) {
+                skippedCount += 1;
+                return;
+            }
+
+            settledCount += 1;
+            settledAmount += toAmount(data.totalAmount, 0);
+            batch.update(docSnap.ref, {
+                settlementEligible: true,
+                isSettled: true,
+                settledAt: FieldValue.serverTimestamp(),
+                settledByUid: actorUid,
+                settledByRole: callerRole || null,
+                settlementBatchId,
+            });
+        });
+
+        if (settledCount > 0) {
+            await batch.commit();
+        }
+
+        return NextResponse.json({
+            message: settledCount > 0
+                ? `${settledCount} bill(s) settled successfully.`
+                : 'No pending manual bills were eligible for settlement.',
+            settledCount,
+            settledAmount,
+            skippedCount,
+            settlementBatchId: settledCount > 0 ? settlementBatchId : null,
+        });
+    } catch (error) {
+        console.error('[Custom Bill History][PATCH] Error:', error);
         return NextResponse.json(
             { message: `Backend Error: ${error.message}` },
             { status: error.status || 500 }

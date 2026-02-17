@@ -36,6 +36,16 @@ const formatDateTime = (value) => {
     });
 };
 
+const defaultSummary = {
+    totalBills: 0,
+    totalAmount: 0,
+    avgBillValue: 0,
+    pendingSettlementAmount: 0,
+    pendingSettlementBills: 0,
+    settledAmount: 0,
+    settledBills: 0,
+};
+
 export default function CustomBillHistoryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -43,9 +53,11 @@ export default function CustomBillHistoryPage() {
     const employeeOfOwnerId = searchParams.get('employee_of');
 
     const [history, setHistory] = useState([]);
-    const [summary, setSummary] = useState({ totalBills: 0, totalAmount: 0, avgBillValue: 0 });
+    const [summary, setSummary] = useState(defaultSummary);
     const [loading, setLoading] = useState(true);
+    const [isSettling, setIsSettling] = useState(false);
     const [query, setQuery] = useState('');
+    const [selectedBillIds, setSelectedBillIds] = useState([]);
     const [selectedBill, setSelectedBill] = useState(null);
     const [printBillData, setPrintBillData] = useState(null);
     const [pendingRebillPrint, setPendingRebillPrint] = useState(false);
@@ -118,7 +130,7 @@ export default function CustomBillHistoryPage() {
             if (!res.ok) throw new Error(data?.message || 'Failed to load custom bill history.');
 
             setHistory(Array.isArray(data.history) ? data.history : []);
-            setSummary(data.summary || { totalBills: 0, totalAmount: 0, avgBillValue: 0 });
+            setSummary({ ...defaultSummary, ...(data.summary || {}) });
         } catch (error) {
             setInfoDialog({
                 isOpen: true,
@@ -165,6 +177,105 @@ export default function CustomBillHistoryPage() {
 
         runPrint();
     }, [pendingRebillPrint, printBillData, handleRebillPrint]);
+
+    const selectableBillIds = useMemo(
+        () => history
+            .filter((bill) => bill?.settlementEligible && !bill?.isSettled)
+            .map((bill) => bill.id),
+        [history]
+    );
+
+    const selectedBillIdSet = useMemo(
+        () => new Set(selectedBillIds),
+        [selectedBillIds]
+    );
+
+    useEffect(() => {
+        const selectableSet = new Set(selectableBillIds);
+        setSelectedBillIds((prev) => prev.filter((id) => selectableSet.has(id)));
+    }, [selectableBillIds]);
+
+    const selectedSettleAmount = useMemo(() => {
+        return history.reduce((sum, bill) => {
+            if (!selectedBillIdSet.has(bill.id)) return sum;
+            return sum + Number(bill.totalAmount || 0);
+        }, 0);
+    }, [history, selectedBillIdSet]);
+
+    const allSelectableSelected = selectableBillIds.length > 0 && selectableBillIds.every((id) => selectedBillIdSet.has(id));
+
+    const toggleBillSelection = (billId) => {
+        setSelectedBillIds((prev) => (
+            prev.includes(billId)
+                ? prev.filter((id) => id !== billId)
+                : [...prev, billId]
+        ));
+    };
+
+    const toggleSelectAll = () => {
+        if (allSelectableSelected) {
+            setSelectedBillIds([]);
+            return;
+        }
+        setSelectedBillIds([...selectableBillIds]);
+    };
+
+    const handleSettleSelected = async () => {
+        if (selectedBillIds.length === 0) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'No Bills Selected',
+                message: 'Please select pending counter bills to settle.',
+            });
+            return;
+        }
+
+        try {
+            setIsSettling(true);
+            const user = auth.currentUser;
+            if (!user) throw new Error('Please login first.');
+            const idToken = await user.getIdToken();
+
+            const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
+            if (impersonatedOwnerId) {
+                apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            } else if (employeeOfOwnerId) {
+                apiUrl.searchParams.set('employee_of', employeeOfOwnerId);
+            }
+
+            const res = await fetch(apiUrl.toString(), {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    action: 'settle',
+                    historyIds: selectedBillIds,
+                }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.message || 'Failed to settle selected bills.');
+
+            setInfoDialog({
+                isOpen: true,
+                title: 'Settlement Complete',
+                message: data?.message || 'Selected bills settled successfully.',
+            });
+
+            setSelectedBillIds([]);
+            await fetchHistory();
+        } catch (error) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Settlement Failed',
+                message: error.message,
+            });
+        } finally {
+            setIsSettling(false);
+        }
+    };
 
     const totalItems = useMemo(
         () => history.reduce((sum, bill) => sum + Number(bill.itemCount || 0), 0),
@@ -278,7 +389,7 @@ export default function CustomBillHistoryPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                 <div className="bg-card border border-border rounded-xl p-4">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Bills</p>
                     <p className="text-2xl font-bold mt-1">{Number(summary.totalBills || 0).toLocaleString('en-IN')}</p>
@@ -291,6 +402,45 @@ export default function CustomBillHistoryPage() {
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Items Sold</p>
                     <p className="text-2xl font-bold mt-1">{Number(totalItems || 0).toLocaleString('en-IN')}</p>
                 </div>
+                <div className="bg-card border border-border rounded-xl p-4">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Pending Settlement</p>
+                    <p className="text-2xl font-bold mt-1">{formatCurrency(summary.pendingSettlementAmount || 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{Number(summary.pendingSettlementBills || 0)} bill(s)</p>
+                </div>
+                <div className="bg-card border border-border rounded-xl p-4">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Settled Amount</p>
+                    <p className="text-2xl font-bold mt-1">{formatCurrency(summary.settledAmount || 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{Number(summary.settledBills || 0)} bill(s)</p>
+                </div>
+            </div>
+
+            <div className="bg-card border border-border rounded-xl p-4 mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                    <p className="text-sm font-semibold">
+                        Selected for settlement: {selectedBillIds.length} bill(s)
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Selected Amount: {formatCurrency(selectedSettleAmount)}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={toggleSelectAll}
+                        disabled={loading || selectableBillIds.length === 0}
+                    >
+                        {allSelectableSelected ? 'Clear Selection' : 'Select All Pending'}
+                    </Button>
+                    <Button
+                        type="button"
+                        onClick={handleSettleSelected}
+                        disabled={loading || isSettling || selectedBillIds.length === 0}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                        {isSettling ? 'Settling...' : 'Settle Selected'}
+                    </Button>
+                </div>
             </div>
 
             <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -298,10 +448,20 @@ export default function CustomBillHistoryPage() {
                     <table className="w-full text-sm">
                         <thead className="bg-muted/30 border-b border-border">
                             <tr>
+                                <th className="p-4 text-left font-semibold text-muted-foreground">
+                                    <input
+                                        type="checkbox"
+                                        checked={allSelectableSelected}
+                                        onChange={toggleSelectAll}
+                                        disabled={loading || selectableBillIds.length === 0}
+                                        onClick={(event) => event.stopPropagation()}
+                                    />
+                                </th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Bill ID</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Customer</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Items</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Amount</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground">Settlement</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Printed At</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Action</th>
                             </tr>
@@ -310,27 +470,42 @@ export default function CustomBillHistoryPage() {
                             {loading ? (
                                 Array.from({ length: 6 }).map((_, idx) => (
                                     <tr key={`skeleton-${idx}`} className="animate-pulse">
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-5" /></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-24" /></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-36" /></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-12" /></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-20" /></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-24" /></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-36" /></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-20" /></td>
                                     </tr>
                                 ))
                             ) : history.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
                                         No custom bill history found in selected range.
                                     </td>
                                 </tr>
                             ) : (
-                                history.map((bill) => (
-                                    <tr
-                                        key={bill.id}
-                                        className="hover:bg-muted/40 cursor-pointer"
-                                        onClick={() => setSelectedBill(bill)}
-                                    >
+                                history.map((bill) => {
+                                    const isSelectable = !!bill?.settlementEligible && !bill?.isSettled;
+                                    const isSelected = selectedBillIdSet.has(bill.id);
+
+                                    return (
+                                        <tr
+                                            key={bill.id}
+                                            className="hover:bg-muted/40 cursor-pointer"
+                                            onClick={() => setSelectedBill(bill)}
+                                        >
+                                        <td className="p-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                disabled={!isSelectable}
+                                                onChange={() => toggleBillSelection(bill.id)}
+                                                onClick={(event) => event.stopPropagation()}
+                                            />
+                                        </td>
                                         <td className="p-4 font-mono text-xs md:text-sm">{String(bill.historyId || bill.id).slice(0, 12)}</td>
                                         <td className="p-4">
                                             <div className="font-medium">{bill.customerName || 'Walk-in Customer'}</div>
@@ -338,6 +513,21 @@ export default function CustomBillHistoryPage() {
                                         </td>
                                         <td className="p-4">{Number(bill.itemCount || 0)}</td>
                                         <td className="p-4 font-semibold">{formatCurrency(bill.totalAmount || 0)}</td>
+                                        <td className="p-4">
+                                            {!bill?.settlementEligible ? (
+                                                <span className="inline-flex items-center rounded-full border border-slate-500/40 px-2 py-1 text-xs text-slate-500">
+                                                    Not Required
+                                                </span>
+                                            ) : bill?.isSettled ? (
+                                                <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-600">
+                                                    Settled
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700">
+                                                    Pending
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="p-4 text-muted-foreground">{formatDateTime(bill.printedAt)}</td>
                                         <td className="p-4">
                                             <Button
@@ -353,8 +543,9 @@ export default function CustomBillHistoryPage() {
                                                 Re-Bill
                                             </Button>
                                         </td>
-                                    </tr>
-                                ))
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
@@ -391,6 +582,16 @@ export default function CustomBillHistoryPage() {
                                 <div>
                                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Printed Time</p>
                                     <p className="text-sm mt-1">{formatDateTime(selectedBill.printedAt)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Settlement</p>
+                                    <p className="text-sm mt-1">
+                                        {!selectedBill?.settlementEligible
+                                            ? 'Not Required (Create Order)'
+                                            : selectedBill?.isSettled
+                                                ? `Settled on ${formatDateTime(selectedBill.settledAt)}`
+                                                : 'Pending'}
+                                    </p>
                                 </div>
                                 <div>
                                     <p className="text-xs text-muted-foreground uppercase tracking-wide flex items-center gap-1"><User className="h-3.5 w-3.5" />Customer</p>
