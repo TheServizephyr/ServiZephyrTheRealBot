@@ -58,6 +58,7 @@ export default function CustomBillHistoryPage() {
     const [isSettling, setIsSettling] = useState(false);
     const [query, setQuery] = useState('');
     const [selectedBillIds, setSelectedBillIds] = useState([]);
+    const [settlingBillIds, setSettlingBillIds] = useState([]);
     const [selectedBill, setSelectedBill] = useState(null);
     const [printBillData, setPrintBillData] = useState(null);
     const [pendingRebillPrint, setPendingRebillPrint] = useState(false);
@@ -189,6 +190,10 @@ export default function CustomBillHistoryPage() {
         () => new Set(selectedBillIds),
         [selectedBillIds]
     );
+    const settlingBillIdSet = useMemo(
+        () => new Set(settlingBillIds),
+        [settlingBillIds]
+    );
 
     useEffect(() => {
         const selectableSet = new Set(selectableBillIds);
@@ -220,6 +225,40 @@ export default function CustomBillHistoryPage() {
         setSelectedBillIds([...selectableBillIds]);
     };
 
+    const settleBills = async (historyIds) => {
+        const billIds = Array.isArray(historyIds) ? historyIds.filter(Boolean) : [];
+        if (billIds.length === 0) {
+            throw new Error('No pending bills provided for settlement.');
+        }
+
+        const user = auth.currentUser;
+        if (!user) throw new Error('Please login first.');
+        const idToken = await user.getIdToken();
+
+        const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
+        if (impersonatedOwnerId) {
+            apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            apiUrl.searchParams.set('employee_of', employeeOfOwnerId);
+        }
+
+        const res = await fetch(apiUrl.toString(), {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+                action: 'settle',
+                historyIds: billIds,
+            }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.message || 'Failed to settle selected bills.');
+        return data;
+    };
+
     const handleSettleSelected = async () => {
         if (selectedBillIds.length === 0) {
             setInfoDialog({
@@ -232,32 +271,7 @@ export default function CustomBillHistoryPage() {
 
         try {
             setIsSettling(true);
-            const user = auth.currentUser;
-            if (!user) throw new Error('Please login first.');
-            const idToken = await user.getIdToken();
-
-            const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
-            if (impersonatedOwnerId) {
-                apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
-            } else if (employeeOfOwnerId) {
-                apiUrl.searchParams.set('employee_of', employeeOfOwnerId);
-            }
-
-            const res = await fetch(apiUrl.toString(), {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${idToken}`,
-                },
-                body: JSON.stringify({
-                    action: 'settle',
-                    historyIds: selectedBillIds,
-                }),
-            });
-
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data?.message || 'Failed to settle selected bills.');
-
+            const data = await settleBills(selectedBillIds);
             setInfoDialog({
                 isOpen: true,
                 title: 'Settlement Complete',
@@ -274,6 +288,26 @@ export default function CustomBillHistoryPage() {
             });
         } finally {
             setIsSettling(false);
+        }
+    };
+
+    const handleSettleSingle = async (bill) => {
+        if (!bill?.id || !bill?.settlementEligible || bill?.isSettled) return;
+        if (settlingBillIdSet.has(bill.id) || isSettling) return;
+
+        try {
+            setSettlingBillIds((prev) => [...prev, bill.id]);
+            await settleBills([bill.id]);
+            setSelectedBillIds((prev) => prev.filter((id) => id !== bill.id));
+            await fetchHistory();
+        } catch (error) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Settlement Failed',
+                message: error.message,
+            });
+        } finally {
+            setSettlingBillIds((prev) => prev.filter((id) => id !== bill.id));
         }
     };
 
@@ -490,6 +524,7 @@ export default function CustomBillHistoryPage() {
                                 history.map((bill) => {
                                     const isSelectable = !!bill?.settlementEligible && !bill?.isSettled;
                                     const isSelected = selectedBillIdSet.has(bill.id);
+                                    const isRowSettling = settlingBillIdSet.has(bill.id);
 
                                     return (
                                         <tr
@@ -523,9 +558,22 @@ export default function CustomBillHistoryPage() {
                                                     Settled
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700">
-                                                    Pending
-                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleSettleSingle(bill);
+                                                    }}
+                                                    disabled={isSettling || isRowSettling}
+                                                    className={cn(
+                                                        "inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 transition-colors",
+                                                        isSettling || isRowSettling
+                                                            ? "opacity-60 cursor-not-allowed"
+                                                            : "hover:bg-amber-500/20"
+                                                    )}
+                                                >
+                                                    {isRowSettling ? 'Settling...' : 'Pending'}
+                                                </button>
                                             )}
                                         </td>
                                         <td className="p-4 text-muted-foreground">{formatDateTime(bill.printedAt)}</td>
