@@ -13,6 +13,7 @@ import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
 
 // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
 // (Logic moved inside methods below)
+const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 
 function normalizeCompactPortions(item = {}) {
     if (Array.isArray(item?.portions) && item.portions.length > 0) {
@@ -115,6 +116,9 @@ export async function GET(req) {
         activeDocs.forEach(doc => {
             const item = doc.data();
             const categoryKey = item.categoryId || 'general';
+            if (String(categoryKey).toLowerCase() === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+                return;
+            }
             if (!menuData[categoryKey]) {
                 menuData[categoryKey] = [];
             }
@@ -202,6 +206,18 @@ export async function POST(req) {
                 console.log(`[API LOG] POST /api/owner/menu: Category "${formattedId}" already exists.`);
             }
         }
+
+        const normalizedFinalCategoryId = String(finalCategoryId || '').trim().toLowerCase();
+        if (!normalizedFinalCategoryId) {
+            return NextResponse.json({ message: 'Category is required.' }, { status: 400 });
+        }
+        if (normalizedFinalCategoryId === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+            return NextResponse.json(
+                { message: 'Category "open-items" is reserved for manual billing and cannot be used in menu.' },
+                { status: 400 }
+            );
+        }
+        finalCategoryId = normalizedFinalCategoryId;
 
         const normalizedImageUrl = await normalizeMenuItemImageUrl(item.imageUrl || '', businessId, item.id || item.name);
 

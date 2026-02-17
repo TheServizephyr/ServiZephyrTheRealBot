@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
 
+const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
+
 // Helper to verify owner and get their first restaurant ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req);
@@ -73,6 +75,9 @@ const shopCategoryConfig = {
 function validateMenuItem(item) {
     if (!item.name || typeof item.name !== 'string') return "Missing or invalid 'name'";
     if (!item.categoryId || typeof item.categoryId !== 'string') return `Missing 'categoryId' for item: ${item.name}`;
+    if (String(item.categoryId).trim().toLowerCase() === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+        return `Category '${RESERVED_OPEN_ITEMS_CATEGORY_ID}' is reserved for manual billing and not allowed in menu upload`;
+    }
 
     if (typeof item.isVeg !== 'boolean') {
         item.isVeg = true;

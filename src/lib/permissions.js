@@ -47,6 +47,12 @@ export const PERMISSIONS = {
     VIEW_PAYMENTS: 'view_payments',
     MANAGE_PAYMENT_SETTINGS: 'manage_payment_settings',
 
+    // Manual Billing
+    MANUAL_BILLING: {
+        READ: 'manual_billing:read',
+        WRITE: 'manual_billing:write',
+    },
+
     // Menu Management
     VIEW_MENU: 'view_menu',
     EDIT_MENU: 'edit_menu',
@@ -186,13 +192,18 @@ const P = PERMISSIONS; // Shorthand for cleaner code
 export const ROLE_PERMISSIONS = {
     // OWNER - Full control over everything
     [ROLES.OWNER]: [
-        // All permissions
-        ...Object.values(PERMISSIONS)
+        // All string permissions
+        ...Object.values(PERMISSIONS).filter(v => typeof v === 'string'),
+        // Plus nested permission objects
+        P.MANUAL_BILLING.READ,
+        P.MANUAL_BILLING.WRITE,
     ],
 
     // STREET_VENDOR - Same as owner (for backward compatibility)
     [ROLES.STREET_VENDOR]: [
-        ...Object.values(PERMISSIONS)
+        ...Object.values(PERMISSIONS).filter(v => typeof v === 'string'),
+        P.MANUAL_BILLING.READ,
+        P.MANUAL_BILLING.WRITE,
     ],
 
     // MANAGER - Almost everything except payment settings & delete
@@ -222,6 +233,8 @@ export const ROLE_PERMISSIONS = {
         P.ADD_MENU_ITEM,
         P.DELETE_MENU_ITEM,
         P.TOGGLE_ITEM_STOCK,
+        P.MANUAL_BILLING.READ,
+        P.MANUAL_BILLING.WRITE,
         P.VIEW_EMPLOYEES,
         P.MANAGE_EMPLOYEES, // Can manage employees below their level
         P.INVITE_EMPLOYEE,
@@ -277,6 +290,8 @@ export const ROLE_PERMISSIONS = {
         P.GENERATE_BILL,
         P.PROCESS_PAYMENT,
         P.VIEW_PAYMENTS,
+        P.MANUAL_BILLING.READ,
+        P.MANUAL_BILLING.WRITE,
         P.VIEW_MENU,
     ],
 

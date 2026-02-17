@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,13 @@ import { connectSerialPrinter, printSerialData } from '@/services/printer/webSer
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const createBillDraftId = () => `cb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+const formatCategoryLabel = (categoryId = '') => String(categoryId).replace(/-/g, ' ').trim();
+const isEditableTarget = (target) => {
+    if (!target || !(target instanceof HTMLElement)) return false;
+    const tagName = target.tagName;
+    if (target.isContentEditable) return true;
+    return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+};
 
 function CustomBillPage() {
     const [menu, setMenu] = useState({});
@@ -53,8 +60,10 @@ function CustomBillPage() {
     const [isNoAddressDialogOpen, setIsNoAddressDialogOpen] = useState(false);
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
+    const [openItems, setOpenItems] = useState([]); // Open items from Firestore
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
+    const searchInputRef = useRef(null);
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
@@ -129,6 +138,20 @@ function CustomBillPage() {
                     setMenu(menuData.menu || {});
                 }
 
+                // Fetch open items from Firestore
+                const openItemsUrl = accessQuery ? `/api/owner/open-items?${accessQuery}` : '/api/owner/open-items';
+                try {
+                    const openItemsRes = await fetch(openItemsUrl, { headers });
+                    if (openItemsRes.ok) {
+                        const openItemsData = await openItemsRes.json();
+                        if (isMounted) {
+                            setOpenItems(openItemsData.items || []);
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch open items:', error);
+                }
+
             } catch (error) {
                 if (isMounted) {
                     setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load menu: ${error.message}` });
@@ -151,13 +174,58 @@ function CustomBillPage() {
         };
     }, [accessQuery]);
 
+    // Compute normalized search query
+    const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
+    
+    // Define visibleMenuEntries BEFORE the scroll spy effect
+    const visibleMenuEntries = useMemo(() => {
+        const entries = [];
+
+        // Keep regular categories in ascending order and reserve "open-items" for manual billing only.
+        const sortedCategoryIds = Object.keys(menu || {})
+            .filter((categoryId) => categoryId !== 'open-items')
+            .sort((a, b) => formatCategoryLabel(a).localeCompare(formatCategoryLabel(b)));
+
+        for (const categoryId of sortedCategoryIds) {
+            const items = menu[categoryId];
+            if (!Array.isArray(items) || items.length === 0) continue;
+            const filteredItems = normalizedSearchQuery
+                ? items.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery))
+                : items;
+            if (filteredItems.length > 0) {
+                const sortedItems = [...filteredItems].sort((a, b) => {
+                    const nameA = String(a?.name || '').toLowerCase();
+                    const nameB = String(b?.name || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                entries.push([categoryId, sortedItems]);
+            }
+        }
+
+        const filteredOpenItems = normalizedSearchQuery
+            ? openItems.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery))
+            : openItems;
+        const sortedOpenItems = [...filteredOpenItems].sort((a, b) => {
+            const nameA = String(a?.name || '').toLowerCase();
+            const nameB = String(b?.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        // Always keep Open Items as the final section in manual billing sidebar.
+        entries.push(['open-items', sortedOpenItems]);
+        return entries;
+    }, [menu, openItems, normalizedSearchQuery]);
+
     // Handle Scroll Spy
     useEffect(() => {
         const container = scrollContainerRef.current;
         if (!container) return;
 
         const handleScroll = () => {
-            const categories = Object.keys(menu);
+            // Use visibleMenuEntries to get all categories including open-items
+            const categories = visibleMenuEntries.map(([catId]) => catId);
+            if (categories.length === 0) return;
+            
             let current = categories[0];
 
             for (const catId of categories) {
@@ -176,11 +244,12 @@ function CustomBillPage() {
 
         container.addEventListener('scroll', handleScroll);
         // Set initial active category
-        if (Object.keys(menu).length > 0) {
-            setActiveCategory((prev) => prev || Object.keys(menu)[0]);
+        const availableCategoryIds = visibleMenuEntries.map(([categoryId]) => categoryId);
+        if (availableCategoryIds.length > 0) {
+            setActiveCategory((prev) => (availableCategoryIds.includes(prev) ? prev : availableCategoryIds[0]));
         }
         return () => container.removeEventListener('scroll', handleScroll);
-    }, [menu]);
+    }, [visibleMenuEntries]);
 
     const scrollToCategory = (catId) => {
         const element = document.getElementById(`cat-${catId}`);
@@ -222,7 +291,7 @@ function CustomBillPage() {
         }
     };
 
-    const handleUndo = () => {
+    const handleUndo = useCallback(() => {
         if (itemHistory.length === 0) return;
 
         const newHistory = [...itemHistory];
@@ -243,7 +312,26 @@ function CustomBillPage() {
                 return newCart.filter(i => i.cartItemId !== lastItemId);
             }
         });
-    };
+    }, [itemHistory]);
+
+    useEffect(() => {
+        const handleBackspaceUndo = (event) => {
+            if (event.key !== 'Backspace' || event.repeat) return;
+
+            const target = event.target;
+            // Search bar should keep normal text delete behavior.
+            if (searchInputRef.current && target === searchInputRef.current) return;
+            // Keep native behavior in all other editable elements too.
+            if (isEditableTarget(target)) return;
+            if (itemHistory.length === 0) return;
+
+            event.preventDefault();
+            handleUndo();
+        };
+
+        window.addEventListener('keydown', handleBackspaceUndo);
+        return () => window.removeEventListener('keydown', handleBackspaceUndo);
+    }, [itemHistory, handleUndo]);
 
     const resetCurrentBill = () => {
         setCart([]);
@@ -303,21 +391,6 @@ function CustomBillPage() {
             grandTotal: total
         };
     }, [cart, restaurant, deliveryChargeInput]);
-
-    const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
-    const visibleMenuEntries = useMemo(() => {
-        const entries = [];
-        for (const [categoryId, items] of Object.entries(menu || {})) {
-            if (!Array.isArray(items) || items.length === 0) continue;
-            const filteredItems = normalizedSearchQuery
-                ? items.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery))
-                : items;
-            if (filteredItems.length > 0) {
-                entries.push([categoryId, filteredItems]);
-            }
-        }
-        return entries;
-    }, [menu, normalizedSearchQuery]);
 
     const printReceiptToUsb = async ({
         items,
@@ -810,6 +883,7 @@ function CustomBillPage() {
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                             <input
+                                ref={searchInputRef}
                                 type="text"
                                 placeholder="Search menu..."
                                 value={searchQuery}
@@ -852,7 +926,7 @@ function CustomBillPage() {
                                                 : "text-muted-foreground hover:bg-muted"
                                         )}
                                     >
-                                        {categoryId.replace('-', ' ')}
+                                        {formatCategoryLabel(categoryId)}
                                     </button>
                                 ))}
                             </div>
@@ -871,52 +945,90 @@ function CustomBillPage() {
                             ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
                                 <div key={categoryId} id={`cat-${categoryId}`} className="mb-5 pt-1">
                                     <h3 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
-                                        {categoryId.replace('-', ' ')}
+                                        {formatCategoryLabel(categoryId)}
                                     </h3>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {filteredItems.map(item => (
-                                            <motion.div
-                                                key={item.id}
-                                                whileHover={{ y: -4, scale: 1.02 }}
-                                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                className="p-5 bg-gradient-to-br from-card via-card to-card/90 hover:from-card hover:via-muted/20 hover:to-card rounded-2xl border-2 border-border/40 hover:border-primary/50 transition-all shadow-md hover:shadow-xl hover:shadow-primary/10 min-h-[130px] flex flex-col backdrop-blur-sm"
-                                            >
-                                                <div className="flex-1 mb-3">
-                                                    <p className="font-bold text-foreground text-base leading-tight">
-                                                        {item.name}
-                                                    </p>
-                                                </div>
-                                                <div className={`grid gap-2.5 mt-auto ${item.portions.length === 1 ? 'grid-cols-1' :
-                                                    item.portions.length === 2 ? 'grid-cols-2' :
-                                                        'grid-cols-3'
-                                                    }`}>
-                                                    {item.portions.map(portion => (
+                                    {categoryId === 'open-items' && filteredItems.length === 0 ? (
+                                        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-900/10 text-sm text-muted-foreground">
+                                            No open items yet. Add them from Menu Management to use in manual billing.
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {filteredItems.map(item => {
+                                            // Handle Open Items (no portions)
+                                            if (categoryId === 'open-items' || !item.portions) {
+                                                return (
+                                                    <motion.div
+                                                        key={item.id}
+                                                        whileHover={{ y: -4, scale: 1.02 }}
+                                                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                        className="p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 rounded-2xl border-2 border-amber-600/30 hover:border-amber-500/60 transition-all shadow-md hover:shadow-xl hover:shadow-amber-900/20 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                    >
+                                                        <div className="flex-1 mb-3">
+                                                            <p className="font-bold text-foreground text-base leading-tight">
+                                                                {item.name}
+                                                            </p>
+                                                        </div>
                                                         <motion.button
-                                                            key={portion.name}
                                                             whileHover={{ scale: 1.05 }}
                                                             whileTap={{ scale: 0.95 }}
-                                                            onClick={() => addToCart(item, portion)}
-                                                            className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
+                                                            onClick={() => addToCart(item, { name: 'Regular', price: item.price })}
+                                                            className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
                                                         >
-                                                            {/* Subtle gradient overlay on hover */}
                                                             <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
-
-                                                            {item.portions.length > 1 && (
-                                                                <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
-                                                                    {portion.name}
-                                                                </span>
-                                                            )}
-                                                            <div className="flex items-center justify-center relative z-10">
-                                                                <span className="text-base font-black">
-                                                                    {formatCurrency(portion.price)}
-                                                                </span>
-                                                            </div>
+                                                            <span className="text-base font-black relative z-10">
+                                                                {formatCurrency(item.price)}
+                                                            </span>
                                                         </motion.button>
-                                                    ))}
-                                                </div>
-                                            </motion.div>
-                                        ))}
-                                    </div>
+                                                    </motion.div>
+                                                );
+                                            }
+                                            
+                                            // Handle Regular Menu Items
+                                            return (
+                                                <motion.div
+                                                    key={item.id}
+                                                    whileHover={{ y: -4, scale: 1.02 }}
+                                                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                    className="p-5 bg-gradient-to-br from-card via-card to-card/90 hover:from-card hover:via-muted/20 hover:to-card rounded-2xl border-2 border-border/40 hover:border-primary/50 transition-all shadow-md hover:shadow-xl hover:shadow-primary/10 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                >
+                                                    <div className="flex-1 mb-3">
+                                                        <p className="font-bold text-foreground text-base leading-tight">
+                                                            {item.name}
+                                                        </p>
+                                                    </div>
+                                                    <div className={`grid gap-2.5 mt-auto ${item.portions.length === 1 ? 'grid-cols-1' :
+                                                        item.portions.length === 2 ? 'grid-cols-2' :
+                                                            'grid-cols-3'
+                                                        }`}>
+                                                        {item.portions.map(portion => (
+                                                            <motion.button
+                                                                key={portion.name}
+                                                                whileHover={{ scale: 1.05 }}
+                                                                whileTap={{ scale: 0.95 }}
+                                                                onClick={() => addToCart(item, portion)}
+                                                                className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
+                                                            >
+                                                                {/* Subtle gradient overlay on hover */}
+                                                                <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+
+                                                                {item.portions.length > 1 && (
+                                                                    <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
+                                                                        {portion.name}
+                                                                    </span>
+                                                                )}
+                                                                <div className="flex items-center justify-center relative z-10">
+                                                                    <span className="text-base font-black">
+                                                                        {formatCurrency(portion.price)}
+                                                                    </span>
+                                                                </div>
+                                                            </motion.button>
+                                                        ))}
+                                                    </div>
+                                                </motion.div>
+                                            );
+                                        })}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>

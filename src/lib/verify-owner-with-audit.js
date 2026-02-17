@@ -103,7 +103,8 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                             ? employeeAccessResult.permissions
                             : getPermissionsForRole(effectiveCallerRole);
                     } else {
-                        effectiveCallerPermissions = Object.values(PERMISSIONS);
+                        // For direct owner access, use getPermissionsForRole to properly flatten nested permissions
+                        effectiveCallerPermissions = getPermissionsForRole(effectiveCallerRole);
                     }
 
                     return {

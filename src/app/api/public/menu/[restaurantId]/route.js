@@ -6,6 +6,7 @@ import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
+const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 
 export async function GET(req, { params }) {
     const { restaurantId } = params;
@@ -162,6 +163,9 @@ export async function GET(req, { params }) {
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
             const categoryKey = item.categoryId || 'general';
+            if (String(categoryKey).toLowerCase() === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+                return;
+            }
             if (menuData[categoryKey]) {
                 menuData[categoryKey].push({ id: doc.id, ...item });
             } else {

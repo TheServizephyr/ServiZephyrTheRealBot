@@ -54,6 +54,8 @@ const shopCategoryConfig = {
     "sports-outdoors": { title: "Sports & Outdoors", icon: Utensils },
 };
 
+const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
+
 
 // --- COMPONENTS (Single File) ---
 
@@ -831,6 +833,10 @@ export default function MenuPage() {
         confirmText: 'Confirm',
         onConfirm: null
     });
+    const [openItems, setOpenItems] = useState([]);
+    const [isOpenItemsModalOpen, setIsOpenItemsModalOpen] = useState(false);
+    const [newOpenItemName, setNewOpenItemName] = useState('');
+    const [newOpenItemPrice, setNewOpenItemPrice] = useState('');
     const hasHydratedFromCacheRef = useRef(false);
 
     // 🔐 RBAC: Get user role for access control
@@ -939,6 +945,9 @@ export default function MenuPage() {
     const allCategories = useMemo(() => {
         const categories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
         customCategories.forEach(cat => {
+            if (cat.id === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+                return;
+            }
             if (!categories[cat.id]) {
                 categories[cat.id] = { title: cat.title, icon: Utensils };
             }
@@ -946,6 +955,9 @@ export default function MenuPage() {
 
         // Ensure legacy/unknown category keys (e.g. "general") from menu docs are visible in dashboard.
         Object.keys(menu || {}).forEach((categoryId) => {
+            if (categoryId === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+                return;
+            }
             if (!categories[categoryId]) {
                 categories[categoryId] = {
                     title: categoryId.charAt(0).toUpperCase() + categoryId.slice(1).replace(/-/g, ' '),
@@ -959,6 +971,20 @@ export default function MenuPage() {
 
 
     const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
+        const trimmedNewCategory = (newCategory || '').trim();
+        const finalCategoryId = trimmedNewCategory
+            ? trimmedNewCategory.toLowerCase().replace(/\s+/g, '-')
+            : String(categoryId || '').trim().toLowerCase();
+
+        if (finalCategoryId === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Category Reserved',
+                message: 'Open Items are reserved for manual billing only. Use the Open Items section at the end of this page.',
+            });
+            return;
+        }
+
         // Internal function to perform the actual API call
         const performSave = async () => {
             try {
@@ -1135,6 +1161,127 @@ export default function MenuPage() {
         });
     };
 
+    // Fetch open items on mount
+    useEffect(() => {
+        const fetchOpenItems = async () => {
+            try {
+                const user = auth.currentUser;
+                if (!user) return;
+                const idToken = await user.getIdToken();
+                let url = '/api/owner/open-items';
+                if (impersonatedOwnerId) {
+                    url += `?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`;
+                } else if (employeeOfOwnerId) {
+                    url += `?employee_of=${encodeURIComponent(employeeOfOwnerId)}`;
+                }
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${idToken}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setOpenItems(data.items || []);
+                }
+            } catch (error) {
+                console.warn('Could not fetch open items:', error);
+            }
+        };
+        fetchOpenItems();
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const handleAddOpenItem = async () => {
+        const itemName = newOpenItemName.trim();
+        const itemPrice = parseFloat(newOpenItemPrice);
+
+        if (!itemName) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Please enter item name' });
+            return;
+        }
+
+        if (!Number.isFinite(itemPrice) || itemPrice <= 0) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Please enter a valid price' });
+            return;
+        }
+
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("User not authenticated.");
+            const idToken = await user.getIdToken();
+
+            let url = '/api/owner/open-items';
+            if (impersonatedOwnerId) {
+                url += `?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`;
+            } else if (employeeOfOwnerId) {
+                url += `?employee_of=${encodeURIComponent(employeeOfOwnerId)}`;
+            }
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify({ name: itemName, price: itemPrice })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to create open item');
+
+            setOpenItems([...openItems, data.item]);
+            setNewOpenItemName('');
+            setNewOpenItemPrice('');
+            setInfoDialog({ isOpen: true, title: 'Success', message: `${itemName} added successfully` });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+        }
+    };
+
+    const handleDeleteOpenItem = (itemId) => {
+        setConfirmationDialog({
+            isOpen: true,
+            title: "Delete Open Item",
+            description: "Are you sure you want to delete this item?",
+            variant: "destructive",
+            confirmText: "Delete",
+            onConfirm: async () => {
+                try {
+                    const user = auth.currentUser;
+                    if (!user) throw new Error("User not authenticated.");
+                    const idToken = await user.getIdToken();
+
+                    let url = '/api/owner/open-items';
+                    if (impersonatedOwnerId) {
+                        url += `?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`;
+                    } else if (employeeOfOwnerId) {
+                        url += `?employee_of=${encodeURIComponent(employeeOfOwnerId)}`;
+                    }
+
+                    const res = await fetch(url, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${idToken}`
+                        },
+                        body: JSON.stringify({ itemId })
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Failed to delete open item');
+
+                    setOpenItems(openItems.filter(item => item.id !== itemId));
+                    setInfoDialog({ isOpen: true, title: 'Success', message: 'Item deleted successfully' });
+                } catch (error) {
+                    setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+                }
+            }
+        });
+    };
+
+    const sortedOpenItems = useMemo(() => {
+        return [...openItems].sort((a, b) =>
+            String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' })
+        );
+    }, [openItems]);
+
     const pageTitle = businessType === 'shop' ? 'Item Catalog' : 'Menu Management';
     const pageDescription = businessType === 'shop' ? 'Organize categories, manage products, and control availability.' : 'Organize categories, reorder items, and manage availability.';
     const searchPlaceholder = businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
@@ -1257,6 +1404,7 @@ export default function MenuPage() {
                     if (!titleB) return -1;
                     return titleA.localeCompare(titleB);
                 }).map(categoryId => {
+                    if (categoryId === RESERVED_OPEN_ITEMS_CATEGORY_ID) return null;
                     const config = allCategories[categoryId];
                     const items = menu[categoryId] || [];
                     if (!config || items.length === 0 && !customCategories.some(c => c.id === categoryId)) return null;
@@ -1283,6 +1431,123 @@ export default function MenuPage() {
                     );
                 })}
             </div>
+
+            {/* OPEN ITEMS SECTION - For Manual Billing Only */}
+            {canAdd && (
+                <div className="space-y-4">
+                    <div className="border-t border-border pt-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 className="text-xl font-bold">Open Items (Manual Billing Only)</h2>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Items added here are only available in manual billing for walk-in customers (water bottles, disposals, etc.) - NOT in online menu
+                                </p>
+                            </div>
+                            <Button
+                                onClick={() => setIsOpenItemsModalOpen(true)}
+                                className="bg-amber-600 hover:bg-amber-700 text-white"
+                            >
+                                <PlusCircle size={18} className="mr-2" />
+                                Add Open Item
+                            </Button>
+                        </div>
+
+                        {openItems.length === 0 ? (
+                            <div className="p-6 bg-muted/20 rounded-lg border border-border/50 text-center text-muted-foreground">
+                                <p>No open items yet. Add items for manual billing.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {sortedOpenItems.map((item) => (
+                                    <motion.div
+                                        key={item.id}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        className="flex items-center justify-between p-4 bg-amber-900/10 border border-amber-600/30 rounded-lg hover:bg-amber-900/15 transition-colors"
+                                    >
+                                        <div>
+                                            <p className="font-semibold text-foreground">{item.name}</p>
+                                            <p className="text-sm text-muted-foreground">₹{item.price.toFixed(2)}</p>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeleteOpenItem(item.id)}
+                                        >
+                                            <Trash2 size={16} />
+                                        </Button>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Open Items Modal */}
+            <Dialog open={isOpenItemsModalOpen} onOpenChange={setIsOpenItemsModalOpen}>
+                <DialogContent className="bg-card border-border text-foreground max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <PlusCircle size={20} className="text-amber-600" />
+                            Add Open Item
+                        </DialogTitle>
+                        <DialogDescription>
+                            Add items not in your menu for manual billing (water, disposal, napkins, etc.)
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="open-item-name" className="text-sm font-semibold">Item Name</Label>
+                            <input
+                                id="open-item-name"
+                                type="text"
+                                placeholder="e.g., Water Bottle, Disposable Plate..."
+                                value={newOpenItemName}
+                                onChange={(e) => setNewOpenItemName(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="open-item-price" className="text-sm font-semibold">Price (₹)</Label>
+                            <input
+                                id="open-item-price"
+                                type="number"
+                                placeholder="0"
+                                value={newOpenItemPrice}
+                                onChange={(e) => setNewOpenItemPrice(e.target.value)}
+                                step="0.5"
+                                min="0"
+                                className="w-full px-3 py-2 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setIsOpenItemsModalOpen(false);
+                                setNewOpenItemName('');
+                                setNewOpenItemPrice('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleAddOpenItem}
+                            className="bg-amber-600 hover:bg-amber-700"
+                        >
+                            <PlusCircle size={16} className="mr-2" />
+                            Add Item
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <AnimatePresence>
                 {selectedItems.length > 0 && (
