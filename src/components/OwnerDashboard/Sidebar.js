@@ -366,8 +366,17 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                 ? '1 new order is waiting in Live Orders.'
                 : `${delta} new orders are waiting in Live Orders.`,
               dedupeKey: `sidebar_pending_${count}`,
+              alarmId: 'live_orders_pending',
+              disableAutoStop: true,
               sound: '/notification-owner-manager.mp3',
               href: '/owner-dashboard/live-orders'
+            });
+          }
+          if (count === 0 && prevPendingCountRef.current > 0) {
+            emitAppNotification({
+              scope: 'owner',
+              action: 'stop_alarm',
+              alarmId: 'live_orders_pending'
             });
           }
           prevPendingCountRef.current = count;

@@ -376,10 +376,7 @@ export async function POST(req) {
                 },
             };
 
-            // TEMPLATE PATH DISABLED as per user request
-            // User confirmed: CTA button should be primary, no template dependency
-            // Templates remain utility category, but we want guaranteed delivery via CTA
-            /*
+            // PRIMARY METHOD: Template message (works without 24-hour session window)
             if (ADD_ADDRESS_TEMPLATE_NAME && addAddressShortCode) {
                 try {
                     const templatePayload = buildAddAddressTemplatePayload({
@@ -392,6 +389,7 @@ export async function POST(req) {
                         throw new Error('Template payload not available.');
                     }
 
+                    console.log('[Custom Bill Create Order] 📤 Sending template message...');
                     const waResponse = await sendSystemTemplateMessage(
                         `91${phone}`,
                         templatePayload,
@@ -408,15 +406,15 @@ export async function POST(req) {
                     if (waResponse?.messages?.[0]?.id) {
                         whatsappSent = true;
                         whatsappMode = 'template';
+                        console.log('[Custom Bill Create Order] ✅ Template sent:', waResponse.messages[0].id);
                     } else {
                         throw new Error('WhatsApp API did not return a message id for template.');
                     }
                 } catch (templateErr) {
-                    console.warn('[Custom Bill Create Order] Template send failed. Falling back to text message:', templateErr?.message || templateErr);
+                    console.warn('[Custom Bill Create Order] ⚠️ Template send failed. Falling back to text message:', templateErr?.message || templateErr);
                     whatsappMode = 'text_fallback';
                 }
             }
-            */
 
             // PRIMARY METHOD DISABLED: Interactive CTA button causes Error 131042 on restricted numbers
             // CTA buttons fail when phone number display name is "In Review"
@@ -488,34 +486,36 @@ export async function POST(req) {
             }
             */
 
-            // PRIMARY METHOD: Plain text message with link
-            // Send plain text message with link (PRIMARY METHOD)
-            console.log('[Custom Bill Create Order] 📝 Sending plain text message with link...');
-            try {
-                const waResponse = await sendSystemMessage(
-                    `91${phone}`,
-                    fallbackMessage,
-                    botPhoneNumberId,
-                    businessId,
-                    businessData.name || 'ServiZephyr',
-                    collectionName,
-                    {
-                        customerName,
-                        conversationPreview: 'Order created. Add delivery location for tracking.',
+            // FALLBACK METHOD: Plain text message with link
+            // Only runs if template was not sent (ADD_ADDRESS_TEMPLATE_NAME missing or shortCode failed)
+            if (!whatsappSent) {
+                console.log('[Custom Bill Create Order] 📝 Sending plain text fallback message with link...');
+                try {
+                    const waResponse = await sendSystemMessage(
+                        `91${phone}`,
+                        fallbackMessage,
+                        botPhoneNumberId,
+                        businessId,
+                        businessData.name || 'ServiZephyr',
+                        collectionName,
+                        {
+                            customerName,
+                            conversationPreview: 'Order created. Add delivery location for tracking.',
+                        }
+                    );
+                    if (waResponse?.messages?.[0]?.id) {
+                        whatsappSent = true;
+                        whatsappMode = 'text_fallback';
+                        console.log('[Custom Bill Create Order] ✅ Text fallback sent:', waResponse.messages[0].id);
+                    } else {
+                        whatsappSent = false;
+                        whatsappError = 'WhatsApp API did not return message ID.';
+                        console.error('[Custom Bill Create Order] ❌ Text fallback returned no message ID');
                     }
-                );
-                if (waResponse?.messages?.[0]?.id) {
-                    whatsappSent = true;
-                    whatsappMode = 'text_fallback';
-                    console.log('[Custom Bill Create Order] ✅ Text fallback sent:', waResponse.messages[0].id);
-                } else {
-                    whatsappSent = false;
-                    whatsappError = 'WhatsApp API did not return message ID.';
-                    console.error('[Custom Bill Create Order] ❌ Text fallback returned no message ID');
+                } catch (err) {
+                    whatsappError = err?.message || 'Failed to send WhatsApp message.';
+                    console.error('[Custom Bill Create Order] ❌ All WhatsApp attempts failed:', err);
                 }
-            } catch (err) {
-                whatsappError = err?.message || 'Failed to send WhatsApp message.';
-                console.error('[Custom Bill Create Order] ❌ All WhatsApp attempts failed:', err);
             }
         } else {
             whatsappError = 'Business botPhoneNumberId is not configured.';

@@ -210,7 +210,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
         </div>
 
         <div className={`${styles.navActions} shrink-0`}>
-          {!isMobileView && <AppNotificationCenter scope="owner" />}
+          <AppNotificationCenter scope="owner" />
 
           <button
             onClick={() => setSystemStatusOpen(true)}
@@ -347,7 +347,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
                   <>
                     <div className="px-2 py-1">
                       <p className="text-[11px] text-muted-foreground font-medium mb-2">Notifications</p>
-                      <AppNotificationCenter scope="owner" />
+                      {/* Notifications are now in the main navbar for all devices */}
                     </div>
                     <DropdownMenuSeparator />
                   </>

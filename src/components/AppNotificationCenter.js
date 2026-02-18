@@ -35,9 +35,44 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
     const beepIntervalRef = useRef(null);
     const vibrationIntervalRef = useRef(null);
     const fallbackAudioRef = useRef(null);
+    const currentAlarmIdRef = useRef(null);
+    const persistentAlarmRef = useRef(false);
+    const userInteractedRef = useRef(false);
+
+    const canVibrate = () =>
+        typeof navigator !== 'undefined' &&
+        'vibrate' in navigator &&
+        userInteractedRef.current;
+
+    const showSystemNotification = (payload = {}) => {
+        if (typeof window === 'undefined' || !('Notification' in window)) return;
+        if (Notification.permission !== 'granted') return;
+
+        const title = payload.title || 'New Notification';
+        const body = payload.message || '';
+        const tag = payload.dedupeKey || `servizephyr_${scope}`;
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistration().then((reg) => {
+                if (reg) {
+                    reg.showNotification(title, {
+                        body,
+                        tag,
+                        renotify: true,
+                        requireInteraction: true,
+                        vibrate: LONG_VIBRATION_PATTERN
+                    });
+                } else {
+                    new Notification(title, { body, tag });
+                }
+            }).catch(() => { });
+        } else {
+            new Notification(title, { body, tag });
+        }
+    };
 
     const triggerVibration = () => {
-        if (typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
+        if (!canVibrate()) return;
         try {
             navigator.vibrate(LONG_VIBRATION_PATTERN);
         } catch (_) {
@@ -73,6 +108,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
     };
 
     const startVibrationLoop = () => {
+        if (!canVibrate()) return;
         if (vibrationIntervalRef.current) return;
         triggerVibration();
         vibrationIntervalRef.current = setInterval(() => {
@@ -93,6 +129,8 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         }
     }, [scope]);
 
+
+
     useEffect(() => {
         if (typeof window === 'undefined') return;
         try {
@@ -104,22 +142,62 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
 
     useEffect(() => {
         const unlockAudio = () => {
+            userInteractedRef.current = true;
+
+            // Resume AudioContext if it exists and is suspended
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx && AudioCtx.state === 'suspended') {
+                try {
+                    new AudioCtx().resume().catch(() => { });
+                } catch (e) {
+                    console.warn('[Audio] Failed to resume context:', e);
+                }
+            }
+
             if (audioUnlockedRef.current || !audioRef.current) return;
+
             audioRef.current.volume = 0;
-            audioRef.current.play()
-                .then(() => {
+            const playPromise = audioRef.current.play();
+
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
                     audioRef.current.pause();
                     audioRef.current.currentTime = 0;
                     audioRef.current.volume = 1;
                     audioUnlockedRef.current = true;
+                    console.log('[Audio] Unlocked successfully');
                 })
-                .catch(() => { });
+                    .catch((error) => {
+                        console.warn('[Audio] Auto-unlock failed (expected):', error);
+                    });
+            }
         };
-        window.addEventListener('pointerdown', unlockAudio, { once: true });
-        return () => window.removeEventListener('pointerdown', unlockAudio);
+
+        // Attempt initial silent unlock (works on some browsers if previously interacted)
+        if (!audioUnlockedRef.current && audioRef.current) {
+            audioRef.current.volume = 0;
+            audioRef.current.play().then(() => {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+                audioRef.current.volume = 1;
+                audioUnlockedRef.current = true;
+            }).catch(() => { });
+        }
+
+        window.addEventListener('click', unlockAudio, { once: true });
+        window.addEventListener('touchstart', unlockAudio, { once: true });
+        window.addEventListener('keydown', unlockAudio, { once: true });
+        return () => {
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('touchstart', unlockAudio);
+            window.removeEventListener('keydown', unlockAudio);
+        };
     }, []);
 
-    const stopAlarm = () => {
+    const stopAlarm = (targetAlarmId = null) => {
+        if (targetAlarmId && currentAlarmIdRef.current !== targetAlarmId) {
+            return;
+        }
         if (stopTimerRef.current) {
             clearTimeout(stopTimerRef.current);
             stopTimerRef.current = null;
@@ -141,9 +219,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             fallbackAudioRef.current.currentTime = 0;
             fallbackAudioRef.current = null;
         }
-        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        if (canVibrate()) {
             navigator.vibrate(0);
         }
+        currentAlarmIdRef.current = null;
+        persistentAlarmRef.current = false;
         setIsAlarmPlaying(false);
     };
 
@@ -176,10 +256,16 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         const handleIncoming = (event) => {
             const payload = event?.detail || {};
             if ((payload.scope || 'owner') !== scope) return;
+            if (payload.action === 'stop_alarm') {
+                stopAlarm(payload.alarmId || null);
+                return;
+            }
 
             const createdAt = now();
             const dedupeKey = payload.dedupeKey || null;
             const id = `${createdAt}_${Math.random().toString(36).slice(2, 8)}`;
+            const disableAutoStop = payload.disableAutoStop === true;
+            const alarmId = typeof payload.alarmId === 'string' ? payload.alarmId : null;
 
             setNotifications((prev) => {
                 const cleaned = pruneNotifications(prev);
@@ -212,38 +298,23 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                 startVibrationLoop();
             }
 
-            // If app is in background, also raise OS-level local notification (requires permission).
-            if (typeof document !== 'undefined' && document.hidden && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-                const title = payload.title || 'New Notification';
-                const body = payload.message || '';
-                const tag = payload.dedupeKey || `servizephyr_${scope}`;
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.getRegistration().then((reg) => {
-                        if (reg) {
-                            reg.showNotification(title, {
-                                body,
-                                tag,
-                                renotify: true,
-                                requireInteraction: true,
-                                vibrate: LONG_VIBRATION_PATTERN
-                            });
-                        } else {
-                            // Fallback if service worker not available
-                            new Notification(title, { body, tag });
-                        }
-                    }).catch(() => { });
-                } else {
-                    new Notification(title, { body, tag });
-                }
+            // If app is in background OR this is a persistent live-order alarm, raise OS-level local notification.
+            const shouldShowSystemNotification = (typeof document !== 'undefined' && document.hidden) || payload.disableAutoStop === true;
+            if (shouldShowSystemNotification) {
+                showSystemNotification(payload);
             }
 
             if (!soundPath || !audioRef.current) return;
+            if (persistentAlarmRef.current && !disableAutoStop) return;
 
             try {
                 stopAlarm();
                 if (!isWhatsAppSound) {
                     startVibrationLoop();
                 }
+                const isPersistentAlarm = disableAutoStop && !isWhatsAppSound;
+                currentAlarmIdRef.current = isPersistentAlarm ? alarmId : null;
+                persistentAlarmRef.current = isPersistentAlarm;
                 audioRef.current.src = soundPath;
                 audioRef.current.load();
                 audioRef.current.muted = false;
@@ -257,9 +328,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                             audioRef.current.onended = null;
                         };
                     } else {
-                        stopTimerRef.current = setTimeout(() => {
-                            stopAlarm();
-                        }, MAX_RING_MS);
+                        if (!disableAutoStop) {
+                            stopTimerRef.current = setTimeout(() => {
+                                stopAlarm();
+                            }, MAX_RING_MS);
+                        }
                     }
                 }).catch(() => {
                     try {
@@ -276,9 +349,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                                     fallbackAudio.onended = null;
                                 };
                             } else {
-                                stopTimerRef.current = setTimeout(() => {
-                                    stopAlarm();
-                                }, MAX_RING_MS);
+                                if (!disableAutoStop) {
+                                    stopTimerRef.current = setTimeout(() => {
+                                        stopAlarm();
+                                    }, MAX_RING_MS);
+                                }
                             }
                         }).catch(() => {
                             // Browser blocked autoplay / decode issue -> fallback alarm
@@ -312,9 +387,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                                     stopAlarm();
                                 }, 1500);
                             } else {
-                                stopTimerRef.current = setTimeout(() => {
-                                    stopAlarm();
-                                }, MAX_RING_MS);
+                                if (!disableAutoStop) {
+                                    stopTimerRef.current = setTimeout(() => {
+                                        stopAlarm();
+                                    }, MAX_RING_MS);
+                                }
                             }
                         });
                     } catch (_) {
@@ -348,9 +425,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                                 stopAlarm();
                             }, 1500);
                         } else {
-                            stopTimerRef.current = setTimeout(() => {
-                                stopAlarm();
-                            }, MAX_RING_MS);
+                            if (!disableAutoStop) {
+                                stopTimerRef.current = setTimeout(() => {
+                                    stopAlarm();
+                                }, MAX_RING_MS);
+                            }
                         }
                     }
                 });
@@ -385,9 +464,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                         stopAlarm();
                     }, 1500);
                 } else {
-                    stopTimerRef.current = setTimeout(() => {
-                        stopAlarm();
-                    }, MAX_RING_MS);
+                    if (!disableAutoStop) {
+                        stopTimerRef.current = setTimeout(() => {
+                            stopAlarm();
+                        }, MAX_RING_MS);
+                    }
                 }
             }
         };
@@ -407,8 +488,13 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                 Notification.requestPermission().catch(() => { });
             }
         };
+        requestPermission();
         window.addEventListener('pointerdown', requestPermission, { once: true });
-        return () => window.removeEventListener('pointerdown', requestPermission);
+        window.addEventListener('keydown', requestPermission, { once: true });
+        return () => {
+            window.removeEventListener('pointerdown', requestPermission);
+            window.removeEventListener('keydown', requestPermission);
+        };
     }, []);
 
     const unreadCount = useMemo(

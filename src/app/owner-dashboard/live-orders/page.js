@@ -1184,6 +1184,8 @@ export default function LiveOrdersPage() {
     const [restaurantData, setRestaurantData] = useState(null);
     const hasBootstrappedNotificationRef = useRef(false);
     const prevRelevantOrderIdsRef = useRef(new Set());
+    const hasBootstrappedPendingNotificationRef = useRef(false);
+    const prevPendingOrderIdsRef = useRef(new Set());
     const restaurantIdCacheRef = useRef(null);
     const staticDataHydratedRef = useRef(false);
     const staticCacheKey = useMemo(() => {
@@ -1515,6 +1517,13 @@ export default function LiveOrdersPage() {
                 })
                 .map((order) => order.id)
         );
+        if (relevantOrderIds.size === 0) {
+            emitAppNotification({
+                scope: 'owner',
+                action: 'stop_alarm',
+                alarmId: 'live_orders_chef_queue'
+            });
+        }
 
         if (!hasBootstrappedNotificationRef.current) {
             hasBootstrappedNotificationRef.current = true;
@@ -1535,6 +1544,8 @@ export default function LiveOrdersPage() {
                 title,
                 message,
                 dedupeKey: `${role}_live_orders_${newlyAdded.sort().join(',')}`,
+                alarmId: 'live_orders_chef_queue',
+                disableAutoStop: true,
                 sound: '/notification.mp3',
                 href: '/owner-dashboard/live-orders'
             });
@@ -1542,6 +1553,63 @@ export default function LiveOrdersPage() {
 
         prevRelevantOrderIdsRef.current = relevantOrderIds;
     }, [orders, userRole]);
+
+    useEffect(() => {
+        if (!userRole) return;
+
+        const role = (userRole || '').toLowerCase();
+        if (role === 'chef') return;
+
+        const pendingOrderIds = new Set(
+            orders
+                .filter((order) => order.status === 'pending')
+                .map((order) => order.id)
+        );
+
+        if (pendingOrderIds.size === 0) {
+            emitAppNotification({
+                scope: 'owner',
+                action: 'stop_alarm',
+                alarmId: 'live_orders_pending'
+            });
+        }
+
+        if (!hasBootstrappedPendingNotificationRef.current) {
+            hasBootstrappedPendingNotificationRef.current = true;
+            prevPendingOrderIdsRef.current = pendingOrderIds;
+            return;
+        }
+
+        const prevIds = prevPendingOrderIdsRef.current;
+        const newlyAdded = [...pendingOrderIds].filter((id) => !prevIds.has(id));
+        if (newlyAdded.length > 0) {
+            emitAppNotification({
+                scope: 'owner',
+                title: 'New Live Order',
+                message: newlyAdded.length === 1
+                    ? '1 new order is waiting in Live Orders.'
+                    : `${newlyAdded.length} new orders are waiting in Live Orders.`,
+                dedupeKey: `live_orders_page_pending_${newlyAdded.sort().join(',')}`,
+                alarmId: 'live_orders_pending',
+                disableAutoStop: true,
+                sound: '/notification-owner-manager.mp3',
+                href: '/owner-dashboard/live-orders'
+            });
+        }
+
+        prevPendingOrderIdsRef.current = pendingOrderIds;
+    }, [orders, userRole]);
+
+    useEffect(() => {
+        const pendingCount = orders.filter((order) => order.status === 'pending').length;
+        if (pendingCount === 0) {
+            emitAppNotification({
+                scope: 'owner',
+                action: 'stop_alarm',
+                alarmId: 'live_orders_pending'
+            });
+        }
+    }, [orders]);
 
 
     const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
@@ -1576,6 +1644,7 @@ export default function LiveOrdersPage() {
 
         // OPTIMISTIC UPDATE - Update UI instantly for better UX!
         const previousOrders = orders;
+        const previousStatus = previousOrders.find(order => order.id === orderId)?.status || null;
         setOrders(prevOrders =>
             prevOrders.map(order =>
                 order.id === orderId
@@ -1590,6 +1659,15 @@ export default function LiveOrdersPage() {
             // Or if not using listener (impersonation), manual refresh happens
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);
+            }
+            if (
+                (previousStatus === 'pending' && newStatus !== 'pending') ||
+                (previousStatus === 'confirmed' && newStatus !== 'confirmed')
+            ) {
+                emitAppNotification({
+                    scope: 'owner',
+                    action: 'stop_alarm'
+                });
             }
         } catch (error) {
             // REVERT optimistic update on error
@@ -1651,6 +1729,7 @@ export default function LiveOrdersPage() {
 
         // OPTIMISTIC UPDATE - Update UI instantly
         const previousOrders = orders;
+        const previousStatus = previousOrders.find(order => order.id === orderId)?.status || null;
         setOrders(prevOrders =>
             prevOrders.map(order =>
                 order.id === orderId
@@ -1664,6 +1743,12 @@ export default function LiveOrdersPage() {
             // Firestore listener will confirm
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);
+            }
+            if (previousStatus === 'pending' || previousStatus === 'confirmed') {
+                emitAppNotification({
+                    scope: 'owner',
+                    action: 'stop_alarm'
+                });
             }
         } catch (error) {
             // REVERT on error
