@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle, Navigation, TrendingDown, Fuel, DollarSign, CreditCard, Send } from 'lucide-react';
 import { auth, db, rtdb } from '@/lib/firebase';
@@ -1343,7 +1344,14 @@ export default function RiderDashboardPage() {
                                     <p className="text-sm text-gray-600 mb-3">Order {qrPreview.orderDisplayId}</p>
                                 )}
                                 <div className="bg-gray-100 p-3 rounded-xl inline-block mb-4">
-                                    <img src={qrPreview.imageUrl} alt="Payment QR" className="w-72 h-auto object-contain rounded-lg" />
+                                    <Image
+                                        src={qrPreview.imageUrl}
+                                        alt="Payment QR"
+                                        width={288}
+                                        height={288}
+                                        unoptimized
+                                        className="w-72 h-auto object-contain rounded-lg"
+                                    />
                                 </div>
                                 <p className="text-gray-500 text-sm mb-6">
                                     Show this QR to customer. Amount is fixed at INR {qrPreview.amountFixed || '0.00'}.

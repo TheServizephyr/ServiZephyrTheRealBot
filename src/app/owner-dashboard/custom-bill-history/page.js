@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
 
-export const dynamic = 'force-dynamic';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 

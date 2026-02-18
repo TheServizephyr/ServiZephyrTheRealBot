@@ -4,6 +4,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { Phone, Bike, Mail, Search, Edit, RefreshCw, Star, Clock, Trophy, ChevronDown, ChevronUp, BarChart as BarChartIcon, Settings, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -17,8 +18,6 @@ import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
 import { Trash2, Upload, QrCode, AlertTriangle } from 'lucide-react'; // Added icons
 import imageCompression from 'browser-image-compression'; // ✅ Image Compression
-
-export const dynamic = 'force-dynamic';
 
 const StatusBadge = ({ status }) => {
     const statusConfig = {
@@ -390,7 +389,14 @@ const RiderQRManager = ({ rider, onUpdate }) => {
                     <div className="flex flex-col items-center gap-4 py-4">
                         <div className="bg-muted p-4 rounded-xl border border-dashed border-border flex items-center justify-center w-64 h-64 relative overflow-hidden">
                             {rider.paymentQRCode ? (
-                                <img src={rider.paymentQRCode} alt="QR" className="w-full h-full object-contain" />
+                                <Image
+                                    src={rider.paymentQRCode}
+                                    alt="QR"
+                                    fill
+                                    unoptimized
+                                    sizes="256px"
+                                    className="object-contain"
+                                />
                             ) : (
                                 <div className="text-center text-muted-foreground">
                                     <QrCode size={48} className="mx-auto mb-2 opacity-50" />

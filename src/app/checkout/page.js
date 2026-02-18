@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight } from 'lucide-react';
 import Script from 'next/script';
@@ -15,8 +16,6 @@ import QRCode from 'qrcode.react';
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/firebase';
 
-import SplitBillInterface from '@/components/SplitBillInterface';
-import CustomizationDrawer from '@/components/CustomizationDrawer';
 import AddressSelectionList from '@/components/AddressSelectionList';
 import InfoDialog from '@/components/InfoDialog';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
@@ -25,6 +24,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
+
+const SplitBillInterface = dynamic(() => import('@/components/SplitBillInterface'), { ssr: false });
+const CustomizationDrawer = dynamic(() => import('@/components/CustomizationDrawer'), { ssr: false });
 
 
 const ORDER_STATE = {
@@ -203,6 +205,8 @@ const CheckoutPageInternal = () => {
     const validationRequestSeqRef = useRef(0);
     const selectedAddressRef = useRef(null);
     const outOfRangeNoticeKeyRef = useRef(null);
+    const deliveryValidationCacheRef = useRef({ key: '', result: null, updatedAt: 0 });
+    const DELIVERY_VALIDATION_CACHE_TTL_MS = 15000;
 
     useEffect(() => {
         selectedAddressRef.current = selectedAddress;
@@ -211,37 +215,88 @@ const CheckoutPageInternal = () => {
         }
     }, [selectedAddress]);
 
+    const buildDeliveryValidationPayload = (addr, subtotalAmount) => {
+        if (!addr || !restaurantId) return null;
+        const addressLat = Number(addr.lat ?? addr.latitude);
+        const addressLng = Number(addr.lng ?? addr.longitude);
+        if (!Number.isFinite(addressLat) || !Number.isFinite(addressLng)) return null;
+
+        return {
+            restaurantId,
+            addressLat,
+            addressLng,
+            subtotal: Number(subtotalAmount) || 0,
+        };
+    };
+
+    const buildDeliveryValidationKey = (payload) => (
+        payload
+            ? `${payload.restaurantId}:${payload.addressLat.toFixed(6)}:${payload.addressLng.toFixed(6)}:${Number(payload.subtotal).toFixed(2)}`
+            : ''
+    );
+
+    const getCachedDeliveryValidation = (validationKey) => {
+        if (!validationKey) return null;
+        const { key, result, updatedAt } = deliveryValidationCacheRef.current;
+        if (!result || key !== validationKey) return null;
+        if ((Date.now() - updatedAt) > DELIVERY_VALIDATION_CACHE_TTL_MS) return null;
+        return result;
+    };
+
+    const setCachedDeliveryValidation = (validationKey, result) => {
+        if (!validationKey || !result) return;
+        deliveryValidationCacheRef.current = {
+            key: validationKey,
+            result,
+            updatedAt: Date.now(),
+        };
+    };
+
+    const applyDeliveryValidationResult = (result, addr) => {
+        setDeliveryValidation(result);
+        const lat = Number(addr?.lat ?? addr?.latitude);
+        const lng = Number(addr?.lng ?? addr?.longitude);
+
+        if (!result?.allowed) {
+            const addressKey = Number.isFinite(lat) && Number.isFinite(lng)
+                ? `${lat.toFixed(6)},${lng.toFixed(6)}`
+                : '';
+            if (addressKey && outOfRangeNoticeKeyRef.current !== addressKey) {
+                outOfRangeNoticeKeyRef.current = addressKey;
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Delivery Not Available',
+                    message: `${result.message || 'This address is outside our delivery range.'}\n\nPlease select an address within serviceable distance.`,
+                    type: 'warning'
+                });
+            }
+        } else {
+            outOfRangeNoticeKeyRef.current = null;
+        }
+    };
+
     const validateDelivery = async (addr, currentSubtotal) => {
         if (!addr) {
-            console.log('[Checkout] 🚚 No address provided for validation');
+            console.log('[Checkout] No address provided for validation');
             return;
         }
 
-        // Normalize coordinates: handle both lat/lng and latitude/longitude
-        const lat = addr.lat ?? addr.latitude;
-        const lng = addr.lng ?? addr.longitude;
-
-        if (!lat || !lng) {
-            console.warn('[Checkout] 🚚 Address missing coordinates:', addr.label, addr);
+        const payload = buildDeliveryValidationPayload(addr, currentSubtotal);
+        if (!payload) {
+            console.warn('[Checkout] Address missing coordinates:', addr?.label, addr);
             return;
         }
-        if (!restaurantId) {
-            console.error('[Checkout] 🚚 Missing restaurantId for validation');
+
+        const validationKey = buildDeliveryValidationKey(payload);
+        const cachedResult = getCachedDeliveryValidation(validationKey);
+        if (cachedResult) {
+            applyDeliveryValidationResult(cachedResult, addr);
             return;
         }
 
         const requestSeq = ++validationRequestSeqRef.current;
         setIsValidatingDelivery(true);
-        console.log('[Checkout] 🚀 REACHED: validateDelivery calling API for:', addr.label, 'Subtotal:', currentSubtotal);
-
         try {
-            const payload = {
-                restaurantId,
-                addressLat: lat,
-                addressLng: lng,
-                subtotal: currentSubtotal
-            };
-
             const response = await fetch('/api/delivery/calculate-charge', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -251,33 +306,16 @@ const CheckoutPageInternal = () => {
             if (response.ok) {
                 const result = await response.json();
                 if (requestSeq !== validationRequestSeqRef.current) {
-                    console.log('[Checkout] Ignoring stale delivery validation response');
                     return;
                 }
-                console.log('[Checkout] ✅ Delivery Validation Result:', result);
-                setDeliveryValidation(result);
-
-                if (!result.allowed) {
-                    console.warn('[Checkout] ⚠️ Address beyond delivery range:', result.message);
-                    const addressKey = `${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
-                    if (outOfRangeNoticeKeyRef.current !== addressKey) {
-                        outOfRangeNoticeKeyRef.current = addressKey;
-                        setInfoDialog({
-                            isOpen: true,
-                            title: 'Delivery Not Available',
-                            message: `${result.message || 'This address is outside our delivery range.'}\n\nPlease select an address within serviceable distance.`,
-                            type: 'warning'
-                        });
-                    }
-                } else {
-                    outOfRangeNoticeKeyRef.current = null;
-                }
+                setCachedDeliveryValidation(validationKey, result);
+                applyDeliveryValidationResult(result, addr);
             } else {
                 const errData = await response.json();
-                console.error('[Checkout] ❌ API Error during validation:', errData);
+                console.error('[Checkout] API Error during validation:', errData);
             }
         } catch (error) {
-            console.error('[Checkout] ❌ Delivery Validation Failed Network Error:', error);
+            console.error('[Checkout] Delivery validation failed:', error);
         } finally {
             if (requestSeq === validationRequestSeqRef.current) {
                 setIsValidatingDelivery(false);
@@ -416,6 +454,8 @@ const CheckoutPageInternal = () => {
             setError('');
 
             let updatedData = { ...savedCart, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
+            const paymentSettingsPromise = fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
+            const menuPromise = fetch(`/api/public/menu/${restaurantId}`);
 
             // ... (Dine-in fetch logic lines 299-324 assume unchanged) ...
 
@@ -517,8 +557,8 @@ const CheckoutPageInternal = () => {
                 // ... (Payment settings fetch unchanged) ...
                 // FETCH BOTH Payment Settings AND Menu (for Coupons/Delivery Params) in parallel
                 const [paymentSettingsRes, menuRes] = await Promise.all([
-                    fetch(`/api/owner/settings?restaurantId=${restaurantId}`),
-                    fetch(`/api/public/menu/${restaurantId}`)
+                    paymentSettingsPromise,
+                    menuPromise
                 ]);
 
                 if (paymentSettingsRes.ok) {
@@ -1285,10 +1325,9 @@ const CheckoutPageInternal = () => {
                 }
                 try {
                     const addressAtValidationStart = selectedAddressRef.current;
-                    const startLat = addressAtValidationStart?.lat ?? addressAtValidationStart?.latitude;
-                    const startLng = addressAtValidationStart?.lng ?? addressAtValidationStart?.longitude;
+                    const validationPayload = buildDeliveryValidationPayload(addressAtValidationStart, subtotal);
 
-                    if (!Number.isFinite(Number(startLat)) || !Number.isFinite(Number(startLng))) {
+                    if (!validationPayload) {
                         setInfoDialog({
                             isOpen: true,
                             title: 'Address Error',
@@ -1298,22 +1337,31 @@ const CheckoutPageInternal = () => {
                         return;
                     }
 
-                    const validationRes = await fetch('/api/delivery/calculate-charge', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            restaurantId,
-                            addressLat: Number(startLat),
-                            addressLng: Number(startLng),
-                            subtotal
-                        })
-                    });
-                    const validationData = await validationRes.json();
+                    const validationKey = buildDeliveryValidationKey(validationPayload);
+                    let validationData = getCachedDeliveryValidation(validationKey);
+                    let validationResponseOk = !!validationData;
+
+                    if (!validationData) {
+                        const validationRes = await fetch('/api/delivery/calculate-charge', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(validationPayload)
+                        });
+                        validationData = await validationRes.json();
+                        validationResponseOk = validationRes.ok;
+
+                        if (validationResponseOk) {
+                            setCachedDeliveryValidation(validationKey, validationData);
+                        }
+                    }
+                    if (validationData) {
+                        setDeliveryValidation(validationData);
+                    }
 
                     const addressAfterValidation = selectedAddressRef.current;
                     const endLat = addressAfterValidation?.lat ?? addressAfterValidation?.latitude;
                     const endLng = addressAfterValidation?.lng ?? addressAfterValidation?.longitude;
-                    const addressChangedDuringValidation = Number(startLat) !== Number(endLat) || Number(startLng) !== Number(endLng);
+                    const addressChangedDuringValidation = Number(validationPayload.addressLat) !== Number(endLat) || Number(validationPayload.addressLng) !== Number(endLng);
                     if (addressChangedDuringValidation) {
                         setInfoDialog({
                             isOpen: true,
@@ -1324,7 +1372,7 @@ const CheckoutPageInternal = () => {
                         return;
                     }
 
-                    if (!validationRes.ok || !validationData.allowed) {
+                    if (!validationResponseOk || !validationData?.allowed) {
                         const errorMsg = validationData.message || 'Your address is beyond our delivery range.';
                         setInfoDialog({
                             isOpen: true,
@@ -2646,5 +2694,6 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
 
 

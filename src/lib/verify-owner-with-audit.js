@@ -8,6 +8,13 @@ import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 import { PERMISSIONS, getPermissionsForRole } from '@/lib/permissions';
 
+const isOwnerAuditDebugEnabled = process.env.DEBUG_OWNER_AUDIT === 'true';
+const debugLog = (...args) => {
+    if (isOwnerAuditDebugEnabled) {
+        console.log(...args);
+    }
+};
+
 /**
  * Verify owner/admin and get business with audit logging support
  * This is a common helper that can be used across all owner API routes
@@ -54,7 +61,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
             let targetOwnerId = uid;
             let isImpersonating = false;
 
-            console.log(`[verifyOwnerWithAudit] Auth check for UID: ${uid}, Role: ${userRole}`);
+            debugLog(`[verifyOwnerWithAudit] Auth check for UID: ${uid}, Role: ${userRole}`);
 
             if (userRole === 'admin' && impersonatedOwnerId) {
                 if (sessionExpiry && isSessionExpired(parseInt(sessionExpiry))) {
@@ -63,7 +70,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                 }
                 targetOwnerId = impersonatedOwnerId;
                 isImpersonating = true;
-                console.log(`[verifyOwnerWithAudit] Admin impersonating owner: ${targetOwnerId}`);
+                debugLog(`[verifyOwnerWithAudit] Admin impersonating owner: ${targetOwnerId}`);
             } else if (employeeOfOwnerId) {
                 employeeAccessResult = await verifyEmployeeAccess(uid, employeeOfOwnerId, userData);
                 if (!employeeAccessResult.authorized) {
@@ -71,12 +78,12 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                     throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
                 }
                 targetOwnerId = employeeOfOwnerId;
-                console.log(`[verifyOwnerWithAudit] Employee access granted: ${uid} for owner ${targetOwnerId}`);
+                debugLog(`[verifyOwnerWithAudit] Employee access granted: ${uid} for owner ${targetOwnerId}`);
             } else {
                 // For direct owner access, we check role BUT we'll have a fallback later if business exists
                 const isKnownOwnerRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole);
                 if (!isKnownOwnerRole) {
-                    console.log(`[verifyOwnerWithAudit] UID ${uid} has role '${userRole}', checking business association fallback...`);
+                    debugLog(`[verifyOwnerWithAudit] UID ${uid} has role '${userRole}', checking business association fallback...`);
                 }
             }
 
@@ -167,3 +174,4 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
 
     return context;
 }
+

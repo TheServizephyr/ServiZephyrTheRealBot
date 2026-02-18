@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, MapPin, CheckCircle, PackageCheck, Maximize, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
@@ -42,9 +43,12 @@ const RiderCard = ({ rider }) => {
         >
             <div className="flex items-center gap-4">
                 <div className="relative">
-                    <img
+                    <Image
                         src={rider.photoUrl || 'https://cdn-icons-png.flaticon.com/512/10664/10664883.png'}
                         alt={rider.name}
+                        width={64}
+                        height={64}
+                        unoptimized
                         className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-md"
                     />
                     <div className="absolute -bottom-1 -right-1 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white">
@@ -804,11 +808,14 @@ function OrderTrackingContent() {
                             {/* RIDER CARD */}
                             {orderData.deliveryBoy && (
                                 <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-4 mb-6 flex items-center gap-4">
-                                    <img
+                                    <Image
                                         src={orderData.deliveryBoy.photoUrl || 'https://cdn-icons-png.flaticon.com/512/10664/10664883.png'}
                                         alt={orderData.deliveryBoy.name}
+                                        width={56}
+                                        height={56}
+                                        unoptimized
                                         className="w-14 h-14 rounded-full object-cover border-2 border-gray-100"
-                                    ></img>
+                                    />
                                     <div className="flex-1 min-w-0">
                                         <h3 className="font-bold text-gray-900 truncate">{orderData.deliveryBoy.name}</h3>
                                         <p className="text-xs text-blue-600 font-bold">Delivery Partner</p>

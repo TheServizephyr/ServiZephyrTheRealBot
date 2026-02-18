@@ -14,8 +14,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-export const dynamic = 'force-dynamic';
-
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
 import { connectSerialPrinter, printSerialData } from '@/services/printer/webSerialPrinter';

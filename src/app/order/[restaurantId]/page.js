@@ -1535,10 +1535,15 @@ const OrderPageInternal = () => {
     }, []);
 
     useEffect(() => {
+        const abortController = new AbortController();
+        let isActive = true;
+
         const fetchInitialData = async () => {
             if (!restaurantId || restaurantId === 'undefined') {
-                setError("Restaurant ID is invalid.");
-                setLoading(false);
+                if (isActive) {
+                    setError("Restaurant ID is invalid.");
+                    setLoading(false);
+                }
                 return;
             }
 
@@ -1547,12 +1552,12 @@ const OrderPageInternal = () => {
 
             try {
                 const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}` : ''}`;
-                const menuRes = await fetch(url, { cache: 'no-store' }); // Force fresh data
+                const menuRes = await fetch(url, { signal: abortController.signal });
                 const menuData = await menuRes.json();
 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
 
-                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
+                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`, { signal: abortController.signal });
                 const settingsData = settingsRes.ok ? await settingsRes.json() : {};
 
                 // Map specific payment settings (fallback to true if undefined)
@@ -1598,17 +1603,27 @@ const OrderPageInternal = () => {
                     convenienceFeeLabel: settingsData.convenienceFeeLabel,
                 };
 
-                setRestaurantData(fetchedSettings);
-                setLoyaltyPoints(menuData.loyaltyPoints || 0);
+                if (isActive) {
+                    setRestaurantData(fetchedSettings);
+                    setLoyaltyPoints(menuData.loyaltyPoints || 0);
+                }
 
             } catch (err) {
-                setError(err.message);
+                if (err?.name !== 'AbortError' && isActive) {
+                    setError(err.message);
+                }
             } finally {
-                setLoading(false);
+                if (isActive) {
+                    setLoading(false);
+                }
             }
         };
 
         fetchInitialData();
+        return () => {
+            isActive = false;
+            abortController.abort();
+        };
     }, [restaurantId, phone, fetchKey]); // Added fetchKey to force re-fetch on mount
 
 

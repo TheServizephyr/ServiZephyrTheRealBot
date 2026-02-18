@@ -1,6 +1,7 @@
 
 'use client';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -36,7 +37,18 @@ const PostCard = ({ post }) => (
                 </div>
             </div>
             <p className="mt-4 text-foreground">{post.content}</p>
-            {post.image && <img src={post.image} alt="Post content" className="mt-4 rounded-lg w-full object-cover" style={{maxHeight: '300px'}} />}
+            {post.image && (
+                <div className="mt-4 relative w-full h-[300px] rounded-lg overflow-hidden">
+                    <Image
+                        src={post.image}
+                        alt="Post content"
+                        fill
+                        unoptimized
+                        sizes="(max-width: 768px) 100vw, 640px"
+                        className="object-cover"
+                    />
+                </div>
+            )}
         </CardContent>
     </Card>
 );

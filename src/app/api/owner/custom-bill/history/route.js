@@ -47,6 +47,13 @@ const timestampToDate = (value) => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const buildHistoryQuery = (historyRef, fromDate, toDate, maxRecords) => {
+    let query = historyRef.orderBy('printedAt', 'desc');
+    if (fromDate) query = query.where('printedAt', '>=', fromDate);
+    if (toDate) query = query.where('printedAt', '<=', toDate);
+    return query.limit(maxRecords);
+};
+
 const buildFingerprint = ({ businessId, phone, items, totalAmount }) => {
     const normalizedItems = (items || [])
         .map((item) => `${item.id}:${item.quantity}:${Number(item.totalPrice || 0).toFixed(2)}`)
@@ -226,10 +233,16 @@ export async function GET(req) {
             .doc(businessId)
             .collection('custom_bill_history');
 
-        const snapshot = await historyRef
-            .orderBy('printedAt', 'desc')
-            .limit(maxRecords)
-            .get();
+        let snapshot;
+        try {
+            snapshot = await buildHistoryQuery(historyRef, fromDate, toDate, maxRecords).get();
+        } catch (queryError) {
+            // Fallback to legacy path so history remains available even if a query/index issue occurs.
+            snapshot = await historyRef
+                .orderBy('printedAt', 'desc')
+                .limit(maxRecords)
+                .get();
+        }
 
         let totalAmount = 0;
         let totalBills = 0;

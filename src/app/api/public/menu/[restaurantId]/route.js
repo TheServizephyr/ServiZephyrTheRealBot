@@ -7,6 +7,12 @@ import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
+const isMenuApiDebugEnabled = process.env.DEBUG_MENU_API === 'true';
+const debugLog = (...args) => {
+    if (isMenuApiDebugEnabled) {
+        console.log(...args);
+    }
+};
 
 export async function GET(req, { params }) {
     const { restaurantId } = params;
@@ -18,7 +24,7 @@ export async function GET(req, { params }) {
         return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
     }
 
-    console.log(`[Menu API] 🚀 START - Request received for restaurantId: ${restaurantId} at ${new Date().toISOString()}`);
+    debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${restaurantId} at ${new Date().toISOString()}`);
 
     // Check if Vercel KV is available (optional for local dev)
     const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
@@ -47,7 +53,7 @@ export async function GET(req, { params }) {
             }));
 
         if (foundDocs.length === 0) {
-            console.log(`[Menu API] ❌ Business not found for ${restaurantId} in any collection`);
+            debugLog(`[Menu API] ❌ Business not found for ${restaurantId} in any collection`);
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
@@ -63,10 +69,10 @@ export async function GET(req, { params }) {
 
         if (foundDocs.length > 1) {
             console.warn(`[Menu API] ⚠️ DUPLICATE DATA DETECTED for ${restaurantId}`);
-            foundDocs.forEach(d => console.log(`   - Found in ${d.collectionName} (v${d.version})`));
-            console.log(`   ✅ Selected winner: ${collectionName} (v${menuVersion})`);
+            foundDocs.forEach(d => debugLog(`   - Found in ${d.collectionName} (v${d.version})`));
+            debugLog(`   ✅ Selected winner: ${collectionName} (v${menuVersion})`);
         } else {
-            console.log(`[Menu API] ✅ Found active business in ${collectionName} (v${menuVersion})`);
+            debugLog(`[Menu API] ✅ Found active business in ${collectionName} (v${menuVersion})`);
         }
 
         const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
@@ -77,20 +83,20 @@ export async function GET(req, { params }) {
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
-        console.log(`%c[Menu API] 📊 CACHE DEBUG`, 'color: cyan; font-weight: bold');
-        console.log(`[Menu API]    ├─ Restaurant: ${restaurantId}`);
-        console.log(`[Menu API]    ├─ menuVersion from Firestore: ${menuVersion}`);
-        console.log(`[Menu API]    ├─ Generated cache key: ${cacheKey}`);
-        console.log(`[Menu API]    ├─ Redis KV available: ${isKvAvailable ? '✅ YES' : '❌ NO'}`);
-        console.log(`[Menu API]    ├─ Skip Cache Requested: ${skipCache ? '⚠️ YES' : 'NO'}`);
-        console.log(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
+        debugLog(`%c[Menu API] 📊 CACHE DEBUG`, 'color: cyan; font-weight: bold');
+        debugLog(`[Menu API]    ├─ Restaurant: ${restaurantId}`);
+        debugLog(`[Menu API]    ├─ menuVersion from Firestore: ${menuVersion}`);
+        debugLog(`[Menu API]    ├─ Generated cache key: ${cacheKey}`);
+        debugLog(`[Menu API]    ├─ Redis KV available: ${isKvAvailable ? '✅ YES' : '❌ NO'}`);
+        debugLog(`[Menu API]    ├─ Skip Cache Requested: ${skipCache ? '⚠️ YES' : 'NO'}`);
+        debugLog(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
 
         // STEP 3: Check Redis cache with version-specific key
         if (isKvAvailable && !skipCache) {
             const cachedData = await kv.get(cacheKey);
             if (cachedData) {
-                console.log(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
-                console.log(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
+                debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
+                debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
                 const payload = { ...cachedData, isOpen: effectiveIsOpen };
 
                 return NextResponse.json(payload, {
@@ -104,17 +110,17 @@ export async function GET(req, { params }) {
                     }
                 });
             }
-            console.log(`%c[Menu API] ❌ CACHE MISS`, 'color: red; font-weight: bold');
-            console.log(`[Menu API]    └─ Fetching from Firestore for key: ${cacheKey}`);
+            debugLog(`%c[Menu API] ❌ CACHE MISS`, 'color: red; font-weight: bold');
+            debugLog(`[Menu API]    └─ Fetching from Firestore for key: ${cacheKey}`);
         } else {
-            console.log(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${restaurantId}`);
+            debugLog(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${restaurantId}`);
         }
 
         // STEP 4: Cache miss - fetch from Firestore
-        console.log(`[Menu API] ✅ Found business: ${businessData.name}`);
-        console.log(`[Menu API] 📂 SOURCE COLLECTION: ${collectionName} (Critical Check)`);
-        console.log(`[Menu API] 🟢 isOpen status in DB: ${businessData.isOpen}`);
-        console.log(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${restaurantId}/coupons`);
+        debugLog(`[Menu API] ✅ Found business: ${businessData.name}`);
+        debugLog(`[Menu API] 📂 SOURCE COLLECTION: ${collectionName} (Critical Check)`);
+        debugLog(`[Menu API] 🟢 isOpen status in DB: ${businessData.isOpen}`);
+        debugLog(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${restaurantId}/coupons`);
 
         // Fetch menu, coupons, AND delivery settings in parallel
         const [menuSnap, couponsSnap, deliveryConfigSnap] = await Promise.all([
@@ -123,11 +129,11 @@ export async function GET(req, { params }) {
             businessRef.collection('delivery_settings').doc('config').get()
         ]);
 
-        console.log(`[Menu API] 📊 Coupons query returned ${couponsSnap.size} documents`);
+        debugLog(`[Menu API] 📊 Coupons query returned ${couponsSnap.size} documents`);
 
         // Check delivery settings
         const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
-        console.log(`[Menu API] 🚚 Delivery Config found: ${deliveryConfigSnap.exists}`, deliveryConfigSnap.exists ? deliveryConfig : '(using legacy/defaults)');
+        debugLog(`[Menu API] 🚚 Delivery Config found: ${deliveryConfigSnap.exists}`, deliveryConfigSnap.exists ? deliveryConfig : '(using legacy/defaults)');
 
         let menuData = {};
         // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
@@ -181,13 +187,13 @@ export async function GET(req, { params }) {
 
         // Process coupons
         const now = new Date();
-        console.log('[Menu API] Fetched', couponsSnap.size, 'coupons with status=active');
-        console.log('[Menu API] Current time:', now);
+        debugLog('[Menu API] Fetched', couponsSnap.size, 'coupons with status=active');
+        debugLog('[Menu API] Current time:', now);
 
         const coupons = couponsSnap.docs
             .map(doc => {
                 const couponData = { id: doc.id, ...doc.data() };
-                console.log('[Menu API] Coupon:', couponData.code, 'startDate:', couponData.startDate, 'expiryDate:', couponData.expiryDate);
+                debugLog('[Menu API] Coupon:', couponData.code, 'startDate:', couponData.startDate, 'expiryDate:', couponData.expiryDate);
                 return couponData;
             })
             .filter(coupon => {
@@ -196,12 +202,12 @@ export async function GET(req, { params }) {
                 const isPublic = !coupon.customerId;
                 const isValid = startDate <= now && expiryDate >= now;
 
-                console.log('[Menu API] Coupon', coupon.code, '- valid:', isValid, 'public:', isPublic, 'start:', startDate, 'expiry:', expiryDate);
+                debugLog('[Menu API] Coupon', coupon.code, '- valid:', isValid, 'public:', isPublic, 'start:', startDate, 'expiry:', expiryDate);
 
                 return isValid && isPublic; // Only public coupons in cache
             });
 
-        console.log('[Menu API] Final coupons count:', coupons.length);
+        debugLog('[Menu API] Final coupons count:', coupons.length);
 
         const responseData = {
             // Coordinates for distance calculation consumers
@@ -248,7 +254,7 @@ export async function GET(req, { params }) {
         // STEP 5: Cache with version-based key and 12-hour TTL
         if (isKvAvailable) {
             kv.set(cacheKey, responseData, { ex: 43200 }) // 12 hours = 43200 seconds
-                .then(() => console.log(`[Menu API] ✅ Cached as ${cacheKey} (TTL: 12 hours)`))
+                .then(() => debugLog(`[Menu API] ✅ Cached as ${cacheKey} (TTL: 12 hours)`))
                 .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
         }
 
@@ -272,3 +278,4 @@ export async function GET(req, { params }) {
         return NextResponse.json({ message: 'Internal Server Error: ' + error.message }, { status: 500 });
     }
 }
+
