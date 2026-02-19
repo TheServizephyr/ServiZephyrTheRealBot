@@ -1112,6 +1112,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
 const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurantName = '' }) => {
     const isCarSpotTheme = qrType === 'car-spot';
+    const qrStyle = { shapeRendering: 'crispEdges' };
 
     const handleDownload = async () => {
         const printableNode = innerRef?.current;
@@ -1120,7 +1121,7 @@ const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurant
         try {
             const pngUrl = await toPng(printableNode, {
                 cacheBust: true,
-                pixelRatio: 2,
+                pixelRatio: 4,
                 backgroundColor: '#ffffff'
             });
 
@@ -1136,7 +1137,23 @@ const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurant
         }
 
         const canvas = printableNode.querySelector('canvas');
-        if (!canvas) return;
+        if (!canvas) {
+            const svg = printableNode.querySelector('svg');
+            if (!svg) return;
+
+            // Secondary fallback: download raw SVG when PNG conversion is unavailable.
+            const serialized = new XMLSerializer().serializeToString(svg);
+            const blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
+            const objectUrl = URL.createObjectURL(blob);
+            const downloadLink = document.createElement("a");
+            downloadLink.href = objectUrl;
+            downloadLink.download = `${tableName}-qrcode.svg`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            URL.revokeObjectURL(objectUrl);
+            return;
+        }
 
         const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
         const downloadLink = document.createElement("a");
@@ -1171,6 +1188,8 @@ const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurant
                                 size={230}
                                 level="H"
                                 includeMargin={true}
+                                renderAs="svg"
+                                style={qrStyle}
                                 imageSettings={{
                                     src: '/logo.png',
                                     height: 48,
@@ -1201,9 +1220,11 @@ const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurant
                 <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
                     <QRCode
                         value={text}
-                        size={256}
+                        size={1024}
                         level={"M"}
                         includeMargin={true}
+                        renderAs="svg"
+                        style={qrStyle}
                     />
                     <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
                 </div>
@@ -1515,7 +1536,15 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
                                         <div key={spot.id} className="border border-border rounded-lg p-3 bg-card">
                                             <div className="flex flex-col sm:flex-row gap-3">
                                                 <div className="shrink-0">
-                                                    <QRCode value={spotUrl || 'about:blank'} size={72} level="H" bgColor="#FFFFFF" fgColor="#111111" />
+                                                    <QRCode
+                                                        value={spotUrl || 'about:blank'}
+                                                        size={72}
+                                                        level="H"
+                                                        bgColor="#FFFFFF"
+                                                        fgColor="#111111"
+                                                        renderAs="svg"
+                                                        style={{ shapeRendering: 'crispEdges' }}
+                                                    />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="font-semibold text-sm">{spot.spotLabel}</p>
