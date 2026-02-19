@@ -250,8 +250,8 @@ export async function GET(request, { params }) {
         let aggregatedTotal = orderData.totalAmount || 0;
         let aggregatedPaymentStatus = orderData.paymentStatus || 'pending'; // Start with current order's status
 
-        if (orderData.deliveryType === 'dine-in') {
-            console.log(`[API][Order Status] Dine-in order detected. Attempting aggregation...`);
+        if (orderData.deliveryType === 'dine-in' || orderData.deliveryType === 'car-order') {
+            console.log(`[API][Order Status] Dine-in-like order detected (${orderData.deliveryType}). Attempting aggregation...`);
             try {
                 // STRATEGY: 
                 // 1. If 'dineInToken' exists, group mainly by Token (matches Owner Dashboard behavior).
@@ -267,14 +267,18 @@ export async function GET(request, { params }) {
                     console.log(`[API][Order Status] Aggregating by Token: ${dineInToken}`);
                     aggregationMethod = 'token';
 
-                    // Query by Token + Table + Restaurant
-                    tabOrdersSnapshot = await firestore
+                    // Dine-in keeps table constraint, car-order uses token+restaurant grouping.
+                    let tokenQuery = firestore
                         .collection('orders')
                         .where('restaurantId', '==', orderData.restaurantId)
-                        .where('tableId', '==', orderData.tableId)
                         .where('dineInToken', '==', dineInToken)
-                        .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled'])
-                        .get();
+                        .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready_for_pickup', 'delivered', 'rejected', 'cancelled']);
+
+                    if (orderData.deliveryType === 'dine-in' && orderData.tableId) {
+                        tokenQuery = tokenQuery.where('tableId', '==', orderData.tableId);
+                    }
+
+                    tabOrdersSnapshot = await tokenQuery.get();
 
                 } else if (currentTabId) {
                     console.log(`[API][Order Status] Aggregating by ID (Token missing): ${currentTabId}`);
@@ -452,6 +456,9 @@ export async function GET(request, { params }) {
                 dineInToken: orderData.dineInToken,
                 tableId: orderData.tableId,
                 dineInTabId: orderData.dineInTabId,
+                isCarOrder: orderData.isCarOrder || orderData.deliveryType === 'car-order',
+                carSpot: orderData.carSpot || null,
+                carDetails: orderData.carDetails || null,
 
                 trackingToken: orderData.trackingToken || null, // Make sure to send the token
             },

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight, Car } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/components/ui/use-toast";
@@ -112,6 +112,8 @@ const CheckoutPageInternal = () => {
     const [cart, setCart] = useState([]);
     const [cartData, setCartData] = useState(null);
     const [appliedCoupons, setAppliedCoupons] = useState([]);
+    const [carOrderDetails, setCarOrderDetails] = useState(null);
+    const [carTokenPreview, setCarTokenPreview] = useState('');
 
     const [orderName, setOrderName] = useState('');
     const [orderPhone, setOrderPhone] = useState('');
@@ -436,6 +438,18 @@ const CheckoutPageInternal = () => {
             }
 
             const deliveryType = derivedDeliveryType;
+
+            // ✅ RESTORE CAR DETAILS if present in saved cart
+            if (deliveryType === 'car-order' && (savedCart.carSpot || savedCart.carDetails)) {
+                setCarOrderDetails({
+                    carSpot: savedCart.carSpot || null,
+                    carDetails: savedCart.carDetails || null,
+                    phone: savedCart.phone || ''
+                });
+                if (savedCart.dineInToken) {
+                    setCarTokenPreview(savedCart.dineInToken);
+                }
+            }
             const isAnonymousPreOrder = deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
             console.log(`[Checkout Page] Checks: isDineIn=${isDineIn}, WS=${isWhatsAppSession}, Ref=${!!ref}`);
@@ -447,13 +461,20 @@ const CheckoutPageInternal = () => {
 
             // REMOVED: detailsConfirmed logic - unified checkout shows all sections at once
 
-            const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
+            const phoneToLookup = phoneFromUrl || savedCart.phone || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
 
             if (!restaurantId) { router.push('/'); return; }
             setError('');
 
-            let updatedData = { ...savedCart, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
+            let updatedData = {
+                ...savedCart,
+                phone: phoneToLookup,
+                token,
+                tableId,
+                dineInTabId: tabId || savedCart.dineInTabId || null,
+                deliveryType
+            };
             const paymentSettingsPromise = fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
             const menuPromise = fetch(`/api/public/menu/${restaurantId}`);
 
@@ -482,11 +503,49 @@ const CheckoutPageInternal = () => {
                 }
             }
 
+            // ✅ Car-order add-more/session restore: pull token + tab context from active order
+            if (deliveryType === 'car-order' && activeOrderId) {
+                try {
+                    const statusToken = token || updatedData.token || '';
+                    const statusUrl = statusToken
+                        ? `/api/order/status/${activeOrderId}?token=${encodeURIComponent(statusToken)}`
+                        : `/api/order/status/${activeOrderId}`;
+                    const statusRes = await fetch(statusUrl, { cache: 'no-store' });
+                    if (statusRes.ok) {
+                        const statusPayload = await statusRes.json();
+                        const activeOrder = statusPayload?.order || {};
+                        updatedData = {
+                            ...updatedData,
+                            dineInTabId: activeOrder.dineInTabId || updatedData.dineInTabId || null,
+                            dineInToken: activeOrder.dineInToken || updatedData.dineInToken || null,
+                            carSpot: activeOrder.carSpot || updatedData.carSpot || null,
+                            carDetails: activeOrder.carDetails || updatedData.carDetails || null
+                        };
+                        if (activeOrder.dineInToken) {
+                            setCarTokenPreview(activeOrder.dineInToken);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[Checkout] Could not fetch car-order session token:', err?.message || err);
+                }
+            }
+
 
             console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
             setCart(updatedData.cart || []);
             setAppliedCoupons((updatedData.appliedCoupons || []).map(normalizeCoupon).filter(Boolean));
             setCartData(updatedData);
+            if (deliveryType === 'car-order') {
+                safeWriteCart(restaurantId, updatedData);
+                setCarOrderDetails({
+                    carSpot: updatedData.carSpot || null,
+                    carDetails: updatedData.carDetails || null,
+                    phone: updatedData.phone || ''
+                });
+                if (updatedData.dineInToken) {
+                    setCarTokenPreview(updatedData.dineInToken);
+                }
+            }
 
 
             try {
@@ -573,6 +632,10 @@ const CheckoutPageInternal = () => {
                         setCodEnabled(paymentData.dineInPayAtCounterEnabled);
                         setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
                     } else if (deliveryType === 'street-vendor-pre-order') {
+                        setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                        setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
+                    } else if (deliveryType === 'car-order') {
+                        // Car orders use dine-in payment settings (no delivery charge)
                         setCodEnabled(paymentData.dineInPayAtCounterEnabled);
                         setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
                     }
@@ -798,7 +861,7 @@ const CheckoutPageInternal = () => {
         console.log('[Checkout Debug] Calculating Delivery Charge. Validation:', deliveryValidation);
         console.log('[Checkout Debug] isFreeDeliveryApplied:', isFreeDeliveryApplied);
 
-        if (isStreetVendor || deliveryType !== 'delivery') {
+        if (isStreetVendor || deliveryType !== 'delivery' || deliveryType === 'car-order') {
             deliveryCharge = 0;
         } else if (deliveryValidation && deliveryValidation.allowed === false) {
             deliveryCharge = 0;
@@ -1124,6 +1187,20 @@ const CheckoutPageInternal = () => {
         console.log('[DEBUG] tabId:', tabId);
         console.log('[DEBUG] deliveryType:', deliveryType);
 
+        const isCarOrder = deliveryType === 'car-order';
+        const carSpotKey = String(cartData?.carSpot || carOrderDetails?.carSpot || 'spot')
+            .replace(/[^a-zA-Z0-9]/g, '')
+            .toLowerCase() || 'spot';
+        const carIdentityKey = String(orderPhone || cartData?.phone || 'guest')
+            .replace(/\D/g, '')
+            .slice(-10) || 'guest';
+        const generatedCarSessionTabId = `car_${carSpotKey}_${carIdentityKey}`;
+        const resolvedSessionTabId = (
+            deliveryType === 'dine-in'
+                ? (tabId || cartData?.dineInTabId || null)
+                : (isCarOrder ? (tabId || cartData?.dineInTabId || cartData?.tabId || generatedCarSessionTabId) : null)
+        );
+
         const orderData = {
             idempotencyKey,
             name: orderName || selectedAddress?.name || '',
@@ -1136,8 +1213,10 @@ const CheckoutPageInternal = () => {
             deliveryType: deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: tipAmount || 0,
             businessType: cartData.businessType || 'restaurant',
             tableId: (deliveryType === 'dine-in') ? (tableId || cartData.tableId) : null,
-            dineInTabId: (deliveryType === 'dine-in') ? (tabId || cartData.dineInTabId) : null,
-            pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress,
+            dineInTabId: resolvedSessionTabId || null,
+            pax_count: isCarOrder ? 1 : (cartData.pax_count || null),
+            tab_name: isCarOrder ? (cartData.tab_name || orderName || 'Car Guest') : (cartData.tab_name || null),
+            address: selectedAddress,
             // Pass Guest Identity
             guestRef: ref || null, // Pass the obfuscated ref if available
             guestToken: token || null, // Pass the token (can be used to validate ref)
@@ -1145,6 +1224,11 @@ const CheckoutPageInternal = () => {
             existingOrderId: activeOrderId || undefined,
             diningPreference: diningPreference,
             packagingCharge: packagingCharge,
+            // ✅ Car Order fields
+            ...(deliveryType === 'car-order' && {
+                carSpot: cartData.carSpot || null,
+                carDetails: cartData.carDetails || null,
+            }),
         };
 
         setOrderState(ORDER_STATE.CREATING_ORDER); // New state machine
@@ -1474,6 +1558,9 @@ const CheckoutPageInternal = () => {
                                                 orderId: data.firestore_order_id,
                                                 trackingToken: data.token,
                                                 restaurantId: restaurantId,
+                                                deliveryType: deliveryType,
+                                                dineInTabId: data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null,
+                                                dineInToken: data.dineInToken || cartData?.dineInToken || null,
                                                 status: 'placed',
                                                 timestamp: Date.now()
                                             };
@@ -1533,6 +1620,9 @@ const CheckoutPageInternal = () => {
                                 orderId: data.firestore_order_id,
                                 trackingToken: data.token,
                                 restaurantId: restaurantId,
+                                deliveryType: deliveryType,
+                                dineInTabId: data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null,
+                                dineInToken: data.dineInToken || cartData?.dineInToken || null,
                                 status: 'placed',
                                 timestamp: Date.now()
                             };
@@ -1543,16 +1633,18 @@ const CheckoutPageInternal = () => {
                         }
 
                         // FIXED: Use central router for all flows
-                        // FIXED: Use central router for all flows
                         const phoneParam = phoneFromUrl ? `&phone=${phoneFromUrl}` : '';
                         const refParam = ref ? `&ref=${ref}` : ''; // Checked ref scope
-                        const trackingUrl = (orderData.deliveryType === 'dine-in' && !!tableId)
-                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${phoneParam}${refParam}`
+                        const sessionTabId = data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null;
+                        const tabParam = sessionTabId ? `&tabId=${encodeURIComponent(sessionTabId)}` : '';
+                        const isDineInLike = orderData.deliveryType === 'dine-in' || orderData.deliveryType === 'car-order';
+                        const trackingUrl = isDineInLike
+                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${tabParam}${phoneParam}${refParam}`
                             : `/track/${data.firestore_order_id}?token=${data.token}${phoneParam}${refParam}`;
                         router.replace(trackingUrl);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
-                    redirect: orderData.deliveryType === 'dine-in' ? true : false,
+                    redirect: (orderData.deliveryType === 'dine-in' || orderData.deliveryType === 'car-order') ? true : false,
                     modal: {
                         ondismiss: function () {
                             console.log("[Checkout Page] Razorpay modal dismissed.");
@@ -1582,8 +1674,12 @@ const CheckoutPageInternal = () => {
                     console.log(`[Idempotency] Key cleared after successful order creation`);
 
                     // ✅ Route to NEW order (not old activeOrderId!)
-                    const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
-                    const redirectUrl = `/track/${trackingPath}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`;
+                    const dineInLikeTabId = data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null;
+                    const dineInLikeTabParam = dineInLikeTabId ? `&tabId=${encodeURIComponent(dineInLikeTabId)}` : '';
+                    const redirectUrl =
+                        orderData.deliveryType === 'car-order'
+                            ? `/track/dine-in/${finalOrderId}?token=${data.token}${dineInLikeTabParam}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`
+                            : `/track/${cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery'}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`;
 
                     // SAVE ACTIVE ORDER FOR TRACKING BUTTON (ARRAY SUPPORT)
                     if (typeof window !== 'undefined') {
@@ -1605,6 +1701,8 @@ const CheckoutPageInternal = () => {
                             trackingToken: data.token,
                             restaurantId: restaurantId,
                             deliveryType: deliveryType,
+                            dineInTabId: data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null,
+                            dineInToken: data.dineInToken || cartData?.dineInToken || null,
                             status: 'placed',
                             timestamp: Date.now()
                         };
@@ -1630,6 +1728,12 @@ const CheckoutPageInternal = () => {
                         const newUrl = `/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}`;
                         router.replace(newUrl);
                     }, 2000);
+                } else if (orderData.deliveryType === 'car-order') {
+                    // Redirect to Dine-In tracking page as requested (shows Token Number)
+                    const sessionTabId = data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null;
+                    const tabParam = sessionTabId ? `&tabId=${encodeURIComponent(sessionTabId)}` : '';
+                    const trackingUrl = `/track/dine-in/${data.firestore_order_id}?token=${data.token}${tabParam}`;
+                    router.replace(trackingUrl);
                 } else {
                     // Direct routing based on business type
                     const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
@@ -1692,7 +1796,25 @@ const CheckoutPageInternal = () => {
         : isPaymentStepPending
             ? 'Payment Mode'
             : 'Place Order';
-    const isCtaDisabled = isProcessingPayment || isValidatingDelivery || hasOutOfRangeAddress || (!activeOrderId && deliveryType !== 'delivery' && !orderName.trim());
+    const isCtaDisabled = isProcessingPayment ||
+        isValidatingDelivery ||
+        hasOutOfRangeAddress ||
+        (!activeOrderId && (deliveryType !== 'delivery' && deliveryType !== 'car-order') && !orderName.trim()) ||
+        (deliveryType === 'car-order' && !orderName.trim() && !String(cartData?.tab_name || cartData?.customerName || '').trim());
+
+    // Debug CTA Disable Reason
+    useEffect(() => {
+        if (isCtaDisabled) {
+            console.log('[Checkout Debug] CTA Disabled Reason:', {
+                isProcessingPayment,
+                isValidatingDelivery,
+                hasOutOfRangeAddress,
+                orderName: orderName.trim(),
+                deliveryType,
+                nameCheck: !orderName.trim()
+            });
+        }
+    }, [isCtaDisabled, isProcessingPayment, isValidatingDelivery, hasOutOfRangeAddress, orderName, deliveryType]);
 
     const orderPageUrl = useMemo(() => {
         const params = new URLSearchParams(searchParams.toString());
@@ -1932,6 +2054,34 @@ const CheckoutPageInternal = () => {
                 <main className="flex-grow p-4 container mx-auto w-full md:max-w-3xl lg:max-w-4xl" style={{ paddingBottom: '120px' }}>
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mb-4">{error}</p>}
+
+                        {/* CAR ORDER SESSION SECTION */}
+                        {deliveryType === 'car-order' && (
+                            <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-300/60 dark:border-indigo-500/30 p-4 rounded-lg mb-3 shadow-sm">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-start gap-3">
+                                        <div className="bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 p-2.5 rounded-full">
+                                            <Car className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs uppercase tracking-wider font-bold text-indigo-700/80 dark:text-indigo-200/80">Car Order</p>
+                                            <p className="font-bold text-indigo-800 dark:text-indigo-100">
+                                                Slot: {cartData?.carSpot || carOrderDetails?.carSpot || 'Unassigned'}
+                                            </p>
+                                            <p className="text-xs text-indigo-700/80 dark:text-indigo-200/80 mt-0.5">
+                                                {cartData?.carDetails || carOrderDetails?.carDetails || 'No car details'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] uppercase tracking-wider font-bold text-indigo-700/80 dark:text-indigo-200/80">Token</p>
+                                        <p className="text-xl font-black text-indigo-800 dark:text-indigo-100">
+                                            {carTokenPreview || cartData?.dineInToken || 'Will be generated'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* ADDRESS SECTION */}
                         {deliveryType === 'delivery' && (

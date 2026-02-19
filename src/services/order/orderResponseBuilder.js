@@ -52,13 +52,18 @@ export function buildCODResponse({ orderId, token, dineInTabId, tableId, dineInT
  *   token: string
  * }
  */
-export function buildRazorpayResponse({ razorpayOrderId, orderId, token }) {
-    return NextResponse.json({
+export function buildRazorpayResponse({ razorpayOrderId, orderId, token, dineInToken, dineInTabId }) {
+    const response = {
         message: 'Razorpay order created. Awaiting payment confirmation.',
         razorpay_order_id: razorpayOrderId,
         firestore_order_id: orderId,
         token: token
-    }, { status: 200 });
+    };
+
+    if (dineInToken) response.dineInToken = dineInToken;
+    if (dineInTabId) response.dineInTabId = dineInTabId;
+
+    return NextResponse.json(response, { status: 200 });
 }
 
 /**
@@ -73,14 +78,19 @@ export function buildRazorpayResponse({ razorpayOrderId, orderId, token }) {
  *   amount: number
  * }
  */
-export function buildPhonePeResponse({ phonePeOrderId, orderId, token, amount }) {
-    return NextResponse.json({
+export function buildPhonePeResponse({ phonePeOrderId, orderId, token, amount, dineInToken, dineInTabId }) {
+    const response = {
         message: 'PhonePe order created. Awaiting payment.',
         phonepe_order_id: phonePeOrderId,
         firestore_order_id: orderId,
         token: token,
         amount: amount
-    }, { status: 200 });
+    };
+
+    if (dineInToken) response.dineInToken = dineInToken;
+    if (dineInTabId) response.dineInTabId = dineInTabId;
+
+    return NextResponse.json(response, { status: 200 });
 }
 
 /**

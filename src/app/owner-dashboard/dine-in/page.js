@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home, Loader2, RotateCcw, Plus } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home, Loader2, RotateCcw, Plus, Car } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -299,9 +299,15 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
         occupied: { title: `Occupied (${tableData.current_pax || 0}/${tableData.max_capacity})`, bg: "bg-yellow-500/10", border: "border-yellow-500", icon: <Users size={16} className="text-yellow-500" /> },
-        needs_cleaning: { title: "Needs Cleaning", bg: "bg-red-500/10", border: "border-red-500", icon: <Wind size={16} className="text-red-500" /> }
+        needs_cleaning: { title: "Needs Cleaning", bg: "bg-red-500/10", border: "border-red-500", icon: <Wind size={16} className="text-red-500" /> },
+        // ✅ NEW: Car Order override config (Indigo/Blue theme)
+        car_occupied: { title: `Spot: ${tableData.carSpot || 'N/A'}`, bg: "bg-indigo-50 dark:bg-indigo-900/20", border: "border-indigo-500", icon: <Car size={16} className="text-indigo-600 dark:text-indigo-400" /> }
     };
-    const currentConfig = stateConfig[state] || stateConfig.available;
+
+    // Determine config: Check if it's a car order
+    const isCarOrder = tableData.type === 'car-order';
+    const effectiveState = isCarOrder ? 'car_occupied' : state;
+    const currentConfig = stateConfig[effectiveState] || stateConfig.available;
 
     // Combine pending orders and active tabs into one list for rendering
     const allGroups = [...(tableData.pendingOrders || []), ...Object.values(tableData.tabs || {})];
@@ -367,7 +373,14 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
             <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
                 <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
-                    <CardTitle className="text-2xl font-bold">{tableData.id}</CardTitle>
+                    <CardTitle className="text-2xl font-bold">
+                        {isCarOrder ? (
+                            <div className="flex flex-col">
+                                <span className="text-lg">Car Order</span>
+                                <span className="text-xs font-normal text-muted-foreground">{tableData.carDetails || 'No details'}</span>
+                            </div>
+                        ) : tableData.id}
+                    </CardTitle>
                     <div className="flex items-center gap-2 text-sm font-semibold">{currentConfig.icon} {currentConfig.title}</div>
                 </CardHeader>
 
@@ -476,7 +489,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             <div>
                                                 <h4 className="font-semibold text-foreground">
                                                     {group.tab_name || group.customerName || 'Guest'}
-                                                    <span className="text-xs text-muted-foreground"> ({group.pax_count || 1} guests)</span>
+                                                    {/* ✅ HIDE Pax Count for Car Orders */}
+                                                    {!isCarOrder && <span className="text-xs text-muted-foreground"> ({group.pax_count || 1} guests)</span>}
                                                 </h4>
                                                 {/* ORDER TIME - Show how long ago order was placed */}
                                                 {orderCreatedAt && (
@@ -1260,6 +1274,61 @@ const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
     );
 };
 
+// ✅ NEW: Car Spot QR Generator Modal
+const CarSpotQrModal = ({ isOpen, onClose, restaurant }) => {
+    const [spotLabel, setSpotLabel] = useState('');
+    const [qrValue, setQrValue] = useState('');
+    const printRef = useRef();
+
+    useEffect(() => {
+        if (!isOpen) {
+            setSpotLabel('');
+            setQrValue('');
+        }
+    }, [isOpen]);
+
+    const handleGenerate = () => {
+        if (!spotLabel.trim()) return;
+        if (!restaurant?.id) return;
+        const url = `${window.location.origin}/order/${restaurant.id}?orderType=car&spot=${encodeURIComponent(spotLabel.trim())}`;
+        setQrValue(url);
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground max-w-sm w-full max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>🚗 Generate Car Spot QR</DialogTitle>
+                    <DialogDescription>
+                        Generate a QR code for a specific car parking spot. Customers scan this to place a car order.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div>
+                        <Label htmlFor="spot-label">Car Spot Label</Label>
+                        <Input
+                            id="spot-label"
+                            value={spotLabel}
+                            onChange={(e) => setSpotLabel(e.target.value)}
+                            placeholder="e.g., A1, B2, P-01"
+                            className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">This label will appear on the QR code and in the order details.</p>
+                    </div>
+                    <Button onClick={handleGenerate} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                        <QrCode className="mr-2 h-4 w-4" /> Generate QR Code
+                    </Button>
+                    {qrValue && (
+                        <div className="flex flex-col items-center">
+                            <QrCodeDisplay text={qrValue} tableName={`Car Spot ${spotLabel}`} innerRef={printRef} />
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
     const [requests, setRequests] = useState([]);
     const [isExpanded, setIsExpanded] = useState(true);
@@ -1422,8 +1491,132 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
     );
 };
 
+const getOrderPaymentMethod = (order) => {
+    const paymentDetails = Array.isArray(order?.paymentDetails)
+        ? order.paymentDetails[0]
+        : order?.paymentDetails;
+    return order?.paymentMethod || paymentDetails?.method || null;
+};
+
+const resolveCarOrderTokenKey = (order) => {
+    return String(
+        order?.dineInToken ||
+        order?.token ||
+        order?.trackingToken ||
+        order?.customerPhone ||
+        order?.id
+    ).trim();
+};
+
+const buildCarTabGroupId = (carSpot, tokenKey) => {
+    const safeSpot = String(carSpot || '').replace(/\s+/g, '_');
+    const safeToken = String(tokenKey || '').replace(/\s+/g, '_');
+    return `car_${safeSpot}_${safeToken}`;
+};
+
+const buildCarVirtualTables = (carOrders = []) => {
+    const carOrdersBySpot = {};
+    (carOrders || []).forEach((order) => {
+        const rawSpot = String(order?.carSpot || '').trim();
+        const spotKey = rawSpot || `Unassigned-${order.id}`;
+        if (!carOrdersBySpot[spotKey]) {
+            carOrdersBySpot[spotKey] = [];
+        }
+        carOrdersBySpot[spotKey].push(order);
+    });
+
+    return Object.entries(carOrdersBySpot).map(([spot, spotOrders]) => {
+        const firstOrder = spotOrders[0] || {};
+        const ordersByToken = {};
+
+        spotOrders.forEach((order) => {
+            const tokenKey = resolveCarOrderTokenKey(order);
+            if (!ordersByToken[tokenKey]) {
+                ordersByToken[tokenKey] = [];
+            }
+            ordersByToken[tokenKey].push(order);
+        });
+
+        const tabs = {};
+        Object.entries(ordersByToken).forEach(([tokenKey, tokenOrders]) => {
+            const statuses = tokenOrders.map((o) => o.status);
+            let groupStatus = 'delivered';
+            if (statuses.includes('pending')) groupStatus = 'pending';
+            else if (statuses.includes('confirmed')) groupStatus = 'confirmed';
+            else if (statuses.includes('preparing')) groupStatus = 'preparing';
+            else if (statuses.includes('ready_for_pickup')) groupStatus = 'ready_for_pickup';
+
+            const mainOrder = tokenOrders[0] || {};
+            const ordersMap = {};
+            let totalAmount = 0;
+            let isPaid = true;
+
+            tokenOrders.forEach((order) => {
+                ordersMap[order.id] = order;
+                totalAmount += Number(order.totalAmount || order.grandTotal || 0);
+                const paymentMethod = getOrderPaymentMethod(order);
+                const isOnline = paymentMethod === 'razorpay' || paymentMethod === 'phonepe';
+                const paidStatus = order.paymentStatus === 'paid';
+                if (!isOnline && !paidStatus) {
+                    isPaid = false;
+                }
+            });
+
+            const groupId = buildCarTabGroupId(spot, tokenKey);
+            const orderBatches = tokenOrders
+                .map((order) => ({
+                    id: order.id,
+                    items: order.items || [],
+                    status: order.status,
+                    totalAmount: Number(order.totalAmount || order.grandTotal || 0),
+                    orderDate: order.orderDate || order.createdAt || null,
+                    paymentStatus: order.paymentStatus,
+                    paymentMethod: getOrderPaymentMethod(order),
+                    canCancel: ['pending', 'confirmed'].includes(String(order.status || '').toLowerCase())
+                }))
+                .sort((a, b) => {
+                    const getT = (v) => v?._seconds ? v._seconds * 1000 : new Date(v || 0).getTime();
+                    return getT(a.orderDate) - getT(b.orderDate);
+                });
+
+            tabs[groupId] = {
+                id: groupId,
+                dineInTabId: String(mainOrder.dineInTabId || groupId),
+                tab_name: mainOrder.tab_name || mainOrder.customerName || 'Guest',
+                status: groupStatus,
+                mainStatus: groupStatus,
+                orders: ordersMap,
+                orderBatches,
+                totalAmount,
+                paymentStatus: isPaid ? 'paid' : 'pending',
+                paymentDetails: Array.isArray(mainOrder.paymentDetails) ? mainOrder.paymentDetails[0] : mainOrder.paymentDetails,
+                isPaid,
+                dineInToken: mainOrder.dineInToken || mainOrder.token || mainOrder.trackingToken || tokenKey,
+                ordered_by: mainOrder.ordered_by,
+                ordered_by_name: mainOrder.ordered_by_name,
+                pax_count: 1,
+                orderDate: mainOrder.orderDate || mainOrder.createdAt || null,
+                hasPending: statuses.includes('pending')
+            };
+        });
+
+        return {
+            id: `Car Spot ${spot}`,
+            _realId: `car_spot_${String(spot).replace(/\s+/g, '_')}`,
+            type: 'car-order',
+            state: 'occupied',
+            current_pax: spotOrders.length,
+            max_capacity: 0,
+            carSpot: spot,
+            carDetails: firstOrder.carDetails || null,
+            tabs,
+            pendingOrders: []
+        };
+    });
+};
+
 const DineInPageContent = () => {
-    const [allData, setAllData] = useState({ tables: [], serviceRequests: [], closedTabs: [] });
+    const [allData, setAllData] = useState({ tables: [], serviceRequests: [], closedTabs: [], carOrders: [] });
     const [loading, setLoading] = useState(true);
     const [buttonLoading, setButtonLoading] = useState(null); // Track which button is loading
     const searchParams = useSearchParams();
@@ -1435,6 +1628,7 @@ const DineInPageContent = () => {
     const [displayTable, setDisplayTable] = useState(null);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [isQrGeneratorModalOpen, setIsQrGeneratorModalOpen] = useState(false);
+    const [isCarSpotQrModalOpen, setIsCarSpotQrModalOpen] = useState(false); // ✅ Car Spot QR
     const [restaurantDetails, setRestaurantDetails] = useState(null);
     const [billData, setBillData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -1580,7 +1774,7 @@ const DineInPageContent = () => {
         if (!isManualRefresh) setLoading(true);
         try {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
-            setAllData(data || { tables: [], serviceRequests: [], closedTabs: [] });
+            setAllData(data || { tables: [], serviceRequests: [], closedTabs: [], carOrders: [] });
         } catch (error) {
             console.error("[Dine-In Dashboard] Fetch data error:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
@@ -1782,7 +1976,11 @@ const DineInPageContent = () => {
 
         try {
             // Find all orders in this tab and update their paymentStatus
-            const tabData = allData.tables.find(t => t.id === tableId)?.tabs?.[tabId];
+            let tabData = allData.tables.find(t => t.id === tableId)?.tabs?.[tabId];
+            if (!tabData) {
+                const virtualCarTables = buildCarVirtualTables(allData.carOrders || []);
+                tabData = virtualCarTables.find(t => t.id === tableId)?.tabs?.[tabId];
+            }
             if (!tabData?.orders) {
                 throw new Error('Tab not found');
             }
@@ -1842,6 +2040,13 @@ const DineInPageContent = () => {
     };
 
     const handleClearTab = async (tabId, tableId, paxCount) => {
+        const normalizedTableId = String(tableId || '').trim();
+        const normalizedTabId = String(tabId || '').trim();
+        const isCarSlot = normalizedTableId.toLowerCase().startsWith('car spot');
+        const carSlotName = isCarSlot
+            ? normalizedTableId.replace(/^car\s+spot\s*/i, '').trim()
+            : '';
+
         // Optimistic update - remove tab/order from view
         setAllData(prev => {
             if (!prev?.tables) return prev;
@@ -1863,7 +2068,20 @@ const DineInPageContent = () => {
                 }
                 return table;
             });
-            return { ...prev, tables: updatedTables };
+
+            const updatedCarOrders = isCarSlot
+                ? (prev.carOrders || []).filter((order) => {
+                    const orderSpot = String(order?.carSpot || '').trim();
+                    const orderTableId = `Car Spot ${orderSpot || `Unassigned-${order?.id}`}`;
+                    const orderGroupId = buildCarTabGroupId(orderSpot || `Unassigned-${order?.id}`, resolveCarOrderTokenKey(order));
+                    const orderSessionTabId = String(order?.dineInTabId || order?.tabId || '').trim();
+                    const matchesTable = orderTableId === normalizedTableId;
+                    const matchesTab = orderGroupId === normalizedTabId || orderSessionTabId === normalizedTabId;
+                    return !(matchesTable && matchesTab);
+                })
+                : (prev.carOrders || []);
+
+            return { ...prev, tables: updatedTables, carOrders: updatedCarOrders };
         });
 
         try {
@@ -1871,14 +2089,20 @@ const DineInPageContent = () => {
             const cleanupEndpoint = '/api/dine-in/clean-table';
             const payload = {
                 tabId,
-                tableId,
+                tableId: isCarSlot ? null : tableId,
                 restaurantId: restaurantDetails?.id // ✅ Add restaurantId for tab lookup
             };
 
             console.log(`[Owner Dashboard] Cleaning tab with endpoint: ${cleanupEndpoint}`);
 
             await handleApiCall('PATCH', payload, cleanupEndpoint);
-            setInfoDialog({ isOpen: true, title: "Success", message: `Tab on Table ${tableId} has been cleared.` });
+            setInfoDialog({
+                isOpen: true,
+                title: "Success",
+                message: isCarSlot
+                    ? `Car order session on Slot ${carSlotName || 'N/A'} has been cleared.`
+                    : `Tab on Table ${tableId} has been cleared.`
+            });
         } catch (error) {
             await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear tab: ${error.message}` });
@@ -1976,9 +2200,14 @@ const DineInPageContent = () => {
     };
 
     const renderTableCards = () => {
-        if (loading || activeTableData.length === 0) return [];
+        const carTables = buildCarVirtualTables(allData.carOrders || []);
 
-        const sortedTables = activeTableData.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+        // Combine Real Tables + Car Tables
+        const combinedData = [...activeTableData, ...carTables];
+
+        if (loading || combinedData.length === 0) return [];
+
+        const sortedTables = combinedData.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
         // Map status filter to mainStatus values
         const statusMapping = {
@@ -2130,6 +2359,7 @@ const DineInPageContent = () => {
             />
             {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
+            <CarSpotQrModal isOpen={isCarSpotQrModalOpen} onClose={() => setIsCarSpotQrModalOpen(false)} restaurant={restaurantDetails} />
             <ConfirmationModal
                 isOpen={confirmationState.isOpen}
                 onClose={() => setConfirmationState({ ...confirmationState, isOpen: false })}
@@ -2181,7 +2411,16 @@ const DineInPageContent = () => {
                 <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
                 </Button>
+
+                {/* ✅ New: Car Spot QR Button */}
+                {(userRole === 'owner' || userRole === 'manager') && (
+                    <Button onClick={() => setIsCarSpotQrModalOpen(true)} variant="outline" className="h-20 flex-col gap-1 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700">
+                        <QrCode size={20} /> Car Spot QR
+                    </Button>
+                )}
             </div>
+
+
 
 
             <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} employeeOfOwnerId={employeeOfOwnerId} />

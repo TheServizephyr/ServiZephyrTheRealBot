@@ -115,6 +115,7 @@ const normalizeCouponType = (couponType) => {
 };
 
 const ACTIVE_DINE_IN_TOKEN_STATUSES = [
+    'awaiting_payment',
     'pending',
     'accepted',
     'confirmed',
@@ -124,6 +125,107 @@ const ACTIVE_DINE_IN_TOKEN_STATUSES = [
     'pay_at_counter',
     'delivered'
 ];
+
+const buildCarSessionTabId = ({ carSpot, normalizedPhone, userId }) => {
+    const slotKey = String(carSpot || 'spot').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'spot';
+    const identitySource = String(normalizedPhone || userId || 'guest').replace(/[^a-zA-Z0-9]/g, '');
+    const identityKey = identitySource.slice(-10) || 'guest';
+    return `car_${slotKey}_${identityKey}`;
+};
+
+const shouldGeneratePhysicalToken = ({ deliveryType, businessType, dineInModel }) => {
+    return (
+        (deliveryType === 'dine-in' && dineInModel === 'post-paid') ||
+        deliveryType === 'car-order' ||
+        businessType === 'street-vendor'
+    );
+};
+
+async function resolveDineInLikeToken({
+    firestore,
+    business,
+    requestRestaurantId,
+    deliveryType,
+    businessType,
+    dineInModel,
+    dineInTabId,
+    existingOrderId
+}) {
+    const requiresPhysicalToken = shouldGeneratePhysicalToken({
+        deliveryType,
+        businessType,
+        dineInModel
+    });
+
+    let resolvedDineInTabId = String(dineInTabId || '').trim() || null;
+
+    if (!requiresPhysicalToken) {
+        return { dineInToken: null, newTokenNumber: null, dineInTabId: resolvedDineInTabId };
+    }
+
+    // Add-on: prefer exact token reuse from existing order first.
+    if (existingOrderId) {
+        try {
+            const existingOrderDoc = await firestore.collection('orders').doc(existingOrderId).get();
+            if (existingOrderDoc.exists) {
+                const existingOrder = existingOrderDoc.data() || {};
+                if (!resolvedDineInTabId && existingOrder.dineInTabId) {
+                    resolvedDineInTabId = String(existingOrder.dineInTabId).trim();
+                }
+                if (existingOrder.dineInToken) {
+                    return {
+                        dineInToken: existingOrder.dineInToken,
+                        newTokenNumber: null,
+                        dineInTabId: resolvedDineInTabId
+                    };
+                }
+            }
+        } catch (err) {
+            console.warn('[createOrderV2] Could not read existing order token for reuse:', err?.message || err);
+        }
+    }
+
+    if (resolvedDineInTabId) {
+        try {
+            const candidateRestaurantIds = [...new Set([business?.id, requestRestaurantId].filter(Boolean))];
+            for (const candidateRestaurantId of candidateRestaurantIds) {
+                const snapshot = await firestore
+                    .collection('orders')
+                    .where('restaurantId', '==', candidateRestaurantId)
+                    .where('dineInTabId', '==', resolvedDineInTabId)
+                    .where('status', 'in', ACTIVE_DINE_IN_TOKEN_STATUSES)
+                    .limit(1)
+                    .get();
+
+                if (!snapshot.empty) {
+                    const existingOrder = snapshot.docs[0].data() || {};
+                    if (existingOrder.dineInToken) {
+                        return {
+                            dineInToken: existingOrder.dineInToken,
+                            newTokenNumber: null,
+                            dineInTabId: resolvedDineInTabId
+                        };
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[createOrderV2] Token lookup by dineInTabId failed:', err?.message || err);
+        }
+    }
+
+    const lastToken = business?.data?.lastOrderToken || 0;
+    const newTokenNumber = lastToken + 1;
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+    const dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
+
+    return {
+        dineInToken,
+        newTokenNumber,
+        dineInTabId: resolvedDineInTabId
+    };
+}
 
 /**
  * CREATE ORDER V2 with HYBRID FALLBACK
@@ -208,12 +310,12 @@ export async function createOrderV2(req, options = {}) {
             paymentMethod === 'razorpay' ||
             paymentMethod === 'phonepe';
 
-        if (isOnlinePayment) {
+        if (isOnlinePayment && deliveryType !== 'car-order') {
             console.log('[createOrderV2] 🔄 Online payment → Using V1 (Body passed directly)');
             return await processOrderV1(body, firestore);
         }
 
-        console.log('[createOrderV2] ✅ COD/Cash/Counter → Using V2 (tested)');
+        console.log('[createOrderV2] ✅ V2 flow enabled');
 
         // Basic validation
         if (!idempotencyKey) {
@@ -446,7 +548,7 @@ export async function createOrderV2(req, options = {}) {
         // Re-validate delivery range/charge on server to prevent client tampering.
         let validatedDeliveryCharge = 0;
         const requestedDeliveryCharge = Math.max(0, Number(deliveryCharge) || 0);
-        if (deliveryType === 'delivery') {
+        if (deliveryType === 'delivery' || deliveryType === 'car-order') {
             const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
             const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
             const restaurantLat = toFiniteNumber(
@@ -460,7 +562,7 @@ export async function createOrderV2(req, options = {}) {
                 business.data.businessAddress?.longitude
             );
 
-            if (!skipAddressValidation && (!address?.full || customerLat === null || customerLng === null || restaurantLat === null || restaurantLng === null)) {
+            if (!skipAddressValidation && deliveryType !== 'car-order' && (!address?.full || customerLat === null || customerLng === null || restaurantLat === null || restaurantLng === null)) {
                 await idempotencyRepository.fail(idempotencyKey, new Error('Invalid delivery address coordinates'));
                 return buildErrorResponse({
                     message: 'A valid delivery address is required.',
@@ -468,11 +570,11 @@ export async function createOrderV2(req, options = {}) {
                 });
             }
 
-            // Manual call-order flow: allow creating order first and collect address later.
-            if (skipAddressValidation && (customerLat === null || customerLng === null || !address?.full)) {
-                console.log('[createOrderV2] ⚠️ skipAddressValidation enabled - creating delivery order without customer coordinates.');
-                // Keep owner-entered delivery charge for manual/custom-bill orders.
-                validatedDeliveryCharge = requestedDeliveryCharge;
+            // Manual call-order flow OR car-order: allow creating order first and collect address later.
+            if (deliveryType === 'car-order' || (skipAddressValidation && (customerLat === null || customerLng === null || !address?.full))) {
+                console.log('[createOrderV2] ⚠️ car-order or skipAddressValidation - creating order without customer coordinates.');
+                // Car orders have no delivery charge
+                validatedDeliveryCharge = deliveryType === 'car-order' ? 0 : requestedDeliveryCharge;
             } else {
 
                 const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
@@ -655,6 +757,30 @@ export async function createOrderV2(req, options = {}) {
             trackingToken = await generateSecureToken(firestore, userId);
         }
 
+        const fallbackCarTabId = deliveryType === 'car-order'
+            ? buildCarSessionTabId({
+                carSpot: body.carSpot,
+                normalizedPhone,
+                userId
+            })
+            : null;
+        const requestedSessionTabId = body.dineInTabId || fallbackCarTabId || null;
+
+        const {
+            dineInToken,
+            newTokenNumber,
+            dineInTabId: resolvedDineInTabId
+        } = await resolveDineInLikeToken({
+            firestore,
+            business,
+            requestRestaurantId: restaurantId,
+            deliveryType,
+            businessType: business.type,
+            dineInModel: business.data.dineInModel,
+            dineInTabId: requestedSessionTabId,
+            existingOrderId: finalExistingOrderId
+        });
+
         // ========================================
         // ONLINE PAYMENT FLOW (Razorpay/PhonePe)
         // ========================================
@@ -677,6 +803,13 @@ export async function createOrderV2(req, options = {}) {
                 restaurantName: business.data.name,
                 businessType: business.type,
                 deliveryType,
+                // ✅ Car Order fields
+                ...(deliveryType === 'car-order' && {
+                    isCarOrder: true,
+                    carSpot: body.carSpot || null,
+                    carDetails: body.carDetails || null,
+                    orderSource: 'car_qr'
+                }),
                 pickupTime: body.pickupTime || '',
                 tipAmount: tipAmount || 0,
                 items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
@@ -696,7 +829,14 @@ export async function createOrderV2(req, options = {}) {
                 orderDate: FieldValue.serverTimestamp(),
                 notes: notes || null,
                 paymentDetails: [],
-                trackingToken: trackingToken
+                trackingToken: trackingToken,
+                dineInToken: dineInToken || null,
+                dineInTabId: resolvedDineInTabId || null,
+                tableId: actualTableId || null,
+                ...(deliveryType === 'car-order' && {
+                    tab_name: body.tab_name || finalCustomerName || 'Car Guest',
+                    pax_count: 1
+                })
             };
 
             // Create order in Firestore
@@ -722,6 +862,8 @@ export async function createOrderV2(req, options = {}) {
                 businessType: business.type,
                 deliveryType,
                 trackingToken,
+                dineInToken: dineInToken || null,
+                dineInTabId: resolvedDineInTabId || null,
                 isNewUser: false // TODO: implement customer check
             };
 
@@ -742,19 +884,34 @@ export async function createOrderV2(req, options = {}) {
                 paymentMethod
             });
 
+            if (newTokenNumber !== null) {
+                try {
+                    await firestore.collection(business.collection).doc(business.id).update({
+                        lastOrderToken: newTokenNumber
+                    });
+                    console.log(`[createOrderV2] 🔢 Updated lastOrderToken to ${newTokenNumber} for ${business.type}`);
+                } catch (err) {
+                    console.warn('[createOrderV2] Failed to update token counter after online order:', err?.message || err);
+                }
+            }
+
             // Return response based on gateway
             if (gateway === 'razorpay') {
                 return buildRazorpayResponse({
                     razorpayOrderId: paymentOrder.id,
                     orderId: firestoreOrderId,
-                    token: trackingToken
+                    token: trackingToken,
+                    dineInToken: dineInToken || undefined,
+                    dineInTabId: resolvedDineInTabId || undefined
                 });
             } else {
                 return buildPhonePeResponse({
                     phonePeOrderId: paymentOrder.id,
                     orderId: firestoreOrderId,
                     token: trackingToken,
-                    amount: serverGrandTotal
+                    amount: serverGrandTotal,
+                    dineInToken: dineInToken || undefined,
+                    dineInTabId: resolvedDineInTabId || undefined
                 });
             }
         }
@@ -764,101 +921,32 @@ export async function createOrderV2(req, options = {}) {
         // ========================================
         console.log(`[createOrderV2] Creating COD/Counter order`);
 
-        // ✅ DINE-IN TOKEN GENERATION (for post-paid dine-in AND street-vendor orders)
-        let dineInToken = null;
-        let newTokenNumber = null;
-
-        // Generate token for:
-        // 1. Post-paid dine-in orders (existing)
-        // 2. Street vendor orders (NEW - they also need physical pickup tokens!)
-        const needsPhysicalToken = (
-            (deliveryType === 'dine-in' && business.data.dineInModel === 'post-paid') ||
-            (business.type === 'street-vendor')
-        );
-
-        if (needsPhysicalToken) {
-            console.log(`[createOrderV2] 🎫 Physical token needed (dine-in or street-vendor), generating token`);
-            const dineInTabId = body.dineInTabId;
-
-            if (dineInTabId) {
-                try {
-                    // Check for existing orders with this tabId to reuse token.
-                    // Use canonical business ID first, then fallback to request ID for legacy data consistency.
-                    const candidateRestaurantIds = [...new Set([business?.id, restaurantId].filter(Boolean))];
-                    let existingOrdersSnapshot = { empty: true, docs: [] };
-
-                    for (const candidateRestaurantId of candidateRestaurantIds) {
-                        const snapshot = await firestore
-                            .collection('orders')
-                            .where('restaurantId', '==', candidateRestaurantId)
-                            .where('dineInTabId', '==', dineInTabId)
-                            .where('status', 'in', ACTIVE_DINE_IN_TOKEN_STATUSES)
-                            .limit(1)
-                            .get();
-
-                        if (!snapshot.empty) {
-                            existingOrdersSnapshot = snapshot;
-                            console.log(`[createOrderV2] Found existing dine-in order for token reuse via restaurantId=${candidateRestaurantId}`);
-                            break;
-                        }
-                    }
-
-                    if (!existingOrdersSnapshot.empty) {
-                        // REUSE token from existing order
-                        const existingOrder = existingOrdersSnapshot.docs[0].data();
-                        dineInToken = existingOrder.dineInToken;
-
-                        if (!dineInToken) {
-                            // Existing order has no token, generate new
-                            const lastToken = business.data.lastOrderToken || 0;
-                            newTokenNumber = lastToken + 1;
-                            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                            const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                            const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                            dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
-                            console.log(`[createOrderV2] ⚠️ Existing order had no token, generated: ${dineInToken}`);
-                        } else {
-                            newTokenNumber = business.data.lastOrderToken || 0;
-                            console.log(`[createOrderV2] ✅ REUSING token: ${dineInToken}`);
-                        }
-                    } else {
-                        // Generate NEW token
-                        const lastToken = business.data.lastOrderToken || 0;
-                        newTokenNumber = lastToken + 1;
-                        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                        const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                        const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                        dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
-                        console.log(`[createOrderV2] 🆕 NEW token generated: ${dineInToken}`);
-                    }
-                } catch (err) {
-                    console.error(`[createOrderV2] Token generation error:`, err);
-                    // Fallback: generate new token
-                    const lastToken = business.data.lastOrderToken || 0;
-                    newTokenNumber = lastToken + 1;
-                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                    dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
-                }
-            } else {
-                // No tabId, generate token anyway (street vendors always get tokens!)
-                const lastToken = business.data.lastOrderToken || 0;
-                newTokenNumber = lastToken + 1;
-                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
-                console.log(`[createOrderV2] ⚠️ No tabId, generated token: ${dineInToken}`);
-            }
+        if (dineInToken) {
+            console.log(`[createOrderV2] 🎫 Dine-in style token in use: ${dineInToken}`);
         }
 
         // Build order data (SAME structure as V1)
         const orderData = {
-            customerName: (deliveryType === 'dine-in' ? (body.tab_name || body.customerName || 'Guest') : finalCustomerName),
+            customerName: (
+                deliveryType === 'dine-in'
+                    ? (body.tab_name || body.customerName || 'Guest')
+                    : (deliveryType === 'car-order'
+                        ? (body.tab_name || body.customerName || finalCustomerName || 'Car Guest')
+                        : finalCustomerName)
+            ),
             customerId: userId,
             userId: userId,  // ✅ NEW: Unified userId field for queries
             customerAddress: address?.full || null,
+            // ✅ Car Order fields
+            ...(deliveryType === 'car-order' && {
+                isCarOrder: true,
+                carSpot: body.carSpot || null,
+                carDetails: body.carDetails || null,
+                orderSource: 'car_qr',
+                tab_name: body.tab_name || finalCustomerName || 'Car Guest',
+                pax_count: 1,
+                dineInTabId: resolvedDineInTabId || null
+            }),
             customerPhone: normalizedPhone,
             customerEmail: finalCustomerEmail || null,
             customerLocation: customerLocation,
@@ -896,7 +984,7 @@ export async function createOrderV2(req, options = {}) {
                 tableId: actualTableId, // Use normalized table ID
                 pax_count: body.pax_count,
                 tab_name: body.tab_name,
-                dineInTabId: body.dineInTabId
+                dineInTabId: resolvedDineInTabId || null
             }),
             paymentDetails: [{
                 method: 'cod',
@@ -906,7 +994,7 @@ export async function createOrderV2(req, options = {}) {
             }],
             trackingToken: trackingToken,
             // ✅ Dine-in fields
-            dineInTabId: body.dineInTabId || null,
+            dineInTabId: resolvedDineInTabId || null,
             tableId: actualTableId || null,  // USE normalized table ID
             dineInToken: dineInToken, // Token for post-paid dine-in
         };
@@ -962,8 +1050,8 @@ export async function createOrderV2(req, options = {}) {
 
         // ✅ DINE-IN TAB UPDATES (CRITICAL: add to subcollection + update tab)
         // PERMANENT FIX: ALWAYS create/update tab document for proper lifecycle tracking
-        if (deliveryType === 'dine-in' && body.dineInTabId && business.data.dineInModel === 'post-paid') {
-            const dineInTabId = body.dineInTabId;
+        if (deliveryType === 'dine-in' && resolvedDineInTabId && business.data.dineInModel === 'post-paid') {
+            const dineInTabId = resolvedDineInTabId;
             try {
                 const tabRef = firestore.collection(business.collection).doc(business.id)
                     .collection('dineInTabs').doc(dineInTabId);
@@ -1038,7 +1126,10 @@ export async function createOrderV2(req, options = {}) {
         // ========================================
         return buildCODResponse({
             orderId,
-            token: trackingToken
+            token: trackingToken,
+            dineInTabId: resolvedDineInTabId || undefined,
+            tableId: actualTableId || undefined,
+            dineInToken: dineInToken || undefined
         });
 
     } catch (error) {

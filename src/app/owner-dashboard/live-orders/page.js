@@ -951,15 +951,21 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                                 Address Not Filled Yet
                             </span>
                         )}
+                        {order.isCarOrder && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                🚗 Spot: {order.carSpot || 'N/A'} | {order.carDetails || ''}
+                            </span>
+                        )}
                     </div>
                 </div>
                 <div className={cn(
                     "px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border tracking-wide",
                     order.deliveryType === 'delivery' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
                         order.deliveryType === 'pickup' ? "bg-purple-500/10 text-purple-500 border-purple-500/20" :
-                            "bg-cyan-500/10 text-cyan-500 border-cyan-500/20"
+                            order.deliveryType === 'car-order' ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" :
+                                "bg-cyan-500/10 text-cyan-500 border-cyan-500/20"
                 )}>
-                    {order.deliveryType === 'delivery' ? 'Delivery' : order.deliveryType === 'pickup' ? 'Pickup' : 'Dine-In'}
+                    {order.deliveryType === 'delivery' ? 'Delivery' : order.deliveryType === 'pickup' ? 'Pickup' : order.deliveryType === 'car-order' ? '🚗 Car' : 'Dine-In'}
                 </div>
             </div>
 

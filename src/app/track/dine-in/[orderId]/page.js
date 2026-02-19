@@ -266,6 +266,7 @@ function DineInTrackingContent() {
         console.log('[DineIn Track] dineInTabId:', orderData.order?.dineInTabId || orderData.order?.tabId);
 
         const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
+        const isCarOrder = orderData?.order?.deliveryType === 'car-order' || orderData?.order?.isCarOrder === true;
 
         if (!restaurantId) {
             console.warn('[DineIn Track] Add More blocked: missing restaurantId');
@@ -273,9 +274,37 @@ function DineInTrackingContent() {
         }
 
         const params = new URLSearchParams();
-        if (tableId) params.set('table', tableId);
+        if (!isCarOrder && tableId) params.set('table', tableId);
         if (tabId) params.set('tabId', tabId);
         if (trackingToken) params.set('token', trackingToken);
+        params.set('activeOrderId', orderId);
+
+        if (isCarOrder) {
+            params.set('orderType', 'car');
+            params.set('deliveryType', 'car-order');
+            if (orderData?.order?.carSpot) params.set('spot', orderData.order.carSpot);
+
+            // Persist car context for order page header/edit card restoration.
+            try {
+                const cartKey = `cart_${restaurantId}`;
+                const existingCart = JSON.parse(localStorage.getItem(cartKey) || '{}');
+                const mergedCart = {
+                    ...existingCart,
+                    deliveryType: 'car-order',
+                    carSpot: orderData?.order?.carSpot || existingCart?.carSpot || null,
+                    carDetails: orderData?.order?.carDetails || existingCart?.carDetails || '',
+                    phone: orderData?.order?.customerPhone || existingCart?.phone || '',
+                    dineInTabId: tabId || existingCart?.dineInTabId || null,
+                    dineInToken: orderData?.order?.dineInToken || existingCart?.dineInToken || null
+                };
+                localStorage.setItem(cartKey, JSON.stringify(mergedCart));
+                if (mergedCart.phone) {
+                    localStorage.setItem('customerPhone', mergedCart.phone);
+                }
+            } catch (err) {
+                console.warn('[DineIn Track] Failed to persist car context before Add More:', err?.message || err);
+            }
+        }
 
         const url = `/order/${restaurantId}?${params.toString()}`;
         console.log('[DineIn Track] Navigating to:', url);
@@ -397,6 +426,32 @@ function DineInTrackingContent() {
         }
     };
 
+    const handleBackToMenu = () => {
+        const { restaurantId } = getDineInContext();
+        if (!restaurantId) {
+            router.back();
+            return;
+        }
+
+        const params = new URLSearchParams();
+        const isCarOrder = orderData?.order?.deliveryType === 'car-order' || orderData?.order?.isCarOrder === true;
+
+        if (isCarOrder) {
+            params.set('orderType', 'car');
+            if (orderData?.order?.carSpot) params.set('spot', orderData.order.carSpot);
+            if (sessionToken) params.set('token', sessionToken);
+            const tabId = orderData?.order?.dineInTabId || orderData?.order?.tabId;
+            if (tabId) params.set('tabId', tabId);
+        } else {
+            const { tableId, tabId, trackingToken } = getDineInContext();
+            if (tableId) params.set('table', tableId);
+            if (tabId) params.set('tabId', tabId);
+            if (trackingToken) params.set('token', trackingToken);
+        }
+
+        router.replace(`/order/${restaurantId}${params.toString() ? `?${params.toString()}` : ''}`);
+    };
+
 
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
     const [batchToCancel, setBatchToCancel] = useState(null);
@@ -459,6 +514,8 @@ function DineInTrackingContent() {
         )
     }
 
+    const isCarOrder = orderData?.order?.deliveryType === 'car-order' || orderData?.order?.isCarOrder === true;
+
     // ✅ FULL-SCREEN CANCELLATION VIEW - When ALL orders cancelled
     if (allOrdersCancelled) {
         const cancellationReason = orderData.order?.rejectionReason ||
@@ -482,14 +539,24 @@ function DineInTrackingContent() {
                     <p className="text-muted-foreground text-lg mb-6">
                         {cancellationReason}
                     </p>
-                    <Button
-                        onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
-                        className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
-                        disabled={isMarkingDone}
-                    >
-                        <Home className="mr-2 h-5 w-5" />
-                        {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
-                    </Button>
+                    {isCarOrder ? (
+                        <Button
+                            onClick={handleBackToMenu}
+                            className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                        >
+                            <Home className="mr-2 h-5 w-5" />
+                            Back to Menu
+                        </Button>
+                    ) : (
+                        <Button
+                            onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
+                            className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                            disabled={isMarkingDone}
+                        >
+                            <Home className="mr-2 h-5 w-5" />
+                            {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
+                        </Button>
+                    )}
                 </motion.div>
             </div>
         );
@@ -545,14 +612,24 @@ function DineInTrackingContent() {
                     <p className="text-2xl font-bold text-primary mb-6">
                         Thank you for dining with us!
                     </p>
-                    <Button
-                        onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
-                        className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
-                        disabled={isMarkingDone}
-                    >
-                        <Home className="mr-2 h-5 w-5" />
-                        {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
-                    </Button>
+                    {isCarOrder ? (
+                        <Button
+                            onClick={handleBackToMenu}
+                            className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                        >
+                            <Home className="mr-2 h-5 w-5" />
+                            Back to Menu
+                        </Button>
+                    ) : (
+                        <Button
+                            onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
+                            className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
+                            disabled={isMarkingDone}
+                        >
+                            <Home className="mr-2 h-5 w-5" />
+                            {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
+                        </Button>
+                    )}
                 </motion.div>
             </div>
         );
@@ -688,7 +765,11 @@ function DineInTrackingContent() {
                                         <UtensilsCrossed className="h-6 w-6 text-white" />
                                     </div>
                                     <div>
-                                        <p className="text-white/80 text-sm font-medium">Table {orderData.order?.tableId || 'N/A'}</p>
+                                        <p className="text-white/80 text-sm font-medium">
+                                            {orderData.order?.deliveryType === 'car-order'
+                                                ? `Slot ${orderData.order?.carSpot || 'N/A'}`
+                                                : `Table ${orderData.order?.tableId || 'N/A'}`}
+                                        </p>
                                         <p className="text-white text-lg font-bold">{orderData.order?.batches?.length || 0} Active Orders</p>
                                     </div>
                                 </div>
@@ -964,38 +1045,44 @@ function DineInTrackingContent() {
                         <Plus className="mr-2 h-5 w-5" /> {isServed ? 'Order Again' : 'Add More Items'}
                     </Button>
 
-                    <Button
-                        onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
-                        variant="outline"
-                        disabled={isMarkingDone}
-                        className="w-full h-12 border-orange-500 text-orange-500 hover:bg-orange-500/10"
-                    >
-                        <Home className="mr-2 h-5 w-5" />
-                        {isMarkingDone ? 'Closing Session...' : 'Release Seat & Exit'}
-                    </Button>
+                    {!isCarOrder && (
+                        <Button
+                            onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
+                            variant="outline"
+                            disabled={isMarkingDone}
+                            className="w-full h-12 border-orange-500 text-orange-500 hover:bg-orange-500/10"
+                        >
+                            <Home className="mr-2 h-5 w-5" />
+                            {isMarkingDone ? 'Closing Session...' : 'Release Seat & Exit'}
+                        </Button>
+                    )}
 
                     {/* Pay Bill Button OR Status Message */}
                     {/* Pay Bill Button OR Status Message */}
-                    {orderData?.order?.paymentStatus === 'paid' ? (
-                        <div className="w-full h-14 bg-green-100 text-green-800 border-green-200 border rounded flex items-center justify-center font-bold text-lg">
-                            ✅ Bill Paid
-                        </div>
-                    ) : (orderData?.order?.paymentStatus === 'pay_at_counter' || paymentHash === 'counter') ? (
-                        <div className="w-full h-14 bg-orange-100 text-orange-800 border-orange-200 border rounded flex items-center justify-center font-bold text-lg animate-pulse">
-                            🏪 Please Pay at Counter
-                        </div>
-                    ) : (
-                        <Button
-                            onClick={handlePayOnline} // Opens Modal
-                            disabled={orderData?.order?.status === 'pending'}
-                            className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <Wallet className="mr-3 h-6 w-6" />
-                            {orderData?.order?.status === 'pending'
-                                ? 'Waiting for Restaurant Confirmation...'
-                                : `Pay Bill - ${formatCurrency(billDetails?.grandTotal || 0)}`
-                            }
-                        </Button>
+                    {!isCarOrder && (
+                        <>
+                            {orderData?.order?.paymentStatus === 'paid' ? (
+                                <div className="w-full h-14 bg-green-100 text-green-800 border-green-200 border rounded flex items-center justify-center font-bold text-lg">
+                                    ✅ Bill Paid
+                                </div>
+                            ) : (orderData?.order?.paymentStatus === 'pay_at_counter' || paymentHash === 'counter') ? (
+                                <div className="w-full h-14 bg-orange-100 text-orange-800 border-orange-200 border rounded flex items-center justify-center font-bold text-lg animate-pulse">
+                                    🏪 Please Pay at Counter
+                                </div>
+                            ) : (
+                                <Button
+                                    onClick={handlePayOnline} // Opens Modal
+                                    disabled={orderData?.order?.status === 'pending'}
+                                    className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Wallet className="mr-3 h-6 w-6" />
+                                    {orderData?.order?.status === 'pending'
+                                        ? 'Waiting for Restaurant Confirmation...'
+                                        : `Pay Bill - ${formatCurrency(billDetails?.grandTotal || 0)}`
+                                    }
+                                </Button>
+                            )}
+                        </>
                     )}
                 </div>
             </footer>

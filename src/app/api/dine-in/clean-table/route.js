@@ -82,6 +82,7 @@ async function handleCleanTable(req) {
             console.log(`[Clean Table] ❌ Tab ${tabId} not found in any location`);
 
             const sessionOrdersMap = new Map();
+            const dineInLikeDeliveryTypes = ['dine-in', 'car-order'];
 
             const addSessionOrders = async (queryBuilder) => {
                 try {
@@ -92,30 +93,32 @@ async function handleCleanTable(req) {
                 }
             };
 
+            const addSessionOrdersByField = async (field, value) => {
+                for (const deliveryType of dineInLikeDeliveryTypes) {
+                    let q = firestore.collection('orders')
+                        .where('deliveryType', '==', deliveryType)
+                        .where(field, '==', value);
+                    if (businessId) q = q.where('restaurantId', '==', businessId);
+                    await addSessionOrders(q);
+                }
+            };
+
             // 1) Primary lookup by dineInTabId.
-            let q1 = firestore.collection('orders')
-                .where('deliveryType', '==', 'dine-in')
-                .where('dineInTabId', '==', tabId);
-            if (businessId) q1 = q1.where('restaurantId', '==', businessId);
-            await addSessionOrders(q1);
+            await addSessionOrdersByField('dineInTabId', tabId);
 
             // 2) Legacy lookup by tabId.
-            let q2 = firestore.collection('orders')
-                .where('deliveryType', '==', 'dine-in')
-                .where('tabId', '==', tabId);
-            if (businessId) q2 = q2.where('restaurantId', '==', businessId);
-            await addSessionOrders(q2);
+            await addSessionOrdersByField('tabId', tabId);
 
             // 3) Group-key token lookup: "<table>_token_<token>".
             const tokenFromGroupKey = String(tabId).includes('_token_')
                 ? String(tabId).split('_token_')[1]
                 : null;
-            if (tokenFromGroupKey) {
-                let q3 = firestore.collection('orders')
-                    .where('deliveryType', '==', 'dine-in')
-                    .where('dineInToken', '==', tokenFromGroupKey);
-                if (businessId) q3 = q3.where('restaurantId', '==', businessId);
-                await addSessionOrders(q3);
+            const carGroupToken = !tokenFromGroupKey && String(tabId).startsWith('car_')
+                ? String(tabId).split('_').slice(2).join('_')
+                : null;
+            const resolvedTokenKey = tokenFromGroupKey || carGroupToken;
+            if (resolvedTokenKey) {
+                await addSessionOrdersByField('dineInToken', resolvedTokenKey);
             }
 
             const sessionOrders = Array.from(sessionOrdersMap.values());
@@ -303,27 +306,37 @@ async function handleCleanTable(req) {
 
         // ✅ Mark all orders as cleaned (outside transaction for better error handling)
         try {
-            let ordersSnap = await firestore.collection('orders')
-                .where('deliveryType', '==', 'dine-in')
-                .where('dineInTabId', '==', tabId)
-                .get();
-            if (ordersSnap.empty) {
-                ordersSnap = await firestore.collection('orders')
-                    .where('deliveryType', '==', 'dine-in')
-                    .where('tabId', '==', tabId)
-                    .get();
+            const dineInLikeDeliveryTypes = ['dine-in', 'car-order'];
+            const cleanedOrdersMap = new Map();
+
+            const addCleanableOrders = async (field, value) => {
+                for (const deliveryType of dineInLikeDeliveryTypes) {
+                    let query = firestore.collection('orders')
+                        .where('deliveryType', '==', deliveryType)
+                        .where(field, '==', value);
+                    if (businessId) {
+                        query = query.where('restaurantId', '==', businessId);
+                    }
+                    const snap = await query.get();
+                    snap.docs.forEach((doc) => cleanedOrdersMap.set(doc.id, doc));
+                }
+            };
+
+            await addCleanableOrders('dineInTabId', tabId);
+            if (cleanedOrdersMap.size === 0) {
+                await addCleanableOrders('tabId', tabId);
             }
 
-            if (!ordersSnap.empty) {
+            if (cleanedOrdersMap.size > 0) {
                 const batch = firestore.batch();
-                ordersSnap.forEach(doc => {
+                Array.from(cleanedOrdersMap.values()).forEach(doc => {
                     batch.update(doc.ref, {
                         cleaned: true,
                         cleanedAt: FieldValue.serverTimestamp()
                     });
                 });
                 await batch.commit();
-                console.log(`[Clean Table] ✅ Marked ${ordersSnap.size} orders as cleaned for tab ${tabId}`);
+                console.log(`[Clean Table] ✅ Marked ${cleanedOrdersMap.size} orders as cleaned for tab ${tabId}`);
             }
         } catch (err) {
             console.warn(`[Clean Table] ⚠️ Could not mark orders as cleaned:`, err.message);

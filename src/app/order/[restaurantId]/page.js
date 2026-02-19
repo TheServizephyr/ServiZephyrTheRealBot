@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -713,6 +713,85 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
 };
 
 
+// ✅ NEW: Car Order Modal — shown when ?orderType=car&spot=A1 is in URL
+// ✅ NEW: Car Order Modal — shown when ?orderType=car&spot=A1 is in URL
+const CarOrderModal = ({ isOpen, onClose, onConfirm, carSpot }) => {
+    const [carDetails, setCarDetails] = useState('');
+    const [phone, setPhone] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        // Load from existing logic if available (persistence handled by parent)
+    }, [isOpen]);
+
+    const handleConfirm = () => {
+        if (!phone.trim() || !/^\d{10}$/.test(phone.trim())) {
+            alert('Please enter a valid 10-digit phone number.');
+            return;
+        }
+        if (!carDetails.trim()) {
+            alert('Please enter your car number or a description to identify your car.');
+            return;
+        }
+        setIsSaving(true);
+        onConfirm({ phone: phone.trim(), carDetails: carDetails.trim() });
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            // 🚨 Mandatory: Prevent closing if not confirmed
+            if (!open && (!carDetails || !phone)) {
+                // Do nothing, force user to fill details
+                return;
+            }
+            onClose();
+        }}>
+            <DialogContent
+                className="bg-background border-border text-foreground p-0 max-w-sm"
+                onPointerDownOutside={(e) => e.preventDefault()} // 🚨 Block outside click
+                onEscapeKeyDown={(e) => e.preventDefault()}    // 🚨 Block Escape key
+                showCloseButton={false}                        // 🚨 Hide close button (if supported by UI component)
+            >
+                <DialogHeader className="p-6 pb-2">
+                    <DialogTitle className="text-2xl flex items-center gap-2">
+                        🚗 Car Order
+                    </DialogTitle>
+                    <DialogDescription>
+                        {carSpot ? `Spot: ${carSpot}` : 'Drive-thru order'} — We will bring your order to your car!
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="px-6 pb-6 space-y-4">
+                    <div>
+                        <Label>Your Phone Number</Label>
+                        <Input
+                            type="tel"
+                            placeholder="10-digit mobile number"
+                            value={phone}
+                            onChange={e => setPhone(e.target.value)}
+                            className="mt-1"
+                            maxLength={10}
+                        />
+                    </div>
+                    <div>
+                        <Label>Car Number / Description</Label>
+                        <Input
+                            placeholder="e.g., DL-1234 White Swift"
+                            value={carDetails}
+                            onChange={e => setCarDetails(e.target.value)}
+                            className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Enter your car number plate or any unique description so we can find you.</p>
+                    </div>
+                    <Button onClick={handleConfirm} disabled={isSaving} className="w-full h-12 text-base">
+                        {isSaving ? 'Saving...' : '🚗 Start Ordering'}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 const BannerCarousel = ({ images, onClick, onLogoClick, onIndexChange, restaurantName, logoUrl }) => {
     const [index, setIndex] = useState(0);
     const { theme, setTheme } = useTheme();
@@ -822,6 +901,8 @@ const OrderPageInternal = () => {
 
     const tableIdFromUrl = searchParams.get('table');
     const tabIdFromUrl = searchParams.get('tabId');
+    const normalizedTabIdFromUrl = String(tabIdFromUrl || '').trim().toLowerCase();
+    const isCarSessionFromUrl = normalizedTabIdFromUrl.startsWith('car_');
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     const activeOrderId = searchParams.get('activeOrderId');
@@ -1114,13 +1195,21 @@ const OrderPageInternal = () => {
                     const res = await fetch(statusUrl);
                     if (res.ok) {
                         const statusData = await res.json();
-                        const status = statusData.order?.status;
+                        const latestOrder = statusData?.order || {};
+                        const status = latestOrder?.status;
                         const finalStates = ['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'];
 
                         if (!finalStates.includes(status)) {
                             const orderWithStatus = {
                                 ...order,
-                                status: status || order.status
+                                status: status || order.status,
+                                deliveryType: latestOrder.deliveryType || order.deliveryType || 'delivery',
+                                dineInTabId: latestOrder.dineInTabId || latestOrder.tabId || order.dineInTabId || order.tabId || null,
+                                dineInToken: latestOrder.dineInToken || order.dineInToken || null,
+                                carSpot: latestOrder.carSpot || order.carSpot || null,
+                                carDetails: latestOrder.carDetails || order.carDetails || null,
+                                customerPhone: latestOrder.customerPhone || latestOrder.phone || order.customerPhone || null,
+                                customerName: latestOrder.customerName || order.customerName || null
                             };
                             activeOrders.push(orderWithStatus);
                             latestActiveOrder = orderWithStatus;
@@ -1291,6 +1380,13 @@ const OrderPageInternal = () => {
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
+    // ✅ Car Order state
+    const orderTypeFromUrl = searchParams.get('orderType');
+    const deliveryTypeFromUrl = searchParams.get('deliveryType');
+    const carSpotFromUrl = searchParams.get('spot');
+    const [isCarOrderModalOpen, setIsCarOrderModalOpen] = useState(false);
+    const [carOrderDetails, setCarOrderDetails] = useState(null); // { carSpot, carDetails, phone, dineInTabId, dineInToken? }
+
     const [dineInState, setDineInState] = useState('loading');
     const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
 
@@ -1305,6 +1401,81 @@ const OrderPageInternal = () => {
     const [newTabName, setNewTabName] = useState('');
     const [isEditingModal, setIsEditingModal] = useState(false);
     const [isReleasingSeat, setIsReleasingSeat] = useState(false);
+
+    // ✅ Car Order: Bootstrap when explicit car params OR car session tab is present.
+    useEffect(() => {
+        const hasCarContextFromUrl =
+            orderTypeFromUrl === 'car' ||
+            deliveryTypeFromUrl === 'car-order' ||
+            isCarSessionFromUrl;
+
+        if (hasCarContextFromUrl && !loading && !tableIdFromUrl) {
+            // Check if car order details already saved
+            try {
+                const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+                if (savedCart.deliveryType === 'car-order' && savedCart.carDetails) {
+                    setCarOrderDetails({
+                        carSpot: savedCart.carSpot || carSpotFromUrl || null,
+                        carDetails: savedCart.carDetails,
+                        phone: savedCart.phone || localStorage.getItem('customerPhone') || '',
+                        dineInTabId: savedCart.dineInTabId || null,
+                        dineInToken: savedCart.dineInToken || null
+                    });
+                    setDeliveryType('car-order');
+                } else {
+                    setIsCarOrderModalOpen(true);
+                    setDeliveryType('car-order');
+                }
+            } catch (e) {
+                setIsCarOrderModalOpen(true);
+                setDeliveryType('car-order');
+            }
+        }
+    }, [orderTypeFromUrl, deliveryTypeFromUrl, isCarSessionFromUrl, loading, restaurantId, carSpotFromUrl, tableIdFromUrl]);
+
+    const handleCarOrderConfirm = ({ phone, carDetails }) => {
+        const safeSpot = String(carSpotFromUrl || '').trim();
+        const safePhone = String(phone || '').trim();
+        const normalizedSpot = (safeSpot || 'spot').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'spot';
+        const normalizedIdentity = safePhone.replace(/\D/g, '').slice(-10) || 'guest';
+
+        let existingCart = {};
+        try {
+            existingCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+        } catch {
+            existingCart = {};
+        }
+
+        const resolvedDineInTabId = String(existingCart.dineInTabId || '').trim() || `car_${normalizedSpot}_${normalizedIdentity}`;
+        const details = {
+            carSpot: safeSpot || null,
+            carDetails,
+            phone: safePhone,
+            dineInTabId: resolvedDineInTabId,
+            dineInToken: existingCart.dineInToken || null
+        };
+        setCarOrderDetails(details);
+        setDeliveryType('car-order');
+        setIsCarOrderModalOpen(false);
+
+        // Save to cart localStorage
+        try {
+            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+            savedCart.deliveryType = 'car-order';
+            savedCart.carSpot = details.carSpot;
+            savedCart.carDetails = details.carDetails;
+            savedCart.phone = details.phone;
+            savedCart.dineInTabId = details.dineInTabId;
+            if (details.dineInToken) {
+                savedCart.dineInToken = details.dineInToken;
+            }
+            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(savedCart));
+            // Also save phone for checkout
+            localStorage.setItem('customerPhone', details.phone);
+        } catch (e) {
+            console.error('[Car Order] Failed to save to localStorage:', e);
+        }
+    };
 
     // ✅ NEW: Effect to re-validate when cart/subtotal changes (relocated here)
     useEffect(() => {
@@ -1779,8 +1950,17 @@ const OrderPageInternal = () => {
                 }
 
             } else {
+                const savedCart = safeReadCart(restaurantId);
+                const hasCarOrderContext =
+                    orderTypeFromUrl === 'car' ||
+                    deliveryTypeFromUrl === 'car-order' ||
+                    isCarSessionFromUrl ||
+                    String(savedCart?.deliveryType || '').trim().toLowerCase() === 'car-order';
+
                 if (restaurantData.businessType === 'street-vendor') {
                     setDeliveryType('street-vendor-pre-order');
+                } else if (hasCarOrderContext) {
+                    setDeliveryType('car-order');
                 } else {
                     setDeliveryType(restaurantData.deliveryEnabled ? 'delivery' : (restaurantData.pickupEnabled ? 'pickup' : 'delivery'));
                 }
@@ -1795,7 +1975,7 @@ const OrderPageInternal = () => {
         } else {
             console.log('❌ [DEBUG] NOT calling handleDineInSetup - isTokenValid is false');
         }
-    }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
+    }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, orderTypeFromUrl, deliveryTypeFromUrl, isCarSessionFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
 
     // NEW: Load persistent user details on mount (for dine-in only)
     useEffect(() => {
@@ -1841,14 +2021,126 @@ const OrderPageInternal = () => {
                     safeWriteCart(restaurantId, parsedData);
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
-                    if (parsedData.deliveryType && !tableIdFromUrl) setDeliveryType(parsedData.deliveryType);
+                    const shouldForceCarFromContext =
+                        orderTypeFromUrl === 'car' ||
+                        deliveryTypeFromUrl === 'car-order' ||
+                        isCarSessionFromUrl;
+
+                    if (!tableIdFromUrl) {
+                        if (shouldForceCarFromContext) {
+                            setDeliveryType('car-order');
+                        } else if (parsedData.deliveryType) {
+                            setDeliveryType(parsedData.deliveryType);
+                        }
+                    }
+
+                    if ((parsedData.deliveryType === 'car-order' || shouldForceCarFromContext) && (parsedData.carDetails || parsedData.carSpot || parsedData.dineInTabId)) {
+                        setCarOrderDetails({
+                            carSpot: parsedData.carSpot || carSpotFromUrl || null,
+                            carDetails: parsedData.carDetails || '',
+                            phone: parsedData.phone || localStorage.getItem('customerPhone') || '',
+                            dineInTabId: parsedData.dineInTabId || null,
+                            dineInToken: parsedData.dineInToken || null
+                        });
+                    }
                     if (parsedData.dineInTabId) {
                         setActiveTabInfo({ id: parsedData.dineInTabId, name: parsedData.tab_name || 'Active Tab', pax_count: parsedData.pax_count || 1 });
                     }
                 }
             }
         }
-    }, [isTokenValid, restaurantId, tableIdFromUrl]);
+    }, [isTokenValid, restaurantId, tableIdFromUrl, carSpotFromUrl, orderTypeFromUrl, deliveryTypeFromUrl, isCarSessionFromUrl]);
+
+    // Fallback hydration: restore car details from active order when cart has been cleared after checkout.
+    useEffect(() => {
+        const hasCarContextFromUrl =
+            orderTypeFromUrl === 'car' ||
+            deliveryTypeFromUrl === 'car-order' ||
+            isCarSessionFromUrl;
+
+        if (!restaurantId || tableIdFromUrl || !activeOrderId || !hasCarContextFromUrl) return;
+        if (deliveryType === 'car-order' && carOrderDetails?.carDetails) return;
+
+        let cancelled = false;
+
+        const hydrateFromActiveOrder = async () => {
+            try {
+                const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+                const res = await fetch(`/api/order/status/${activeOrderId}${tokenParam}`, { cache: 'no-store' });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                const order = data?.order || {};
+                const isCarOrder = String(order?.deliveryType || '').trim().toLowerCase() === 'car-order' || order?.isCarOrder === true;
+                if (!isCarOrder || cancelled) return;
+
+                const restoredDetails = {
+                    carSpot: order?.carSpot || carSpotFromUrl || null,
+                    carDetails: order?.carDetails || '',
+                    phone: order?.customerPhone || localStorage.getItem('customerPhone') || '',
+                    dineInTabId: order?.dineInTabId || order?.tabId || tabIdFromUrl || null,
+                    dineInToken: order?.dineInToken || null
+                };
+
+                setDeliveryType('car-order');
+                setCarOrderDetails((prev) => ({ ...(prev || {}), ...restoredDetails }));
+
+                const savedCart = safeReadCart(restaurantId);
+                safeWriteCart(restaurantId, {
+                    ...savedCart,
+                    deliveryType: 'car-order',
+                    carSpot: restoredDetails.carSpot,
+                    carDetails: restoredDetails.carDetails,
+                    phone: restoredDetails.phone,
+                    dineInTabId: restoredDetails.dineInTabId,
+                    dineInToken: restoredDetails.dineInToken
+                });
+                if (restoredDetails.phone) {
+                    localStorage.setItem('customerPhone', restoredDetails.phone);
+                }
+            } catch (err) {
+                console.warn('[Order Page] Car-order fallback hydration failed:', err?.message || err);
+            }
+        };
+
+        hydrateFromActiveOrder();
+        return () => { cancelled = true; };
+    }, [restaurantId, tableIdFromUrl, activeOrderId, token, tabIdFromUrl, carSpotFromUrl, orderTypeFromUrl, deliveryTypeFromUrl, isCarSessionFromUrl, deliveryType, carOrderDetails]);
+
+    // Keep car-order context stable when returning via Add More from track page.
+    useEffect(() => {
+        if (!restaurantId || tableIdFromUrl) return;
+
+        const isLiveCarOrder = String(liveOrder?.deliveryType || '').trim().toLowerCase() === 'car-order';
+        if (!isLiveCarOrder) return;
+
+        const savedCart = safeReadCart(restaurantId);
+        const nextDetails = {
+            carSpot: liveOrder?.carSpot || savedCart?.carSpot || carSpotFromUrl || null,
+            carDetails: liveOrder?.carDetails || savedCart?.carDetails || carOrderDetails?.carDetails || '',
+            phone: liveOrder?.customerPhone || liveOrder?.phone || savedCart?.phone || carOrderDetails?.phone || localStorage.getItem('customerPhone') || '',
+            dineInTabId: liveOrder?.dineInTabId || liveOrder?.tabId || savedCart?.dineInTabId || carOrderDetails?.dineInTabId || tabIdFromUrl || null,
+            dineInToken: liveOrder?.dineInToken || savedCart?.dineInToken || carOrderDetails?.dineInToken || null
+        };
+
+        setDeliveryType('car-order');
+
+        if (nextDetails.carSpot || nextDetails.carDetails || nextDetails.dineInTabId) {
+            setCarOrderDetails(nextDetails);
+        }
+
+        const mergedCart = { ...savedCart, deliveryType: 'car-order' };
+        if (nextDetails.carSpot) mergedCart.carSpot = nextDetails.carSpot;
+        if (nextDetails.carDetails) mergedCart.carDetails = nextDetails.carDetails;
+        if (nextDetails.phone) mergedCart.phone = nextDetails.phone;
+        if (nextDetails.dineInTabId) mergedCart.dineInTabId = nextDetails.dineInTabId;
+        if (nextDetails.dineInToken) mergedCart.dineInToken = nextDetails.dineInToken;
+        safeWriteCart(restaurantId, mergedCart);
+
+        if (nextDetails.phone) {
+            localStorage.setItem('customerPhone', nextDetails.phone);
+        }
+    }, [liveOrder, restaurantId, tableIdFromUrl, tabIdFromUrl, carSpotFromUrl, carOrderDetails]);
 
     // ✅ Auto-open address selector for WhatsApp users (EXACTLY ONCE on first load)
     // Placed HERE after deliveryType state is loaded from cart
@@ -1928,13 +2220,30 @@ const OrderPageInternal = () => {
         if (!restaurantId || loading || !isTokenValid) return;
 
         const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
+        const existingCart = safeReadCart(restaurantId);
+        const resolvedCarDineInTabId =
+            carOrderDetails?.dineInTabId ||
+            existingCart?.dineInTabId ||
+            activeTabInfo?.id ||
+            null;
+        const resolvedCarPhone =
+            carOrderDetails?.phone ||
+            existingCart?.phone ||
+            localStorage.getItem('customerPhone') ||
+            phone ||
+            '';
+        const resolvedCarDineInToken =
+            carOrderDetails?.dineInToken ||
+            existingCart?.dineInToken ||
+            null;
 
         const cartDataToSave = {
             cart, notes, deliveryType, restaurantId,
             restaurantName: restaurantData.name,
-            phone: phone, token: token,
+            phone: deliveryType === 'car-order' ? resolvedCarPhone : phone,
+            token: token,
             tableId: tableIdFromUrl,
-            dineInTabId: activeTabInfo.id,
+            dineInTabId: deliveryType === 'car-order' ? resolvedCarDineInTabId : activeTabInfo.id,
             pax_count: activeTabInfo.pax_count,
             tab_name: activeTabInfo.name,
             deliveryCharge: restaurantData.deliveryCharge,
@@ -1959,6 +2268,13 @@ const OrderPageInternal = () => {
             convenienceFeeRate: restaurantData.convenienceFeeRate,
             convenienceFeePaidBy: restaurantData.convenienceFeePaidBy,
             convenienceFeeLabel: restaurantData.convenienceFeeLabel,
+            ...(deliveryType === 'car-order' && {
+                carSpot: carOrderDetails?.carSpot || existingCart?.carSpot || carSpotFromUrl || null,
+                carDetails: carOrderDetails?.carDetails || existingCart?.carDetails || null,
+                dineInToken: resolvedCarDineInToken,
+                pax_count: 1,
+                tab_name: existingCart?.tab_name || carOrderDetails?.carDetails || 'Car Guest'
+            }),
         };
         safeWriteCart(restaurantId, cartDataToSave);
 
@@ -1987,7 +2303,7 @@ const OrderPageInternal = () => {
             localStorage.setItem(liveOrderKey, JSON.stringify([...withoutCurrent, currentOrder]));
         }
 
-    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder, storedOrders]);
+    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder, storedOrders, carOrderDetails, carSpotFromUrl]);
 
     const searchPlaceholder = useMemo(() => {
         return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
@@ -2104,6 +2420,18 @@ const OrderPageInternal = () => {
                 type: 'warning'
             });
             setIsDineInModalOpen(true); // Force modal open
+            return;
+        }
+
+        // ✅ NEW: Block item selection for car orders if details not provided
+        if (deliveryType === 'car-order' && !carOrderDetails) {
+            setInfoDialog({
+                isOpen: true,
+                title: "Car Details Required",
+                message: "Please enter your mobile number and car details to proceed.",
+                type: 'warning'
+            });
+            setIsCarOrderModalOpen(true); // Force modal open
             return;
         }
 
@@ -2269,6 +2597,18 @@ const OrderPageInternal = () => {
     const handleCheckout = () => {
         const effectiveDeliveryType = tableIdFromUrl ? 'dine-in' : deliveryType;
 
+        // Force persist car-order type to localStorage before navigation
+        if (effectiveDeliveryType === 'car-order') {
+            const savedData = safeReadCart(restaurantId);
+            savedData.deliveryType = 'car-order';
+            if (carOrderDetails?.carSpot) savedData.carSpot = carOrderDetails.carSpot;
+            if (carOrderDetails?.carDetails) savedData.carDetails = carOrderDetails.carDetails;
+            if (carOrderDetails?.phone) savedData.phone = carOrderDetails.phone;
+            if (carOrderDetails?.dineInTabId) savedData.dineInTabId = carOrderDetails.dineInTabId;
+            if (carOrderDetails?.dineInToken) savedData.dineInToken = carOrderDetails.dineInToken;
+            safeWriteCart(restaurantId, savedData);
+        }
+
         if (effectiveDeliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
             setInfoDialog({
                 isOpen: true,
@@ -2294,6 +2634,16 @@ const OrderPageInternal = () => {
             const tabId = tabIdFromUrl || activeTabInfo.id;
             if (tabId) {
                 params.set('tabId', tabId);
+            }
+        } else if (effectiveDeliveryType === 'car-order') {
+            const carSessionTabId = String(
+                carOrderDetails?.dineInTabId ||
+                activeTabInfo?.id ||
+                safeReadCart(restaurantId)?.dineInTabId ||
+                ''
+            ).trim();
+            if (carSessionTabId) {
+                params.set('tabId', carSessionTabId);
             }
         }
         // ✅ Keep liveOrder for Track button (works for ALL business types)
@@ -2325,6 +2675,15 @@ const OrderPageInternal = () => {
             // Using 'set' avoids duplicates.
             const activeToken = liveOrder.trackingToken || token;
             if (activeToken) params.set('token', activeToken);
+            if (effectiveDeliveryType === 'car-order') {
+                const activeTab = String(liveOrder?.dineInTabId || liveOrder?.tabId || '').trim();
+                if (activeTab) params.set('tabId', activeTab);
+            }
+        }
+
+        // Pass deliveryType explicitly for car-order debugging/redundancy
+        if (effectiveDeliveryType === 'car-order') {
+            params.set('deliveryType', 'car-order');
         }
 
         // Route to appropriate page based on delivery type
@@ -2440,13 +2799,12 @@ const OrderPageInternal = () => {
         // ✅ FIX: Route based on delivery type stored in liveOrder
         const orderDeliveryType = liveOrder.deliveryType || 'delivery';
 
-        if (orderDeliveryType === 'dine-in') {
+        if (orderDeliveryType === 'dine-in' || orderDeliveryType === 'car-order') {
             const trackingToken = liveOrder.trackingToken || token;
             if (!trackingToken) return null;
 
             const params = new URLSearchParams();
             params.set('token', trackingToken);
-            if (ref) params.set('ref', ref);
 
             const tableParam = liveOrder.tableId || liveOrder.table || tableIdFromUrl;
             if (tableParam) params.set('table', tableParam);
@@ -2563,6 +2921,14 @@ const OrderPageInternal = () => {
                     isEditing={isEditingModal}
                     onUpdateTab={handleUpdateTab}
                 />
+                {/* ✅ Car Order Modal */}
+                <CarOrderModal
+                    isOpen={isCarOrderModalOpen}
+                    onClose={() => setIsCarOrderModalOpen(false)}
+                    onConfirm={handleCarOrderConfirm}
+                    carSpot={carSpotFromUrl}
+                />
+
                 <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
                 <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
 
@@ -2788,7 +3154,12 @@ const OrderPageInternal = () => {
 
 
                     {
-                        restaurantData.businessType !== 'street-vendor' && !tableIdFromUrl && (
+                        restaurantData.businessType !== 'street-vendor' &&
+                        !tableIdFromUrl &&
+                        deliveryType !== 'car-order' &&
+                        orderTypeFromUrl !== 'car' &&
+                        deliveryTypeFromUrl !== 'car-order' &&
+                        !isCarSessionFromUrl && (
                             <div className="bg-card p-4 rounded-lg border border-border">
                                 <div className="flex bg-muted p-1 rounded-lg">
                                     {restaurantData.deliveryEnabled && (
@@ -2834,6 +3205,37 @@ const OrderPageInternal = () => {
                                         </div>
                                     ) : null}
                                 </div>
+                            </div>
+                        )
+                    }
+                    {/* ✅ Car Order Info Block (Replacing Header) */}
+                    {
+                        deliveryType === 'car-order' && carOrderDetails && (
+                            <div className="bg-card p-4 rounded-lg border border-border shadow-sm flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-primary/10 p-2.5 rounded-full">
+                                        <Car className="text-primary h-6 w-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                            Car Order
+                                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20 uppercase tracking-wide font-bold">
+                                                {carOrderDetails.carSpot || 'No Spot'}
+                                            </span>
+                                        </h2>
+                                        <p className="text-sm text-muted-foreground font-medium">
+                                            {carOrderDetails.carDetails} • {carOrderDetails.phone}
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setIsCarOrderModalOpen(true)}
+                                    className="gap-1 text-primary hover:text-primary hover:bg-primary/10"
+                                >
+                                    <Edit2 className="h-4 w-4" /> Edit
+                                </Button>
                             </div>
                         )
                     }

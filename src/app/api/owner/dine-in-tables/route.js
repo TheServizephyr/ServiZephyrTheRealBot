@@ -352,6 +352,17 @@ export async function GET(req) {
 
         const finalTablesData = Array.from(tableMap.values());
 
+        // ✅ Fetch car orders separately (Firestore doesn't support OR queries)
+        const carOrdersQuery = firestore.collection('orders')
+            .where('restaurantId', '==', businessRef.id)
+            .where('deliveryType', '==', 'car-order')
+            .where('status', 'not-in', ['picked_up', 'rejected', 'cancelled']);
+
+        const carOrdersSnap = await carOrdersQuery.get();
+        const carOrders = carOrdersSnap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(o => o.cleaned !== true);
+
         // Fetch other data as before
         const serviceRequestsSnap = await businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get();
         const serviceRequests = serviceRequestsSnap.docs.map(doc => ({ ...doc.data(), createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString() }));
@@ -361,7 +372,7 @@ export async function GET(req) {
         const closedTabsSnap = await closedTabsQuery.get();
         const closedTabs = closedTabsSnap.docs.map(doc => ({ ...doc.data(), closedAt: doc.data().closedAt.toDate().toISOString() }));
 
-        return NextResponse.json({ tables: finalTablesData, serviceRequests, closedTabs }, { status: 200 });
+        return NextResponse.json({ tables: finalTablesData, serviceRequests, closedTabs, carOrders }, { status: 200 });
 
     } catch (error) {
         console.error("[API dine-in-tables] CRITICAL GET ERROR:", error);
