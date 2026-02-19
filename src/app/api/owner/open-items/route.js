@@ -58,24 +58,42 @@ export async function POST(req) {
         }
 
         const firestore = await getFirestore();
-        const newItem = {
-            id: `open-item-${Date.now()}`,
-            name: name.trim(),
-            price: itemPrice,
-            createdAt: new Date(),
-        };
-
         const businessRef = firestore.collection(collectionName).doc(businessId);
-        const businessSnap = await businessRef.get();
-        if (!businessSnap.exists) {
-            return NextResponse.json({ error: 'Business not found' }, { status: 404 });
-        }
 
-        await businessRef.update({
-            openItems: admin.firestore.FieldValue.arrayUnion(newItem),
+        const payload = await firestore.runTransaction(async (tx) => {
+            const businessSnap = await tx.get(businessRef);
+            if (!businessSnap.exists) {
+                throw Object.assign(new Error('Business not found'), { status: 404 });
+            }
+
+            const existingItems = Array.isArray(businessSnap.data()?.openItems) ? businessSnap.data().openItems : [];
+            const normalizedName = name.trim().toLowerCase();
+            const duplicate = existingItems.find((item) => {
+                const existingName = String(item?.name || '').trim().toLowerCase();
+                const existingPrice = Number(item?.price || 0);
+                return existingName === normalizedName && existingPrice === itemPrice;
+            });
+
+            if (duplicate) {
+                return { item: duplicate, duplicate: true };
+            }
+
+            const newItem = {
+                id: `open-item-${Date.now()}`,
+                name: name.trim(),
+                price: itemPrice,
+                createdAt: new Date(),
+            };
+
+            tx.update(businessRef, {
+                openItems: admin.firestore.FieldValue.arrayUnion(newItem),
+                // Keep menu caches in sync (custom bill/menu page use menuVersion for cache invalidation)
+                menuVersion: admin.firestore.FieldValue.increment(1),
+            });
+            return { item: newItem, duplicate: false };
         });
 
-        return NextResponse.json({ item: newItem }, { status: 201 });
+        return NextResponse.json(payload, { status: payload.duplicate ? 200 : 201 });
     } catch (error) {
         console.error('[POST /api/owner/open-items]', error);
         return NextResponse.json(
@@ -124,6 +142,8 @@ export async function DELETE(req) {
 
         await businessRef.update({
             openItems: admin.firestore.FieldValue.arrayRemove(itemToDelete),
+            // Keep menu caches in sync (custom bill/menu page use menuVersion for cache invalidation)
+            menuVersion: admin.firestore.FieldValue.increment(1),
         });
 
         return NextResponse.json({ success: true });

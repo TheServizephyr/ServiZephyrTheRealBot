@@ -16,11 +16,16 @@ import { createOrderV1 } from './legacy/createOrderV1_LEGACY';
 import { createOrderV2 } from '@/services/orderService';
 
 export async function POST(req) {
+    const startedAt = Date.now();
     if (FEATURE_FLAGS.USE_NEW_ORDER_SERVICE) {
         console.log('[Order Create API] 🆕 Using V2 (Service Layer)');
-        return await createOrderV2(req);
+        const response = await createOrderV2(req);
+        console.log(`[Order Create API] ✅ V2 completed in ${Date.now() - startedAt}ms`);
+        return response;
     }
 
     console.log('[Order Create API] 📦 Using V1 (Legacy Implementation)');
-    return await createOrderV1(req);
+    const response = await createOrderV1(req);
+    console.log(`[Order Create API] ✅ V1 completed in ${Date.now() - startedAt}ms`);
+    return response;
 }

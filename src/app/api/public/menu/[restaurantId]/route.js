@@ -3,16 +3,86 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
+import { trackEndpointRead } from '@/lib/readTelemetry';
 
 export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
+const BUSINESS_COLLECTION_CACHE_TTL_SECONDS = 60 * 60; // 1 hour
 const isMenuApiDebugEnabled = process.env.DEBUG_MENU_API === 'true';
 const debugLog = (...args) => {
     if (isMenuApiDebugEnabled) {
         console.log(...args);
     }
 };
+
+async function resolveBusinessWithCollectionCache({ firestore, restaurantId, isKvAvailable }) {
+    const collectionsToTry = ['restaurants', 'street_vendors', 'shops'];
+    const cacheKey = `business_collection:${restaurantId}`;
+
+    if (isKvAvailable) {
+        try {
+            const cachedCollection = await kv.get(cacheKey);
+            if (cachedCollection && collectionsToTry.includes(cachedCollection)) {
+                const cachedDocRef = firestore.collection(cachedCollection).doc(restaurantId);
+                const cachedDocSnap = await cachedDocRef.get();
+                if (cachedDocSnap.exists) {
+                    return {
+                        winner: {
+                            collectionName: cachedCollection,
+                            businessRef: cachedDocRef,
+                            businessData: cachedDocSnap.data(),
+                            version: cachedDocSnap.data().menuVersion || 1
+                        },
+                        foundDocs: [{
+                            collectionName: cachedCollection,
+                            businessRef: cachedDocRef,
+                            businessData: cachedDocSnap.data(),
+                            version: cachedDocSnap.data().menuVersion || 1
+                        }],
+                        usedCollectionCache: true
+                    };
+                }
+            }
+        } catch (cacheErr) {
+            console.warn(`[Menu API] Collection cache read failed for ${restaurantId}:`, cacheErr?.message || cacheErr);
+        }
+    }
+
+    const results = await Promise.all(
+        collectionsToTry.map(async (name) => {
+            const docRef = firestore.collection(name).doc(restaurantId);
+            const docSnap = await docRef.get();
+            return { name, docRef, docSnap };
+        })
+    );
+
+    const foundDocs = results
+        .filter(r => r.docSnap.exists)
+        .map(r => ({
+            collectionName: r.name,
+            businessRef: r.docRef,
+            businessData: r.docSnap.data(),
+            version: r.docSnap.data().menuVersion || 1
+        }));
+
+    if (foundDocs.length === 0) {
+        return { winner: null, foundDocs: [], usedCollectionCache: false };
+    }
+
+    foundDocs.sort((a, b) => b.version - a.version);
+    const winner = foundDocs[0];
+
+    if (isKvAvailable) {
+        try {
+            await kv.set(cacheKey, winner.collectionName, { ex: BUSINESS_COLLECTION_CACHE_TTL_SECONDS });
+        } catch (cacheErr) {
+            console.warn(`[Menu API] Collection cache write failed for ${restaurantId}:`, cacheErr?.message || cacheErr);
+        }
+    }
+
+    return { winner, foundDocs, usedCollectionCache: false };
+}
 
 export async function GET(req, { params }) {
     const { restaurantId } = params;
@@ -30,47 +100,29 @@ export async function GET(req, { params }) {
     const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
 
     try {
-        // STEP 1: Fetch restaurant/vendor doc to get menuVersion
-        // STEP 1: Smart Resolve - Fetch from ALL potential collections to handle duplicates/migrations
-        // We prioritize the one with the highest menuVersion (most recently updated)
-        const collectionsToTry = ['restaurants', 'street_vendors', 'shops'];
-        const results = await Promise.all(
-            collectionsToTry.map(async (name) => {
-                const docRef = firestore.collection(name).doc(restaurantId);
-                const docSnap = await docRef.get();
-                return { name, docSnap };
-            })
-        );
+        // STEP 1: Resolve business collection (cache-first, fallback to multi-collection lookup)
+        const { winner, foundDocs, usedCollectionCache } = await resolveBusinessWithCollectionCache({
+            firestore,
+            restaurantId,
+            isKvAvailable
+        });
 
-        // Filter valid docs
-        const foundDocs = results
-            .filter(r => r.docSnap.exists)
-            .map(r => ({
-                collectionName: r.name,
-                businessRef: r.docSnap.ref,
-                businessData: r.docSnap.data(),
-                version: r.docSnap.data().menuVersion || 1
-            }));
-
-        if (foundDocs.length === 0) {
+        if (!winner) {
             debugLog(`[Menu API] ❌ Business not found for ${restaurantId} in any collection`);
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
-        // Sort by version descending (Highest version = Most recently updated = WINNER)
-        foundDocs.sort((a, b) => b.version - a.version);
-
-        // Pick the winner
-        const winner = foundDocs[0];
         let businessData = winner.businessData;
         let businessRef = winner.businessRef;
         let collectionName = winner.collectionName;
         let menuVersion = winner.version;
 
-        if (foundDocs.length > 1) {
+        if (!usedCollectionCache && foundDocs.length > 1) {
             console.warn(`[Menu API] ⚠️ DUPLICATE DATA DETECTED for ${restaurantId}`);
             foundDocs.forEach(d => debugLog(`   - Found in ${d.collectionName} (v${d.version})`));
             debugLog(`   ✅ Selected winner: ${collectionName} (v${menuVersion})`);
+        } else if (usedCollectionCache) {
+            debugLog(`[Menu API] ✅ Collection cache hit: ${collectionName} (v${menuVersion})`);
         } else {
             debugLog(`[Menu API] ✅ Found active business in ${collectionName} (v${menuVersion})`);
         }
@@ -98,6 +150,7 @@ export async function GET(req, { params }) {
                 debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
                 debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
                 const payload = { ...cachedData, isOpen: effectiveIsOpen };
+                await trackEndpointRead('api.public.menu', 1);
 
                 return NextResponse.json(payload, {
                     status: 200,
@@ -139,6 +192,13 @@ export async function GET(req, { params }) {
         // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
         const customCatSnap = await businessRef.collection('custom_categories').orderBy('order', 'asc').get();
         const customCategories = customCatSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const estimatedReads =
+            1 + // business doc lookup
+            (menuSnap?.size || 0) +
+            (couponsSnap?.size || 0) +
+            (customCatSnap?.size || 0) +
+            1; // delivery_settings doc
+        await trackEndpointRead('api.public.menu', estimatedReads);
 
         const restaurantCategoryConfig = {
             "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },

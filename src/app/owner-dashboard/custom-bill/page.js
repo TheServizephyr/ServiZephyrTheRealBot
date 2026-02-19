@@ -21,6 +21,18 @@ import { connectSerialPrinter, printSerialData } from '@/services/printer/webSer
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const createBillDraftId = () => `cb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 const formatCategoryLabel = (categoryId = '') => String(categoryId).replace(/-/g, ' ').trim();
+const dedupeOpenItems = (items = []) => {
+    if (!Array.isArray(items)) return [];
+    const seen = new Set();
+    const result = [];
+    for (const item of items) {
+        const key = `${String(item?.name || '').trim().toLowerCase()}|${Number(item?.price || 0)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(item);
+    }
+    return result;
+};
 const isEditableTarget = (target) => {
     if (!target || !(target instanceof HTMLElement)) return false;
     const tagName = target.tagName;
@@ -59,6 +71,8 @@ function CustomBillPage() {
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
+    const [cacheStatus, setCacheStatus] = useState('checking');
+    const hasHydratedFromCacheRef = useRef(false);
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
     const searchInputRef = useRef(null);
@@ -72,12 +86,64 @@ function CustomBillPage() {
         : employeeOfOwnerId
             ? `/owner-dashboard/custom-bill-history?employee_of=${encodeURIComponent(employeeOfOwnerId)}`
             : '/owner-dashboard/custom-bill-history';
+    const cacheKey = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_custom_bill_cache_v2_${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const buildScopedUrl = useCallback((endpoint) => {
+        const url = new URL(endpoint, window.location.origin);
+        if (impersonatedOwnerId) {
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
+        }
+        return url.toString();
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const readCachedPayload = useCallback(() => {
+        try {
+            const raw = localStorage.getItem(cacheKey);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed?.data ? parsed : null;
+        } catch {
+            return null;
+        }
+    }, [cacheKey]);
+
+    const writeCachedPayload = useCallback((data = {}) => {
+        try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+                ts: Date.now(),
+                data,
+            }));
+        } catch {
+            // Ignore storage errors
+        }
+    }, [cacheKey]);
 
     // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
         onAfterPrint: () => setIsBillModalOpen(false), // Close modal after printing
     });
+
+    useEffect(() => {
+        if (hasHydratedFromCacheRef.current) return;
+        hasHydratedFromCacheRef.current = true;
+        const cached = readCachedPayload();
+        if (!cached) {
+            setCacheStatus('empty');
+            return;
+        }
+        const payload = cached.data || {};
+        if (payload.menu && typeof payload.menu === 'object') setMenu(payload.menu);
+        if (Array.isArray(payload.openItems)) setOpenItems(dedupeOpenItems(payload.openItems));
+        if (payload.restaurant) setRestaurant(payload.restaurant);
+        setCacheStatus('local-hit');
+        setLoading(false);
+    }, [readCachedPayload]);
 
     useEffect(() => {
         let isMounted = true;
@@ -89,69 +155,138 @@ function CustomBillPage() {
                 if (!user) throw new Error("Authentication required.");
                 const idToken = await user.getIdToken();
 
-                const menuUrl = accessQuery ? `/api/owner/menu?compact=1&${accessQuery}` : '/api/owner/menu?compact=1';
-                const settingsUrl = accessQuery ? `/api/owner/settings?${accessQuery}` : '/api/owner/settings';
                 const headers = { 'Authorization': `Bearer ${idToken}` };
+                const menuUrl = buildScopedUrl('/api/owner/menu?compact=1&includeOpenItems=1');
+                const settingsUrl = buildScopedUrl('/api/owner/settings');
+                const versionUrl = buildScopedUrl('/api/owner/menu?versionOnly=1');
+
+                const cached = readCachedPayload();
+                let shouldFetchFullMenu = true;
+                try {
+                    const versionRes = await fetch(versionUrl, { headers });
+                    if (versionRes.ok) {
+                        const versionData = await versionRes.json();
+                        const latestVersion = Number(versionData?.menuVersion || 0);
+                        const cachedVersion = Number(cached?.data?.menuVersion ?? -1);
+                        if (
+                            cached &&
+                            cachedVersion === latestVersion &&
+                            cached?.data?.menu &&
+                            typeof cached.data.menu === 'object'
+                        ) {
+                            setMenu(cached.data.menu || {});
+                            setOpenItems(Array.isArray(cached.data.openItems) ? dedupeOpenItems(cached.data.openItems) : []);
+                            if (cached?.data?.restaurant) setRestaurant(cached.data.restaurant);
+                            setCacheStatus('version-hit');
+                            setLoading(false);
+                            shouldFetchFullMenu = false;
+                        }
+                    }
+                } catch {
+                    // Version check failure should not block menu loading.
+                    setCacheStatus('check-failed');
+                }
+
+                if (!shouldFetchFullMenu) {
+                    const settingsPromise = fetch(settingsUrl, { headers });
+                    // Keep settings fresh in background when menu version is unchanged.
+                    try {
+                        const settingsRes = await settingsPromise;
+                        if (settingsRes.ok && isMounted) {
+                            const settingsData = await settingsRes.json();
+                            const nextRestaurantPayload = {
+                                name: settingsData.restaurantName,
+                                address: settingsData.address,
+                                gstin: settingsData.gstin,
+                                gstEnabled: !!settingsData.gstEnabled,
+                                gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
+                                gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
+                            };
+                            setRestaurant(nextRestaurantPayload);
+                            writeCachedPayload({
+                                ...(cached?.data || {}),
+                                restaurant: nextRestaurantPayload,
+                            });
+                        }
+                    } catch {
+                        // Non-blocking
+                    }
+                    return;
+                }
 
                 const menuPromise = fetch(menuUrl, { headers });
                 const settingsPromise = fetch(settingsUrl, { headers });
-
-                settingsPromise
-                    .then(async (settingsRes) => {
-                        if (!settingsRes.ok) {
-                            const settingsError = await settingsRes.json().catch(() => ({}));
-                            throw new Error(settingsError?.message || 'Failed to fetch settings.');
-                        }
-                        const settingsData = await settingsRes.json();
-                        if (!isMounted) return;
-                        setRestaurant({
-                            name: settingsData.restaurantName,
-                            address: settingsData.address,
-                            gstin: settingsData.gstin,
-                            gstEnabled: !!settingsData.gstEnabled,
-                            gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
-                            gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
-                        });
-                    })
-                    .catch((settingsError) => {
-                        if (!isMounted) return;
-                        setInfoDialog((prev) => {
-                            if (prev.isOpen) return prev;
-                            return {
-                                isOpen: true,
-                                title: 'Warning',
-                                message: `Menu loaded, but restaurant details could not load: ${settingsError.message}`,
-                            };
-                        });
-                    });
-
                 const menuRes = await menuPromise;
+
                 if (!menuRes.ok) {
                     const menuError = await menuRes.json().catch(() => ({}));
                     throw new Error(menuError?.message || 'Failed to fetch menu.');
                 }
 
                 const menuData = await menuRes.json();
+                const restaurantPayload = null;
+
+                const openItemsData = { items: Array.isArray(menuData.openItems) ? menuData.openItems : [] };
+
                 if (isMounted) {
                     setMenu(menuData.menu || {});
-                }
-
-                // Fetch open items from Firestore
-                const openItemsUrl = accessQuery ? `/api/owner/open-items?${accessQuery}` : '/api/owner/open-items';
-                try {
-                    const openItemsRes = await fetch(openItemsUrl, { headers });
-                    if (openItemsRes.ok) {
-                        const openItemsData = await openItemsRes.json();
-                        if (isMounted) {
-                            setOpenItems(openItemsData.items || []);
-                        }
+                    setOpenItems(dedupeOpenItems(openItemsData.items || []));
+                    // Unblock UI as soon as menu is ready; settings can hydrate in background.
+                    setCacheStatus('network-refresh');
+                    setLoading(false);
+                    if (restaurantPayload) {
+                        setRestaurant(restaurantPayload);
                     }
-                } catch (error) {
-                    console.warn('Could not fetch open items:', error);
                 }
 
+                    writeCachedPayload({
+                        menu: menuData.menu || {},
+                        openItems: dedupeOpenItems(openItemsData.items || []),
+                        restaurant: restaurantPayload,
+                        menuVersion: Number(menuData?.menuVersion || 0),
+                    });
+
+                // Hydrate settings after menu render (non-blocking for menu UI).
+                try {
+                    const settingsRes = await settingsPromise;
+                    if (!isMounted) return;
+                    if (!settingsRes.ok) {
+                        const settingsError = await settingsRes.json().catch(() => ({}));
+                        setInfoDialog((prev) => {
+                            if (prev.isOpen) return prev;
+                            return {
+                                isOpen: true,
+                                title: 'Warning',
+                                message: `Menu loaded, but restaurant details could not load: ${settingsError?.message || 'Failed to fetch settings.'}`,
+                            };
+                        });
+                        return;
+                    }
+
+                    const settingsData = await settingsRes.json();
+                    const nextRestaurantPayload = {
+                        name: settingsData.restaurantName,
+                        address: settingsData.address,
+                        gstin: settingsData.gstin,
+                        gstEnabled: !!settingsData.gstEnabled,
+                        gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
+                        gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
+                    };
+                    if (isMounted) setRestaurant(nextRestaurantPayload);
+
+                    writeCachedPayload({
+                        ...(readCachedPayload()?.data || {}),
+                        menu: menuData.menu || {},
+                        openItems: dedupeOpenItems(openItemsData.items || []),
+                        restaurant: nextRestaurantPayload,
+                        menuVersion: Number(menuData?.menuVersion || 0),
+                    });
+                } catch {
+                    // Settings request is non-blocking; ignore failures here.
+                }
             } catch (error) {
                 if (isMounted) {
+                    setCacheStatus('error');
                     setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load menu: ${error.message}` });
                 }
             } finally {
@@ -170,7 +305,7 @@ function CustomBillPage() {
             isMounted = false;
             unsubscribe();
         };
-    }, [accessQuery]);
+    }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload]);
 
     // Compute normalized search query
     const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
@@ -712,7 +847,7 @@ function CustomBillPage() {
     };
 
     return (
-        <div className="text-foreground bg-background min-h-screen">
+        <div className="text-foreground bg-background min-h-screen overflow-y-auto lg:min-h-0 lg:h-[calc(100dvh-88px)] lg:overflow-hidden">
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
@@ -862,12 +997,15 @@ function CustomBillPage() {
                 }
             `}</style>
 
-            <div className="grid grid-cols-1 lg:grid-cols-10 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 lg:h-full lg:overflow-hidden">
                 {/* Left Side: Menu Selection (70%) */}
-                <div className="lg:col-span-7 bg-card border border-border rounded-xl p-3">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="flex items-center gap-2 whitespace-nowrap">
+                <div className="lg:col-span-7 bg-card border border-border rounded-xl p-3 flex flex-col h-full lg:min-h-0">
+                    <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center flex-wrap gap-2">
                             <h1 className="text-lg font-bold tracking-tight">Manual Billing</h1>
+                            <span className="text-[10px] px-2 py-1 rounded-full border border-border text-muted-foreground">
+                                Cache: {cacheStatus}
+                            </span>
                             <Link href={historyUrl}>
                                 <Button
                                     type="button"
@@ -878,40 +1016,44 @@ function CustomBillPage() {
                                 </Button>
                             </Link>
                         </div>
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                            <input
-                                ref={searchInputRef}
-                                type="text"
-                                placeholder="Search menu..."
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 h-10 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                            />
+                        <div className="w-full grid grid-cols-[1fr_auto_auto] gap-2 sm:w-auto sm:flex sm:items-center">
+                            <div className="relative min-w-0">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    placeholder="Search menu..."
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className="w-full min-w-0 pl-9 pr-4 py-2 h-10 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                />
+                            </div>
+                            <Button
+                                onClick={handleClear}
+                                disabled={cart.length === 0}
+                                variant="outline"
+                                className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-destructive/60 text-destructive hover:bg-destructive/10 font-bold transition-all shadow-sm"
+                                title="Clear entire cart"
+                            >
+                                <Trash2 size={16} />
+                                <span className="hidden sm:inline">Clear</span>
+                            </Button>
+                            <Button
+                                onClick={handleUndo}
+                                disabled={itemHistory.length === 0}
+                                variant="outline"
+                                className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-primary/60 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
+                                title="Undo last item added"
+                            >
+                                <RotateCcw size={16} />
+                                <span className="hidden sm:inline">Undo</span>
+                            </Button>
                         </div>
-                        <Button
-                            onClick={handleClear}
-                            disabled={cart.length === 0}
-                            variant="outline"
-                            className="h-10 px-4 gap-2 border-2 border-destructive/60 text-destructive hover:bg-destructive/10 font-bold transition-all shadow-sm whitespace-nowrap"
-                            title="Clear entire cart"
-                        >
-                            <Trash2 size={16} /> Clear
-                        </Button>
-                        <Button
-                            onClick={handleUndo}
-                            disabled={itemHistory.length === 0}
-                            variant="outline"
-                            className="h-10 px-4 gap-2 border-2 border-primary/60 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm whitespace-nowrap"
-                            title="Undo last item added"
-                        >
-                            <RotateCcw size={16} /> Undo
-                        </Button>
                     </div>
 
-                    <div className="flex gap-4 h-[70vh]">
+                    <div className="flex gap-4 flex-1 min-h-0">
                         {/* CATEGORY NAVIGATION SIDEBAR */}
-                        <div className="w-1/4 flex-shrink-0 border-r border-border pr-2 overflow-y-auto custom-scrollbar hidden md:block">
+                        <div className="w-1/4 flex-shrink-0 border-r border-border pr-2 overflow-y-auto overscroll-contain custom-scrollbar hidden md:block">
                             <div className="space-y-1">
                                 {visibleMenuEntries.map(([categoryId]) => (
                                     <button
@@ -933,7 +1075,7 @@ function CustomBillPage() {
                         {/* ITEM LIST */}
                         <div
                             ref={scrollContainerRef}
-                            className="flex-grow overflow-y-auto pr-2 custom-scrollbar"
+                            className="flex-grow min-h-0 overflow-y-auto overscroll-contain pr-2 custom-scrollbar"
                         >
                             {loading ? (
                                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
@@ -1034,7 +1176,7 @@ function CustomBillPage() {
                 </div>
 
                 {/* Right Side: Live Bill Preview (30%) */}
-                <div className="lg:col-span-3 flex flex-col gap-4">
+                <div className="lg:col-span-3 flex flex-col gap-4 h-full lg:min-h-0 overflow-y-auto overscroll-contain pr-1">
                     <div className="bg-card border border-border rounded-xl p-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="space-y-2">
@@ -1065,8 +1207,8 @@ function CustomBillPage() {
                         </div>
                     </div>
 
-                    <div className="bg-card border border-border rounded-xl flex-grow flex flex-col">
-                        <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
+                    <div className="bg-card border border-border rounded-xl flex-grow flex flex-col min-h-0">
+                        <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow">
                             <div ref={billPrintRef} className="preview-bill">
                                 <BillToPrint
                                     order={{ orderDate: new Date() }}

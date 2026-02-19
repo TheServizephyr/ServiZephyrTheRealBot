@@ -1186,12 +1186,12 @@ const OrderPageInternal = () => {
             const activeOrders = [];
             let latestActiveOrder = null;
 
-            for (const order of scopedOrders) {
+            const statusChecks = scopedOrders.map(async (order) => {
                 try {
                     const statusToken = order?.trackingToken || token;
                     const statusUrl = statusToken
-                        ? `/api/order/status/${order.orderId}?token=${encodeURIComponent(statusToken)}`
-                        : `/api/order/status/${order.orderId}`;
+                        ? `/api/order/status/${order.orderId}?token=${encodeURIComponent(statusToken)}&lite=1`
+                        : `/api/order/status/${order.orderId}?lite=1`;
                     const res = await fetch(statusUrl);
                     if (res.ok) {
                         const statusData = await res.json();
@@ -1200,38 +1200,47 @@ const OrderPageInternal = () => {
                         const finalStates = ['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'];
 
                         if (!finalStates.includes(status)) {
-                            const orderWithStatus = {
-                                ...order,
-                                status: status || order.status,
-                                deliveryType: latestOrder.deliveryType || order.deliveryType || 'delivery',
-                                dineInTabId: latestOrder.dineInTabId || latestOrder.tabId || order.dineInTabId || order.tabId || null,
-                                dineInToken: latestOrder.dineInToken || order.dineInToken || null,
-                                carSpot: latestOrder.carSpot || order.carSpot || null,
-                                carDetails: latestOrder.carDetails || order.carDetails || null,
-                                customerPhone: latestOrder.customerPhone || latestOrder.phone || order.customerPhone || null,
-                                customerName: latestOrder.customerName || order.customerName || null
+                            return {
+                                keep: true,
+                                order: {
+                                    ...order,
+                                    status: status || order.status,
+                                    deliveryType: latestOrder.deliveryType || order.deliveryType || 'delivery',
+                                    dineInTabId: latestOrder.dineInTabId || latestOrder.tabId || order.dineInTabId || order.tabId || null,
+                                    dineInToken: latestOrder.dineInToken || order.dineInToken || null,
+                                    carSpot: latestOrder.carSpot || order.carSpot || null,
+                                    carDetails: latestOrder.carDetails || order.carDetails || null,
+                                    customerPhone: latestOrder.customerPhone || latestOrder.phone || order.customerPhone || null,
+                                    customerName: latestOrder.customerName || order.customerName || null
+                                }
                             };
-                            activeOrders.push(orderWithStatus);
-                            latestActiveOrder = orderWithStatus;
                         }
-                    } else {
-                        if (res.status === 403) {
-                            console.log(`[Poll] Unauthorized for order ${order.orderId}, removing stale local entry.`);
-                            continue;
-                        }
-                        if (res.status === 404) {
-                            console.log(`[Poll] Order ${order.orderId} not found, removing.`);
-                        } else {
-                            activeOrders.push(order);
-                            latestActiveOrder = order;
-                        }
+                        return { keep: false };
                     }
+
+                    if (res.status === 403) {
+                        console.log(`[Poll] Unauthorized for order ${order.orderId}, removing stale local entry.`);
+                        return { keep: false };
+                    }
+
+                    if (res.status === 404) {
+                        console.log(`[Poll] Order ${order.orderId} not found, removing.`);
+                        return { keep: false };
+                    }
+
+                    return { keep: true, order };
                 } catch (e) {
                     console.error(`[Poll] Error checking ${order.orderId}`, e);
-                    activeOrders.push(order);
-                    latestActiveOrder = order;
+                    return { keep: true, order };
                 }
-            }
+            });
+
+            const statusResults = await Promise.all(statusChecks);
+            const orderedActiveOrders = statusResults
+                .filter((entry) => entry?.keep && entry.order)
+                .map((entry) => entry.order);
+            activeOrders.push(...orderedActiveOrders);
+            latestActiveOrder = orderedActiveOrders.length > 0 ? orderedActiveOrders[orderedActiveOrders.length - 1] : null;
             setStoredOrders(activeOrders);
 
             const mergedOrders = [...outOfScopeOrders, ...activeOrders];
@@ -1647,10 +1656,12 @@ const OrderPageInternal = () => {
     // Force re-fetch on every page mount by using a timestamp key
     const [fetchKey, setFetchKey] = useState(Date.now());
     const intervalRef = useRef(null);
+    const lastForegroundRefreshAtRef = useRef(0);
 
     // Auto-refresh: Immediate fetch on tab return + 2-min interval while visible
     useEffect(() => {
         const TWO_MINUTES = 2 * 60 * 1000;
+        const MIN_FOCUS_REFRESH_GAP_MS = 45 * 1000;
 
         const startInterval = () => {
             // Clear any existing interval first
@@ -1662,7 +1673,9 @@ const OrderPageInternal = () => {
             intervalRef.current = setInterval(() => {
                 if (!document.hidden) {
                     console.log('[Order Page] 2-min auto-refresh (tab visible)');
-                    setFetchKey(Date.now());
+                    const now = Date.now();
+                    lastForegroundRefreshAtRef.current = now;
+                    setFetchKey(now);
                 }
             }, TWO_MINUTES);
             console.log('[Order Page] Auto-refresh interval started');
@@ -1679,8 +1692,15 @@ const OrderPageInternal = () => {
         const handleVisibilityChange = () => {
             if (!document.hidden) {
                 // Tab became visible
-                console.log('[Order Page] Tab visible - fetching fresh data immediately');
-                setFetchKey(Date.now());
+                const now = Date.now();
+                const elapsed = now - (lastForegroundRefreshAtRef.current || 0);
+                if (elapsed >= MIN_FOCUS_REFRESH_GAP_MS) {
+                    console.log('[Order Page] Tab visible - fetching fresh data');
+                    lastForegroundRefreshAtRef.current = now;
+                    setFetchKey(now);
+                } else {
+                    console.log('[Order Page] Tab visible - skipping refresh (cooldown active)');
+                }
                 startInterval(); // Start interval for future refreshes
             } else {
                 // Tab became hidden
@@ -1690,7 +1710,9 @@ const OrderPageInternal = () => {
         };
 
         // Initial setup
-        setFetchKey(Date.now()); // Initial fetch on mount
+        const initialTs = Date.now();
+        lastForegroundRefreshAtRef.current = initialTs;
+        setFetchKey(initialTs); // Initial fetch on mount
         if (!document.hidden) {
             startInterval(); // Start interval if tab is visible
         }
@@ -2066,7 +2088,8 @@ const OrderPageInternal = () => {
         const hydrateFromActiveOrder = async () => {
             try {
                 const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
-                const res = await fetch(`/api/order/status/${activeOrderId}${tokenParam}`, { cache: 'no-store' });
+                const joinChar = tokenParam ? '&' : '?';
+                const res = await fetch(`/api/order/status/${activeOrderId}${tokenParam}${joinChar}lite=1`, { cache: 'no-store' });
                 if (!res.ok) return;
 
                 const data = await res.json();

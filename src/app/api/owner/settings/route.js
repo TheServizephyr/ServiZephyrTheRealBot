@@ -15,6 +15,7 @@ export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
         const businessIdFromQuery = searchParams.get('restaurantId') || searchParams.get('businessId');
+        const includeCoupons = ['1', 'true', 'yes'].includes(String(searchParams.get('includeCoupons') || '').toLowerCase());
 
         // This block is for public-facing queries that only need payment settings.
         if (businessIdFromQuery) {
@@ -80,30 +81,31 @@ export async function GET(req) {
                 dineInEnabled: fallback('dineInEnabled', true),
             };
 
-            // Fetch active coupons from subcollection
-            try {
-                const couponsSnap = await businessDoc.ref.collection('coupons')
-                    .where('status', '==', 'active') // Only fetch active coupons
-                    .get();
+            // Coupons fetch is optional to avoid unnecessary Firestore reads on high-traffic public pages.
+            if (includeCoupons) {
+                try {
+                    const couponsSnap = await businessDoc.ref.collection('coupons')
+                        .where('status', '==', 'active')
+                        .get();
 
-                const now = new Date();
-                const coupons = couponsSnap.docs
-                    .map(doc => {
-                        const data = doc.data();
-                        return {
-                            id: doc.id,
-                            ...data,
-                            // Ensure dates are serialized strings for JSON response
-                            startDate: data.startDate?.toDate ? data.startDate.toDate().toISOString() : data.startDate,
-                            expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
-                        };
-                    })
-                    .filter(c => new Date(c.expiryDate) > now); // double check expiry
+                    const now = new Date();
+                    const coupons = couponsSnap.docs
+                        .map(doc => {
+                            const data = doc.data();
+                            return {
+                                id: doc.id,
+                                ...data,
+                                startDate: data.startDate?.toDate ? data.startDate.toDate().toISOString() : data.startDate,
+                                expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
+                            };
+                        })
+                        .filter(c => new Date(c.expiryDate) > now);
 
-                responsePayload.coupons = coupons;
-            } catch (err) {
-                console.error("Error fetching coupons for public settings:", err);
-                responsePayload.coupons = [];
+                    responsePayload.coupons = coupons;
+                } catch (err) {
+                    console.error("Error fetching coupons for public settings:", err);
+                    responsePayload.coupons = [];
+                }
             }
 
             return NextResponse.json(responsePayload, { status: 200 });

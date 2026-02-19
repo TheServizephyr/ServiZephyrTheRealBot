@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 import { createRequestCache } from '@/lib/requestCache';
+import { trackEndpointRead } from '@/lib/readTelemetry';
 
 // Final states that should NOT be cached (polling already stopped on track page)
 const FINAL_STATES = ['delivered', 'cancelled', 'rejected'];
@@ -10,6 +11,7 @@ export async function GET(request, { params }) {
     console.log("[API][Order Status] GET request received.");
     try {
         const { orderId } = params;
+        const liteMode = ['1', 'true', 'yes'].includes(String(request.nextUrl.searchParams.get('lite') || '').toLowerCase());
 
         if (!orderId) {
             console.log("[API][Order Status] Error: Order ID is missing from params.");
@@ -17,7 +19,7 @@ export async function GET(request, { params }) {
         }
 
         // STEP 1: Check cache FIRST (server-side Redis)
-        const cacheKey = `order_status:${orderId}`;
+        const cacheKey = `order_status:${orderId}:${liteMode ? 'lite' : 'full'}`;
         const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
 
         if (isKvAvailable) {
@@ -109,6 +111,47 @@ export async function GET(request, { params }) {
         if (!isAuthorizedData && !trackingToken) {
             console.warn(`[API][Order Status] Access denied for order ${orderId}. No valid token or identity.`);
             return NextResponse.json({ message: 'Unauthorized. Tracking token required.' }, { status: 403 });
+        }
+
+        // Fast path for polling/token checks: avoids extra business + rider reads and heavy aggregation.
+        if (liteMode) {
+            const litePayload = {
+                order: {
+                    id: orderSnap.id,
+                    customerOrderId: orderData.customerOrderId,
+                    restaurantId: orderData.restaurantId || null,
+                    status: orderData.status,
+                    customerName: orderData.customerName || null,
+                    customerPhone: orderData.customerPhone || null,
+                    deliveryType: orderData.deliveryType || 'delivery',
+                    dineInToken: orderData.dineInToken || null,
+                    tableId: orderData.tableId || null,
+                    dineInTabId: orderData.dineInTabId || orderData.tabId || null,
+                    isCarOrder: orderData.isCarOrder || orderData.deliveryType === 'car-order',
+                    carSpot: orderData.carSpot || null,
+                    carDetails: orderData.carDetails || null,
+                    trackingToken: orderData.trackingToken || null,
+                    createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : orderData.createdAt,
+                }
+            };
+
+            const isFinalStateLite = FINAL_STATES.includes(orderData.status);
+            if (!isFinalStateLite && isKvAvailable) {
+                try {
+                    await kv.set(cacheKey, litePayload, { ex: 30 });
+                } catch {
+                    // Non-fatal
+                }
+            }
+            await trackEndpointRead('api.order.status.lite', 1);
+
+            return NextResponse.json(litePayload, {
+                status: 200,
+                headers: {
+                    'X-Mode': 'lite',
+                    'X-Cache': 'MISS'
+                }
+            });
         }
 
         const businessType = orderData.businessType || 'restaurant';
@@ -488,6 +531,7 @@ export async function GET(request, { params }) {
         if (isFinalState) {
             // DON'T CACHE final states (polling already stopped via Phase 2 rules)
             console.log(`[Order Status API] Order ${orderId} in FINAL state (${orderData.status}) - NOT caching`);
+            await trackEndpointRead('api.order.status.full', Math.max(1, requestCache.size()));
             return NextResponse.json(responsePayload, {
                 status: 200,
                 headers: {
@@ -510,6 +554,7 @@ export async function GET(request, { params }) {
 
         console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
         console.log(`[RequestCache] Deduplicated reads - Cache entries used: ${requestCache.size()}`);
+        await trackEndpointRead('api.order.status.full', Math.max(1, requestCache.size()));
         return NextResponse.json(responsePayload, {
             status: 200,
             headers: {

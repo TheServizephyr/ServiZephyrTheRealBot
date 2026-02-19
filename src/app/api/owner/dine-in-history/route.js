@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, Timestamp, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { startOfDay, endOfDay } from 'date-fns';
 
 async function getBusinessRef(req) {
@@ -69,10 +69,13 @@ export async function GET(req) {
 
         console.log(`[Dine-In History] Fetching from ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
-        // Fetch all dine-in orders (no date filter to avoid composite index)
+        // Fetch dine-in orders with indexed date range.
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
-            .where('deliveryType', '==', 'dine-in');
+            .where('deliveryType', '==', 'dine-in')
+            .where('orderDate', '>=', startDate)
+            .where('orderDate', '<=', endDate)
+            .orderBy('orderDate', 'desc');
 
         const ordersSnap = await ordersQuery.get();
 
@@ -81,12 +84,6 @@ export async function GET(req) {
 
         ordersSnap.forEach(doc => {
             const orderData = { id: doc.id, ...doc.data() };
-
-            // Filter by date range in code (to avoid composite index cost)
-            const orderDate = orderData.orderDate?.toDate ? orderData.orderDate.toDate() : new Date(orderData.orderDate);
-            if (orderDate < startDate || orderDate > endDate) {
-                return; // Skip orders outside date range
-            }
 
             // Categorize orders
             if (orderData.status === 'cancelled' || orderData.status === 'rejected') {

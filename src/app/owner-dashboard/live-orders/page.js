@@ -1194,10 +1194,24 @@ export default function LiveOrdersPage() {
     const prevPendingOrderIdsRef = useRef(new Set());
     const restaurantIdCacheRef = useRef(null);
     const staticDataHydratedRef = useRef(false);
-    const staticCacheKey = useMemo(() => {
+    const ordersDataHydratedRef = useRef(false);
+    const cacheScope = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
-        return `live_orders_static_v1_${scope}`;
+        return scope;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+    const staticCacheKey = useMemo(() => `live_orders_static_v1_${cacheScope}`, [cacheScope]);
+    const ordersCacheKey = useMemo(() => `live_orders_orders_v1_${cacheScope}`, [cacheScope]);
+
+    const persistOrdersToCache = useCallback((nextOrders = []) => {
+        try {
+            sessionStorage.setItem(ordersCacheKey, JSON.stringify({
+                orders: Array.isArray(nextOrders) ? nextOrders : [],
+                ts: Date.now()
+            }));
+        } catch {
+            // Ignore storage failures safely
+        }
+    }, [ordersCacheKey]);
 
     // Fetch User Role
     useEffect(() => {
@@ -1259,6 +1273,22 @@ export default function LiveOrdersPage() {
         }
     }, [staticCacheKey]);
 
+    useEffect(() => {
+        if (ordersDataHydratedRef.current) return;
+        ordersDataHydratedRef.current = true;
+        try {
+            const raw = sessionStorage.getItem(ordersCacheKey);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.orders) && parsed.orders.length > 0) {
+                setOrders(parsed.orders);
+                setLoading(false);
+            }
+        } catch {
+            // Ignore malformed cache safely
+        }
+    }, [ordersCacheKey]);
+
 
     const fetchInitialData = useCallback(async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
@@ -1291,7 +1321,9 @@ export default function LiveOrdersPage() {
 
             if (!ordersRes.ok) throw new Error('Failed to fetch orders');
             const ordersData = await ordersRes.json();
-            setOrders(ordersData.orders || []);
+            const nextOrders = ordersData.orders || [];
+            setOrders(nextOrders);
+            persistOrdersToCache(nextOrders);
 
             if (ridersRes.ok) {
                 const ridersData = await ridersRes.json();
@@ -1330,7 +1362,7 @@ export default function LiveOrdersPage() {
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    }, [employeeOfOwnerId, impersonatedOwnerId, staticCacheKey]);
+    }, [employeeOfOwnerId, impersonatedOwnerId, staticCacheKey, persistOrdersToCache]);
 
 
     // Use adaptive polling for impersonation/employee access
@@ -1453,7 +1485,7 @@ export default function LiveOrdersPage() {
                     collection(db, 'orders'),
                     where('restaurantId', '==', restaurantId),
                     where('status', 'in', activeStatuses),
-                    // orderBy('orderDate', 'desc'), // REMOVED to avoid composite index issues with 'in' query. We sort client-side.
+                    orderBy('orderDate', 'desc'),
                     limit(100)
                 );
 
@@ -1466,14 +1498,8 @@ export default function LiveOrdersPage() {
                             fetchedOrders.push({ id: doc.id, ...orderData });
                         });
 
-                        // CLIENT-SIDE SORT (Newest First)
-                        fetchedOrders.sort((a, b) => {
-                            const dateA = a.orderDate?.seconds || 0;
-                            const dateB = b.orderDate?.seconds || 0;
-                            return dateB - dateA;
-                        });
-
                         setOrders(fetchedOrders);
+                        persistOrdersToCache(fetchedOrders);
                         setLoading(false);
                     },
                     (error) => {
@@ -1507,7 +1533,7 @@ export default function LiveOrdersPage() {
             console.log('[LiveOrders] Cleaning up real-time listener');
             cleanupFn();
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchInitialData]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchInitialData, persistOrdersToCache]);
 
     // Role-based new order notifications:
     // - Chef only here (owner/manager global notifications are emitted from Sidebar so they work on any page)

@@ -8,6 +8,7 @@ import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import { sendSystemMessage } from '@/lib/whatsapp';
 import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-upi-payment';
 import Razorpay from 'razorpay';
+import { trackEndpointRead } from '@/lib/readTelemetry';
 
 
 // (Redundant verifyOwnerAndGetBusiness removed in favor of verifyOwnerWithAudit)
@@ -307,6 +308,7 @@ export async function GET(req) {
                     customerData = customerSnap.data();
                 }
             }
+            await trackEndpointRead('api.owner.orders.get', 2 + (customerData ? 1 : 0));
 
 
             return NextResponse.json({
@@ -371,6 +373,7 @@ export async function GET(req) {
                     statusHistory,
                 }, canViewCustomerDetails, canViewPaymentDetails);
             });
+            await trackEndpointRead('api.owner.orders.get', snap.size);
 
             return NextResponse.json({ orders }, { status: 200 });
 
@@ -418,6 +421,7 @@ export async function GET(req) {
                 statusHistory,
             }, canViewCustomerDetails, canViewPaymentDetails);
         });
+        await trackEndpointRead('api.owner.orders.get', ordersSnap.size);
 
         return NextResponse.json({ orders }, { status: 200 });
 

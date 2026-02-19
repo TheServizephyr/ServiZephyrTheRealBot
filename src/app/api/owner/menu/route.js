@@ -10,6 +10,7 @@ import { logAuditEvent, AUDIT_ACTIONS, createPriceChangeMetadata } from '@/lib/s
 import { menuPriceLimiter, menuDeleteLimiter } from '@/lib/security/rate-limiter';
 import { validatePriceChange, extractPortions } from '@/lib/security/validation-helpers';
 import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
+import { trackEndpointRead } from '@/lib/readTelemetry';
 
 // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
 // (Logic moved inside methods below)
@@ -27,16 +28,45 @@ function normalizeCompactPortions(item = {}) {
     return [{ name: 'Regular', price: Number.isFinite(fallbackPrice) ? fallbackPrice : 0 }];
 }
 
+const MENU_RESPONSE_CACHE_TTL_MS = 30 * 1000;
+const getOwnerMenuResponseCache = () => {
+    if (!globalThis.__ownerMenuResponseCache) {
+        globalThis.__ownerMenuResponseCache = new Map();
+    }
+    return globalThis.__ownerMenuResponseCache;
+};
+
 export async function GET(req) {
     try {
         const firestore = await getFirestore();
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(req, 'view_menu');
         const requestUrl = new URL(req.url);
+        const versionOnly = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('versionOnly') || '').toLowerCase());
         const compactMode = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('compact') || '').toLowerCase());
         const dashboardMode = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('dashboard') || '').toLowerCase());
+        const includeOpenItems = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('includeOpenItems') || '').toLowerCase());
 
 
         // (Audit logging handled by verifyOwnerWithAudit internally for impersonation)
+
+        const businessData = businessSnap.data();
+        const menuVersion = Number(businessData?.menuVersion || 0);
+        if (versionOnly) {
+            return NextResponse.json({ businessId, menuVersion }, { status: 200 });
+        }
+        const compactCacheKey = compactMode
+            ? `${collectionName}:${businessId}:v${menuVersion}:compact:${includeOpenItems ? 1 : 0}`
+            : null;
+        if (compactCacheKey) {
+            const cache = getOwnerMenuResponseCache();
+            const cached = cache.get(compactCacheKey);
+            if (cached && (Date.now() - cached.ts) < MENU_RESPONSE_CACHE_TTL_MS) {
+                return NextResponse.json(cached.payload, {
+                    status: 200,
+                    headers: { 'x-owner-menu-cache': 'hit' }
+                });
+            }
+        }
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         let menuQuery = menuRef.orderBy('order', 'asc');
@@ -73,12 +103,15 @@ export async function GET(req) {
 
 
         let menuData = {};
-        const businessData = businessSnap.data();
         let customCategories = [];
+        const openItems = includeOpenItems ? (businessData?.openItems || []) : undefined;
         if (!compactMode) {
             // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
             const customCatSnap = await firestore.collection(collectionName).doc(businessId).collection('custom_categories').orderBy('order', 'asc').get();
             customCategories = customCatSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            await trackEndpointRead('api.owner.menu.get', 1 + (menuSnap?.size || 0) + (customCatSnap?.size || 0));
+        } else {
+            await trackEndpointRead('api.owner.menu.get', 1 + (menuSnap?.size || 0));
         }
 
         const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'shop' : 'street-vendor'));
@@ -137,14 +170,23 @@ export async function GET(req) {
         });
 
         console.log("[API LOG] GET /api/owner/menu: Successfully processed menu data. Responding to client.");
-        return NextResponse.json({
+        const payload = {
             menu: menuData,
             customCategories: customCategories,
             businessType: businessType,
             restaurantId: businessId,
+            menuVersion,
             compact: compactMode,
             dashboard: dashboardMode,
-        }, { status: 200 });
+            ...(includeOpenItems ? { openItems } : {}),
+        };
+
+        if (compactCacheKey) {
+            const cache = getOwnerMenuResponseCache();
+            cache.set(compactCacheKey, { ts: Date.now(), payload });
+        }
+
+        return NextResponse.json(payload, { status: 200 });
 
     } catch (error) {
         console.error("[API LOG] CRITICAL ERROR in GET /api/owner/menu:", error);

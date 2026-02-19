@@ -853,7 +853,17 @@ export default function MenuPage() {
 
     const cacheKey = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
-        return `owner_menu_cache_v1_${scope}`;
+        return `owner_menu_cache_v2_${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const buildScopedUrl = useCallback((endpoint) => {
+        const url = new URL(endpoint, window.location.origin);
+        if (impersonatedOwnerId) {
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
+        }
+        return url.toString();
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleApiCall = useCallback(async (endpoint, method, body) => {
@@ -861,14 +871,7 @@ export default function MenuPage() {
         if (!user) throw new Error("User not authenticated.");
         const idToken = await user.getIdToken();
 
-        let url = new URL(endpoint, window.location.origin);
-        if (impersonatedOwnerId) {
-            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-        } else if (employeeOfOwnerId) {
-            url.searchParams.append('employee_of', employeeOfOwnerId);
-        }
-
-        const res = await fetch(url.toString(), {
+        const res = await fetch(buildScopedUrl(endpoint), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
             body: JSON.stringify(body),
@@ -876,7 +879,29 @@ export default function MenuPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || `API call failed: ${method} ${endpoint}`);
         return data;
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [buildScopedUrl]);
+
+    const readCachedPayload = useCallback(() => {
+        try {
+            const raw = localStorage.getItem(cacheKey);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed?.data ? parsed : null;
+        } catch {
+            return null;
+        }
+    }, [cacheKey]);
+
+    const writeCachedPayload = useCallback((data = {}) => {
+        try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+                ts: Date.now(),
+                data,
+            }));
+        } catch {
+            // Ignore storage write issues silently (private mode/storage quota)
+        }
+    }, [cacheKey]);
 
     const applyMenuPayload = useCallback((data) => {
         setMenu(data.menu || {});
@@ -887,27 +912,60 @@ export default function MenuPage() {
         }
     }, []);
 
-    const fetchMenu = useCallback(async ({ background = false } = {}) => {
+    const fetchMenu = useCallback(async ({ background = false, includeOpenItems = false } = {}) => {
         if (!background) {
             setLoading(true);
         }
         try {
             const user = auth.currentUser;
             if (!user) { setLoading(false); return; }
-            const data = await handleApiCall('/api/owner/menu?dashboard=1', 'GET');
-            applyMenuPayload(data);
+            const idToken = await user.getIdToken();
+            const headers = { 'Authorization': `Bearer ${idToken}` };
+            const versionUrl = buildScopedUrl('/api/owner/menu?versionOnly=1');
+            const menuUrl = buildScopedUrl(`/api/owner/menu?dashboard=1${includeOpenItems ? '&includeOpenItems=1' : ''}`);
+
+            const cached = readCachedPayload();
             try {
-                sessionStorage.setItem(cacheKey, JSON.stringify({
-                    ts: Date.now(),
-                    data: {
-                        menu: data.menu || {},
-                        customCategories: data.customCategories || [],
-                        businessType: data.businessType || 'restaurant',
+                const versionRes = await fetch(versionUrl, { headers });
+                if (versionRes.ok && cached?.data?.menu) {
+                    const versionData = await versionRes.json();
+                    const latestVersion = Number(versionData?.menuVersion || 0);
+                    const cachedVersion = Number(cached?.data?.menuVersion ?? -1);
+                    if (cachedVersion === latestVersion) {
+                        applyMenuPayload(cached.data);
+                        if (Array.isArray(cached.data.openItems)) {
+                            setOpenItems(cached.data.openItems);
+                        }
+                        if (!background) setLoading(false);
+                        return;
                     }
-                }));
+                }
             } catch {
-                // Ignore storage write issues silently (private mode/storage quota)
+                // Version check failure should not block full fetch fallback.
             }
+
+            const menuRes = await fetch(menuUrl, { headers });
+
+            const data = await menuRes.json();
+            if (!menuRes.ok) {
+                throw new Error(data.message || 'Failed to fetch menu.');
+            }
+            applyMenuPayload(data);
+
+            let nextOpenItems = null;
+            if (includeOpenItems && Array.isArray(data.openItems)) {
+                nextOpenItems = data.openItems;
+                setOpenItems(nextOpenItems);
+            }
+
+            const preservedOpenItems = Array.isArray(cached?.data?.openItems) ? cached.data.openItems : [];
+            writeCachedPayload({
+                menu: data.menu || {},
+                customCategories: data.customCategories || [],
+                businessType: data.businessType || 'restaurant',
+                openItems: nextOpenItems ?? preservedOpenItems,
+                menuVersion: Number(data?.menuVersion || 0),
+            });
         } catch (error) {
             console.error("Error fetching menu:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: "Could not fetch menu. " + error.message });
@@ -916,22 +974,19 @@ export default function MenuPage() {
                 setLoading(false);
             }
         }
-    }, [handleApiCall, cacheKey, applyMenuPayload]);
+    }, [applyMenuPayload, buildScopedUrl, readCachedPayload, writeCachedPayload]);
 
     useEffect(() => {
         if (hasHydratedFromCacheRef.current) return;
         hasHydratedFromCacheRef.current = true;
-        try {
-            const raw = sessionStorage.getItem(cacheKey);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
-            if (!parsed?.data) return;
-            applyMenuPayload(parsed.data);
-            setLoading(false);
-        } catch {
-            // Ignore malformed cache
+        const cached = readCachedPayload();
+        if (!cached?.data) return;
+        applyMenuPayload(cached.data);
+        if (Array.isArray(cached.data.openItems)) {
+            setOpenItems(cached.data.openItems);
         }
-    }, [cacheKey, applyMenuPayload]);
+        setLoading(false);
+    }, [applyMenuPayload, readCachedPayload]);
 
     useEffect(() => {
         if (isUserLoading) return;
@@ -939,7 +994,7 @@ export default function MenuPage() {
             setLoading(false);
             return;
         }
-        fetchMenu({ background: false });
+        fetchMenu({ background: false, includeOpenItems: true });
     }, [isUserLoading, authUser?.uid, impersonatedOwnerId, employeeOfOwnerId, fetchMenu]);
 
     const allCategories = useMemo(() => {
@@ -1160,33 +1215,6 @@ export default function MenuPage() {
             }
         });
     };
-
-    // Fetch open items on mount
-    useEffect(() => {
-        const fetchOpenItems = async () => {
-            try {
-                const user = auth.currentUser;
-                if (!user) return;
-                const idToken = await user.getIdToken();
-                let url = '/api/owner/open-items';
-                if (impersonatedOwnerId) {
-                    url += `?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`;
-                } else if (employeeOfOwnerId) {
-                    url += `?employee_of=${encodeURIComponent(employeeOfOwnerId)}`;
-                }
-                const res = await fetch(url, {
-                    headers: { 'Authorization': `Bearer ${idToken}` }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setOpenItems(data.items || []);
-                }
-            } catch (error) {
-                console.warn('Could not fetch open items:', error);
-            }
-        };
-        fetchOpenItems();
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleAddOpenItem = async () => {
         const itemName = newOpenItemName.trim();

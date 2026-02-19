@@ -508,8 +508,8 @@ const CheckoutPageInternal = () => {
                 try {
                     const statusToken = token || updatedData.token || '';
                     const statusUrl = statusToken
-                        ? `/api/order/status/${activeOrderId}?token=${encodeURIComponent(statusToken)}`
-                        : `/api/order/status/${activeOrderId}`;
+                        ? `/api/order/status/${activeOrderId}?token=${encodeURIComponent(statusToken)}&lite=1`
+                        : `/api/order/status/${activeOrderId}?lite=1`;
                     const statusRes = await fetch(statusUrl, { cache: 'no-store' });
                     if (statusRes.ok) {
                         const statusPayload = await statusRes.json();
@@ -613,12 +613,40 @@ const CheckoutPageInternal = () => {
                     }
                 }
 
-                // ... (Payment settings fetch unchanged) ...
-                // FETCH BOTH Payment Settings AND Menu (for Coupons/Delivery Params) in parallel
-                const [paymentSettingsRes, menuRes] = await Promise.all([
-                    paymentSettingsPromise,
-                    menuPromise
-                ]);
+                // Prioritize payment settings for actionable checkout UI.
+                // Menu/coupon enrichment is applied asynchronously to avoid blocking initial render.
+                const paymentSettingsRes = await paymentSettingsPromise;
+                menuPromise
+                    .then(async (menuRes) => {
+                        if (!menuRes.ok) return;
+                        const menuData = await menuRes.json();
+                        console.log('[Checkout] 🎟️ Fetched fresh menu data:', menuData.coupons?.length, 'coupons');
+                        setCartData(prev => ({
+                            ...prev,
+                            availableCoupons: (menuData.coupons || []).map(normalizeCoupon).filter(Boolean),
+                            deliveryCharge: menuData.deliveryCharge,
+                            deliveryFeeType: menuData.deliveryFeeType,
+                            deliveryFixedFee: menuData.deliveryFixedFee,
+                            deliveryBaseDistance: menuData.deliveryBaseDistance,
+                            deliveryPerKmFee: menuData.deliveryPerKmFee,
+                            deliveryRadius: menuData.deliveryRadius,
+                            deliveryFreeThreshold: menuData.deliveryFreeThreshold,
+                            freeDeliveryRadius: menuData.freeDeliveryRadius,
+                            freeDeliveryMinOrder: menuData.freeDeliveryMinOrder,
+                            deliveryTiers: menuData.deliveryTiers,
+                            deliveryOrderSlabRules: menuData.deliveryOrderSlabRules,
+                            deliveryOrderSlabAboveFee: menuData.deliveryOrderSlabAboveFee,
+                            deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance,
+                            deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee,
+                            minOrderValue: menuData.minOrderValue,
+                            latitude: menuData.latitude,
+                            longitude: menuData.longitude,
+                            roadDistanceFactor: menuData.roadDistanceFactor || 1.3
+                        }));
+                    })
+                    .catch((menuErr) => {
+                        console.warn('[Checkout] Non-blocking menu enrichment failed:', menuErr?.message || menuErr);
+                    });
 
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
@@ -650,38 +678,6 @@ const CheckoutPageInternal = () => {
                         packagingChargeEnabled: paymentData.packagingChargeEnabled || false,
                         packagingChargeAmount: paymentData.packagingChargeAmount || 0,
                     });
-                }
-
-                // 🎟️ PROCESS COUPONS & DELIVERY SETTINGS FROM MENU API
-                if (menuRes.ok) {
-                    const menuData = await menuRes.json();
-                    console.log('[Checkout] 🎟️ Fetched fresh menu data:', menuData.coupons?.length, 'coupons');
-
-                    // Update Cart Data with fresh coupons and potentially clearer delivery params
-                    // We treat this as a "Soft Update" to not overwrite user's cart items
-                    setCartData(prev => ({
-                        ...prev,
-                        availableCoupons: (menuData.coupons || []).map(normalizeCoupon).filter(Boolean),
-                        deliveryCharge: menuData.deliveryCharge,
-                        deliveryFeeType: menuData.deliveryFeeType,
-                        deliveryFixedFee: menuData.deliveryFixedFee,
-                        deliveryBaseDistance: menuData.deliveryBaseDistance,
-                        deliveryPerKmFee: menuData.deliveryPerKmFee,
-                        deliveryRadius: menuData.deliveryRadius,
-                        deliveryFreeThreshold: menuData.deliveryFreeThreshold,
-                        freeDeliveryRadius: menuData.freeDeliveryRadius,
-                        freeDeliveryMinOrder: menuData.freeDeliveryMinOrder,
-                        deliveryTiers: menuData.deliveryTiers,
-                        deliveryOrderSlabRules: menuData.deliveryOrderSlabRules,
-                        deliveryOrderSlabAboveFee: menuData.deliveryOrderSlabAboveFee,
-                        deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance,
-                        deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee,
-                        minOrderValue: menuData.minOrderValue,
-                        latitude: menuData.latitude,
-                        longitude: menuData.longitude,
-                        // Forward more for shadow calc
-                        roadDistanceFactor: menuData.roadDistanceFactor || 1.3
-                    }));
                 }
 
                 if (deliveryType === 'delivery' && !activeOrderId) {

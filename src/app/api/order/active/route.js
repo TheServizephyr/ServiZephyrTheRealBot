@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, verifyIdToken, verifyAndGetUid } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
 import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
+import { trackEndpointRead } from '@/lib/readTelemetry';
 
 export const dynamic = 'force-dynamic';
 
@@ -136,13 +137,13 @@ export async function GET(req) {
 
             // Query primarily by userId. Add phone-based fallbacks to support
             // mixed identity histories (guest -> logged-in migration, legacy docs, etc.).
-            const queryPromises = [
-                ordersRef
-                    .where('userId', '==', userId)
-                    .where('status', 'in', activeStatuses)
-                    .limit(20)
-                    .get()
-            ];
+            const primarySnapshot = await ordersRef
+                .where('userId', '==', userId)
+                .where('status', 'in', activeStatuses)
+                .limit(20)
+                .get();
+
+            const snapshots = [primarySnapshot];
 
             // Use normalized phone fallback when available.
             let phoneForFallback = targetPhone || null;
@@ -156,29 +157,28 @@ export async function GET(req) {
                 }
             }
 
-            if (phoneForFallback) {
-                queryPromises.push(
+            // Fallback queries are expensive; execute only when primary userId query has no results.
+            if (primarySnapshot.empty && phoneForFallback) {
+                const [snapByCustomerPhone, snapByNestedCustomerPhone] = await Promise.all([
                     ordersRef
                         .where('customerPhone', '==', phoneForFallback)
                         .where('status', 'in', activeStatuses)
                         .limit(20)
-                        .get()
-                );
-
-                queryPromises.push(
+                        .get(),
                     ordersRef
                         .where('customer.phone', '==', phoneForFallback)
                         .where('status', 'in', activeStatuses)
                         .limit(20)
                         .get()
-                );
+                ]);
+                snapshots.push(snapByCustomerPhone, snapByNestedCustomerPhone);
             }
-
-            const snapshots = await Promise.all(queryPromises);
             const uniqueDocs = new Map();
             snapshots.forEach((snap) => {
                 snap.forEach((doc) => uniqueDocs.set(doc.id, doc));
             });
+            const estimatedReads = snapshots.reduce((sum, snap) => sum + (snap?.size || 0), 0);
+            await trackEndpointRead('api.order.active', estimatedReads);
 
             const finalActiveOrders = [];
             uniqueDocs.forEach((doc) => {
@@ -270,6 +270,8 @@ export async function GET(req) {
         snap2.forEach(doc => uniqueDocs.set(doc.id, doc));
 
         console.log(`[API /order/active] Total unique docs after token merge: ${uniqueDocs.size}`);
+        const dineInEstimatedReads = (snap1?.size || 0) + (snap2?.size || 0) + (uniqueDocs?.size || 0);
+        await trackEndpointRead('api.order.active', dineInEstimatedReads);
 
         if (uniqueDocs.size === 0) {
             console.log('[API /order/active] No documents found. Returning 404.');
@@ -358,19 +360,16 @@ export async function POST(req) {
             .where('restaurantId', '==', restaurantId)
             .where('customer.phone', '==', phone)
             .where('status', 'in', ['pending', 'placed', 'accepted', 'confirmed', 'preparing', 'prepared', 'ready', 'ready_for_pickup', 'dispatched', 'on_the_way', 'rider_arrived']) // Added all active statuses
-            .limit(20) // Safety Cap: Prevent fetching too many docs
+            .orderBy('orderDate', 'desc')
+            .limit(1)
             .get();
 
         if (activeOrderQuery.empty) {
             return NextResponse.json({ activeOrder: null }, { status: 200 });
         }
 
-        // Sort in memory to avoid composite index requirement
-        const docs = activeOrderQuery.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        docs.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-
-        const orderData = docs[0];
-        const orderDoc = { id: orderData.id }; // Construct pseudo-doc since we mapped it
+        const orderDoc = activeOrderQuery.docs[0];
+        const orderData = orderDoc.data();
 
 
 
