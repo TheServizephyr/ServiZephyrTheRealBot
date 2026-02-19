@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
+import { toPng } from 'html-to-image';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -1109,18 +1110,41 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 };
 
 
-const QrCodeDisplay = ({ text, tableName, innerRef }) => {
-    const handleDownload = () => {
-        const canvas = innerRef.current.querySelector('canvas');
-        if (canvas) {
-            const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
-            let downloadLink = document.createElement("a");
+const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurantName = '' }) => {
+    const isCarSpotTheme = qrType === 'car-spot';
+
+    const handleDownload = async () => {
+        const printableNode = innerRef?.current;
+        if (!printableNode) return;
+
+        try {
+            const pngUrl = await toPng(printableNode, {
+                cacheBust: true,
+                pixelRatio: 2,
+                backgroundColor: '#ffffff'
+            });
+
+            const downloadLink = document.createElement("a");
             downloadLink.href = pngUrl;
-            downloadLink.download = `${tableName}-qrcode.png`;
+            downloadLink.download = `${tableName}-qrcode-card.png`;
             document.body.appendChild(downloadLink);
             downloadLink.click();
             document.body.removeChild(downloadLink);
+            return;
+        } catch (error) {
+            console.warn('[QR Download] Card image download failed, falling back to raw QR canvas.', error);
         }
+
+        const canvas = printableNode.querySelector('canvas');
+        if (!canvas) return;
+
+        const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+        const downloadLink = document.createElement("a");
+        downloadLink.href = pngUrl;
+        downloadLink.download = `${tableName}-qrcode.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
     };
 
     const handlePrint = useReactToPrint({
@@ -1130,15 +1154,60 @@ const QrCodeDisplay = ({ text, tableName, innerRef }) => {
 
     return (
         <div className="mt-6 flex flex-col items-center gap-4">
-            <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
-                <QRCode
-                    value={text}
-                    size={256}
-                    level={"M"}
-                    includeMargin={true}
-                />
-                <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
-            </div>
+            {isCarSpotTheme ? (
+                <div ref={innerRef} className="bg-white rounded-[28px] border-4 border-yellow-400 shadow-2xl overflow-hidden w-full max-w-[360px]">
+                    <div className="bg-gradient-to-br from-yellow-300 via-yellow-200 to-white px-5 py-5 text-center border-b border-yellow-200">
+                        <p className="text-[10px] font-bold tracking-[0.3em] text-yellow-900 uppercase">ServiZephyr</p>
+                        <h3 className="mt-2 text-2xl leading-tight font-black text-black uppercase break-words">
+                            {restaurantName || 'Restaurant'}
+                        </h3>
+                        <p className="mt-3 text-2xl font-extrabold text-yellow-700 tracking-wide">ORDER HERE 👇</p>
+                    </div>
+
+                    <div className="px-5 pt-5 pb-4 text-center bg-white">
+                        <div className="inline-flex items-center justify-center p-3 rounded-2xl border-2 border-yellow-300 shadow-md bg-white">
+                            <QRCode
+                                value={text}
+                                size={230}
+                                level="H"
+                                includeMargin={true}
+                                imageSettings={{
+                                    src: '/logo.png',
+                                    height: 48,
+                                    width: 48,
+                                    excavate: true
+                                }}
+                            />
+                        </div>
+
+                        <p className="mt-4 text-sm font-bold text-black">
+                            {tableName}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-700">
+                            Scan this QR to place your car order instantly.
+                        </p>
+                        <p className="mt-1 text-xs text-yellow-700 font-semibold">
+                            Sit tight, we will bring your order to your spot.
+                        </p>
+
+                        <div className="mt-4 pt-3 border-t border-yellow-200">
+                            <p className="text-[11px] font-bold text-black uppercase tracking-wide">
+                                Powered by ServiZephyr
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
+                    <QRCode
+                        value={text}
+                        size={256}
+                        level={"M"}
+                        includeMargin={true}
+                    />
+                    <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
+                </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm">
                 <Button onClick={handlePrint} variant="outline"><Printer className="mr-2 h-4 w-4" /> Print</Button>
                 <Button onClick={handleDownload} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PNG</Button>
@@ -1274,55 +1343,210 @@ const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
     );
 };
 
-// ✅ NEW: Car Spot QR Generator Modal
-const CarSpotQrModal = ({ isOpen, onClose, restaurant }) => {
+// ✅ NEW: Car Spot QR Generator + Saved List Modal
+const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDialog }) => {
     const [spotLabel, setSpotLabel] = useState('');
     const [qrValue, setQrValue] = useState('');
+    const [savedSpots, setSavedSpots] = useState([]);
+    const [loadingSpots, setLoadingSpots] = useState(false);
+    const [savingSpot, setSavingSpot] = useState(false);
+    const [deletingSpotId, setDeletingSpotId] = useState(null);
     const printRef = useRef();
+
+    const buildCarSpotUrl = (label) => {
+        const safeLabel = String(label || '').trim();
+        if (!safeLabel || !restaurant?.id || typeof window === 'undefined') return '';
+        return `${window.location.origin}/order/${restaurant.id}?orderType=car&spot=${encodeURIComponent(safeLabel)}`;
+    };
+
+    const loadSavedSpots = async () => {
+        if (!restaurant?.id || !handleApiCall) return;
+
+        setLoadingSpots(true);
+        try {
+            const data = await handleApiCall('GET', null, '/api/owner/car-spots');
+            setSavedSpots(Array.isArray(data?.spots) ? data.spots : []);
+        } catch (error) {
+            console.error('[Car Spot QR] Failed to load spots:', error);
+            showInfoDialog?.({ isOpen: true, title: 'Error', message: `Could not load saved car spots: ${error.message}` });
+        } finally {
+            setLoadingSpots(false);
+        }
+    };
 
     useEffect(() => {
         if (!isOpen) {
             setSpotLabel('');
             setQrValue('');
+            return;
         }
+        loadSavedSpots();
     }, [isOpen]);
 
     const handleGenerate = () => {
-        if (!spotLabel.trim()) return;
-        if (!restaurant?.id) return;
-        const url = `${window.location.origin}/order/${restaurant.id}?orderType=car&spot=${encodeURIComponent(spotLabel.trim())}`;
-        setQrValue(url);
+        const trimmedSpot = String(spotLabel || '').trim();
+        if (!trimmedSpot || !restaurant?.id) return;
+        setQrValue(buildCarSpotUrl(trimmedSpot));
+    };
+
+    const handleSaveSpot = async () => {
+        const trimmedSpot = String(spotLabel || '').trim();
+        if (!trimmedSpot) {
+            showInfoDialog?.({ isOpen: true, title: 'Missing Spot', message: 'Please enter a spot label first.' });
+            return;
+        }
+
+        setSavingSpot(true);
+        try {
+            const data = await handleApiCall('POST', { spotLabel: trimmedSpot }, '/api/owner/car-spots');
+            const savedSpot = data?.spot;
+            if (savedSpot?.id) {
+                setSavedSpots((prev) => [savedSpot, ...prev.filter((spot) => spot.id !== savedSpot.id)]);
+            } else {
+                await loadSavedSpots();
+            }
+            setQrValue(buildCarSpotUrl(trimmedSpot));
+            showInfoDialog?.({ isOpen: true, title: 'Saved', message: `Car spot "${trimmedSpot}" saved successfully.` });
+        } catch (error) {
+            showInfoDialog?.({ isOpen: true, title: 'Error', message: `Could not save car spot: ${error.message}` });
+        } finally {
+            setSavingSpot(false);
+        }
+    };
+
+    const handleSelectSpot = (spot) => {
+        const selectedSpot = String(spot?.spotLabel || '').trim();
+        if (!selectedSpot) return;
+        setSpotLabel(selectedSpot);
+        setQrValue(buildCarSpotUrl(selectedSpot));
+    };
+
+    const handleCopySpotUrl = async (spot) => {
+        const url = buildCarSpotUrl(spot?.spotLabel);
+        if (!url) return;
+        try {
+            await navigator.clipboard.writeText(url);
+            showInfoDialog?.({ isOpen: true, title: 'Copied', message: `Link copied for spot "${spot.spotLabel}".` });
+        } catch (error) {
+            showInfoDialog?.({ isOpen: true, title: 'Copy Failed', message: 'Could not copy link.' });
+        }
+    };
+
+    const handleDeleteSpot = async (spot) => {
+        if (!spot?.id) return;
+        setDeletingSpotId(spot.id);
+        try {
+            await handleApiCall('DELETE', { spotId: spot.id }, '/api/owner/car-spots');
+            setSavedSpots((prev) => prev.filter((savedSpot) => savedSpot.id !== spot.id));
+            showInfoDialog?.({ isOpen: true, title: 'Deleted', message: `Removed car spot "${spot.spotLabel}".` });
+        } catch (error) {
+            showInfoDialog?.({ isOpen: true, title: 'Error', message: `Could not delete car spot: ${error.message}` });
+        } finally {
+            setDeletingSpotId(null);
+        }
     };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground max-w-sm w-full max-h-[85vh] overflow-y-auto">
+            <DialogContent className="bg-background border-border text-foreground max-w-2xl w-full max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>🚗 Generate Car Spot QR</DialogTitle>
+                    <DialogTitle>🚗 Car Spot QR Manager</DialogTitle>
                     <DialogDescription>
-                        Generate a QR code for a specific car parking spot. Customers scan this to place a car order.
+                        Generate and save car spot QR links. Saved spots will remain available here.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                    <div>
-                        <Label htmlFor="spot-label">Car Spot Label</Label>
-                        <Input
-                            id="spot-label"
-                            value={spotLabel}
-                            onChange={(e) => setSpotLabel(e.target.value)}
-                            placeholder="e.g., A1, B2, P-01"
-                            className="mt-1"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">This label will appear on the QR code and in the order details.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 items-end">
+                        <div>
+                            <Label htmlFor="spot-label">Car Spot Label</Label>
+                            <Input
+                                id="spot-label"
+                                value={spotLabel}
+                                onChange={(e) => setSpotLabel(e.target.value)}
+                                placeholder="e.g., A1, B2, P-01"
+                                className="mt-1"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">This label appears on QR and in order cards.</p>
+                        </div>
+                        <Button onClick={handleGenerate} className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white">
+                            <QrCode className="mr-2 h-4 w-4" /> Preview
+                        </Button>
+                        <Button onClick={handleSaveSpot} disabled={savingSpot} className="w-full md:w-auto">
+                            <Save className="mr-2 h-4 w-4" /> {savingSpot ? 'Saving...' : 'Save Spot'}
+                        </Button>
                     </div>
-                    <Button onClick={handleGenerate} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
-                        <QrCode className="mr-2 h-4 w-4" /> Generate QR Code
-                    </Button>
+
                     {qrValue && (
-                        <div className="flex flex-col items-center">
-                            <QrCodeDisplay text={qrValue} tableName={`Car Spot ${spotLabel}`} innerRef={printRef} />
+                        <div className="flex flex-col items-center border border-border rounded-lg p-4 bg-muted/20">
+                            <QrCodeDisplay
+                                text={qrValue}
+                                tableName={`Car Spot ${spotLabel}`}
+                                innerRef={printRef}
+                                qrType="car-spot"
+                                restaurantName={restaurant?.name}
+                            />
                         </div>
                     )}
+
+                    <div className="pt-2 border-t border-dashed border-border">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-semibold text-sm">Saved Car Spot QRs</h3>
+                            <Button variant="outline" size="sm" onClick={loadSavedSpots} disabled={loadingSpots}>
+                                <RefreshCw className={cn("mr-2 h-3.5 w-3.5", loadingSpots && "animate-spin")} />
+                                Refresh
+                            </Button>
+                        </div>
+
+                        {loadingSpots ? (
+                            <div className="text-sm text-muted-foreground py-3">Loading saved spots...</div>
+                        ) : savedSpots.length === 0 ? (
+                            <div className="text-sm text-muted-foreground py-3 border border-dashed border-border rounded-lg px-3">
+                                No saved car spots yet. Click &quot;Save Spot&quot; after entering label.
+                            </div>
+                        ) : (
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                {savedSpots.map((spot) => {
+                                    const spotUrl = buildCarSpotUrl(spot.spotLabel);
+                                    const updatedAtLabel = spot.updatedAt
+                                        ? formatDistanceToNow(new Date(spot.updatedAt), { addSuffix: true })
+                                        : null;
+
+                                    return (
+                                        <div key={spot.id} className="border border-border rounded-lg p-3 bg-card">
+                                            <div className="flex flex-col sm:flex-row gap-3">
+                                                <div className="shrink-0">
+                                                    <QRCode value={spotUrl || 'about:blank'} size={72} level="H" bgColor="#FFFFFF" fgColor="#111111" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-semibold text-sm">{spot.spotLabel}</p>
+                                                    <p className="text-xs text-muted-foreground break-all mt-1">{spotUrl}</p>
+                                                    {updatedAtLabel && (
+                                                        <p className="text-[11px] text-muted-foreground mt-1">Updated {updatedAtLabel}</p>
+                                                    )}
+                                                    <div className="flex flex-wrap gap-2 mt-3">
+                                                        <Button variant="outline" size="sm" onClick={() => handleSelectSpot(spot)}>
+                                                            Use
+                                                        </Button>
+                                                        <Button variant="outline" size="sm" onClick={() => handleCopySpotUrl(spot)}>
+                                                            Copy Link
+                                                        </Button>
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={() => handleDeleteSpot(spot)}
+                                                            disabled={deletingSpotId === spot.id}
+                                                        >
+                                                            {deletingSpotId === spot.id ? 'Deleting...' : 'Delete'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>
@@ -2359,7 +2583,13 @@ const DineInPageContent = () => {
             />
             {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
-            <CarSpotQrModal isOpen={isCarSpotQrModalOpen} onClose={() => setIsCarSpotQrModalOpen(false)} restaurant={restaurantDetails} />
+            <CarSpotQrModal
+                isOpen={isCarSpotQrModalOpen}
+                onClose={() => setIsCarSpotQrModalOpen(false)}
+                restaurant={restaurantDetails}
+                handleApiCall={handleApiCall}
+                showInfoDialog={setInfoDialog}
+            />
             <ConfirmationModal
                 isOpen={confirmationState.isOpen}
                 onClose={() => setConfirmationState({ ...confirmationState, isOpen: false })}
