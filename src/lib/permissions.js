@@ -130,7 +130,8 @@ export function normalizeBusinessType(type) {
     if (typeof type !== 'string') return null;
     const normalized = type.trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') {
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') {
         return normalized;
     }
     return null;
@@ -154,7 +155,7 @@ export const ROLE_DISPLAY_NAMES = {
     [ROLES.INVENTORY_MANAGER]: 'Inventory Manager (Stock only)',
 };
 
-export const SHOP_ROLE_DISPLAY_NAMES = {
+export const STORE_ROLE_DISPLAY_NAMES = {
     [ROLES.MANAGER]: 'Store Manager (Operations & Orders)',
     [ROLES.CHEF]: 'Packing Staff (Order Processing)',
     [ROLES.WAITER]: 'Counter Staff (Customer Assistance)',
@@ -179,8 +180,8 @@ export const STREET_VENDOR_ROLE_DISPLAY_NAMES = {
 export function getRoleDisplayName(role, businessType = 'restaurant') {
     const effectiveRole = normalizeRole(role);
     const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
-    if (normalizedBusinessType === 'shop') {
-        return SHOP_ROLE_DISPLAY_NAMES[effectiveRole] || ROLE_DISPLAY_NAMES[effectiveRole] || effectiveRole;
+    if (normalizedBusinessType === 'store') {
+        return STORE_ROLE_DISPLAY_NAMES[effectiveRole] || ROLE_DISPLAY_NAMES[effectiveRole] || effectiveRole;
     }
     if (normalizedBusinessType === 'street-vendor') {
         return STREET_VENDOR_ROLE_DISPLAY_NAMES[effectiveRole] || ROLE_DISPLAY_NAMES[effectiveRole] || effectiveRole;

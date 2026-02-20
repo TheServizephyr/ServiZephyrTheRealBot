@@ -151,7 +151,7 @@ function PayoutSettingsPageContent() {
                             <Banknote className="mx-auto h-16 w-16 text-primary mb-4" />
                             <h3 className="text-xl font-semibold text-foreground">Enable Payouts via Razorpay Route</h3>
                             <p className="mt-2 text-muted-foreground max-w-lg mx-auto">
-                                To receive your earnings, please provide your bank details below. This will securely create a Razorpay Linked Account for your restaurant.
+                                To receive your earnings, please provide your bank details below. This will securely create a Razorpay Linked Account for your outlet.
                             </p>
                         </div>
                         

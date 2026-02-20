@@ -37,13 +37,13 @@ function generateInviteCode() {
 // HELPER: Get collection name for business type
 // ============================================
 function getCollectionName(businessType) {
-    if (businessType === 'shop') return 'shops';
+    if (businessType === 'store' || businessType === 'shop') return 'shops';
     if (businessType === 'street-vendor') return 'street_vendors';
     return 'restaurants';
 }
 
 function getBusinessTypeFromCollectionName(collectionName) {
-    if (collectionName === 'shops') return 'shop';
+    if (collectionName === 'shops') return 'store';
     if (collectionName === 'street_vendors') return 'street-vendor';
     return 'restaurant';
 }
@@ -303,8 +303,8 @@ export async function GET(req) {
             name: outletData.ownerName || outletData.restaurantName || outletData.name || 'Owner',
             phone: outletData.phone || outletData.ownerPhone || '',
             role: 'owner',
-            roleDisplay: outletBusinessType === 'shop'
-                ? 'Shop Owner'
+            roleDisplay: outletBusinessType === 'store'
+                ? 'Store Owner'
                 : (outletBusinessType === 'street-vendor' ? 'Street Vendor Owner' : 'Restaurant Owner'),
             status: 'active',
             hierarchyOrder: 0,

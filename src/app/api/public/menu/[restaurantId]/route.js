@@ -109,7 +109,7 @@ export async function GET(req, { params }) {
 
         if (!winner) {
             debugLog(`[Menu API] ❌ Business not found for ${restaurantId} in any collection`);
-            return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
+            return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
 
         let businessData = winner.businessData;

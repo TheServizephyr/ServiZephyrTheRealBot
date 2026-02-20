@@ -51,8 +51,28 @@ const normalizeBusinessType = (value) => {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') return normalized;
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') return normalized;
     return null;
+};
+
+const getCollectionNameFromBusinessType = (businessType = 'restaurant') => {
+    const normalized = normalizeBusinessType(businessType) || 'restaurant';
+    if (normalized === 'store') return 'shops';
+    if (normalized === 'street-vendor') return 'street_vendors';
+    return 'restaurants';
+};
+
+const getBusinessTypeFromCollectionName = (collectionName = 'restaurants') => {
+    if (collectionName === 'shops') return 'store';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+};
+
+const getOwnerCollectionSearchOrder = (businessType = 'restaurant') => {
+    const primary = getCollectionNameFromBusinessType(businessType);
+    const allCollections = ['restaurants', 'shops', 'street_vendors'];
+    return [primary, ...allCollections.filter((name) => name !== primary)];
 };
 
 const toStatusLabel = (status) =>
@@ -66,8 +86,8 @@ const getOrderStatusLabel = (status, businessType = 'restaurant', deliveryType =
     const normalizedType = normalizeBusinessType(businessType) || 'restaurant';
     const normalizedStatus = String(status || '').toLowerCase();
 
-    if (normalizedType === 'shop') {
-        const shopStatusLabels = {
+    if (normalizedType === 'store') {
+        const storeStatusLabels = {
             pending: 'New',
             confirmed: 'Confirmed',
             preparing: 'Processing',
@@ -78,7 +98,7 @@ const getOrderStatusLabel = (status, businessType = 'restaurant', deliveryType =
             picked_up: 'Picked Up',
             rejected: 'Rejected',
         };
-        return shopStatusLabels[normalizedStatus] || toStatusLabel(normalizedStatus);
+        return storeStatusLabels[normalizedStatus] || toStatusLabel(normalizedStatus);
     }
 
     if (normalizedStatus === 'pending') return 'New';
@@ -116,7 +136,18 @@ const getOrderGrandTotal = (order = {}) => {
 };
 
 
-const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantClosed, onMarkItemsOutOfStock }) => {
+const RejectOrderModal = ({
+    order,
+    isOpen,
+    onClose,
+    onConfirm,
+    onMarkRestaurantClosed,
+    onMarkItemsOutOfStock,
+    businessType = 'restaurant',
+}) => {
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    const businessLabel = normalizedBusinessType === 'store' ? 'Store' : 'Restaurant';
+    const businessLabelLower = businessLabel.toLowerCase();
     const [reason, setReason] = useState('');
     const [otherReason, setOtherReason] = useState('');
     const [shouldRefund, setShouldRefund] = useState('true');
@@ -202,7 +233,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantC
 
     const rejectionReasons = [
         { value: "item_unavailable", label: "Item(s) out of stock" },
-        { value: "restaurant_closed", label: "Restaurant is currently closed" },
+        { value: "restaurant_closed", label: `${businessLabel} is currently closed` },
         { value: "customer_request", label: "Customer requested cancellation" },
         { value: "invalid_details", label: "Invalid address or phone number" },
         { value: "undeliverable_address", label: "Address not deliverable" },
@@ -256,7 +287,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantC
                             </motion.div>
                         )}
 
-                        {/* Restaurant Closed - Mark closed to avoid future rejections */}
+                        {/* Business Closed - Mark closed to avoid future rejections */}
                         {reason === 'restaurant_closed' && onMarkRestaurantClosed && (
                             <motion.div
                                 initial={{ opacity: 0, height: 0 }}
@@ -265,15 +296,15 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkRestaurantC
                             >
                                 <p className="font-semibold text-sm text-amber-400">🏪 Avoid Future Rejections</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Mark your restaurant as closed now so new orders won&apos;t come in and you won&apos;t have to reject them.
+                                    Mark your {businessLabelLower} as closed now so new orders won&apos;t come in and you won&apos;t have to reject them.
                                 </p>
                                 <Label htmlFor="restaurant-closed-toggle" className="flex items-center justify-between cursor-pointer">
-                                    <span className="font-medium text-sm">Mark restaurant closed now</span>
+                                    <span className="font-medium text-sm">Mark {businessLabelLower} closed now</span>
                                     <Switch
                                         id="restaurant-closed-toggle"
                                         checked={markRestaurantClosed}
                                         onCheckedChange={(checked) => setMarkRestaurantClosed(!!checked)}
-                                        aria-label="Toggle restaurant closed status"
+                                        aria-label={`Toggle ${businessLabelLower} closed status`}
                                     />
                                 </Label>
                             </motion.div>
@@ -536,7 +567,7 @@ const ActionButton = ({
     hidePaymentActions,
     businessType = 'restaurant',
 }) => {
-    const isShopBusiness = normalizeBusinessType(businessType) === 'shop';
+    const isStoreBusiness = normalizeBusinessType(businessType) === 'store';
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
@@ -619,7 +650,7 @@ const ActionButton = ({
             className: "bg-green-600 hover:bg-green-700 text-white shadow-sm" // ✅ Confirm: Green
         },
         'confirmed': {
-            text: isShopBusiness ? 'Start Processing' : 'Start Preparing',
+            text: isStoreBusiness ? 'Start Processing' : 'Start Preparing',
             icon: CookingPot,
             action: () => onNext(nextStatus),
             permission: PERMISSIONS.MARK_ORDER_PREPARING,
@@ -634,14 +665,14 @@ const ActionButton = ({
                 className: "bg-purple-600 hover:bg-purple-700 text-white shadow-sm" // ✅ Pickup: Purple  
             }
             : {
-                text: isShopBusiness ? 'Mark Ready' : 'Mark Prepared',
+                text: isStoreBusiness ? 'Mark Ready' : 'Mark Prepared',
                 icon: PackageCheck,
                 action: () => onNext(nextStatus),
                 permission: PERMISSIONS.MARK_ORDER_READY,
                 className: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
             },
         'prepared': {
-            text: isAddressPendingDeliveryOrder ? 'Skip Rider & Continue' : (isShopBusiness ? 'Assign Delivery Partner' : 'Assign Rider'),
+            text: isAddressPendingDeliveryOrder ? 'Skip Rider & Continue' : (isStoreBusiness ? 'Assign Delivery Partner' : 'Assign Rider'),
             icon: Bike,
             action: () => {
                 if (isAddressPendingDeliveryOrder) {
@@ -1201,7 +1232,7 @@ export default function LiveOrdersPage() {
     const [viewMode, setViewMode] = useState('grid'); // 'list' or 'grid'
     const normalizedRole = (userRole || '').toLowerCase();
     const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
-    const isShopBusiness = normalizedBusinessType === 'shop';
+    const isStoreBusiness = normalizedBusinessType === 'store';
     const isChefRole = normalizedRole === 'chef';
     const isManagerRole = normalizedRole === 'manager';
     const isOwnerLikeRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor', 'admin'].includes(normalizedRole);
@@ -1210,15 +1241,15 @@ export default function LiveOrdersPage() {
         const tabValues = isChefRole
             ? ['Confirmed', 'Preparing', 'Prepared']
             : ['All', 'New', 'Confirmed', 'Preparing', 'Prepared', 'Dispatched'];
-        const shopLabels = {
+        const storeLabels = {
             Preparing: 'Processing',
             Prepared: 'Ready',
         };
         return tabValues.map((value) => ({
             value,
-            label: isShopBusiness ? (shopLabels[value] || value) : value,
+            label: isStoreBusiness ? (storeLabels[value] || value) : value,
         }));
-    }, [isChefRole, isShopBusiness]);
+    }, [isChefRole, isStoreBusiness]);
     const availableTabs = useMemo(
         () => availableTabConfigs.map((tab) => tab.value),
         [availableTabConfigs]
@@ -1523,40 +1554,62 @@ export default function LiveOrdersPage() {
 
         fetchStaticData();
 
-        // ✅ CRITICAL FIX: Get restaurantId first (orders use restaurantId, not ownerId!)
+        // Resolve business ID first (orders use the `restaurantId` field for all outlet types).
         const setupListener = async () => {
             try {
-                // Reuse resolved restaurantId (session cache + ref) to avoid extra Firestore query on each reload.
-                let restaurantId = restaurantIdCacheRef.current;
-                if (!restaurantId) {
+                // Reuse resolved businessId (session cache + ref) to avoid extra Firestore query on each reload.
+                let businessId = restaurantIdCacheRef.current;
+                let resolvedCollection = null;
+                if (!businessId) {
                     try {
-                        restaurantId = sessionStorage.getItem(`live_orders_restaurant_id_${ownerId}`) || null;
+                        businessId =
+                            sessionStorage.getItem(`live_orders_business_id_${ownerId}`) ||
+                            sessionStorage.getItem(`live_orders_restaurant_id_${ownerId}`) ||
+                            null;
+                        resolvedCollection = sessionStorage.getItem(`live_orders_business_collection_${ownerId}`) || null;
                     } catch {
-                        restaurantId = null;
+                        businessId = null;
+                        resolvedCollection = null;
                     }
                 }
 
-                if (!restaurantId) {
-                    const restaurantsQuery = query(
-                        collection(db, 'restaurants'),
-                        where('ownerId', '==', ownerId),
-                        limit(1)
-                    );
-                    const restaurantSnapshot = await getDocs(restaurantsQuery);
+                if (!businessId) {
+                    const collectionsToTry = getOwnerCollectionSearchOrder(normalizedBusinessType);
+                    for (const collectionName of collectionsToTry) {
+                        const businessQuery = query(
+                            collection(db, collectionName),
+                            where('ownerId', '==', ownerId),
+                            limit(1)
+                        );
+                        const businessSnapshot = await getDocs(businessQuery);
+                        if (!businessSnapshot.empty) {
+                            businessId = businessSnapshot.docs[0].id;
+                            resolvedCollection = collectionName;
+                            break;
+                        }
+                    }
 
-                    if (restaurantSnapshot.empty) {
-                        console.error('[LiveOrders] No restaurant found for owner:', ownerId);
+                    if (!businessId) {
+                        console.error('[LiveOrders] No outlet found for owner:', ownerId);
                         setLoading(false);
                         return;
                     }
-                    restaurantId = restaurantSnapshot.docs[0].id;
+
+                    const resolvedBusinessType = getBusinessTypeFromCollectionName(resolvedCollection);
+                    setBusinessType((prevType) => {
+                        const normalizedPrev = normalizeBusinessType(prevType);
+                        return normalizedPrev === resolvedBusinessType ? normalizedPrev : resolvedBusinessType;
+                    });
                     try {
-                        sessionStorage.setItem(`live_orders_restaurant_id_${ownerId}`, restaurantId);
+                        sessionStorage.setItem(`live_orders_business_id_${ownerId}`, businessId);
+                        sessionStorage.setItem(`live_orders_business_collection_${ownerId}`, resolvedCollection || '');
+                        // Backward compatibility for existing cache readers.
+                        sessionStorage.setItem(`live_orders_restaurant_id_${ownerId}`, businessId);
                     } catch { }
                 }
 
-                restaurantIdCacheRef.current = restaurantId;
-                console.log('[LiveOrders] Found restaurantId:', restaurantId);
+                restaurantIdCacheRef.current = businessId;
+                console.log('[LiveOrders] Found businessId:', businessId, 'collection:', resolvedCollection || 'unknown');
 
                 // Real-time listener for ACTIVE orders only (Bandwidth Optimization)
                 // Filter: Only active statuses.
@@ -1565,7 +1618,7 @@ export default function LiveOrdersPage() {
                 console.log('[LiveOrders] Setting up optimized query for active orders...');
                 const ordersQuery = query(
                     collection(db, 'orders'),
-                    where('restaurantId', '==', restaurantId),
+                    where('restaurantId', '==', businessId),
                     where('status', 'in', activeStatuses),
                     orderBy('orderDate', 'desc'),
                     limit(100)
@@ -1615,7 +1668,7 @@ export default function LiveOrdersPage() {
             console.log('[LiveOrders] Cleaning up real-time listener');
             cleanupFn();
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchInitialData, persistOrdersToCache]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchInitialData, persistOrdersToCache, normalizedBusinessType]);
 
     // Role-based new order notifications:
     // - Chef only here (owner/manager global notifications are emitted from Sidebar so they work on any page)
@@ -2071,6 +2124,7 @@ export default function LiveOrdersPage() {
                     order={rejectionModalData.order}
                     onMarkRestaurantClosed={handleMarkRestaurantClosed}
                     onMarkItemsOutOfStock={handleMarkItemsOutOfStock}
+                    businessType={normalizedBusinessType}
                 />
             )}
 
@@ -2078,7 +2132,7 @@ export default function LiveOrdersPage() {
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Live Order Management</h1>
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">
-                        {isShopBusiness ? 'A real-time view of your active shop orders and dispatch flow.' : 'A real-time, intelligent view of your kitchen\'s pulse.'}
+                        {isStoreBusiness ? 'A real-time view of your active store orders and dispatch flow.' : 'A real-time, intelligent view of your kitchen\'s pulse.'}
                     </p>
                 </div>
                 <div className="flex items-center gap-4 w-full md:w-auto">

@@ -22,6 +22,29 @@ const generateSecureToken = async (firestore, customerPhone) => {
     return token;
 };
 
+const normalizeBusinessType = (value) => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') {
+        return normalized;
+    }
+    return null;
+};
+
+const getBusinessTypeFromCollectionName = (collectionName) => {
+    if (collectionName === 'shops') return 'store';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+};
+
+const getBusinessLabel = (businessType = 'restaurant') => {
+    if (businessType === 'store' || businessType === 'shop') return 'store';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+};
+
 
 export async function POST(req) {
     console.log("[API /customer/register] POST request received.");
@@ -96,9 +119,13 @@ export async function POST(req) {
         
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
+        const resolvedBusinessType =
+            normalizeBusinessType(businessData?.businessType) ||
+            getBusinessTypeFromCollectionName(collectionName);
+        const businessLabel = getBusinessLabel(resolvedBusinessType);
         if (!getEffectiveBusinessOpenStatus(businessData)) {
             return NextResponse.json({
-                message: 'Restaurant is currently closed. Please order during opening hours.'
+                message: `${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} is currently closed. Please order during opening hours.`
             }, { status: 403 });
         }
 

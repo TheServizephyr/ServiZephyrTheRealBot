@@ -58,7 +58,8 @@ const normalizeBusinessType = (value) => {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') {
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') {
         return normalized;
     }
     return null;
@@ -68,14 +69,14 @@ const resolveBusinessType = (business = null) => {
     const explicitType = normalizeBusinessType(business?.data?.businessType);
     if (explicitType) return explicitType;
     const collectionName = business?.collectionName || business?.ref?.parent?.id;
-    if (collectionName === 'shops') return 'shop';
+    if (collectionName === 'shops') return 'store';
     if (collectionName === 'street_vendors') return 'street-vendor';
     return 'restaurant';
 };
 
 const getBusinessSupportLabel = (business = null) => {
     const businessType = resolveBusinessType(business);
-    if (businessType === 'shop') return 'shop';
+    if (businessType === 'store' || businessType === 'shop') return 'store';
     if (businessType === 'street-vendor') return 'stall';
     return 'restaurant';
 };

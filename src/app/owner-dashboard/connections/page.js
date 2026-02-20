@@ -210,7 +210,7 @@ function ConnectionsPageContent() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Your WhatsApp Bot Connections</h1>
-          <p className="text-muted-foreground mt-1">Manage your restaurant&apos;s WhatsApp bots here.</p>
+          <p className="text-muted-foreground mt-1">Manage your outlet&apos;s WhatsApp bots here.</p>
           <p className="text-sm text-primary mt-2 flex items-center gap-2">
             <HelpCircle size={16} />
             Need help getting started? <Link href="/support/onboarding-guide" className="underline font-semibold hover:text-primary/80">Read our simple step-by-step guide.</Link>

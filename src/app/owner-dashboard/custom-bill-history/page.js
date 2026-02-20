@@ -92,10 +92,10 @@ export default function CustomBillHistoryPage() {
             headers: { Authorization: `Bearer ${idToken}` },
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.message || 'Failed to load restaurant details.');
+        if (!res.ok) throw new Error(data?.message || 'Failed to load outlet details.');
 
         setRestaurant({
-            name: data.restaurantName || 'Restaurant',
+            name: data.restaurantName || 'Outlet',
             address: data.address || '',
             gstin: data.gstin || '',
             gstEnabled: !!data.gstEnabled,
@@ -147,7 +147,7 @@ export default function CustomBillHistoryPage() {
             if (user) {
                 fetchHistory();
                 fetchRestaurantDetails().catch((error) => {
-                    console.warn('[Custom Bill History] Restaurant fetch failed:', error?.message || error);
+                    console.warn('[Custom Bill History] Outlet details fetch failed:', error?.message || error);
                 });
             } else {
                 setLoading(false);
@@ -711,7 +711,7 @@ export default function CustomBillHistoryPage() {
                     {printBillData && (
                         <BillToPrint
                             order={{ orderDate: printBillData.printedAt ? new Date(printBillData.printedAt) : new Date() }}
-                            restaurant={restaurant || { name: 'Restaurant', address: '' }}
+                            restaurant={restaurant || { name: 'Outlet', address: '' }}
                             billDetails={{
                                 subtotal: Number(printBillData.subtotal || 0),
                                 cgst: Number(printBillData.cgst || 0),

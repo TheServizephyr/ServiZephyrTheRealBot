@@ -6,6 +6,31 @@ import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime 
 
 const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
 
+function normalizeBusinessType(value) {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') {
+        return normalized;
+    }
+    return null;
+}
+
+function resolveBusinessType(businessData = {}, collectionName = '') {
+    const explicitType = normalizeBusinessType(businessData?.businessType);
+    if (explicitType) return explicitType;
+    if (collectionName === 'shops') return 'store';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+}
+
+function getBusinessSupportLabel(businessType = 'restaurant') {
+    if (businessType === 'store' || businessType === 'shop') return 'store';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+}
+
 function coerceDate(value) {
     if (!value) return null;
     if (typeof value?.toDate === 'function') {
@@ -172,6 +197,8 @@ export async function POST(req) {
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
         const businessData = businessDoc.data();
         const botPhoneNumberId = businessData.botPhoneNumberId;
+        const businessType = resolveBusinessType(businessData, businessDoc.ref.parent.id);
+        const supportLabel = getBusinessSupportLabel(businessType);
 
         if (!botPhoneNumberId) {
             throw { message: 'WhatsApp bot is not connected for this business.', status: 400 };
@@ -282,8 +309,8 @@ export async function POST(req) {
         const shouldStartDirectChat = !hasActiveDirectChat;
 
         if (shouldStartDirectChat) {
-            const restaurantName = businessData.name || 'the restaurant';
-            const activationBody = `Now you are connected to *${restaurantName}* directly. Put up your queries.\n\nThe chat is active for 30 minutes.\n\nYou can end chat any time by typing *'end chat'* or clicking the button below.`;
+            const businessName = businessData.name || `your ${supportLabel}`;
+            const activationBody = `Now you are connected to *${businessName}* directly. Put up your queries.\n\nThe chat is active for 30 minutes.\n\nYou can end chat any time by typing *'end chat'* or clicking the button below.`;
 
             const notificationPayload = {
                 type: 'interactive',

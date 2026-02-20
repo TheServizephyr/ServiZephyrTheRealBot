@@ -15,6 +15,12 @@ function toNum(value, fallback = 0) {
     return Number.isFinite(n) ? n : fallback;
 }
 
+function getBusinessLabel(businessType = 'restaurant') {
+    if (businessType === 'store' || businessType === 'shop') return 'store';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+}
+
 const COORD_EPSILON = 0.00005;
 
 function normalizeText(value) {
@@ -251,10 +257,11 @@ export async function POST(req) {
                             if (orderData.deliveryType === 'delivery') {
                                 const business = await findBusinessById(firestore, orderData.restaurantId);
                                 if (!business) {
-                                    throw new Error('Restaurant not found for delivery recalculation.');
+                                    throw new Error('Business not found for delivery recalculation.');
                                 }
 
                                 const businessData = business.data || {};
+                                const businessLabel = getBusinessLabel(business.type);
                                 const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
                                 const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
                                 const getSetting = (key, fallback) => deliveryConfig[key] ?? businessData[key] ?? fallback;
@@ -289,7 +296,7 @@ export async function POST(req) {
                                 );
 
                                 if (restaurantLat === null || restaurantLng === null) {
-                                    throw new Error('Restaurant coordinates are not configured.');
+                                    throw new Error(`${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} coordinates are not configured.`);
                                 }
 
                                 const subtotalAmount = toNum(orderData.subtotal, 0);
@@ -302,7 +309,7 @@ export async function POST(req) {
                                         aerialDistance: 0,
                                         roadDistance: 0,
                                         roadFactor: settings.roadDistanceFactor,
-                                        message: 'Delivery is currently disabled for this restaurant.',
+                                        message: `Delivery is currently disabled for this ${businessLabel}.`,
                                         reason: 'delivery-disabled'
                                     };
                                 } else {

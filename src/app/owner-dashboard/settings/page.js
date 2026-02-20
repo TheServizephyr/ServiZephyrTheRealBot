@@ -34,7 +34,8 @@ const normalizeBusinessType = (value) => {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') return normalized;
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') return normalized;
     return null;
 };
 
@@ -600,8 +601,8 @@ function SettingsPageContent() {
     const normalizedBusinessType =
         normalizeBusinessType(editedUser.businessType || user.businessType) || 'restaurant';
     const isRestaurantBusiness = normalizedBusinessType === 'restaurant';
-    const businessLabel = normalizedBusinessType === 'shop'
-        ? 'Shop'
+    const businessLabel = normalizedBusinessType === 'store'
+        ? 'Store'
         : (normalizedBusinessType === 'street-vendor' ? 'Business' : 'Restaurant');
     const businessNameLabel = isRestaurantBusiness ? 'Restaurant Name' : `${businessLabel} Name`;
 

@@ -14,7 +14,8 @@ const normalizeBusinessType = (value) => {
     if (typeof value !== 'string') return 'restaurant';
     const normalized = value.trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'shop' || normalized === 'street-vendor' || normalized === 'restaurant') {
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'street-vendor' || normalized === 'restaurant') {
         return normalized;
     }
     return 'restaurant';
@@ -22,9 +23,9 @@ const normalizeBusinessType = (value) => {
 
 const getBusinessTerms = (businessType = 'restaurant') => {
     const normalizedType = normalizeBusinessType(businessType);
-    if (normalizedType === 'shop') {
+    if (normalizedType === 'store') {
         return {
-            supportLabel: 'shop',
+            supportLabel: 'store',
             preparingMessage: 'Your items are being packed',
             confirmedMessage: 'Your order is confirmed and will be packed shortly',
             deliveredMessage: "Your order has been delivered. Thank you for shopping with us. Just send 'Hi' to place an order next time.",
@@ -54,7 +55,7 @@ const getStatusLabelForBusiness = (status, businessType = 'restaurant', delivery
     const normalizedStatus = String(status || '').trim().toLowerCase();
     if (!normalizedStatus) return 'Unknown';
 
-    if (normalizedType === 'shop') {
+    if (normalizedType === 'store') {
         const labels = {
             pending: 'New',
             confirmed: 'Confirmed',
@@ -292,7 +293,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: deliveredMessage },
             ];
             components.push({ type: "body", parameters: deliveredParams });
-            fullMessageText = `Hi ${safeCustomerName}, your order ${displayOrderId} from ${safeRestaurantName} has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.`;
+            fullMessageText = `Hi ${safeCustomerName}, your order ${displayOrderId} from ${safeRestaurantName} has been delivered. ${deliveredMessage}`;
             console.log(`[Notification Lib] Using template '${templateName}' for delivered status.`);
             break;
 
@@ -370,7 +371,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             try {
                 const firestore = await getFirestore();
 
-                // 1. Find Business Context (Restaurant vs Shop)
+                // 1. Find Business Context (Restaurant vs Store)
                 // We need to know WHICH collection and WHICH document ID to save to.
                 // Assuming we can lookup by botPhoneNumberId
                 const businessContext = await resolveBusinessByBotPhoneId(firestore, botPhoneNumberId);

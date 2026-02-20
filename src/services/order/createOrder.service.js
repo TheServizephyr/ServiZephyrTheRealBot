@@ -108,6 +108,12 @@ const toFiniteNumber = (value) => {
     return Number.isFinite(n) ? n : null;
 };
 
+const getBusinessLabel = (businessType = 'restaurant') => {
+    if (businessType === 'store' || businessType === 'shop') return 'store';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+};
+
 const normalizeCouponType = (couponType) => {
     const normalized = String(couponType || '').trim().toLowerCase();
     if (normalized === 'fixed') return 'flat';
@@ -260,7 +266,7 @@ export async function createOrderV2(req, options = {}) {
             items,
             notes,
             paymentMethod,
-            businessType,      // ✅ Support all: 'restaurant', 'shop', 'street-vendor'
+            businessType,      // ✅ Support all: 'restaurant', 'store', 'street-vendor'
             deliveryType,      // ✅ Support all: 'dine-in', 'delivery', 'pickup', 'street-vendor-pre-order'
             subtotal,
             cgst,
@@ -354,9 +360,10 @@ export async function createOrderV2(req, options = {}) {
         }
 
         console.log(`[createOrderV2] Business found: ${business.data.name}`);
+        const businessLabel = getBusinessLabel(business.type);
         if (!getEffectiveBusinessOpenStatus(business.data)) {
             return buildErrorResponse({
-                message: 'Restaurant is currently closed. Please order during opening hours.',
+                message: `${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} is currently closed. Please order during opening hours.`,
                 status: 403
             });
         }
@@ -602,7 +609,7 @@ export async function createOrderV2(req, options = {}) {
                 if (settings.deliveryEnabled === false) {
                     await idempotencyRepository.fail(idempotencyKey, new Error('Delivery disabled'));
                     return buildErrorResponse({
-                        message: 'Delivery is currently disabled for this restaurant.',
+                        message: `Delivery is currently disabled for this ${businessLabel}.`,
                         status: 400
                     });
                 }

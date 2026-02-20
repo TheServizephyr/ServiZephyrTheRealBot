@@ -7,6 +7,31 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
 
+function normalizeBusinessType(value) {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') {
+        return normalized;
+    }
+    return null;
+}
+
+function resolveBusinessType(businessData = {}, collectionName = '') {
+    const explicitType = normalizeBusinessType(businessData?.businessType);
+    if (explicitType) return explicitType;
+    if (collectionName === 'shops') return 'store';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+}
+
+function getBusinessSupportLabel(businessType = 'restaurant') {
+    if (businessType === 'store' || businessType === 'shop') return 'store';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+}
+
 function coerceDate(value) {
     if (!value) return null;
     if (typeof value?.toDate === 'function') {
@@ -160,8 +185,13 @@ export async function PATCH(req) {
 
             const botPhoneNumberId = businessData.botPhoneNumberId;
             const customerPhoneWithCode = `91${conversationId}`;
+            const businessType = resolveBusinessType(businessData, businessDoc.ref.parent.id);
+            const supportLabel = getBusinessSupportLabel(businessType);
+            const closedByText = `Chat ended by ${supportLabel}`;
+            const browseLabel = businessType === 'store' ? 'catalog' : 'menu';
+            const orderButtonLabel = businessType === 'restaurant' ? 'Order Food' : 'Order Now';
 
-            const closureBody = 'This chat has been closed by the restaurant. You can now use the menu below or type any message to start again.';
+            const closureBody = `This chat has been closed by the ${supportLabel}. You can now use the ${browseLabel} below or type any message to start again.`;
 
             const payload = {
                 type: 'interactive',
@@ -172,7 +202,7 @@ export async function PATCH(req) {
                     },
                     action: {
                         buttons: [
-                            { type: 'reply', reply: { id: `action_order_${businessDoc.id}`, title: 'Order Food' } },
+                            { type: 'reply', reply: { id: `action_order_${businessDoc.id}`, title: orderButtonLabel } },
                             { type: 'reply', reply: { id: `action_track_${businessDoc.id}`, title: 'Track Last Order' } },
                             { type: 'reply', reply: { id: 'action_help', title: 'Need More Help?' } }
                         ]
@@ -184,7 +214,7 @@ export async function PATCH(req) {
             await conversationRef.collection('messages').add({
                 sender: 'system',
                 type: 'system',
-                text: 'Chat ended by restaurant',
+                text: closedByText,
                 timestamp: FieldValue.serverTimestamp(),
                 status: 'sent',
                 isSystem: true
@@ -192,11 +222,11 @@ export async function PATCH(req) {
             await mirrorWhatsAppMessageToRealtime({
                 businessId: businessDoc.id,
                 conversationId,
-                messageId: `sys_${Date.now()}_ended_by_restaurant`,
+                messageId: `sys_${Date.now()}_ended_by_${supportLabel}`,
                 message: {
                     sender: 'system',
                     type: 'system',
-                    text: 'Chat ended by restaurant',
+                    text: closedByText,
                     status: 'sent',
                     isSystem: true,
                     timestamp: new Date().toISOString(),

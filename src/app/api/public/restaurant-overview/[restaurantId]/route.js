@@ -100,20 +100,20 @@ export async function GET(_req, { params }) {
     try {
         const restaurantId = String(params?.restaurantId || '').trim();
         if (!restaurantId) {
-            return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
+            return NextResponse.json({ message: 'Business ID is required.' }, { status: 400 });
         }
 
         const firestore = await getFirestore();
         const business = await findBusinessById(firestore, restaurantId);
 
         if (!business) {
-            return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
+            return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
 
         const businessData = business.data || {};
         const approvalStatus = String(businessData.approvalStatus || 'approved').toLowerCase();
         if (approvalStatus !== 'approved') {
-            return NextResponse.json({ message: 'Restaurant not available.' }, { status: 404 });
+            return NextResponse.json({ message: 'Business not available.' }, { status: 404 });
         }
 
         const [menuSnap, ordersSnap] = await Promise.all([

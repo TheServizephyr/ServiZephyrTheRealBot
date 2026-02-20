@@ -40,6 +40,18 @@ const toFiniteNumber = (value) => {
     return Number.isFinite(n) ? n : null;
 };
 
+const getBusinessTypeFromCollectionName = (collectionName) => {
+    if (collectionName === 'shops') return 'store';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+};
+
+const getBusinessLabel = (businessType = 'restaurant') => {
+    if (businessType === 'store' || businessType === 'shop') return 'store';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+};
+
 // Statuses that still belong to the same live dine-in tab token/session.
 const ACTIVE_DINE_IN_TOKEN_STATUSES = [
     'pending',
@@ -233,14 +245,15 @@ export async function processOrderV1(body, firestore) {
 
                 if (businessDocForOpenCheck && !getEffectiveBusinessOpenStatus(businessDocForOpenCheck.data())) {
                     console.warn(`[API /order/create] ADD-ON blocked: business closed for ${resolvedRestaurantId}`);
+                    const businessLabel = getBusinessLabel(getBusinessTypeFromCollectionName(preferredCollection));
                     return NextResponse.json({
-                        message: 'Restaurant is currently closed. Please order during opening hours.'
+                        message: `${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} is currently closed. Please order during opening hours.`
                     }, { status: 403 });
                 }
             } catch (openCheckError) {
                 console.error('[API /order/create] ADD-ON open-check failed:', openCheckError);
                 return NextResponse.json({
-                    message: 'Unable to verify restaurant availability. Please try again.'
+                    message: 'Unable to verify business availability. Please try again.'
                 }, { status: 503 });
             }
 
@@ -581,11 +594,15 @@ export async function processOrderV1(body, firestore) {
 
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
+        const businessTypeResolved =
+            (businessData?.businessType === 'street_vendor' ? 'street-vendor' : businessData?.businessType) ||
+            getBusinessTypeFromCollectionName(collectionName);
+        const businessLabel = getBusinessLabel(businessTypeResolved);
         const isBusinessOpenNow = getEffectiveBusinessOpenStatus(businessData);
         if (!isBusinessOpenNow) {
             console.warn(`[API /order/create] Business is currently closed for new orders: ${cleanRestaurantId}`);
             return NextResponse.json({
-                message: 'Restaurant is currently closed. Please order during opening hours.'
+                message: `${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} is currently closed. Please order during opening hours.`
             }, { status: 403 });
         }
 
@@ -784,7 +801,7 @@ export async function processOrderV1(body, firestore) {
             };
 
             if (settings.deliveryEnabled === false) {
-                return NextResponse.json({ message: 'Delivery is currently disabled for this restaurant.' }, { status: 400 });
+                return NextResponse.json({ message: `Delivery is currently disabled for this ${businessLabel}.` }, { status: 400 });
             }
 
             const aerialDistance = calculateHaversineDistance(
@@ -1574,6 +1591,7 @@ export async function processOrderV1(body, firestore) {
 function getBusinessCollection(businessType) {
     const map = {
         'restaurant': 'restaurants',
+        'store': 'shops',
         'shop': 'shops',
         'street-vendor': 'street_vendors',
         'street_vendor': 'street_vendors',

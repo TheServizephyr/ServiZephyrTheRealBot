@@ -1,5 +1,6 @@
 import { optimizeDeliveryRoute, formatRouteForGoogleMaps } from '@/lib/routeOptimizer';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { findBusinessById } from '@/services/business/businessService';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,14 +32,14 @@ export async function POST(request) {
             console.warn(`[Route Optimizer] ${orderIds.length} orders - using greedy approximation`);
         }
 
-        // Fetch restaurant location
-        const restaurantDoc = await db.collection('restaurants').doc(restaurantId).get();
-        if (!restaurantDoc.exists) {
-            console.error('[Route Optimizer] Restaurant not found:', restaurantId);
-            return Response.json({ error: 'Restaurant not found' }, { status: 404 });
+        // Fetch business location (restaurant/shop/street-vendor)
+        const business = await findBusinessById(db, restaurantId);
+        if (!business) {
+            console.error('[Route Optimizer] Business not found:', restaurantId);
+            return Response.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const restaurantData = restaurantDoc.data();
+        const restaurantData = business.data || {};
         console.log('[Route Optimizer] Restaurant data keys:', Object.keys(restaurantData));
         console.log('[Route Optimizer] Restaurant location field:', restaurantData.location);
         console.log('[Route Optimizer] Restaurant address field:', restaurantData.address);

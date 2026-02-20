@@ -13,6 +13,12 @@ function toFiniteNumber(value) {
     return Number.isFinite(n) ? n : null;
 }
 
+function getBusinessLabel(businessType = 'restaurant') {
+    if (businessType === 'store' || businessType === 'shop') return 'store';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+}
+
 export async function POST(req) {
     try {
         const body = await req.json();
@@ -33,12 +39,13 @@ export async function POST(req) {
 
         if (!business) {
             return NextResponse.json(
-                { error: 'Restaurant not found' },
+                { error: 'Business not found' },
                 { status: 404 }
             );
         }
         const restaurantRef = business.ref;
         const restaurantData = business.data;
+        const businessLabel = getBusinessLabel(business.type);
 
         // ✅ FIXED: Support all possible coordinate field structures
         // Priority: coordinates.lat/lng → address.latitude/longitude → businessAddress.latitude/longitude
@@ -59,7 +66,7 @@ export async function POST(req) {
         if (restaurantLat === null || restaurantLng === null) {
             console.error('[API /delivery/calculate-charge] ❌ Restaurant coordinates not found');
             return NextResponse.json(
-                { error: 'Restaurant coordinates not configured' },
+                { error: `${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} coordinates not configured` },
                 { status: 400 }
             );
         }
@@ -110,7 +117,7 @@ export async function POST(req) {
                 aerialDistance: 0,
                 roadDistance: 0,
                 roadFactor: settings.roadDistanceFactor,
-                message: 'Delivery is currently disabled for this restaurant.'
+                message: `Delivery is currently disabled for this ${businessLabel}.`
             });
         }
 
