@@ -3,6 +3,45 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
+const OWNER_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
+
+function getBusinessTypeFromRole(role) {
+    if (role === 'shop-owner') return 'shop';
+    if (role === 'street-vendor') return 'street-vendor';
+    if (role === 'restaurant-owner') return 'restaurant';
+    return null;
+}
+
+async function resolveBusinessType(firestore, uid, role, currentBusinessType) {
+    if (currentBusinessType) {
+        const normalized = String(currentBusinessType).trim().toLowerCase();
+        if (normalized === 'street_vendor') return 'street-vendor';
+        return normalized;
+    }
+
+    const roleMappedType = getBusinessTypeFromRole(role);
+    if (roleMappedType) return roleMappedType;
+
+    if (!OWNER_ROLES.has(role)) return null;
+
+    const checks = [
+        { collection: 'restaurants', type: 'restaurant' },
+        { collection: 'shops', type: 'shop' },
+        { collection: 'street_vendors', type: 'street-vendor' },
+    ];
+
+    for (const check of checks) {
+        const snap = await firestore
+            .collection(check.collection)
+            .where('ownerId', '==', uid)
+            .limit(1)
+            .get();
+        if (!snap.empty) return check.type;
+    }
+
+    return null;
+}
+
 export async function POST(req) {
     console.log("[DEBUG] /api/auth/check-role: Received a request.");
     try {
@@ -19,7 +58,7 @@ export async function POST(req) {
             const userData = userDoc.data();
             console.log("[DEBUG] /api/auth/check-role: User document data:", userData);
             const role = userData.role;
-            const businessType = userData.businessType || null;
+            const businessType = await resolveBusinessType(firestore, uid, role, userData.businessType || null);
             const linkedOutlets = userData.linkedOutlets || [];
 
             console.log(`[DEBUG] /api/auth/check-role: Role: ${role}, LinkedOutlets count: ${linkedOutlets.length}`);

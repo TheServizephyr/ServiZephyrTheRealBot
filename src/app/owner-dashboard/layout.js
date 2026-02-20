@@ -249,6 +249,12 @@ function OwnerDashboardContent({ children }) {
             restaurantName: settingsData.restaurantName,
             hasLogo: !!settingsData.logoUrl
           });
+          if (settingsData.businessType) {
+            const normalizedBusinessType = settingsData.businessType === 'street_vendor'
+              ? 'street-vendor'
+              : settingsData.businessType;
+            localStorage.setItem('businessType', normalizedBusinessType);
+          }
           setRestaurantName(settingsData.restaurantName || 'My Dashboard');
           setRestaurantLogo(settingsData.logoUrl || null);
         } else {

@@ -1883,6 +1883,8 @@ const DineInPageContent = () => {
     const [isQrGeneratorModalOpen, setIsQrGeneratorModalOpen] = useState(false);
     const [isCarSpotQrModalOpen, setIsCarSpotQrModalOpen] = useState(false); // ✅ Car Spot QR
     const [restaurantDetails, setRestaurantDetails] = useState(null);
+    const [businessType, setBusinessType] = useState('restaurant');
+    const [isBusinessTypeResolved, setIsBusinessTypeResolved] = useState(false);
     const [billData, setBillData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => { }, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
@@ -2024,6 +2026,12 @@ const DineInPageContent = () => {
     };
 
     const fetchData = useCallback(async (isManualRefresh = false) => {
+        if (businessType !== 'restaurant') {
+            setAllData({ tables: [], serviceRequests: [], closedTabs: [], carOrders: [] });
+            setLoading(false);
+            return;
+        }
+
         if (!isManualRefresh) setLoading(true);
         try {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
@@ -2034,13 +2042,13 @@ const DineInPageContent = () => {
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    }, [handleApiCall]);
+    }, [handleApiCall, businessType]);
 
     // Adaptive Polling for data
     usePolling(fetchData, {
         interval: 15000,
-        enabled: !!(impersonatedOwnerId || employeeOfOwnerId),
-        deps: [impersonatedOwnerId, employeeOfOwnerId]
+        enabled: businessType === 'restaurant' && !!(impersonatedOwnerId || employeeOfOwnerId),
+        deps: [impersonatedOwnerId, employeeOfOwnerId, businessType]
     });
 
     // 🔄 SYNC LOGIC: Handle data drift detected by GET Endpoint
@@ -2069,7 +2077,12 @@ const DineInPageContent = () => {
     useEffect(() => {
         const fetchAndSetRestaurantDetails = async () => {
             const user = auth.currentUser;
-            if (user) {
+            if (!user) {
+                setIsBusinessTypeResolved(true);
+                return;
+            }
+
+            try {
                 const idToken = await user.getIdToken();
                 let settingsUrl = '/api/owner/settings';
                 if (impersonatedOwnerId) {
@@ -2080,6 +2093,7 @@ const DineInPageContent = () => {
                 const settingsRes = await fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } });
                 if (settingsRes.ok) {
                     const settingsData = await settingsRes.json();
+                    setBusinessType(settingsData.businessType || 'restaurant');
                     setRestaurantDetails({
                         id: settingsData.businessId,
                         name: settingsData.restaurantName,
@@ -2087,8 +2101,14 @@ const DineInPageContent = () => {
                         gstin: settingsData.gstin
                     });
                 } else {
+                    setBusinessType('restaurant');
                     console.error("[Dine-In Dashboard] Failed to fetch restaurant settings.");
                 }
+            } catch (error) {
+                setBusinessType('restaurant');
+                console.error("[Dine-In Dashboard] Failed to resolve business type:", error);
+            } finally {
+                setIsBusinessTypeResolved(true);
             }
         }
         fetchAndSetRestaurantDetails();
@@ -2152,6 +2172,11 @@ const DineInPageContent = () => {
             return;
         }
 
+        if (businessType !== 'restaurant') {
+            setLoading(false);
+            return;
+        }
+
         // For Owner: Use Signal-based Refresh
         if (!restaurantDetails?.id) {
             fetchData(); // Initial load
@@ -2207,7 +2232,7 @@ const DineInPageContent = () => {
             unsubscribeTables();
             unsubscribeOrders();
         };
-    }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id]);
+    }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id, businessType]);
 
 
     const confirmMarkAsPaid = (tableId, tabId) => {
@@ -2590,6 +2615,19 @@ const DineInPageContent = () => {
     };
 
     const tableCards = renderTableCards();
+
+    if (isBusinessTypeResolved && businessType !== 'restaurant') {
+        return (
+            <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+                <div className="border border-border rounded-xl p-6 bg-card">
+                    <h1 className="text-2xl font-bold tracking-tight">Dine-In Not Available</h1>
+                    <p className="text-muted-foreground mt-2">
+                        This feature is only available for restaurant outlets. Current outlet type: <strong>{businessType}</strong>.
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">

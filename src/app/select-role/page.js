@@ -58,23 +58,53 @@ export default function SelectRolePage() {
         fetchRoles();
     }, [user, isUserLoading, router]);
 
+    const setRoleContext = (role, businessType = null) => {
+        localStorage.setItem('role', role);
+        if (businessType) {
+            const normalizedBusinessType = businessType === 'street_vendor'
+                ? 'street-vendor'
+                : String(businessType).trim().toLowerCase();
+            localStorage.setItem('businessType', normalizedBusinessType);
+        } else {
+            localStorage.removeItem('businessType');
+        }
+    };
+
     const redirectToDashboard = (data) => {
         const { role, businessType, redirectTo } = data;
 
+        const resolvedBusinessType =
+            (businessType
+                ? (businessType === 'street_vendor' ? 'street-vendor' : businessType)
+                : null) ||
+            (role === 'shop-owner'
+                ? 'shop'
+                : role === 'street-vendor'
+                    ? 'street-vendor'
+                    : (role === 'owner' || role === 'restaurant-owner')
+                        ? 'restaurant'
+                        : null);
+
         if (redirectTo) {
+            setRoleContext(data.role || 'employee', null);
             router.push(redirectTo);
             return;
         }
 
         if (role === 'owner' || role === 'restaurant-owner' || role === 'shop-owner') {
+            setRoleContext(role, resolvedBusinessType);
             router.push('/owner-dashboard');
         } else if (role === 'street-vendor') {
+            setRoleContext(role, resolvedBusinessType || 'street-vendor');
             router.push('/street-vendor-dashboard');
         } else if (role === 'admin') {
+            setRoleContext(role, null);
             router.push('/admin-dashboard');
         } else if (role === 'rider') {
+            setRoleContext(role, null);
             router.push('/rider-dashboard');
         } else {
+            setRoleContext(role || 'customer', null);
             router.push('/customer-dashboard');
         }
     };
@@ -94,8 +124,15 @@ export default function SelectRolePage() {
             localStorage.removeItem('employeeRole');
 
             if (role === 'street-vendor') {
+                setRoleContext('street-vendor', businessType || 'street-vendor');
                 router.push('/street-vendor-dashboard');
             } else {
+                const resolvedBusinessType =
+                    (businessType
+                        ? (businessType === 'street_vendor' ? 'street-vendor' : businessType)
+                        : null) ||
+                    (role === 'shop-owner' ? 'shop' : 'restaurant');
+                setRoleContext(role || 'owner', resolvedBusinessType);
                 router.push('/owner-dashboard');
             }
         } else if (roleType === 'admin') {
@@ -104,6 +141,7 @@ export default function SelectRolePage() {
             localStorage.removeItem('activeOwnerId');
             localStorage.removeItem('activeOutletName');
             localStorage.removeItem('employeeRole');
+            setRoleContext('admin', null);
             router.push('/admin-dashboard');
         } else if (roleType === 'customer') {
             // Clear any employee context
@@ -112,6 +150,7 @@ export default function SelectRolePage() {
             localStorage.removeItem('activeOutletName');
             localStorage.removeItem('employeeRole');
 
+            setRoleContext('customer', null);
             router.push('/customer-dashboard');
         } else if (roleType === 'employee' && outlet) {
             // Store active outlet info in localStorage for API calls
@@ -119,6 +158,7 @@ export default function SelectRolePage() {
             localStorage.setItem('activeOwnerId', outlet.ownerId);
             localStorage.setItem('activeOutletName', outlet.outletName);
             localStorage.setItem('employeeRole', outlet.employeeRole);
+            setRoleContext('employee', null);
 
             // Redirect to outlet's dashboard with owner ID as query param
             // This allows APIs to fetch owner's data instead of employee's
@@ -279,7 +319,7 @@ export default function SelectRolePage() {
                     {/* Employee Outlets */}
                     {linkedOutlets?.map((outlet, index) => {
                         const RoleIcon = getRoleIcon(outlet.employeeRole);
-                        const roleDisplay = ROLE_DISPLAY_NAMES[outlet.employeeRole]?.en || outlet.employeeRole;
+                        const roleDisplay = ROLE_DISPLAY_NAMES[outlet.employeeRole] || outlet.employeeRole;
                         const isSelected = selectedRole === `employee-${index}`;
 
                         return (

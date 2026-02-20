@@ -137,9 +137,17 @@ function LoginPageContent() {
                 return router.push("/select-role");
             }
 
+            if (data.hasMultipleRoles) {
+                console.log("[Login] Multiple roles detected, redirecting to select-role");
+                window.location.href = "/select-role";
+                return;
+            }
+
             // PRIORITY 1: Check if API returned specific redirectTo (for employees, etc.)
             if (data.redirectTo) {
                 console.log("[Login] API returned redirectTo:", data.redirectTo);
+                localStorage.setItem("role", data.role || "employee");
+                localStorage.removeItem("businessType");
                 sessionStorage.setItem('justLoggedIn', JSON.stringify({ timestamp: Date.now() }));
                 window.location.href = data.redirectTo;
                 return;
@@ -148,6 +156,22 @@ function LoginPageContent() {
             if (data.role) {
                 const { role, businessType } = data;
                 console.log("[Login] Role found:", role, "Business Type:", businessType);
+
+                const resolvedBusinessType =
+                    (businessType
+                        ? (businessType === "street_vendor" ? "street-vendor" : businessType)
+                        : null) ||
+                    (role === "shop-owner" ? "shop"
+                        : role === "street-vendor" ? "street-vendor"
+                            : (role === "owner" || role === "restaurant-owner") ? "restaurant"
+                                : null);
+
+                localStorage.setItem("role", role);
+                if (resolvedBusinessType) {
+                    localStorage.setItem("businessType", resolvedBusinessType);
+                } else {
+                    localStorage.removeItem("businessType");
+                }
 
                 // Show success message before redirect
                 const dashboardName =

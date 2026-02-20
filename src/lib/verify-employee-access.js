@@ -51,6 +51,7 @@ export async function verifyEmployeeAccess(requesterId, targetOwnerId, userData)
             customAllowedPages: matchingOutlet.customAllowedPages || null,
             outletId: matchingOutlet.outletId,
             outletName: matchingOutlet.outletName,
+            collectionName: matchingOutlet.collectionName || null,
         };
     }
 

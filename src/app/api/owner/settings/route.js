@@ -11,6 +11,16 @@ import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeBusinessType(value, fallbackCollectionName = null) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'shop') return 'shop';
+    if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'restaurant') return 'restaurant';
+    if (fallbackCollectionName === 'shops') return 'shop';
+    if (fallbackCollectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+}
+
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -137,6 +147,7 @@ export async function GET(req) {
             email: userData.email || 'No Email',
             phone: userData.phone || '',
             role: userData.role || 'customer',
+            businessType: normalizeBusinessType(businessData?.businessType, context.collectionName),
             restaurantName: businessData?.name || '',
             profilePicture: userData.profilePictureUrl || `https://picsum.photos/seed/${uid}/200/200`,
             notifications: userData.notifications || { newOrders: true, dailySummary: false, marketing: true },
@@ -401,6 +412,7 @@ export async function PATCH(req) {
         const responseData = {
             name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
             role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
+            businessType: normalizeBusinessType(finalBusinessData?.businessType, context.collectionName),
             profilePicture: finalUserData.profilePictureUrl, notifications: finalUserData.notifications,
             gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
             botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',

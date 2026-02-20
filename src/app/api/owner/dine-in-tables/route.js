@@ -4,15 +4,22 @@ import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { subDays } from 'date-fns';
 
+function assertRestaurantOutlet(collectionName) {
+    if (collectionName !== 'restaurants') {
+        throw { message: 'Dine-in is available only for restaurant outlets.', status: 403 };
+    }
+}
+
 // Helper function to get business reference from authenticated request
 async function getBusinessRef(req, checkRevoked = false) {
-    const { businessSnap } = await verifyOwnerWithAudit(
+    const { businessSnap, collectionName } = await verifyOwnerWithAudit(
         req,
         'manage_dine_in_tables',
         {},
         checkRevoked,
         PERMISSIONS.MANAGE_DINE_IN
     );
+    assertRestaurantOutlet(collectionName);
     if (!businessSnap || !businessSnap.exists) {
         throw new Error('Business not found');
     }
@@ -22,13 +29,14 @@ async function getBusinessRef(req, checkRevoked = false) {
 export async function GET(req) {
     const firestore = await getFirestore();
     try {
-        const { businessId, businessSnap } = await verifyOwnerWithAudit(
+        const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(
             req,
             'fetch_dine_in_tables',
             {},
             false,
             [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN]
         );
+        assertRestaurantOutlet(collectionName);
         const businessRef = businessSnap.ref;
 
         // 1. Fetch ALL tables from the `/tables` subcollection. This is our source of truth.

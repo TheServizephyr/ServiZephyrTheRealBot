@@ -35,6 +35,14 @@ import { useSearchParams, usePathname } from 'next/navigation';
 import { canAccessPage, ROLES } from '@/lib/permissions';
 import { emitAppNotification } from '@/lib/appNotifications';
 
+const normalizeBusinessType = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'shop') return 'shop';
+  if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street-vendor';
+  return 'restaurant';
+};
+
 const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_owner_id') => {
   // Use the appropriate param name based on context (impersonate or employee access)
   const appendParam = (href) => effectiveOwnerId ? `${href}?${paramName}=${effectiveOwnerId}` : href;
@@ -50,13 +58,12 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
     ];
   }
   // Default for restaurant/shop
-  return [
+  const items = [
     { name: "Dashboard", icon: LayoutDashboard, href: appendParam("/owner-dashboard"), featureId: "dashboard" },
     { name: "Live Orders", icon: ClipboardList, href: appendParam("/owner-dashboard/live-orders"), featureId: "live-orders" },
     businessType === 'shop'
       ? { name: "Items", icon: PackageIcon, href: appendParam("/owner-dashboard/menu"), featureId: "menu" }
       : { name: "Menu", icon: Salad, href: appendParam("/owner-dashboard/menu"), featureId: "menu" },
-    { name: "Dine-In", icon: ConciergeBell, href: appendParam("/owner-dashboard/dine-in"), featureId: "dine-in" },
     // { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" },
     { name: "Team", icon: Users, href: appendParam("/owner-dashboard/employees"), featureId: "employees" },
     { name: "Customers", icon: Users, href: appendParam("/owner-dashboard/customers"), featureId: "customers" },
@@ -65,6 +72,12 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
     { name: "Delivery", icon: Truck, href: appendParam("/owner-dashboard/delivery"), featureId: "delivery" },
     { name: "Coupons", icon: Ticket, href: appendParam("/owner-dashboard/coupons"), featureId: "coupons" },
   ];
+
+  if (businessType !== 'shop') {
+    items.splice(3, 0, { name: "Dine-In", icon: ConciergeBell, href: appendParam("/owner-dashboard/dine-in"), featureId: "dine-in" });
+  }
+
+  return items;
 };
 
 const getSettingsItems = (businessType, effectiveOwnerId, paramName = 'impersonate_owner_id') => {
@@ -100,6 +113,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const paramName = employeeOfOwnerId ? 'employee_of' : 'impersonate_owner_id';
 
   useEffect(() => {
+    const storedBusinessType = normalizeBusinessType(localStorage.getItem('businessType'));
+
     // If accessing someone else's data (impersonation or employee), infer business type from URL
     if (effectiveOwnerId) {
       if (pathname.includes('/street-vendor-dashboard')) {
@@ -108,15 +123,19 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       } else if (pathname.includes('/shop-dashboard')) {
         setBusinessType('shop');
         return;
-      } else if (pathname.includes('/owner-dashboard')) {
-        setBusinessType('restaurant'); // Default for owner-dashboard
-        return;
       }
+
+      // owner-dashboard can be restaurant or shop, so prefer persisted value from settings/login
+      if (storedBusinessType) {
+        setBusinessType(storedBusinessType);
+      } else {
+        setBusinessType('restaurant');
+      }
+      return;
     }
 
     // Only use localStorage for owner's own dashboard (not employee access)
     if (!effectiveOwnerId) {
-      const storedBusinessType = localStorage.getItem('businessType');
       if (storedBusinessType) {
         setBusinessType(storedBusinessType);
       }
@@ -131,7 +150,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
             const userDocRef = doc(db, "users", user.uid);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
-              const fetchedType = userDoc.data().businessType || 'restaurant';
+              const fetchedType = normalizeBusinessType(userDoc.data().businessType) || 'restaurant';
               if (fetchedType !== storedBusinessType) {
                 setBusinessType(fetchedType);
                 localStorage.setItem('businessType', fetchedType);

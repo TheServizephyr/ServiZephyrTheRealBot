@@ -219,6 +219,7 @@ export default function RedirectHandler() {
                 setMsg(`Welcome back! Redirecting to ${data.outletName || 'dashboard'}...`);
                 console.log(`[RedirectHandler] specific redirectTo found: ${data.redirectTo}`);
                 localStorage.setItem("role", data.role || 'employee');
+                localStorage.removeItem("businessType");
                 window.location.href = data.redirectTo;
                 return;
             }
@@ -227,8 +228,21 @@ export default function RedirectHandler() {
             setMsg(`Login successful! Entering ${role} dashboard...`);
             console.log(`[RedirectHandler] Role: ${role}, Business: ${businessType}`);
 
+            const resolvedBusinessType =
+                (businessType
+                    ? (businessType === 'street_vendor' ? 'street-vendor' : businessType)
+                    : null) ||
+                (role === 'shop-owner'
+                    ? 'shop'
+                    : role === 'street-vendor'
+                        ? 'street-vendor'
+                        : (role === 'owner' || role === 'restaurant-owner')
+                            ? 'restaurant'
+                            : null);
+
             localStorage.setItem("role", role);
-            if (businessType) localStorage.setItem("businessType", businessType);
+            if (resolvedBusinessType) localStorage.setItem("businessType", resolvedBusinessType);
+            else localStorage.removeItem("businessType");
 
             if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
                 window.location.href = "/owner-dashboard";

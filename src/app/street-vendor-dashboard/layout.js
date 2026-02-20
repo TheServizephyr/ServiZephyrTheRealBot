@@ -219,6 +219,10 @@ function OwnerDashboardContent({ children }) {
           console.log('[Layout] Restaurant name from API:', settingsData.restaurantName);
           const nameToSet = settingsData.restaurantName || 'My Dashboard';
           console.log('[Layout] Setting restaurant name to:', nameToSet);
+          const normalizedBusinessType = settingsData.businessType === 'street_vendor'
+            ? 'street-vendor'
+            : (settingsData.businessType || 'street-vendor');
+          localStorage.setItem('businessType', normalizedBusinessType);
           setRestaurantName(nameToSet);
           setRestaurantLogo(settingsData.logoUrl || null);
         } else {
