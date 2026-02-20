@@ -54,6 +54,32 @@ const getDirectChatTimeoutMinutes = (value) => {
     return parsed;
 };
 
+const normalizeBusinessType = (value) => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') {
+        return normalized;
+    }
+    return null;
+};
+
+const resolveBusinessType = (business = null) => {
+    const explicitType = normalizeBusinessType(business?.data?.businessType);
+    if (explicitType) return explicitType;
+    const collectionName = business?.collectionName || business?.ref?.parent?.id;
+    if (collectionName === 'shops') return 'shop';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+};
+
+const getBusinessSupportLabel = (business = null) => {
+    const businessType = resolveBusinessType(business);
+    if (businessType === 'shop') return 'shop';
+    if (businessType === 'street-vendor') return 'stall';
+    return 'restaurant';
+};
+
 export async function GET(request) {
     console.log("[Webhook WA] GET request received for verification.");
     try {
@@ -92,6 +118,13 @@ async function getBusiness(firestore, botPhoneNumberId) {
         const doc = shopsQuery.docs[0];
         console.log(`[Webhook WA] getBusiness: Found business in 'shops' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'shops' };
+    }
+
+    const streetVendorsQuery = await firestore.collection('street_vendors').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    if (!streetVendorsQuery.empty) {
+        const doc = streetVendorsQuery.docs[0];
+        console.log(`[Webhook WA] getBusiness: Found business in 'street_vendors' collection with ID: ${doc.id}`);
+        return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'street_vendors' };
     }
 
     console.warn(`[Webhook WA] getBusiness: No business found for botPhoneNumberId: ${botPhoneNumberId}`);
@@ -236,8 +269,9 @@ const activateDirectChat = async (fromNumber, business, botPhoneNumberId) => {
         directChatTimeoutMinutes: 30
     }, { merge: true });
 
-    const restaurantName = business.data.name || 'the restaurant';
-    const activationBody = `Now you are connected to *${restaurantName}* directly. Put up your queries.\n\n⏱️ The chat is active for 30 minutes.\n\n💬 You can end chat any time by typing *'end chat'* or clicking the button below.`;
+    const businessSupportLabel = getBusinessSupportLabel(business);
+    const businessName = business.data.name || `your ${businessSupportLabel}`;
+    const activationBody = `Now you are connected to *${businessName}* directly. Put up your queries.\n\n⏱️ The chat is active for 30 minutes.\n\n💬 You can end chat any time by typing *'end chat'* or clicking the button below.`;
 
     const helpMessage = {
         type: "interactive",
@@ -308,10 +342,11 @@ const sendWelcomeMessageWithOptions = async (
         }
     }
 
+    const supportLabel = getBusinessSupportLabel(business);
     const defaultWelcomeBody =
         `Welcome to ${business.data.name} (Powered by ServiZephyr)\n\n` +
         `• To place an order, tap *${ORDER_NOW_BUTTON_TEXT}*.\n` +
-        `• For assistance from the restaurant, type *Need Help*.`;
+        `• For assistance from the ${supportLabel}, type *Need Help*.`;
     const welcomeBody = customMessage || defaultWelcomeBody;
     const collectionName = business.ref.parent.id;
     const sendInteractiveMessageWithLogging = async (payload, fallbackText) => {
@@ -874,8 +909,6 @@ export async function POST(request) {
             console.error(`[Webhook WA] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
             return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
-
-        const restaurantName = business.data.name || 'the restaurant';
 
         console.log("[Webhook WA] Change Value:", JSON.stringify(change.value, null, 2));
 

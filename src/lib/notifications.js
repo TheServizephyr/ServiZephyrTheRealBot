@@ -10,6 +10,71 @@ const normalizeIndianPhoneForWhatsApp = (value) => {
     return digits;
 };
 
+const normalizeBusinessType = (value) => {
+    if (typeof value !== 'string') return 'restaurant';
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'shop' || normalized === 'street-vendor' || normalized === 'restaurant') {
+        return normalized;
+    }
+    return 'restaurant';
+};
+
+const getBusinessTerms = (businessType = 'restaurant') => {
+    const normalizedType = normalizeBusinessType(businessType);
+    if (normalizedType === 'shop') {
+        return {
+            supportLabel: 'shop',
+            preparingMessage: 'Your items are being packed',
+            confirmedMessage: 'Your order is confirmed and will be packed shortly',
+            deliveredMessage: "Your order has been delivered. Thank you for shopping with us. Just send 'Hi' to place an order next time.",
+            postDispatchSignoff: 'Thank you for shopping with us!',
+        };
+    }
+    if (normalizedType === 'street-vendor') {
+        return {
+            supportLabel: 'stall',
+            preparingMessage: 'Your order is being prepared',
+            confirmedMessage: 'Your order is confirmed and will be prepared shortly',
+            deliveredMessage: "Your order has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.",
+            postDispatchSignoff: 'Enjoy your order!',
+        };
+    }
+    return {
+        supportLabel: 'restaurant',
+        preparingMessage: 'Your food is being prepared',
+        confirmedMessage: 'Your order is confirmed and will be prepared shortly',
+        deliveredMessage: "Your order has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.",
+        postDispatchSignoff: 'Enjoy your meal!',
+    };
+};
+
+const getStatusLabelForBusiness = (status, businessType = 'restaurant', deliveryType = null) => {
+    const normalizedType = normalizeBusinessType(businessType);
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+    if (!normalizedStatus) return 'Unknown';
+
+    if (normalizedType === 'shop') {
+        const labels = {
+            pending: 'New',
+            confirmed: 'Confirmed',
+            preparing: 'Processing',
+            prepared: 'Ready',
+            ready_for_pickup: deliveryType === 'pickup' ? 'Ready for Pickup' : 'Ready to Dispatch',
+            dispatched: 'Out for Delivery',
+            delivered: 'Delivered',
+            picked_up: 'Picked Up',
+            rejected: 'Rejected',
+            cancelled: 'Cancelled',
+            rider_arrived: 'Rider Arrived',
+            failed_delivery: 'Delivery Failed',
+        };
+        return labels[normalizedStatus] || normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+    }
+
+    return normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+};
+
 const resolveBusinessByBotPhoneId = async (firestore, botPhoneNumberId) => {
     const restaurants = await firestore
         .collection('restaurants')
@@ -121,21 +186,11 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     let components = [];
     let fullMessageText = ""; // Constructed text for persistence
 
-    const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
-
-    const statusMessages = {
-        restaurant: {
-            preparing: "Your food is being prepared",
-            confirmed: "Your order is confirmed and will be prepared shortly"
-        },
-        shop: {
-            preparing: "Your items are being packed",
-            confirmed: "Your order is confirmed and will be packed shortly"
-        }
-    };
-
-    const preparingMessage = statusMessages[businessType]?.preparing || "Your order is being prepared";
-    const confirmedMessage = statusMessages[businessType]?.confirmed || "Your order is confirmed";
+    const resolvedBusinessType = normalizeBusinessType(businessType);
+    const businessTerms = getBusinessTerms(resolvedBusinessType);
+    const capitalizedStatus = getStatusLabelForBusiness(status, resolvedBusinessType, deliveryType);
+    const preparingMessage = businessTerms.preparingMessage;
+    const confirmedMessage = businessTerms.confirmedMessage;
 
     switch (status) {
         case 'rider_arrived':
@@ -186,7 +241,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             ];
             components.push({ type: "body", parameters: bodyParams });
 
-            fullMessageText = `Hi ${safeCustomerName}! 👋\n\nYour order ${displayOrderId} from ${safeRestaurantName} is on its way! 🛵\n\nOur delivery partner, ${deliveryBoy?.name || 'Our delivery partner'}, will be arriving at your location shortly.\nYou can call them on ${deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A'} if needed.\n\nTrack your order live here:\n${trackingUrl}\n\nEnjoy your meal!`;
+            fullMessageText = `Hi ${safeCustomerName}! 👋\n\nYour order ${displayOrderId} from ${safeRestaurantName} is on its way! 🛵\n\nOur delivery partner, ${deliveryBoy?.name || 'Our delivery partner'}, will be arriving at your location shortly.\nYou can call them on ${deliveryBoy?.phone ? `+91${deliveryBoy.phone}` : 'N/A'} if needed.\n\nTrack your order live here:\n${trackingUrl}\n\n${businessTerms.postDispatchSignoff}`;
 
             console.log(`[Notification Lib] Using template '${templateName}' with secure tracking URL.`);
             break;
@@ -229,7 +284,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
         case 'delivered':
             templateName = 'order_status_update';
-            const deliveredMessage = "Your order has been delivered. Thank you for ordering with us. Just send 'Hi' to place an order next time.";
+            const deliveredMessage = businessTerms.deliveredMessage;
             const deliveredParams = [
                 { type: "text", text: safeCustomerName },
                 { type: "text", text: displayOrderId },
