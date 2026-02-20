@@ -159,9 +159,13 @@ function LoginPageContent() {
 
                 const resolvedBusinessType =
                     (businessType
-                        ? (businessType === "street_vendor" ? "street-vendor" : businessType)
+                        ? (
+                            businessType === "street_vendor"
+                                ? "street-vendor"
+                                : (businessType === "shop" ? "store" : businessType)
+                        )
                         : null) ||
-                    (role === "shop-owner" ? "shop"
+                    (role === "shop-owner" ? "store"
                         : role === "street-vendor" ? "street-vendor"
                             : (role === "owner" || role === "restaurant-owner") ? "restaurant"
                                 : null);

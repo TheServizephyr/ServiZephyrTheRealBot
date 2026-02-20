@@ -34,7 +34,8 @@ const normalizeBusinessType = (value) => {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') return normalized;
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'restaurant' || normalized === 'street-vendor') return normalized;
     return null;
 };
 
@@ -816,7 +817,7 @@ function AnalyticsPageContent() {
     const [loading, setLoading] = useState(true);
     const [businessType, setBusinessType] = useState('restaurant');
     const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
-    const isShopBusiness = normalizedBusinessType === 'shop';
+    const isStoreBusiness = normalizedBusinessType === 'store';
 
     useEffect(() => {
         try {
@@ -914,7 +915,7 @@ function AnalyticsPageContent() {
 
     const tabs = {
         sales: { label: "Sales Overview" },
-        menu: { label: isShopBusiness ? "Item Analytics" : "Menu Analytics" },
+        menu: { label: isStoreBusiness ? "Item Analytics" : "Menu Analytics" },
         customers: { label: "Customer Insights" },
         riders: { label: "Rider Analytics" },
     };

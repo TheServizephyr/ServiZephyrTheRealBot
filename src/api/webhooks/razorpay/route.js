@@ -247,7 +247,7 @@ export async function POST(req) {
                 const pointsEarned = Math.floor(subtotal / 100) * 10;
                 const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
             
-                const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
+                const businessCollectionNameForCustomer = (businessType === 'shop' || businessType === 'store') ? 'shops' : 'restaurants';
                 const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
             
                 batch.set(restaurantCustomerRef, {
@@ -268,7 +268,7 @@ export async function POST(req) {
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
                  console.log("[Webhook RZP] Pre-paid dine-in order detected, creating new tab.");
-                 const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+                 const businessCollectionName = (businessType === 'shop' || businessType === 'store') ? 'shops' : 'restaurants';
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
                 finalDineInTabId = newTabRef.id;
 
@@ -349,7 +349,9 @@ export async function POST(req) {
             await batch.commit();
             console.log(`[Webhook RZP] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
-            const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
+            const collectionForBusinessLookup = businessType === 'street-vendor'
+                ? 'street_vendors'
+                : ((businessType === 'shop' || businessType === 'store') ? 'shops' : 'restaurants');
             const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();
 
             if (businessDoc.exists) {

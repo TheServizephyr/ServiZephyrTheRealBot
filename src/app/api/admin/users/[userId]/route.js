@@ -32,7 +32,7 @@ const normalizeAddress = (address = {}) => ({
 const normalizeRole = (data = {}) => {
     if (data.role === 'admin' || data.isAdmin) return 'Admin';
     if (data.businessType === 'restaurant' || data.role === 'owner') return 'Owner';
-    if (data.businessType === 'shop') return 'Shop Owner';
+    if (data.businessType === 'shop' || data.businessType === 'store') return 'Store Owner';
     if (data.businessType === 'street-vendor' || data.businessType === 'street_vendor') return 'Street Vendor';
     if (data.role === 'rider' || data.role === 'delivery') return 'Rider';
     return 'Customer';

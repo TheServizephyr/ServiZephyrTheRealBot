@@ -3,7 +3,7 @@ import { FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin'
 import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-upi-payment';
 
 function getBusinessCollectionFromType(businessType = 'restaurant') {
-    if (businessType === 'shop') return 'shops';
+    if (businessType === 'shop' || businessType === 'store') return 'shops';
     if (businessType === 'street-vendor') return 'street_vendors';
     return 'restaurants';
 }

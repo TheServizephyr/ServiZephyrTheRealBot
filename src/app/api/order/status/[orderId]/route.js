@@ -155,7 +155,10 @@ export async function GET(request, { params }) {
         }
 
         const businessType = orderData.businessType || 'restaurant';
-        const collectionName = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
+        const collectionName = businessType === 'street-vendor'
+            ? 'street_vendors'
+            : ((businessType === 'shop' || businessType === 'store') ? 'shops' : 'restaurants');
+        const normalizedBusinessType = businessType === 'shop' ? 'store' : businessType;
 
         let deliveryBoyData = null;
 
@@ -511,7 +514,9 @@ export async function GET(request, { params }) {
                 address: businessData.address,
                 ownerPhone: restaurantContactPhone,
                 phone: restaurantContactPhone,
-                businessType: businessData.businessType || 'restaurant' // CRITICAL: Router needs this!
+                businessType: (businessData.businessType === 'shop'
+                    ? 'store'
+                    : (businessData.businessType || normalizedBusinessType || 'restaurant')) // CRITICAL: Router needs this!
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,

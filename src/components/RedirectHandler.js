@@ -230,10 +230,14 @@ export default function RedirectHandler() {
 
             const resolvedBusinessType =
                 (businessType
-                    ? (businessType === 'street_vendor' ? 'street-vendor' : businessType)
+                    ? (
+                        businessType === 'street_vendor'
+                            ? 'street-vendor'
+                            : (businessType === 'shop' ? 'store' : businessType)
+                    )
                     : null) ||
                 (role === 'shop-owner'
-                    ? 'shop'
+                    ? 'store'
                     : role === 'street-vendor'
                         ? 'street-vendor'
                         : (role === 'owner' || role === 'restaurant-owner')

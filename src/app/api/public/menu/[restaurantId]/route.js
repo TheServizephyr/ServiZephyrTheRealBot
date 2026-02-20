@@ -214,7 +214,8 @@ export async function GET(req, { params }) {
             "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
         };
 
-        const businessType = businessData.businessType || collectionName.slice(0, -1);
+        const businessTypeRaw = businessData.businessType || collectionName.slice(0, -1);
+        const businessType = businessTypeRaw === 'shop' ? 'store' : businessTypeRaw;
         const allCategories = { ...(businessType === 'restaurant' || businessType === 'street-vendor' ? restaurantCategoryConfig : shopCategoryConfig) };
         customCategories.forEach(cat => {
             if (!allCategories[cat.id]) {

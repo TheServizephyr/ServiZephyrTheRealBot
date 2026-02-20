@@ -38,7 +38,7 @@ import { emitAppNotification } from '@/lib/appNotifications';
 const normalizeBusinessType = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'shop') return 'shop';
+  if (normalized === 'store' || normalized === 'shop') return 'store';
   if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street-vendor';
   return 'restaurant';
 };
@@ -57,11 +57,12 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
       { name: "Coupons", icon: Ticket, href: appendParam("/street-vendor-dashboard/coupons"), featureId: "coupons" },
     ];
   }
-  // Default for restaurant/shop
+  // Default for restaurant/store
+  const isStoreBusiness = businessType === 'store' || businessType === 'shop';
   const items = [
     { name: "Dashboard", icon: LayoutDashboard, href: appendParam("/owner-dashboard"), featureId: "dashboard" },
     { name: "Live Orders", icon: ClipboardList, href: appendParam("/owner-dashboard/live-orders"), featureId: "live-orders" },
-    businessType === 'shop'
+    isStoreBusiness
       ? { name: "Items", icon: PackageIcon, href: appendParam("/owner-dashboard/menu"), featureId: "menu" }
       : { name: "Menu", icon: Salad, href: appendParam("/owner-dashboard/menu"), featureId: "menu" },
     // { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" },
@@ -73,7 +74,7 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
     { name: "Coupons", icon: Ticket, href: appendParam("/owner-dashboard/coupons"), featureId: "coupons" },
   ];
 
-  if (businessType !== 'shop') {
+  if (!isStoreBusiness) {
     items.splice(3, 0, { name: "Dine-In", icon: ConciergeBell, href: appendParam("/owner-dashboard/dine-in"), featureId: "dine-in" });
   }
 
@@ -121,11 +122,11 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         setBusinessType('street-vendor');
         return;
       } else if (pathname.includes('/shop-dashboard')) {
-        setBusinessType('shop');
+        setBusinessType('store');
         return;
       }
 
-      // owner-dashboard can be restaurant or shop, so prefer persisted value from settings/login
+      // owner-dashboard can be restaurant or store, so prefer persisted value from settings/login
       if (storedBusinessType) {
         setBusinessType(storedBusinessType);
       } else {

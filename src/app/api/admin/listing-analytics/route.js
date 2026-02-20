@@ -10,7 +10,7 @@ export async function GET(req) {
 
         const { searchParams } = new URL(req.url);
         const listingId = searchParams.get('id');
-        const businessType = searchParams.get('type'); // 'restaurant', 'shop', 'street-vendor'
+        const businessType = searchParams.get('type'); // 'restaurant', 'store', 'street-vendor'
 
         if (!listingId || !businessType) {
             return NextResponse.json(
@@ -25,7 +25,7 @@ export async function GET(req) {
         let collectionName;
         if (businessType === 'restaurant') {
             collectionName = 'restaurants';
-        } else if (businessType === 'shop') {
+        } else if (businessType === 'shop' || businessType === 'store') {
             collectionName = 'shops';
         } else if (businessType === 'street-vendor') {
             collectionName = 'street_vendors';

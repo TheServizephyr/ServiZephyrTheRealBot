@@ -210,7 +210,8 @@ export const migrateGuestToUser = async (firestore, uid, phone, finalUserData = 
         for (const restaurantInfo of guestData.orderedFrom) {
             if (restaurantInfo.restaurantId) {
                 const restaurantId = restaurantInfo.restaurantId;
-                const collectionPath = restaurantInfo.businessType === 'shop' ? 'shops' : 'restaurants';
+                const normalizedType = String(restaurantInfo.businessType || '').toLowerCase();
+                const collectionPath = (normalizedType === 'shop' || normalizedType === 'store') ? 'shops' : 'restaurants';
 
                 // Old customer record (by guestId)
                 const oldCustomerRef = firestore.collection(collectionPath)

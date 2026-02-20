@@ -109,9 +109,10 @@ export async function POST(req) {
         const businessRef = firestore.collection(collectionName).doc(restaurantId);
         const businessSnap = await businessRef.get();
         const businessData = businessSnap.data();
-        const businessType = businessData.businessType ||
+        const businessTypeRaw = businessData.businessType ||
             (collectionName === 'restaurants' ? 'restaurant' :
-                (collectionName === 'shops' ? 'shop' : 'street-vendor'));
+                (collectionName === 'shops' ? 'store' : 'street-vendor'));
+        const businessType = businessTypeRaw === 'shop' ? 'store' : businessTypeRaw;
 
         // Street vendors should have NO hardcoded categories - all categories are custom
         const hardcodedCategories = businessType === 'street-vendor'

@@ -473,7 +473,7 @@ export async function POST(req) {
 
             if (userId && userId !== 'guest') {
                 const businessCollectionNameForCustomer =
-                    businessType === 'shop'
+                    (businessType === 'shop' || businessType === 'store')
                         ? 'shops'
                         : (businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
 
@@ -573,7 +573,9 @@ export async function POST(req) {
             await batch.commit();
             console.log(`[Webhook RZP] Batch committed successfully.`);
 
-            const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
+            const collectionForBusinessLookup = businessType === 'street-vendor'
+                ? 'street_vendors'
+                : ((businessType === 'shop' || businessType === 'store') ? 'shops' : 'restaurants');
             const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();
 
             if (businessDoc.exists) {

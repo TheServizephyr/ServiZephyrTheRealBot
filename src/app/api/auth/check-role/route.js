@@ -6,7 +6,7 @@ import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 const OWNER_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
 
 function getBusinessTypeFromRole(role) {
-    if (role === 'shop-owner') return 'shop';
+    if (role === 'shop-owner') return 'store';
     if (role === 'street-vendor') return 'street-vendor';
     if (role === 'restaurant-owner') return 'restaurant';
     return null;
@@ -16,6 +16,7 @@ async function resolveBusinessType(firestore, uid, role, currentBusinessType) {
     if (currentBusinessType) {
         const normalized = String(currentBusinessType).trim().toLowerCase();
         if (normalized === 'street_vendor') return 'street-vendor';
+        if (normalized === 'shop') return 'store';
         return normalized;
     }
 
@@ -26,7 +27,7 @@ async function resolveBusinessType(firestore, uid, role, currentBusinessType) {
 
     const checks = [
         { collection: 'restaurants', type: 'restaurant' },
-        { collection: 'shops', type: 'shop' },
+        { collection: 'shops', type: 'store' },
         { collection: 'street_vendors', type: 'street-vendor' },
     ];
 

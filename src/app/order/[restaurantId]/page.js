@@ -33,6 +33,12 @@ import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 
 const isFullPortionLabel = (value) => String(value || '').trim().toLowerCase() === 'full';
+const normalizeBusinessType = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'street_vendor') return 'street-vendor';
+    return normalized || 'restaurant';
+};
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), {
     ssr: false,
@@ -75,7 +81,7 @@ const BackButtonHandler = ({ onClose }) => {
 };
 
 
-const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
+const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart, isStoreBusiness = false }) => {
     const [selectedPortion, setSelectedPortion] = useState(null);
     const [addOnQuantities, setAddOnQuantities] = useState({});
 
@@ -137,6 +143,8 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
     const sortedPortions = item.portions ? [...item.portions].sort((a, b) => a.price - b.price) : [];
     const showPortions = sortedPortions.length > 1;
+    const itemLabel = isStoreBusiness ? 'product' : 'dish';
+    const portionLabel = isStoreBusiness ? 'Variant' : 'Size';
 
     return (
         <AnimatePresence>
@@ -158,14 +166,14 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                     >
                         <div className="flex-shrink-0">
                             <h3 className="text-2xl font-bold">{item.name}</h3>
-                            {(item.addOnGroups?.length > 0) && <p className="text-sm font-semibold text-muted-foreground mt-1">Customize your dish</p>}
+                            {(item.addOnGroups?.length > 0) && <p className="text-sm font-semibold text-muted-foreground mt-1">Customize your {itemLabel}</p>}
                             {(!showPortions && item.description) && <p className="text-sm text-muted-foreground mt-1">{item.description}</p>}
                         </div>
 
                         <div className="py-4 space-y-6 overflow-y-auto flex-grow">
                             {showPortions && (
                                 <div className="space-y-2">
-                                    <h4 className="font-semibold text-lg">Size</h4>
+                                    <h4 className="font-semibold text-lg">{portionLabel}</h4>
                                     {sortedPortions.map(portion => (
                                         <div
                                             key={portion.name}
@@ -212,7 +220,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
                         <div className="flex-shrink-0 pt-4 border-t border-border">
                             <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground" disabled={!selectedPortion}>
-                                {selectedPortion ? `Add item for ₹${totalPrice}` : 'Please select a size'}
+                                {selectedPortion ? `Add item for ₹${totalPrice}` : `Please select a ${portionLabel.toLowerCase()}`}
                             </Button>
                         </div>
                     </motion.div>
@@ -306,14 +314,14 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
     );
 };
 
-const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
+const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick, catalogLabel = 'Menu' }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-sm w-[90vw] rounded-2xl p-0 overflow-hidden shadow-xl gap-0">
                 <div className="p-5 border-b border-border/40 shrink-0 z-20 bg-background relative">
                     <DialogHeader>
                         <DialogTitle className="text-xl font-bold">
-                            Browse Menu
+                            Browse {catalogLabel}
                         </DialogTitle>
                         <DialogDescription className="text-sm text-muted-foreground">
                             Quickly jump to any category.
@@ -1411,6 +1419,18 @@ const OrderPageInternal = () => {
     const [isEditingModal, setIsEditingModal] = useState(false);
     const [isReleasingSeat, setIsReleasingSeat] = useState(false);
 
+    const normalizedBusinessType = useMemo(
+        () => normalizeBusinessType(restaurantData.businessType),
+        [restaurantData.businessType]
+    );
+    const isStoreBusiness = normalizedBusinessType === 'store';
+    const itemLabel = isStoreBusiness ? 'product' : 'dish';
+    const businessLabel = isStoreBusiness ? 'store' : 'restaurant';
+    const businessLabelTitle = isStoreBusiness ? 'Store' : 'Restaurant';
+    const catalogLabel = isStoreBusiness ? 'Catalog' : 'Menu';
+    const pickupLabel = isStoreBusiness ? 'Pick your items from' : 'Pick your order from';
+    const canShowDineIn = !isStoreBusiness && restaurantData.dineInEnabled;
+
     // ✅ Car Order: Bootstrap when explicit car params OR car session tab is present.
     useEffect(() => {
         const hasCarContextFromUrl =
@@ -1441,6 +1461,12 @@ const OrderPageInternal = () => {
             }
         }
     }, [orderTypeFromUrl, deliveryTypeFromUrl, isCarSessionFromUrl, loading, restaurantId, carSpotFromUrl, tableIdFromUrl]);
+
+    useEffect(() => {
+        if (!isStoreBusiness) return;
+        if (deliveryType !== 'dine-in') return;
+        setDeliveryType(restaurantData.deliveryEnabled ? 'delivery' : 'pickup');
+    }, [isStoreBusiness, deliveryType, restaurantData.deliveryEnabled]);
 
     const handleCarOrderConfirm = ({ phone, carDetails }) => {
         const safeSpot = String(carSpotFromUrl || '').trim();
@@ -1842,7 +1868,8 @@ const OrderPageInternal = () => {
                             const errorData = await tableRes.json();
                             console.error('❌ [DEBUG] Table API error:', errorData);
                             // Table doesn't exist
-                            setError(`Table "${tableIdFromUrl}" does not exist at this restaurant. Please check the QR code or contact the staff.`);
+                            const outletLabelForTable = normalizeBusinessType(restaurantData.businessType) === 'store' ? 'store' : 'restaurant';
+                            setError(`Table "${tableIdFromUrl}" does not exist at this ${outletLabelForTable}. Please check the QR code or contact the staff.`);
                             setLoading(false);
                             setDineInState('error');
                             return;
@@ -2328,9 +2355,10 @@ const OrderPageInternal = () => {
 
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder, storedOrders, carOrderDetails, carSpotFromUrl]);
 
-    const searchPlaceholder = useMemo(() => {
-        return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
-    }, [restaurantData.businessType]);
+    const searchPlaceholder = useMemo(
+        () => `Search for a ${itemLabel}...`,
+        [itemLabel]
+    );
 
     const processedMenu = useMemo(() => {
         let newMenu = JSON.parse(JSON.stringify(restaurantData.menu));
@@ -2339,8 +2367,8 @@ const OrderPageInternal = () => {
         for (const category in newMenu) {
             let items = newMenu[category];
             if (lowercasedQuery) items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
-            if (filters.veg) items = items.filter(item => item.isVeg);
-            if (filters.nonVeg) items = items.filter(item => !item.isVeg);
+            if (!isStoreBusiness && filters.veg) items = items.filter(item => item.isVeg);
+            if (!isStoreBusiness && filters.nonVeg) items = items.filter(item => !item.isVeg);
             if (filters.recommended) items = items.filter(item => item.isRecommended);
 
             // --- START FIX: Sort by availability first, then by the selected criteria ---
@@ -2361,7 +2389,7 @@ const OrderPageInternal = () => {
             newMenu[category] = items;
         }
         return newMenu;
-    }, [restaurantData.menu, sortBy, filters, searchQuery]);
+    }, [restaurantData.menu, sortBy, filters, searchQuery, isStoreBusiness]);
 
     const menuCategories = useMemo(() => Object.keys(processedMenu)
         .map(key => ({
@@ -2577,11 +2605,11 @@ const OrderPageInternal = () => {
             setDetailsProvided(false);
             setShowWelcome(false);
 
-            const restaurantName = restaurantData?.name || 'our restaurant';
+            const outletName = restaurantData?.name || `our ${businessLabel}`;
             setInfoDialog({
                 isOpen: true,
                 title: 'Thank You',
-                message: `Thank you for visiting ${restaurantName}. We hope to serve you again soon!`
+                message: `Thank you for visiting ${outletName}. We hope to serve you again soon!`
             });
 
             setTimeout(() => {
@@ -2788,8 +2816,8 @@ const OrderPageInternal = () => {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center text-destructive p-4">
                 <HardHat size={48} className="mb-4" />
-                <h1 className="text-2xl font-bold">Restaurant Currently Unavailable</h1>
-                <p className="mt-2 text-muted-foreground">{error || "This restaurant is not accepting orders at the moment. Please check back later."}</p>
+                <h1 className="text-2xl font-bold">{businessLabelTitle} Currently Unavailable</h1>
+                <p className="mt-2 text-muted-foreground">{error || `This ${businessLabel} is not accepting orders at the moment. Please check back later.`}</p>
             </div>
         );
     }
@@ -2952,8 +2980,20 @@ const OrderPageInternal = () => {
                     carSpot={carSpotFromUrl}
                 />
 
-                <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
-                <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
+                <CustomizationDrawer
+                    item={customizationItem}
+                    isOpen={!!customizationItem}
+                    onClose={() => setCustomizationItem(null)}
+                    onAddToCart={handleAddToCart}
+                    isStoreBusiness={isStoreBusiness}
+                />
+                <MenuBrowserModal
+                    isOpen={isMenuBrowserOpen}
+                    onClose={() => setIsMenuBrowserOpen(false)}
+                    categories={menuCategories}
+                    onCategoryClick={handleCategoryClick}
+                    catalogLabel={catalogLabel}
+                />
 
                 {/* ADDRESS SELECTION DRAWER - TOP SHEET */}
                 <AnimatePresence>
@@ -3119,9 +3159,9 @@ const OrderPageInternal = () => {
                     {restaurantData.isOpen === false && (
                         <Alert className="border-red-500 bg-red-500/10">
                             <AlertCircle className="h-4 w-4 text-red-500" />
-                            <AlertTitle className="text-red-500 font-bold">Restaurant Currently Closed</AlertTitle>
+                            <AlertTitle className="text-red-500 font-bold">{businessLabelTitle} Currently Closed</AlertTitle>
                             <AlertDescription className="text-red-400">
-                                Sorry, {restaurantData.name} is currently closed and not accepting orders. Please check back later or contact the restaurant for more information.
+                                Sorry, {restaurantData.name} is currently closed and not accepting orders. Please check back later or contact the {businessLabel} for more information.
                             </AlertDescription>
                         </Alert>
                     )}
@@ -3195,7 +3235,7 @@ const OrderPageInternal = () => {
                                             <ShoppingBag size={16} /> Pickup
                                         </button>
                                     )}
-                                    {restaurantData.dineInEnabled && (
+                                    {canShowDineIn && (
                                         <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
                                             <ConciergeBell size={16} /> Dine-In
                                         </button>
@@ -3220,7 +3260,7 @@ const OrderPageInternal = () => {
                                         <div className="flex items-center gap-3 overflow-hidden">
                                             <Store className="text-primary flex-shrink-0" size={20} />
                                             <div>
-                                                <p className="text-xs text-muted-foreground">Pick your order from</p>
+                                                <p className="text-xs text-muted-foreground">{pickupLabel}</p>
                                                 <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantData.businessAddress?.full || restaurantData.name)}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-foreground truncate flex items-center gap-1 hover:underline text-primary">
                                                     {restaurantData.businessAddress?.full || 'N/A'} <ExternalLink size={12} />
                                                 </a>
@@ -3358,21 +3398,25 @@ const OrderPageInternal = () => {
                                             </PopoverContent>
                                         </Popover>
 
-                                        <button
-                                            onClick={() => handleFilterChange('veg')}
-                                            className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
-                                        >
-                                            <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
-                                            Veg
-                                        </button>
+                                        {!isStoreBusiness && (
+                                            <>
+                                                <button
+                                                    onClick={() => handleFilterChange('veg')}
+                                                    className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
+                                                >
+                                                    <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
+                                                    Veg
+                                                </button>
 
-                                        <button
-                                            onClick={() => handleFilterChange('nonVeg')}
-                                            className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
-                                        >
-                                            <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
-                                            Non-veg
-                                        </button>
+                                                <button
+                                                    onClick={() => handleFilterChange('nonVeg')}
+                                                    className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
+                                                >
+                                                    <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
+                                                    Non-veg
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -3423,7 +3467,7 @@ const OrderPageInternal = () => {
                                         {/* Message */}
                                         <p className="text-muted-foreground text-base leading-relaxed">
                                             {restaurantData.name} is not accepting orders at the moment.
-                                            Please check back later or contact us for more information.
+                                            Please check back later or contact this {businessLabel} for more information.
                                         </p>
 
                                         {/* Decorative element */}

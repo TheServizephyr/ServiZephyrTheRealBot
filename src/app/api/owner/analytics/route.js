@@ -835,6 +835,9 @@ export async function GET(req) {
             });
         }
 
+        const businessTypeRaw = restaurantData.businessType || collectionName.slice(0, -1);
+        const businessType = businessTypeRaw === 'shop' ? 'store' : businessTypeRaw;
+
         return NextResponse.json(
             {
                 salesData,
@@ -843,7 +846,7 @@ export async function GET(req) {
                 riderAnalytics,
                 aiInsights,
                 businessInfo: {
-                    businessType: restaurantData.businessType || collectionName.slice(0, -1),
+                    businessType,
                 },
             },
             { status: 200 }

@@ -44,8 +44,8 @@ export async function GET(req) {
             let userType = 'User';
             if (data.businessType === 'restaurant') {
                 userType = 'Restaurant';
-            } else if (data.businessType === 'shop') {
-                userType = 'Shop';
+            } else if (data.businessType === 'shop' || data.businessType === 'store') {
+                userType = 'Store';
             } else if (data.role === 'customer') {
                 userType = 'Customer'
             }

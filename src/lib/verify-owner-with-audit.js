@@ -6,7 +6,7 @@
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
-import { PERMISSIONS, getPermissionsForRole } from '@/lib/permissions';
+import { PERMISSIONS, getPermissionsForRole, normalizeRole } from '@/lib/permissions';
 
 const isOwnerAuditDebugEnabled = process.env.DEBUG_OWNER_AUDIT === 'true';
 const debugLog = (...args) => {
@@ -21,12 +21,13 @@ const DEFAULT_COLLECTION_ORDER = ['restaurants', 'shops', 'street_vendors'];
 function normalizeBusinessType(type) {
     const normalized = String(type || '').trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'street-vendor' || normalized === 'shop' || normalized === 'restaurant') return normalized;
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'street-vendor' || normalized === 'restaurant') return normalized;
     return null;
 }
 
 function getBusinessTypeFromRole(role) {
-    if (role === 'shop-owner') return 'shop';
+    if (role === 'shop-owner') return 'store';
     if (role === 'street-vendor') return 'street-vendor';
     if (role === 'restaurant-owner' || role === 'owner') return 'restaurant';
     return null;
@@ -34,6 +35,7 @@ function getBusinessTypeFromRole(role) {
 
 function getCollectionFromBusinessType(type) {
     const normalized = String(type || '').trim().toLowerCase();
+    if (normalized === 'store') return 'shops';
     if (normalized === 'shop') return 'shops';
     if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street_vendors';
     if (normalized === 'restaurant') return 'restaurants';
@@ -193,6 +195,10 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                     // For direct owner access, use getPermissionsForRole to properly flatten nested permissions
                     effectiveCallerPermissions = getPermissionsForRole(effectiveCallerRole);
                 }
+
+                // Normalize legacy role aliases (shop-owner/restaurant-owner/etc.)
+                // so downstream APIs that check exact role strings remain consistent.
+                effectiveCallerRole = normalizeRole(effectiveCallerRole);
 
                 return {
                     uid: targetOwnerId,

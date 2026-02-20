@@ -63,7 +63,8 @@ export async function GET(req) {
         const businessData = businessSnap.data();
         const customCategories = businessData.customCategories || [];
 
-        const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'shop' : 'street-vendor'));
+        const businessTypeRaw = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'store' : 'street-vendor'));
+        const businessType = businessTypeRaw === 'shop' ? 'store' : businessTypeRaw;
         console.log(`[API LOG] GET /api/owner/menu: Determined businessType as '${businessType}'.`);
         
         const restaurantCategoryConfig = {

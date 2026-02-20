@@ -39,7 +39,7 @@ async function verifyUserAndGetData(req) {
     let collectionsToTry = [];
     const userBusinessType = userData.businessType;
     if (userBusinessType === 'restaurant') collectionsToTry = ['restaurants'];
-    else if (userBusinessType === 'shop') collectionsToTry = ['shops'];
+    else if (userBusinessType === 'shop' || userBusinessType === 'store') collectionsToTry = ['shops'];
     else if (userBusinessType === 'street-vendor') collectionsToTry = ['street_vendors'];
     else collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
 

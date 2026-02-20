@@ -11,10 +11,12 @@ async function fetchCollection(firestore, collectionName) {
     return snapshot.docs.map(doc => {
         const data = doc.data();
         if (data.address && data.address.latitude && data.address.longitude) {
+            const businessTypeRaw = data.businessType || collectionName.slice(0, -1);
+            const businessType = businessTypeRaw === 'shop' ? 'store' : businessTypeRaw;
             return {
                 id: doc.id,
                 name: data.name || 'Unnamed Business',
-                businessType: data.businessType || collectionName.slice(0, -1),
+                businessType,
                 lat: data.address.latitude,
                 lng: data.address.longitude,
                 address: `${data.address.street}, ${data.address.city}`

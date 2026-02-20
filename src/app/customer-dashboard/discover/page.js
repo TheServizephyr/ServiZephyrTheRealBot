@@ -28,7 +28,7 @@ const APPROX_ROAD_DISTANCE_FACTOR = 1.3;
 
 const isRestaurantLocation = (location) => {
     const type = String(location?.businessType || '').toLowerCase();
-    return type !== 'shop';
+    return type !== 'shop' && type !== 'store';
 };
 
 const isValidCoordinatePair = (lat, lng) => (

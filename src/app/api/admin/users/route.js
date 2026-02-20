@@ -53,8 +53,8 @@ export async function GET(req) {
                 userRole = 'Admin';
             } else if (data.businessType === 'restaurant') {
                 userRole = 'Owner';
-            } else if (data.businessType === 'shop') {
-                userRole = 'Shop Owner';
+            } else if (data.businessType === 'shop' || data.businessType === 'store') {
+                userRole = 'Store Owner';
             } else if (data.businessType === 'street-vendor' || data.businessType === 'street_vendor') {
                 userRole = 'Street Vendor';
             } else if (data.role === 'rider' || data.role === 'delivery') {

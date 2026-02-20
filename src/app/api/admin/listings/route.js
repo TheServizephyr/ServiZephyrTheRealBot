@@ -22,7 +22,7 @@ async function fetchCollection(firestore, collectionName) {
         if (collectionName === 'restaurants') {
             businessType = 'restaurant';
         } else if (collectionName === 'shops') {
-            businessType = 'shop';
+            businessType = 'store';
         } else if (collectionName === 'street_vendors') {
             businessType = 'street-vendor';
         } else {
@@ -55,7 +55,7 @@ async function fetchCollection(firestore, collectionName) {
             onboarded: onboardedDate,
             status: capitalizedStatus,
             restrictedFeatures: data.restrictedFeatures || [],
-            businessType: data.businessType || businessType,
+            businessType: (data.businessType === 'shop' ? 'store' : (data.businessType || businessType)),
         };
 
         if (business.ownerId) {
@@ -160,7 +160,7 @@ export async function PATCH(req) {
         let collectionName;
         if (businessType === 'restaurant') {
             collectionName = 'restaurants';
-        } else if (businessType === 'shop') {
+        } else if (businessType === 'shop' || businessType === 'store') {
             collectionName = 'shops';
         } else if (businessType === 'street-vendor') {
             collectionName = 'street_vendors';

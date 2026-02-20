@@ -78,7 +78,7 @@ function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal, de
 }
 
 function getBusinessTypeFromCollection(collectionName) {
-    if (collectionName === 'shops') return 'shop';
+    if (collectionName === 'shops') return 'store';
     if (collectionName === 'street_vendors') return 'street-vendor';
     return 'restaurant';
 }

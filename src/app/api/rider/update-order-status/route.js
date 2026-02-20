@@ -85,7 +85,7 @@ export async function PATCH(req) {
         const orderData = orderDoc.data();
         const restaurantId = orderData.restaurantId;
         const businessType = orderData.businessType || 'restaurant';
-        const collectionName = businessType === 'shop'
+        const collectionName = (businessType === 'shop' || businessType === 'store')
             ? 'shops'
             : (businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
 

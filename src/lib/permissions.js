@@ -117,6 +117,7 @@ export const ROLES = {
 const ROLE_ALIAS_MAP = {
     'restaurant-owner': ROLES.OWNER,
     'shop-owner': ROLES.OWNER,
+    'store-owner': ROLES.OWNER,
     'street_vendor': ROLES.STREET_VENDOR,
 };
 

@@ -252,7 +252,7 @@ function OwnerDashboardContent({ children }) {
           if (settingsData.businessType) {
             const normalizedBusinessType = settingsData.businessType === 'street_vendor'
               ? 'street-vendor'
-              : settingsData.businessType;
+              : (settingsData.businessType === 'shop' ? 'store' : settingsData.businessType);
             localStorage.setItem('businessType', normalizedBusinessType);
           }
           setRestaurantName(settingsData.restaurantName || 'My Dashboard');

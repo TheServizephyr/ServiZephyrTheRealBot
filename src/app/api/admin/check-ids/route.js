@@ -3,7 +3,7 @@ import { getFirestore } from '@/lib/firebase-admin';
 
 const BUSINESS_COLLECTIONS = [
   { name: 'restaurants', businessType: 'restaurant' },
-  { name: 'shops', businessType: 'shop' },
+  { name: 'shops', businessType: 'store' },
   { name: 'street_vendors', businessType: 'street-vendor' },
 ];
 

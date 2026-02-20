@@ -301,7 +301,10 @@ export async function GET(req) {
             // If customerId is provided, fetch customer details as well
             let customerData = null;
             if (customerId && canViewCustomerDetails) {
-                const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
+                const businessCollectionName =
+                    (businessData.businessType === 'shop' || businessData.businessType === 'store')
+                        ? 'shops'
+                        : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
                 const customerRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers').doc(customerId);
                 const customerSnap = await customerRef.get();
                 if (customerSnap.exists) {
@@ -865,7 +868,10 @@ export async function PATCH(req) {
 
                         // B. Auto-Close Restaurant on Rejection (Only if reason matches)
                         if (newStatus === 'rejected' && rejectionReason === 'restaurant_closed') {
-                            const bizCollection = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
+                            const bizCollection =
+                                (businessData.businessType === 'shop' || businessData.businessType === 'store')
+                                    ? 'shops'
+                                    : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
                             effects.push(firestore.collection(bizCollection).doc(businessId).update({ isOpen: false }));
                             effects.push(sendRestaurantStatusChangeNotification({
                                 ownerPhone: businessData.ownerPhone,

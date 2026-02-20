@@ -55,15 +55,44 @@ const shopCategoryConfig = {
 };
 
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
+const toFiniteNumber = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+const isStoreBusinessType = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === 'shop' || normalized === 'store';
+};
 
 
 // --- COMPONENTS (Single File) ---
 
-const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelectItem, isSelected, canEdit = true, canDelete = true, canToggleAvailability = true }) => {
+const MenuItem = ({
+    item,
+    index,
+    onDelete,
+    onEdit,
+    onToggleAvailability,
+    onSelectItem,
+    isSelected,
+    canEdit = true,
+    canDelete = true,
+    canToggleAvailability = true,
+    showStockControls = false,
+    stockInfo = null,
+    stockDraftValue = '',
+    onStockDraftChange = null,
+    onSetStock = null,
+    onAdjustStock = null,
+    isStockUpdating = false,
+}) => {
     // Determine the price to display. Find the 'Full' price, or the first price if 'Full' doesn't exist.
     const displayPortion = (item.portions && item.portions.length > 0)
         ? item.portions.find(p => p.name.toLowerCase() === 'full') || item.portions[0]
         : null;
+    const stockOnHand = toFiniteNumber(stockInfo?.stockOnHand, 0);
+    const reserved = toFiniteNumber(stockInfo?.reserved, 0);
+    const available = toFiniteNumber(stockInfo?.available, stockOnHand - reserved);
 
     return (
         <Draggable draggableId={item.id} index={index}>
@@ -134,6 +163,56 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
                             <span className="text-xs text-muted-foreground italic">View Only</span>
                         )}
                     </div>
+                    {showStockControls && (
+                        <div className="md:col-span-12 border-t border-border/60 pt-3">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                <div className="text-xs text-muted-foreground">
+                                    Stock: <span className="text-foreground font-semibold">{stockOnHand}</span>
+                                    {' '} | Reserved: <span className="text-foreground font-semibold">{reserved}</span>
+                                    {' '} | Sellable: <span className="text-foreground font-semibold">{available}</span>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8"
+                                        disabled={!canEdit || isStockUpdating}
+                                        onClick={() => onAdjustStock?.(item.id, -1)}
+                                    >
+                                        -1
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8"
+                                        disabled={!canEdit || isStockUpdating}
+                                        onClick={() => onAdjustStock?.(item.id, 1)}
+                                    >
+                                        +1
+                                    </Button>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={stockDraftValue}
+                                        onChange={(event) => onStockDraftChange?.(item.id, event.target.value)}
+                                        className="h-8 w-20 rounded-md border border-border bg-input px-2 text-right text-sm"
+                                        disabled={!canEdit || isStockUpdating}
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        className="h-8"
+                                        disabled={!canEdit || isStockUpdating}
+                                        onClick={() => onSetStock?.(item.id)}
+                                    >
+                                        {isStockUpdating ? 'Saving...' : 'Set Stock'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </motion.div>
             )}
         </Draggable>
@@ -142,7 +221,30 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
 
 
 
-const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen, selectedItems, setSelectedItems, canEdit = true, canDelete = true, canToggleAvailability = true }) => {
+const MenuCategory = ({
+    categoryId,
+    title,
+    icon,
+    items,
+    onDeleteItem,
+    onEditItem,
+    onToggleAvailability,
+    setMenu,
+    open,
+    setOpen,
+    selectedItems,
+    setSelectedItems,
+    canEdit = true,
+    canDelete = true,
+    canToggleAvailability = true,
+    showStockControls = false,
+    getStockInfo = null,
+    getStockDraftValue = null,
+    onStockDraftChange = null,
+    onSetStock = null,
+    onAdjustStock = null,
+    stockUpdatingItemId = null,
+}) => {
     const Icon = icon;
     const isExpanded = open === categoryId;
 
@@ -239,6 +341,13 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                                                 canEdit={canEdit}
                                                 canDelete={canDelete}
                                                 canToggleAvailability={canToggleAvailability}
+                                                showStockControls={showStockControls}
+                                                stockInfo={getStockInfo ? getStockInfo(item.id) : null}
+                                                stockDraftValue={getStockDraftValue ? getStockDraftValue(item.id) : ''}
+                                                onStockDraftChange={onStockDraftChange}
+                                                onSetStock={onSetStock}
+                                                onAdjustStock={onAdjustStock}
+                                                isStockUpdating={stockUpdatingItemId === item.id}
                                             />
                                         ))}
                                         {provided.placeholder}
@@ -256,13 +365,14 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
 
 
 
-const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, showInfoDialog }) => {
+const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, showInfoDialog, businessType = 'restaurant' }) => {
     const [item, setItem] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [newCategory, setNewCategory] = useState('');
     const [showNewCategory, setShowNewCategory] = useState(false);
     const fileInputRef = useRef(null);
     const [pricingType, setPricingType] = useState('portions');
+    const isShop = isStoreBusinessType(businessType);
 
     const sortedCategories = useMemo(() => {
         return Object.entries(allCategories)
@@ -281,38 +391,41 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             setNewCategory('');
             setShowNewCategory(false);
             if (editingItem) {
-                const hasMultiplePortions = editingItem.portions && editingItem.portions.length > 1;
-                const hasDifferentPortionName = editingItem.portions && editingItem.portions.length === 1 && editingItem.portions[0].name.toLowerCase() !== 'full';
-
-                if (hasMultiplePortions || hasDifferentPortionName) {
-                    setPricingType('portions');
-                } else {
+                if (isShop) {
                     setPricingType('single');
+                } else {
+                    const hasMultiplePortions = editingItem.portions && editingItem.portions.length > 1;
+                    const hasDifferentPortionName = editingItem.portions && editingItem.portions.length === 1 && editingItem.portions[0].name.toLowerCase() !== 'full';
+                    if (hasMultiplePortions || hasDifferentPortionName) {
+                        setPricingType('portions');
+                    } else {
+                        setPricingType('single');
+                    }
                 }
 
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
-                    addOnGroups: editingItem.addOnGroups || [],
+                    addOnGroups: isShop ? [] : (editingItem.addOnGroups || []),
                 });
             } else {
-                setPricingType('portions');
+                setPricingType(isShop ? 'single' : 'portions');
                 setItem({
                     name: "",
                     description: "",
                     portions: [{ name: 'Full', price: '' }],
-                    categoryId: sortedCategories[0]?.id || "starters",
+                    categoryId: sortedCategories[0]?.id || (isShop ? "electronics" : "starters"),
                     isVeg: true,
                     isAvailable: true,
                     imageUrl: "",
                     tags: "",
-                    addOnGroups: [],
+                    addOnGroups: isShop ? [] : [],
                 });
             }
         } else {
             setItem(null);
         }
-    }, [editingItem, isOpen]);
+    }, [editingItem, isOpen, isShop, sortedCategories]);
 
     const handleCategoryChange = (e) => {
         const value = e.target.value;
@@ -459,7 +572,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
 
             let finalPortions;
-            if (pricingType === 'single') {
+            if (isShop || pricingType === 'single') {
                 const basePrice = item.portions?.[0]?.price;
                 if (!basePrice || isNaN(parseFloat(basePrice))) {
                     showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price." });
@@ -473,14 +586,16 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
             }
 
-            const finalAddOnGroups = item.addOnGroups
-                .filter(g => g.title.trim() && g.options.some(opt => opt.name.trim() && opt.price))
-                .map(g => ({
-                    ...g,
-                    options: g.options
-                        .filter(opt => opt.name.trim() && opt.price)
-                        .map(opt => ({ name: opt.name.trim(), price: parseFloat(opt.price) }))
-                }));
+            const finalAddOnGroups = isShop
+                ? []
+                : item.addOnGroups
+                    .filter(g => g.title.trim() && g.options.some(opt => opt.name.trim() && opt.price))
+                    .map(g => ({
+                        ...g,
+                        options: g.options
+                            .filter(opt => opt.name.trim() && opt.price)
+                            .map(opt => ({ name: opt.name.trim(), price: parseFloat(opt.price) }))
+                    }));
 
             if (finalPortions.length === 0) {
                 showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price." });
@@ -493,7 +608,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 name: item.name,
                 description: item.description,
                 portions: finalPortions,
-                isVeg: item.isVeg,
+                isVeg: isShop ? true : item.isVeg,
                 isAvailable: item.isAvailable,
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
@@ -523,9 +638,9 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
-                        <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
+                        <DialogTitle>{editingItem ? (isShop ? 'Edit Product' : 'Edit Item') : (isShop ? 'Add New Product' : 'Add New Item')}</DialogTitle>
                         <DialogDescription>
-                            {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you&apos;re done."}
+                            {editingItem ? 'Update the details for this entry.' : "Fill in the details and click save when you're done."}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
@@ -533,11 +648,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                         <div className="space-y-4">
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="name" className="text-right">Name</Label>
-                                <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder={isShop ? "e.g., Dove Soap 100g" : "e.g., Veg Pulao"} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="description" className="text-right">Description</Label>
-                                <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <Label htmlFor="description" className="text-right">{isShop ? 'Details' : 'Description'}</Label>
+                                <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder={isShop ? "e.g., Brand/Size/Color" : "e.g., 10 Pcs."} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
@@ -551,12 +666,12 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             {showNewCategory && (
                                 <div className="grid grid-cols-4 items-center gap-4">
                                     <Label htmlFor="newCategory" className="text-right">New Category</Label>
-                                    <input id="newCategory" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="e.g., Biryani Special" className="col-span-3 p-2 border rounded-md bg-input border-border" />
+                                    <input id="newCategory" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder={isShop ? "e.g., Personal Care" : "e.g., Biryani Special"} className="col-span-3 p-2 border rounded-md bg-input border-border" />
                                 </div>
                             )}
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="tags" className="text-right">Tags</Label>
-                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef&apos;s Special" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <Label htmlFor="tags" className="text-right">{isShop ? 'Keywords' : 'Tags'}</Label>
+                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder={isShop ? "e.g., Bestseller, Fast Moving" : "e.g., Spicy, Chef's Special"} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Image</Label>
@@ -575,10 +690,12 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 </div>
                             </div>
                             <div className="flex items-center justify-end gap-4 pt-4">
-                                <div className="flex items-center space-x-2">
-                                    <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
-                                    <Label htmlFor="is-veg">Vegetarian</Label>
-                                </div>
+                                {!isShop && (
+                                    <div className="flex items-center space-x-2">
+                                        <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
+                                        <Label htmlFor="is-veg">Vegetarian</Label>
+                                    </div>
+                                )}
                                 <div className="flex items-center space-x-2">
                                     <Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} />
                                     <Label htmlFor="is-available">Available</Label>
@@ -590,14 +707,16 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                         <div className="space-y-4">
                             <div>
                                 <Label>Pricing</Label>
-                                <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
-                                    <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
-                                    <Button type="button" onClick={() => setPricingType('portions')} variant={pricingType === 'portions' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'portions' && 'bg-background text-foreground shadow-sm')}>Variable Portions</Button>
-                                </div>
+                                {!isShop && (
+                                    <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
+                                        <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
+                                        <Button type="button" onClick={() => setPricingType('portions')} variant={pricingType === 'portions' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'portions' && 'bg-background text-foreground shadow-sm')}>Variable Portions</Button>
+                                    </div>
+                                )}
                                 <div className="mt-3 space-y-3">
-                                    {pricingType === 'single' ? (
+                                    {(isShop || pricingType === 'single') ? (
                                         <div className="flex items-center gap-2">
-                                            <Label className="w-24">Base Price</Label>
+                                            <Label className="w-24">{isShop ? 'Selling Price' : 'Base Price'}</Label>
                                             <IndianRupee className="text-muted-foreground" size={16} />
                                             <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required />
                                         </div>
@@ -620,7 +739,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     )}
                                 </div>
                             </div>
-                            <div className="border-t border-border pt-4">
+                            {!isShop && <div className="border-t border-border pt-4">
                                 <Label>Add-on Groups (Optional)</Label>
                                 <div className="mt-2 space-y-4">
                                     {item.addOnGroups.map((group, groupIndex) => (
@@ -645,7 +764,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                         <PlusCircle size={16} className="mr-2" /> Add Add-on Group
                                     </Button>
                                 </div>
-                            </div>
+                            </div>}
                         </div>
                     </div>
                     <DialogFooter>
@@ -671,43 +790,57 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog 
     const [isSaving, setIsSaving] = useState(false);
     const [copySuccess, setCopySuccess] = useState('');
 
-    const isShop = businessType === 'shop';
-    const contextType = isShop ? 'product catalog' : 'restaurant menu';
-    const itemName = isShop ? 'Product name' : 'Dish name';
+    const isShop = isStoreBusinessType(businessType);
     const placeholderText = isShop ? '[PASTE YOUR PRODUCT LIST HERE]' : '[PASTE YOUR MENU TEXT HERE]';
     const instructionsText = isShop ? 'your product list' : 'your menu text';
-    const categoryExample = isShop ? "'electronics'" : "'main-course'";
-    const defaultCategory = isShop ? "general" : "main-course";
-
-    const aiPrompt = `You are an expert data extractor. Convert the following ${contextType} text (or content from the provided image) into a structured JSON array. Each object in the array must strictly follow this format:
+    const aiPrompt = isShop
+        ? `You are an expert data extractor. Convert the following product catalog text (or content from the provided image) into a structured JSON array. Each object in the array must strictly follow this format:
 {
-  "name": "string (${itemName})",
+  "name": "string (Product name)",
+  "description": "string (Optional details like brand/size)",
+  "imageUrl": "string (Optional URL to the product image)",
+  "categoryId": "string (Lowercase, dash-separated, e.g., 'beauty-personal-care')",
+  "portions": [
+    { "name": "Full", "price": "number (Selling price)" }
+  ],
+  "tags": ["string", "... (Optional array like 'Bestseller', 'Fast Moving')"],
+  "isAvailable": "boolean (Optional, default true)"
+}
+
+Important Rules:
+- Keep exactly ONE price entry in 'portions' with name "Full".
+- Do NOT include restaurant-only fields such as 'isVeg' or 'addOnGroups'.
+- If category is not obvious, use 'general'.
+- The final output must be ONLY the JSON array, with no extra text or explanations.
+
+Here is the text:
+---
+${placeholderText}
+---`
+        : `You are an expert data extractor. Convert the following restaurant menu text (or content from the provided image) into a structured JSON array. Each object in the array must strictly follow this format:
+{
+  "name": "string (Dish name)",
   "description": "string (Optional item description)",
   "imageUrl": "string (Optional URL to the item image)",
-  "categoryId": "string (Lowercase, dash-separated, e.g., ${categoryExample})",
+  "categoryId": "string (Lowercase, dash-separated, e.g., 'main-course')",
   "isVeg": "boolean (true for vegetarian, false for non-vegetarian, default to true if unsure)",
   "portions": [
-    { "name": "string (e.g., 'Full', 'Half', 'Regular', '500g')", "price": "number" }
+    { "name": "string (e.g., 'Full', 'Half', 'Regular')", "price": "number" }
   ],
   "tags": ["string", "... (Optional array of tags like 'Bestseller', 'Spicy')"],
   "addOnGroups": [
-    { 
-      "title": "string (e.g., 'Choose your bread')", 
+    {
+      "title": "string (e.g., 'Choose your bread')",
       "options": [
-        { "name": "string (e.g., 'Tandoori Roti')", "price": "number" },
-        ...
+        { "name": "string (e.g., 'Tandoori Roti')", "price": "number" }
       ]
-    },
-    ...
+    }
   ]
 }
 
 Important Rules:
 - If an item has only one price, create a single entry in the 'portions' array with the name "Full".
-- If a category is not obvious, use a sensible default like '${defaultCategory}'.
-- The 'isVeg' flag is more for restaurants; for shops, you can default it to true.
-- The 'imageUrl' is optional. If not present, the system will use a placeholder.
-- **INTELLIGENT ADD-ONS (STRICT):** You may create 'addOnGroups' by associating other items present in the menu (e.g., "Breads" as add-ons for "Curries"). However, **DO NOT invent items** (like "Coke" or "Cheese") if they are not explicitly listed in the source text/image.
+- If a category is not obvious, use a sensible default like 'main-course'.
 - The final output must be ONLY the JSON array, with no extra text or explanations.
 
 Here is the text:
@@ -748,11 +881,17 @@ ${placeholderText}
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-2xl"><FileJson /> Bulk Add Items via JSON</DialogTitle>
-                    <DialogDescription>Quickly add multiple items by pasting a structured JSON array.</DialogDescription>
+                    <DialogTitle className="flex items-center gap-2 text-2xl">
+                        <FileJson /> {isShop ? 'Bulk Add Products via JSON' : 'Bulk Add Items via JSON'}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {isShop
+                            ? 'Quickly add multiple products by pasting a structured JSON array.'
+                            : 'Quickly add multiple items by pasting a structured JSON array.'}
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="grid md:grid-cols-2 gap-x-8 max-h-[70vh] overflow-y-auto pr-4">
                     <div className="space-y-4 py-4">
@@ -763,7 +902,7 @@ ${placeholderText}
                             <li>Paste the prompt, and then paste ${instructionsText} where it says \`${placeholderText}\`.</li>
                             <li>The AI will generate a JSON array. Copy the entire JSON code.</li>
                             <li>Paste the copied JSON code into the text area on this page.</li>
-                            <li>Click &quot;Upload &amp; Save Items&quot;.</li>
+                            <li>Click <span className="font-medium">{isShop ? 'Upload & Save Products' : 'Upload & Save Items'}</span>.</li>
                         </ol>
                         <div className="p-4 bg-muted rounded-lg">
                             <div className="flex justify-between items-center mb-2">
@@ -781,7 +920,11 @@ ${placeholderText}
                             id="json-input"
                             value={jsonText}
                             onChange={(e) => setJsonText(e.target.value)}
-                            placeholder='[&#10;  {&#10;    "name": "Paneer Butter Masala",&#10;    "categoryId": "main-course",&#10;    ...&#10;  },&#10;  ...&#10;]'
+                            placeholder={
+                                isShop
+                                    ? '[\n  {\n    "name": "Dove Soap 100g",\n    "description": "Pack of 1",\n    "categoryId": "beauty-personal-care",\n    "portions": [{ "name": "Full", "price": 55 }],\n    "tags": ["bestseller"]\n  }\n]'
+                                    : '[\n  {\n    "name": "Paneer Butter Masala",\n    "categoryId": "main-course",\n    "isVeg": true,\n    "portions": [{ "name": "Full", "price": 240 }]\n  }\n]'
+                            }
                             className="w-full h-96 mt-2 p-3 font-mono text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary"
                         />
                     </div>
@@ -789,7 +932,7 @@ ${placeholderText}
                 <DialogFooter>
                     <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                     <Button onClick={handleSubmit} disabled={isSaving || !jsonText} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                        {isSaving ? 'Uploading...' : 'Upload & Save Items'}
+                        {isSaving ? 'Uploading...' : (isShop ? 'Upload & Save Products' : 'Upload & Save Items')}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -837,7 +980,12 @@ export default function MenuPage() {
     const [isOpenItemsModalOpen, setIsOpenItemsModalOpen] = useState(false);
     const [newOpenItemName, setNewOpenItemName] = useState('');
     const [newOpenItemPrice, setNewOpenItemPrice] = useState('');
+    const [inventoryByItemId, setInventoryByItemId] = useState({});
+    const [stockDrafts, setStockDrafts] = useState({});
+    const [stockSyncing, setStockSyncing] = useState(false);
+    const [stockUpdatingItemId, setStockUpdatingItemId] = useState(null);
     const hasHydratedFromCacheRef = useRef(false);
+    const isStoreBusiness = isStoreBusinessType(businessType);
 
     // 🔐 RBAC: Get user role for access control
     const { user: authUser, isLoading: isUserLoading } = useUser();
@@ -997,8 +1145,144 @@ export default function MenuPage() {
         fetchMenu({ background: false, includeOpenItems: true });
     }, [isUserLoading, authUser?.uid, impersonatedOwnerId, employeeOfOwnerId, fetchMenu]);
 
+    const fetchInventoryForStore = useCallback(async () => {
+        if (!isStoreBusiness) {
+            setInventoryByItemId({});
+            setStockDrafts({});
+            return;
+        }
+
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const inventoryUrl = buildScopedUrl('/api/owner/inventory?limit=500');
+            const res = await fetch(inventoryUrl, {
+                headers: { Authorization: `Bearer ${idToken}` }
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.message || 'Failed to fetch stock.');
+            }
+
+            const items = Array.isArray(data.items) ? data.items : [];
+            const nextMap = {};
+            const nextDrafts = {};
+            items.forEach((inventoryItem) => {
+                if (!inventoryItem?.id) return;
+                nextMap[inventoryItem.id] = inventoryItem;
+                nextDrafts[inventoryItem.id] = String(toFiniteNumber(inventoryItem.stockOnHand, 0));
+            });
+
+            setInventoryByItemId(nextMap);
+            setStockDrafts((prev) => ({ ...prev, ...nextDrafts }));
+        } catch (error) {
+            console.error('Failed to fetch store inventory:', error);
+        }
+    }, [isStoreBusiness, buildScopedUrl]);
+
+    useEffect(() => {
+        fetchInventoryForStore();
+    }, [fetchInventoryForStore]);
+
+    const importStoreItemsToStock = async () => {
+        if (!isStoreBusiness) return;
+        setStockSyncing(true);
+        try {
+            const data = await handleApiCall('/api/owner/inventory/sync-from-menu', 'POST', {});
+            await fetchInventoryForStore();
+            setInfoDialog({
+                isOpen: true,
+                title: 'Stock Ready',
+                message: `${data.created || 0} items added and ${data.updated || 0} items updated in stock manager.`,
+            });
+        } catch (error) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Stock Sync Failed',
+                message: error.message || 'Could not import items to stock.',
+            });
+        } finally {
+            setStockSyncing(false);
+        }
+    };
+
+    const adjustStoreStock = async (itemId, qtyDelta) => {
+        if (!isStoreBusiness || !itemId) return;
+        if (!Number.isFinite(Number(qtyDelta)) || Number(qtyDelta) === 0) return;
+
+        if (!inventoryByItemId[itemId]) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Stock Not Ready',
+                message: 'First click "Import Items to Stock", then update quantity.',
+            });
+            return;
+        }
+
+        setStockUpdatingItemId(itemId);
+        try {
+            const data = await handleApiCall('/api/owner/inventory/adjust', 'POST', {
+                itemId,
+                qtyDelta: Number(qtyDelta),
+                reason: 'manual_adjustment',
+            });
+
+            const updatedItem = data?.item || {};
+            setInventoryByItemId((prev) => ({
+                ...prev,
+                [itemId]: {
+                    ...(prev[itemId] || {}),
+                    stockOnHand: toFiniteNumber(updatedItem.stockOnHand, 0),
+                    reserved: toFiniteNumber(updatedItem.reserved, 0),
+                    available: toFiniteNumber(updatedItem.available, 0),
+                },
+            }));
+            setStockDrafts((prev) => ({
+                ...prev,
+                [itemId]: String(toFiniteNumber(updatedItem.stockOnHand, 0)),
+            }));
+        } catch (error) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Stock Update Failed',
+                message: error.message || 'Could not update stock.',
+            });
+        } finally {
+            setStockUpdatingItemId(null);
+        }
+    };
+
+    const setStoreStockFromDraft = async (itemId) => {
+        if (!isStoreBusiness || !itemId) return;
+        if (!inventoryByItemId[itemId]) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Stock Not Ready',
+                message: 'First click "Import Items to Stock", then set quantity.',
+            });
+            return;
+        }
+
+        const rawValue = stockDrafts[itemId];
+        const targetStock = Number(rawValue);
+        if (!Number.isFinite(targetStock) || targetStock < 0) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Invalid Quantity',
+                message: 'Please enter a valid stock value (0 or greater).',
+            });
+            return;
+        }
+
+        const currentStock = toFiniteNumber(inventoryByItemId[itemId]?.stockOnHand, 0);
+        const qtyDelta = targetStock - currentStock;
+        if (qtyDelta === 0) return;
+        await adjustStoreStock(itemId, qtyDelta);
+    };
+
     const allCategories = useMemo(() => {
-        const categories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
+        const categories = { ...(isStoreBusiness ? shopCategoryConfig : restaurantCategoryConfig) };
         customCategories.forEach(cat => {
             if (cat.id === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
                 return;
@@ -1022,7 +1306,7 @@ export default function MenuPage() {
         });
 
         return categories;
-    }, [customCategories, businessType, menu]);
+    }, [customCategories, isStoreBusiness, menu]);
 
 
     const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
@@ -1310,10 +1594,10 @@ export default function MenuPage() {
         );
     }, [openItems]);
 
-    const pageTitle = businessType === 'shop' ? 'Item Catalog' : 'Menu Management';
-    const pageDescription = businessType === 'shop' ? 'Organize categories, manage products, and control availability.' : 'Organize categories, reorder items, and manage availability.';
-    const searchPlaceholder = businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
-    const addNewText = businessType === 'shop' ? 'Add New Product' : 'Add New Dish';
+    const pageTitle = isStoreBusiness ? 'Item Catalog' : 'Menu Management';
+    const pageDescription = isStoreBusiness ? 'Organize categories, manage products, and control availability.' : 'Organize categories, reorder items, and manage availability.';
+    const searchPlaceholder = isStoreBusiness ? 'Search for a product...' : 'Search for a dish...';
+    const addNewText = isStoreBusiness ? 'Add New Product' : 'Add New Dish';
 
 
     if (loading) {
@@ -1339,6 +1623,7 @@ export default function MenuPage() {
                 editingItem={editingItem}
                 allCategories={allCategories}
                 showInfoDialog={setInfoDialog}
+                businessType={businessType}
             />
 
             <BulkAddModal
@@ -1354,8 +1639,25 @@ export default function MenuPage() {
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">{pageTitle}</h1>
                     <p className="text-muted-foreground mt-1">{pageDescription}</p>
+                    {isStoreBusiness && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                            Tip: Product details and stock quantity are managed on this same page.
+                        </div>
+                    )}
                 </div>
                 <div className="flex gap-2">
+                    {isStoreBusiness && canEdit && (
+                        <MotionButton
+                            onClick={importStoreItemsToStock}
+                            variant="outline"
+                            disabled={stockSyncing}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <Upload size={20} className="mr-2" />
+                            {stockSyncing ? 'Importing...' : 'Import Items to Stock'}
+                        </MotionButton>
+                    )}
                     {/* 🔐 RBAC: Only owner can bulk add via JSON */}
                     {canBulkEdit && (
                         <MotionButton
@@ -1455,6 +1757,23 @@ export default function MenuPage() {
                             canEdit={canEdit}
                             canDelete={canDelete}
                             canToggleAvailability={canToggleAvailability}
+                            showStockControls={isStoreBusiness}
+                            getStockInfo={(itemId) => inventoryByItemId[itemId] || null}
+                            getStockDraftValue={(itemId) => {
+                                const existing = stockDrafts[itemId];
+                                if (existing !== undefined) return existing;
+                                const fallbackValue = toFiniteNumber(inventoryByItemId[itemId]?.stockOnHand, 0);
+                                return String(fallbackValue);
+                            }}
+                            onStockDraftChange={(itemId, value) => {
+                                setStockDrafts((prev) => ({
+                                    ...prev,
+                                    [itemId]: value,
+                                }));
+                            }}
+                            onSetStock={setStoreStockFromDraft}
+                            onAdjustStock={adjustStoreStock}
+                            stockUpdatingItemId={stockUpdatingItemId}
                         />
                     );
                 })}

@@ -35,7 +35,7 @@ export async function POST(req) {
         if (businessType) {
             let collectionName;
             if (businessType === 'restaurant') collectionName = 'restaurants';
-            else if (businessType === 'shop') collectionName = 'shops';
+            else if (businessType === 'shop' || businessType === 'store') collectionName = 'shops';
             else if (businessType === 'street-vendor') collectionName = 'street_vendors';
 
             if (collectionName) {

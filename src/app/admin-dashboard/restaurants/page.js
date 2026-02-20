@@ -290,7 +290,8 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
 
   const businessTypeConfig = {
     restaurant: { icon: Store, color: 'text-primary' },
-    shop: { icon: ShoppingCart, color: 'text-blue-400' }
+    shop: { icon: ShoppingCart, color: 'text-blue-400' },
+    store: { icon: ShoppingCart, color: 'text-blue-400' }
   }
   const BusinessIcon = businessTypeConfig[restaurant.businessType]?.icon || Store;
   const businessIconColor = businessTypeConfig[restaurant.businessType]?.color || 'text-primary';
@@ -351,8 +352,8 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
                     href={
                       restaurant.businessType === 'street-vendor'
                         ? `/street-vendor-dashboard?impersonate_owner_id=${restaurant.ownerId}`
-                        : restaurant.businessType === 'shop'
-                          ? `/shop-dashboard?impersonate_owner_id=${restaurant.ownerId}`
+                        : (restaurant.businessType === 'shop' || restaurant.businessType === 'store')
+                          ? `/owner-dashboard?impersonate_owner_id=${restaurant.ownerId}`
                           : `/owner-dashboard?impersonate_owner_id=${restaurant.ownerId}`
                     }
                     target="_blank"

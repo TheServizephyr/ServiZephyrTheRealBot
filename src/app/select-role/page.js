@@ -61,9 +61,10 @@ export default function SelectRolePage() {
     const setRoleContext = (role, businessType = null) => {
         localStorage.setItem('role', role);
         if (businessType) {
-            const normalizedBusinessType = businessType === 'street_vendor'
+            const rawBusinessType = String(businessType).trim().toLowerCase();
+            const normalizedBusinessType = rawBusinessType === 'street_vendor'
                 ? 'street-vendor'
-                : String(businessType).trim().toLowerCase();
+                : (rawBusinessType === 'shop' ? 'store' : rawBusinessType);
             localStorage.setItem('businessType', normalizedBusinessType);
         } else {
             localStorage.removeItem('businessType');
@@ -75,10 +76,10 @@ export default function SelectRolePage() {
 
         const resolvedBusinessType =
             (businessType
-                ? (businessType === 'street_vendor' ? 'street-vendor' : businessType)
+                ? (businessType === 'street_vendor' ? 'street-vendor' : (businessType === 'shop' ? 'store' : businessType))
                 : null) ||
             (role === 'shop-owner'
-                ? 'shop'
+                ? 'store'
                 : role === 'street-vendor'
                     ? 'street-vendor'
                     : (role === 'owner' || role === 'restaurant-owner')
@@ -129,9 +130,9 @@ export default function SelectRolePage() {
             } else {
                 const resolvedBusinessType =
                     (businessType
-                        ? (businessType === 'street_vendor' ? 'street-vendor' : businessType)
+                        ? (businessType === 'street_vendor' ? 'street-vendor' : (businessType === 'shop' ? 'store' : businessType))
                         : null) ||
-                    (role === 'shop-owner' ? 'shop' : 'restaurant');
+                    (role === 'shop-owner' ? 'store' : 'restaurant');
                 setRoleContext(role || 'owner', resolvedBusinessType);
                 router.push('/owner-dashboard');
             }

@@ -11,12 +11,13 @@ const DEFAULT_COLLECTIONS = ['restaurants', 'shops', 'street_vendors'];
 function normalizeBusinessType(type) {
     const normalized = String(type || '').trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
-    if (normalized === 'street-vendor' || normalized === 'shop' || normalized === 'restaurant') return normalized;
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'street-vendor' || normalized === 'restaurant') return normalized;
     return null;
 }
 
 function getBusinessTypeFromRole(role) {
-    if (role === 'shop-owner') return 'shop';
+    if (role === 'shop-owner') return 'store';
     if (role === 'street-vendor') return 'street-vendor';
     if (role === 'restaurant-owner' || role === 'owner') return 'restaurant';
     return null;
@@ -24,7 +25,7 @@ function getBusinessTypeFromRole(role) {
 
 function getCollectionForType(type) {
     const normalized = String(type || '').trim().toLowerCase();
-    if (normalized === 'shop') return 'shops';
+    if (normalized === 'shop' || normalized === 'store') return 'shops';
     if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street_vendors';
     if (normalized === 'restaurant') return 'restaurants';
     return null;

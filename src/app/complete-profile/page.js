@@ -36,10 +36,10 @@ export default function CompleteProfile() {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   const roles = [
-    { id: 'street-vendor', label: 'Street Vendor', icon: Map, enabled: true },
+    { id: 'street-vendor', label: 'Street Vendor (Food Stall)', icon: Map, enabled: true },
     { id: 'customer', label: 'Customer', icon: User, enabled: true },
     { id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store, enabled: true },
-    { id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart, enabled: false },
+    { id: 'shop-owner', label: 'Store Owner', icon: ShoppingCart, enabled: true },
     { id: 'rider', label: 'Rider', icon: Bike, enabled: true },
     { id: 'admin', label: 'Admin', icon: Shield, enabled: true }
   ];
@@ -73,7 +73,13 @@ export default function CompleteProfile() {
             const { role, businessType } = await res.json();
             console.log(`[DEBUG] complete-profile: Fetched role from API: '${role}', BusinessType: '${businessType}'`);
             localStorage.setItem('role', role);
-            if (businessType) localStorage.setItem('businessType', businessType);
+            if (businessType) {
+              const resolvedBusinessType =
+                businessType === 'street_vendor'
+                  ? 'street-vendor'
+                  : (businessType === 'shop' ? 'store' : businessType);
+              localStorage.setItem('businessType', resolvedBusinessType);
+            }
 
             if (role === 'owner' || role === 'restaurant-owner' || role === 'shop-owner') {
               router.push('/owner-dashboard');
@@ -171,7 +177,7 @@ export default function CompleteProfile() {
 
       let businessType = null;
       if (role === 'restaurant-owner') businessType = 'restaurant';
-      else if (role === 'shop-owner') businessType = 'shop';
+      else if (role === 'shop-owner') businessType = 'store';
       else if (role === 'street-vendor') businessType = 'street-vendor';
 
       const finalUserData = {
@@ -254,7 +260,7 @@ export default function CompleteProfile() {
     const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner' || role === 'street-vendor';
     let businessLabel = 'Business Name';
     if (role === 'restaurant-owner') businessLabel = 'Restaurant Name';
-    else if (role === 'shop-owner') businessLabel = 'Shop Name';
+    else if (role === 'shop-owner') businessLabel = 'Store Name';
     else if (role === 'street-vendor') businessLabel = 'Stall / Thela Name';
 
 

@@ -19,7 +19,11 @@ export async function POST(req) {
             return NextResponse.json({ message: 'User role and phone are missing in payload.' }, { status: 400 });
         }
 
-        const isBusinessOwner = finalUserData.role === 'restaurant-owner' || finalUserData.role === 'shop-owner' || finalUserData.role === 'street-vendor';
+        const isBusinessOwner =
+            finalUserData.role === 'restaurant-owner' ||
+            finalUserData.role === 'shop-owner' ||
+            finalUserData.role === 'store-owner' ||
+            finalUserData.role === 'street-vendor';
 
         if (isBusinessOwner && !businessData) {
             return NextResponse.json({ message: 'Business data is required for owners.' }, { status: 400 });
@@ -80,16 +84,18 @@ export async function POST(req) {
             console.log(`[PROFILE COMPLETION] Rider Action: New rider profile for UID ${uid} added to 'drivers' collection.`);
         }
         else if (isBusinessOwner && businessData) {
+            const normalizedBusinessType = businessType === 'shop' ? 'store' : businessType;
             let collectionName;
-            if (businessType === 'restaurant') collectionName = 'restaurants';
-            else if (businessType === 'shop') collectionName = 'shops';
-            else if (businessType === 'street-vendor') collectionName = 'street_vendors';
+            if (normalizedBusinessType === 'restaurant') collectionName = 'restaurants';
+            else if (normalizedBusinessType === 'store') collectionName = 'shops';
+            else if (normalizedBusinessType === 'street-vendor') collectionName = 'street_vendors';
 
             const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
             const businessRef = firestore.collection(collectionName).doc(businessId);
 
             const finalBusinessData = {
                 ...businessData,
+                businessType: normalizedBusinessType,
                 ownerId: uid, // CRITICAL: Owner's user ID for RBAC and team management
                 merchantId: generateDisplayId('RS_', nowForId), // ✅ NEW: Merchant ID
                 createdAt: FieldValue.serverTimestamp(),
@@ -111,7 +117,7 @@ export async function POST(req) {
                 dineInPayAtCounterEnabled: true,
             };
             batch.set(businessRef, finalBusinessData);
-            console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch with default settings and PENDING approval status.`);
+            console.log(`[PROFILE COMPLETION] Owner Action: New ${normalizedBusinessType} '${businessId}' added to batch with default settings and PENDING approval status.`);
         }
 
         await batch.commit();

@@ -234,6 +234,8 @@ export async function GET(_req, { params }) {
         const maxPrice = menuPrices.length > 0 ? Math.max(...menuPrices) : null;
 
         const address = businessData.address || businessData.businessAddress || {};
+        const rawBusinessType = businessData.businessType || business.type || 'restaurant';
+        const normalizedBusinessType = rawBusinessType === 'shop' ? 'store' : rawBusinessType;
 
         return NextResponse.json({
             restaurant: {
@@ -244,7 +246,7 @@ export async function GET(_req, { params }) {
                 address: getAddressText(businessData),
                 city: address.city || '',
                 isOpen: businessData.isOpen !== false,
-                businessType: businessData.businessType || business.type || 'restaurant',
+                businessType: normalizedBusinessType,
                 services: {
                     delivery: businessData.deliveryEnabled !== false,
                     pickup: businessData.pickupEnabled !== false,

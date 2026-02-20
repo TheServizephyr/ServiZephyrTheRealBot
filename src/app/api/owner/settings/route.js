@@ -13,10 +13,10 @@ export const dynamic = 'force-dynamic';
 
 function normalizeBusinessType(value, fallbackCollectionName = null) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'shop') return 'shop';
+    if (normalized === 'shop' || normalized === 'store') return 'store';
     if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street-vendor';
     if (normalized === 'restaurant') return 'restaurant';
-    if (fallbackCollectionName === 'shops') return 'shop';
+    if (fallbackCollectionName === 'shops') return 'store';
     if (fallbackCollectionName === 'street_vendors') return 'street-vendor';
     return 'restaurant';
 }
