@@ -30,6 +30,14 @@ const uploadToStorage = async (file, path) => {
 
 export const dynamic = 'force-dynamic';
 
+const normalizeBusinessType = (value) => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') return normalized;
+    return null;
+};
+
 // --- Sub-components for better structure ---
 
 const countries = [
@@ -410,8 +418,17 @@ function SettingsPageContent() {
 
 
             // Prevent disabling all order types
-            if (!deliveryEnabled && !pickupEnabled && !dineInEnabled) {
-                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one order type (Delivery, Pickup, or Dine-In) must be enabled.' });
+            const hasAtLeastOneOrderType = isRestaurantBusiness
+                ? (deliveryEnabled || pickupEnabled || dineInEnabled)
+                : (deliveryEnabled || pickupEnabled);
+            if (!hasAtLeastOneOrderType) {
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Invalid Selection',
+                    message: isRestaurantBusiness
+                        ? 'At least one order type (Delivery, Pickup, or Dine-In) must be enabled.'
+                        : 'At least one order type (Delivery or Pickup) must be enabled.'
+                });
                 return prev;
             }
 
@@ -426,7 +443,7 @@ function SettingsPageContent() {
                 return prev;
             }
             // Validation for Dine-In
-            if (dineInEnabled && !dineInOnlinePaymentEnabled && !dineInPayAtCounterEnabled) {
+            if (isRestaurantBusiness && dineInEnabled && !dineInOnlinePaymentEnabled && !dineInPayAtCounterEnabled) {
                 setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Dine-In.' });
                 return prev;
             }
@@ -580,6 +597,14 @@ function SettingsPageContent() {
         );
     }
 
+    const normalizedBusinessType =
+        normalizeBusinessType(editedUser.businessType || user.businessType) || 'restaurant';
+    const isRestaurantBusiness = normalizedBusinessType === 'restaurant';
+    const businessLabel = normalizedBusinessType === 'shop'
+        ? 'Shop'
+        : (normalizedBusinessType === 'street-vendor' ? 'Business' : 'Restaurant');
+    const businessNameLabel = isRestaurantBusiness ? 'Restaurant Name' : `${businessLabel} Name`;
+
     // Show business owner sections if: owner accessing their own data OR employee/admin viewing owner's data
     const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor' || !!employeeOfOwnerId || !!impersonatedOwnerId;
 
@@ -598,7 +623,7 @@ function SettingsPageContent() {
             {/* Profile Information Section */}
             <SectionCard
                 title="Profile Information"
-                description="Manage your personal and restaurant business details."
+                description="Manage your personal and outlet business details."
                 footer={
                     <div className="flex justify-end gap-3">
                         {isEditingProfile ? (
@@ -643,14 +668,14 @@ function SettingsPageContent() {
                                     </Button>
                                 )}
                             </div>
-                            <p className="text-[10px] text-muted-foreground mt-1">Unique identifier for your restaurant.</p>
+                            <p className="text-[10px] text-muted-foreground mt-1">Unique identifier for your outlet.</p>
                         </div>
                         <div>
                             <Label htmlFor="ownerName" className="flex items-center gap-2"><User size={14} /> Owner Name</Label>
                             <input id="ownerName" value={editedUser.name} onChange={e => setEditedUser({ ...editedUser, name: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
                         {isBusinessOwner && (<div>
-                            <Label htmlFor="restaurantName" className="flex items-center gap-2"><Store size={14} /> Restaurant Name</Label>
+                            <Label htmlFor="restaurantName" className="flex items-center gap-2"><Store size={14} /> {businessNameLabel}</Label>
                             <input id="restaurantName" value={editedUser.restaurantName} onChange={e => setEditedUser({ ...editedUser, restaurantName: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>)}
                         <div>
@@ -665,7 +690,7 @@ function SettingsPageContent() {
                     {isBusinessOwner && (
                         <>
                             <div className="space-y-4 md:col-span-2 p-4 border border-dashed border-border rounded-lg">
-                                <h4 className="font-semibold flex items-center gap-2"><MapPin size={16} /> Restaurant Address</h4>
+                                <h4 className="font-semibold flex items-center gap-2"><MapPin size={16} /> {businessLabel} Address</h4>
                                 <div>
                                     <Label htmlFor="street">Street Address</Label>
                                     <input id="street" type="text" value={editedUser.address.street} onChange={(e) => handleAddressChange('street', e.target.value)} placeholder="Street Address" required className="w-full mt-1 p-2 rounded-md bg-input border border-border" disabled={!isEditingProfile} />
@@ -696,10 +721,12 @@ function SettingsPageContent() {
                                     <Label htmlFor="gstin" className="flex items-center gap-2"><FileText size={14} /> GSTIN</Label>
                                     <input id="gstin" value={editedUser.gstin} onChange={e => setEditedUser({ ...editedUser, gstin: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 27ABCDE1234F1Z5" />
                                 </div>
-                                <div>
-                                    <Label htmlFor="fssai" className="flex items-center gap-2"><FileText size={14} /> FSSAI Number</Label>
-                                    <input id="fssai" value={editedUser.fssai} onChange={e => setEditedUser({ ...editedUser, fssai: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 10012345678901" />
-                                </div>
+                                {isRestaurantBusiness && (
+                                    <div>
+                                        <Label htmlFor="fssai" className="flex items-center gap-2"><FileText size={14} /> FSSAI Number</Label>
+                                        <input id="fssai" value={editedUser.fssai} onChange={e => setEditedUser({ ...editedUser, fssai: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 10012345678901" />
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-6">
                                 <div>
@@ -749,7 +776,7 @@ function SettingsPageContent() {
                         }
                     >
                         <div className="space-y-6">
-                            {editedUser.dineInEnabled && (
+                            {isRestaurantBusiness && editedUser.dineInEnabled && (
                                 <div className="border-t border-border pt-6">
                                     <Label className="font-semibold text-lg">Dine-In Model (Master Switch)</Label>
                                     <p className="text-sm text-muted-foreground mb-4">Choose the primary billing flow for your dine-in customers.</p>
@@ -815,7 +842,7 @@ function SettingsPageContent() {
                             <div>
                                 <Label className="font-semibold text-lg">Order Types</Label>
                                 <p className="text-sm text-muted-foreground mb-4">Choose which types of orders your business will accept.</p>
-                                <div className="grid md:grid-cols-3 gap-4">
+                                <div className={cn("grid gap-4", isRestaurantBusiness ? "md:grid-cols-3" : "md:grid-cols-2")}>
                                     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                                         <Label htmlFor="deliveryEnabled" className="flex flex-col">
                                             <span className="font-semibold flex items-center gap-2"><Truck size={16} /> Delivery</span>
@@ -828,19 +855,21 @@ function SettingsPageContent() {
                                         </Label>
                                         <Switch id="pickupEnabled" checked={editedUser.pickupEnabled} onCheckedChange={(checked) => handlePaymentToggle('pickupEnabled', checked)} disabled={!isEditingPayment} />
                                     </div>
-                                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                                        <Label htmlFor="dineInEnabled" className="flex flex-col">
-                                            <span className="font-semibold flex items-center gap-2"><ConciergeBell size={16} /> Dine-In</span>
-                                        </Label>
-                                        <Switch id="dineInEnabled" checked={editedUser.dineInEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInEnabled', checked)} disabled={!isEditingPayment} />
-                                    </div>
+                                    {isRestaurantBusiness && (
+                                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                            <Label htmlFor="dineInEnabled" className="flex flex-col">
+                                                <span className="font-semibold flex items-center gap-2"><ConciergeBell size={16} /> Dine-In</span>
+                                            </Label>
+                                            <Switch id="dineInEnabled" checked={editedUser.dineInEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInEnabled', checked)} disabled={!isEditingPayment} />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
                             <div className="border-t border-border pt-6">
                                 <Label className="font-semibold text-lg">Payment Methods</Label>
                                 <p className="text-sm text-muted-foreground mb-4">Configure payment options for each order type.</p>
-                                <div className="grid md:grid-cols-3 gap-6">
+                                <div className={cn("grid gap-6", isRestaurantBusiness ? "md:grid-cols-3" : "md:grid-cols-2")}>
                                     {/* Delivery Payment Options */}
                                     <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.deliveryEnabled && "opacity-50")}>
                                         <h4 className="font-bold">For Delivery</h4>
@@ -866,24 +895,26 @@ function SettingsPageContent() {
                                         </div>
                                     </div>
                                     {/* Dine-In Payment Options */}
-                                    <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.dineInEnabled && "opacity-50")}>
-                                        <h4 className="font-bold">For Dine-In</h4>
-                                        <div className="flex items-center justify-between">
-                                            <Label htmlFor="dineInOnlinePaymentEnabled" className="text-sm">Online Payments</Label>
-                                            <Switch id="dineInOnlinePaymentEnabled" checked={editedUser.dineInOnlinePaymentEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInOnlinePaymentEnabled', checked)} disabled={!isEditingPayment || !editedUser.dineInEnabled} />
+                                    {isRestaurantBusiness && (
+                                        <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.dineInEnabled && "opacity-50")}>
+                                            <h4 className="font-bold">For Dine-In</h4>
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="dineInOnlinePaymentEnabled" className="text-sm">Online Payments</Label>
+                                                <Switch id="dineInOnlinePaymentEnabled" checked={editedUser.dineInOnlinePaymentEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInOnlinePaymentEnabled', checked)} disabled={!isEditingPayment || !editedUser.dineInEnabled} />
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="dineInPayAtCounterEnabled" className="text-sm">Pay at Counter</Label>
+                                                <Switch id="dineInPayAtCounterEnabled" checked={editedUser.dineInPayAtCounterEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInPayAtCounterEnabled', checked)} disabled={!isEditingPayment || !editedUser.dineInEnabled} />
+                                            </div>
                                         </div>
-                                        <div className="flex items-center justify-between">
-                                            <Label htmlFor="dineInPayAtCounterEnabled" className="text-sm">Pay at Counter</Label>
-                                            <Switch id="dineInPayAtCounterEnabled" checked={editedUser.dineInPayAtCounterEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInPayAtCounterEnabled', checked)} disabled={!isEditingPayment || !editedUser.dineInEnabled} />
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </SectionCard>
                     <SectionCard
                         title="GST & Tax Settings"
-                        description="Configure GST for your restaurant orders."
+                        description="Configure GST for your orders."
                         footer={
                             <div className="flex justify-end gap-3">
                                 {isEditingGst ? (
@@ -903,7 +934,7 @@ function SettingsPageContent() {
                                     <Label htmlFor="gstEnabled" className="font-semibold flex items-center gap-2">
                                         <FileText size={16} /> Enable GST
                                     </Label>
-                                    <p className="text-xs text-muted-foreground mt-1">Apply GST to all orders from this restaurant</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Apply GST to all orders from this outlet.</p>
                                 </div>
                                 <Switch
                                     id="gstEnabled"
@@ -940,7 +971,7 @@ function SettingsPageContent() {
                     </SectionCard>
                     <SectionCard
                         title="Media & Branding"
-                        description="Upload your restaurant&apos;s logo and banner images."
+                        description="Upload your outlet&apos;s logo and banner images."
                         footer={
                             <div className="flex justify-end gap-3">
                                 {isEditingMedia ? (

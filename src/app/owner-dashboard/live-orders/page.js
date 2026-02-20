@@ -47,6 +47,44 @@ const statusConfig = {
 const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'prepared', 'ready_for_pickup', 'dispatched', 'delivered'];
 const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
+const normalizeBusinessType = (value) => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') return normalized;
+    return null;
+};
+
+const toStatusLabel = (status) =>
+    String(status || '')
+        .split('_')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ') || 'Unknown';
+
+const getOrderStatusLabel = (status, businessType = 'restaurant', deliveryType = null) => {
+    const normalizedType = normalizeBusinessType(businessType) || 'restaurant';
+    const normalizedStatus = String(status || '').toLowerCase();
+
+    if (normalizedType === 'shop') {
+        const shopStatusLabels = {
+            pending: 'New',
+            confirmed: 'Confirmed',
+            preparing: 'Processing',
+            prepared: 'Ready',
+            ready_for_pickup: deliveryType === 'pickup' ? 'Ready for Pickup' : 'Ready to Dispatch',
+            dispatched: 'Out for Delivery',
+            delivered: 'Delivered',
+            picked_up: 'Picked Up',
+            rejected: 'Rejected',
+        };
+        return shopStatusLabels[normalizedStatus] || toStatusLabel(normalizedStatus);
+    }
+
+    if (normalizedStatus === 'pending') return 'New';
+    return toStatusLabel(normalizedStatus);
+};
+
 const hasValidCustomerLocation = (order = {}) => {
     const location = order?.customerLocation || {};
     const lat = Number(location?._latitude ?? location?.latitude ?? location?.lat);
@@ -495,8 +533,10 @@ const ActionButton = ({
     employeeOfOwnerId,
     impersonatedOwnerId,
     userRole,
-    hidePaymentActions
+    hidePaymentActions,
+    businessType = 'restaurant',
 }) => {
+    const isShopBusiness = normalizeBusinessType(businessType) === 'shop';
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
@@ -554,7 +594,7 @@ const ActionButton = ({
         return (
             <div className="flex items-center gap-2">
                 <span className={`text-sm font-semibold ${status === 'rejected' ? 'text-red-400' : 'text-green-400'}`}>
-                    Order {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+                    Order {getOrderStatusLabel(status, businessType, order.deliveryType)}
                 </span>
                 <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
                     <Printer size={16} />
@@ -579,7 +619,7 @@ const ActionButton = ({
             className: "bg-green-600 hover:bg-green-700 text-white shadow-sm" // ✅ Confirm: Green
         },
         'confirmed': {
-            text: 'Start Preparing',
+            text: isShopBusiness ? 'Start Processing' : 'Start Preparing',
             icon: CookingPot,
             action: () => onNext(nextStatus),
             permission: PERMISSIONS.MARK_ORDER_PREPARING,
@@ -594,14 +634,14 @@ const ActionButton = ({
                 className: "bg-purple-600 hover:bg-purple-700 text-white shadow-sm" // ✅ Pickup: Purple  
             }
             : {
-                text: 'Mark Prepared',
+                text: isShopBusiness ? 'Mark Ready' : 'Mark Prepared',
                 icon: PackageCheck,
                 action: () => onNext(nextStatus),
                 permission: PERMISSIONS.MARK_ORDER_READY,
                 className: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
             },
         'prepared': {
-            text: isAddressPendingDeliveryOrder ? 'Skip Rider & Continue' : 'Assign Rider',
+            text: isAddressPendingDeliveryOrder ? 'Skip Rider & Continue' : (isShopBusiness ? 'Assign Delivery Partner' : 'Assign Rider'),
             icon: Bike,
             action: () => {
                 if (isAddressPendingDeliveryOrder) {
@@ -877,7 +917,7 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
     );
 };
 
-const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelected }) => {
+const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelected, statusLabel }) => {
     const isPaid = order.paymentStatus === 'paid';
     const isPaidOnline = isPaid && ['razorpay', 'phonepe', 'online', 'upi_manual'].includes(order.paymentMethod);
     const isCOD = !isPaid && (!order.paymentMethod || order.paymentMethod === 'cod' || order.paymentMethod === 'cash');
@@ -1079,7 +1119,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                         "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground w-fit",
                         statusConfig[order.status]?.color?.split(' ')[1]
                     )}>
-                        {order.status.replace('_', ' ')}
+                        {statusLabel}
                     </div>
                 </div>
 
@@ -1157,15 +1197,32 @@ export default function LiveOrdersPage() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [userRole, setUserRole] = useState(null);
+    const [businessType, setBusinessType] = useState('restaurant');
     const [viewMode, setViewMode] = useState('grid'); // 'list' or 'grid'
     const normalizedRole = (userRole || '').toLowerCase();
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    const isShopBusiness = normalizedBusinessType === 'shop';
     const isChefRole = normalizedRole === 'chef';
     const isManagerRole = normalizedRole === 'manager';
     const isOwnerLikeRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor', 'admin'].includes(normalizedRole);
     const canAssignRider = isOwnerLikeRole || isManagerRole || hasPermission(normalizedRole, PERMISSIONS.ASSIGN_RIDER);
-    const availableTabs = isChefRole
-        ? ['Confirmed', 'Preparing', 'Prepared']
-        : ['All', 'New', 'Confirmed', 'Preparing', 'Prepared', 'Dispatched'];
+    const availableTabConfigs = useMemo(() => {
+        const tabValues = isChefRole
+            ? ['Confirmed', 'Preparing', 'Prepared']
+            : ['All', 'New', 'Confirmed', 'Preparing', 'Prepared', 'Dispatched'];
+        const shopLabels = {
+            Preparing: 'Processing',
+            Prepared: 'Ready',
+        };
+        return tabValues.map((value) => ({
+            value,
+            label: isShopBusiness ? (shopLabels[value] || value) : value,
+        }));
+    }, [isChefRole, isShopBusiness]);
+    const availableTabs = useMemo(
+        () => availableTabConfigs.map((tab) => tab.value),
+        [availableTabConfigs]
+    );
 
     // Detect mobile and force grid view
     useEffect(() => {
@@ -1177,6 +1234,17 @@ export default function LiveOrdersPage() {
         checkMobile(); // Check on mount
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
+    useEffect(() => {
+        try {
+            const storedBusinessType = normalizeBusinessType(localStorage.getItem('businessType'));
+            if (storedBusinessType) {
+                setBusinessType(storedBusinessType);
+            }
+        } catch {
+            // Ignore localStorage access issues
+        }
     }, []);
 
     useEffect(() => {
@@ -1223,6 +1291,10 @@ export default function LiveOrdersPage() {
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
                     let effectiveRole = userData.role || 'owner';
+                    const profileBusinessType = normalizeBusinessType(userData.businessType);
+                    if (profileBusinessType) {
+                        setBusinessType(profileBusinessType);
+                    }
 
                     // Employee access uses `employee_of` owner context.
                     // Resolve employee role from localStorage first, then linkedOutlets fallback.
@@ -1268,6 +1340,8 @@ export default function LiveOrdersPage() {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed?.riders)) setRiders(parsed.riders);
             if (parsed?.restaurantData) setRestaurantData(parsed.restaurantData);
+            const cachedBusinessType = normalizeBusinessType(parsed?.businessType || parsed?.restaurantData?.businessType);
+            if (cachedBusinessType) setBusinessType(cachedBusinessType);
         } catch {
             // Ignore malformed cache safely
         }
@@ -1340,17 +1414,21 @@ export default function LiveOrdersPage() {
 
             if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
+                const resolvedBusinessType = normalizeBusinessType(settingsData.businessType) || 'restaurant';
                 const nextRestaurantData = {
                     name: settingsData.restaurantName,
                     address: settingsData.address,
                     gstin: settingsData.gstin,
+                    businessType: resolvedBusinessType,
                 };
+                setBusinessType(resolvedBusinessType);
                 setRestaurantData(nextRestaurantData);
                 try {
                     const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
                     sessionStorage.setItem(staticCacheKey, JSON.stringify({
                         ...previous,
                         restaurantData: nextRestaurantData,
+                        businessType: resolvedBusinessType,
                         ts: Date.now()
                     }));
                 } catch { }
@@ -1419,17 +1497,21 @@ export default function LiveOrdersPage() {
 
                 if (settingsRes.ok) {
                     const settingsData = await settingsRes.json();
+                    const resolvedBusinessType = normalizeBusinessType(settingsData.businessType) || 'restaurant';
                     const nextRestaurantData = {
                         name: settingsData.restaurantName,
                         address: settingsData.address,
                         gstin: settingsData.gstin,
+                        businessType: resolvedBusinessType,
                     };
+                    setBusinessType(resolvedBusinessType);
                     setRestaurantData(nextRestaurantData);
                     try {
                         const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
                         sessionStorage.setItem(staticCacheKey, JSON.stringify({
                             ...previous,
                             restaurantData: nextRestaurantData,
+                            businessType: resolvedBusinessType,
                             ts: Date.now()
                         }));
                     } catch { }
@@ -1880,6 +1962,10 @@ export default function LiveOrdersPage() {
         setAssignModalData({ isOpen: true, orders: ordersToAssign });
     }
 
+    const getStatusLabel = useCallback((status, deliveryType = null) => {
+        return getOrderStatusLabel(status, normalizedBusinessType, deliveryType);
+    }, [normalizedBusinessType]);
+
     const filteredAndSortedOrders = useMemo(() => {
         let sortableItems = [...orders];
 
@@ -1991,7 +2077,9 @@ export default function LiveOrdersPage() {
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Live Order Management</h1>
-                    <p className="text-muted-foreground mt-1 text-sm md:text-base">A real-time, intelligent view of your kitchen&apos;s pulse.</p>
+                    <p className="text-muted-foreground mt-1 text-sm md:text-base">
+                        {isShopBusiness ? 'A real-time view of your active shop orders and dispatch flow.' : 'A real-time, intelligent view of your kitchen\'s pulse.'}
+                    </p>
                 </div>
                 <div className="flex items-center gap-4 w-full md:w-auto">
                     <div className="relative flex-grow md:flex-grow-0">
@@ -2050,14 +2138,11 @@ export default function LiveOrdersPage() {
             <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
                 <TabsList className={cn(
                     "grid w-full h-auto p-1 bg-muted",
-                    isChefRole ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-6"
+                    availableTabConfigs.length <= 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-6"
                 )}>
-                    {availableTabs.includes('All') && <TabsTrigger value="All">All</TabsTrigger>}
-                    {availableTabs.includes('New') && <TabsTrigger value="New">New</TabsTrigger>}
-                    {availableTabs.includes('Confirmed') && <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>}
-                    {availableTabs.includes('Preparing') && <TabsTrigger value="Preparing">Preparing</TabsTrigger>}
-                    {availableTabs.includes('Prepared') && <TabsTrigger value="Prepared">Prepared</TabsTrigger>}
-                    {availableTabs.includes('Dispatched') && <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>}
+                    {availableTabConfigs.map((tab) => (
+                        <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
+                    ))}
                 </TabsList>
             </Tabs>
 
@@ -2094,6 +2179,7 @@ export default function LiveOrdersPage() {
                                     isSelected={selectedOrders.includes(order.id)}
                                     onSelect={handleSelectOrder}
                                     onDetailClick={handleDetailClick}
+                                    statusLabel={getStatusLabel(order.status, order.deliveryType)}
                                     actionButtonProps={{
                                         isUpdating: updatingOrderId === order.id,
                                         isPaymentRequestLoading: paymentRequestLoadingOrderId === order.id,
@@ -2107,7 +2193,8 @@ export default function LiveOrdersPage() {
                                         onMarkManualPaid: handleMarkManualPaid,
                                         employeeOfOwnerId,
                                         impersonatedOwnerId,
-                                        userRole
+                                        userRole,
+                                        businessType: normalizedBusinessType,
                                     }}
                                 />
                             ))
@@ -2223,7 +2310,7 @@ export default function LiveOrdersPage() {
                                                 <Popover>
                                                     <PopoverTrigger asChild>
                                                         <button className={cn('flex items-center gap-2 text-xs font-semibold rounded-full border px-3 py-1 w-fit capitalize transition-transform hover:scale-105', statusConfig[order.status]?.color)}>
-                                                            {order.status.replace('_', ' ')}
+                                                            {getStatusLabel(order.status, order.deliveryType)}
                                                         </button>
                                                     </PopoverTrigger>
                                                     <PopoverContent className="w-80">
@@ -2235,7 +2322,7 @@ export default function LiveOrdersPage() {
                                                                         [...order.statusHistory].reverse().map((h, i) => (
                                                                             <div key={i} className="flex items-center gap-2">
                                                                                 <ClockIcon size={12} />
-                                                                                <span className="font-semibold capitalize">{h.status}:</span>
+                                                                                <span className="font-semibold capitalize">{getStatusLabel(h.status, order.deliveryType)}:</span>
                                                                                 <span>{format(new Date(h.timestamp?.seconds ? h.timestamp.seconds * 1000 : h.timestamp), 'hh:mm:ss a')}</span>
                                                                             </div>
                                                                         ))
@@ -2265,6 +2352,7 @@ export default function LiveOrdersPage() {
                                                     employeeOfOwnerId={employeeOfOwnerId}
                                                     impersonatedOwnerId={impersonatedOwnerId}
                                                     userRole={userRole}
+                                                    businessType={normalizedBusinessType}
                                                 />
                                             </td>
                                         </motion.tr>

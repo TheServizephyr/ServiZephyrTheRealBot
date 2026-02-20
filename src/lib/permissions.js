@@ -126,6 +126,16 @@ export function normalizeRole(role) {
     return ROLE_ALIAS_MAP[normalized] || normalized;
 }
 
+export function normalizeBusinessType(type) {
+    if (typeof type !== 'string') return null;
+    const normalized = type.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') {
+        return normalized;
+    }
+    return null;
+}
+
 // ============================================
 // ROLE DISPLAY NAMES (English - All India)
 // ============================================
@@ -143,6 +153,40 @@ export const ROLE_DISPLAY_NAMES = {
     [ROLES.HQ_ANALYST]: 'HQ Analyst (Read-only Analytics)',
     [ROLES.INVENTORY_MANAGER]: 'Inventory Manager (Stock only)',
 };
+
+export const SHOP_ROLE_DISPLAY_NAMES = {
+    [ROLES.MANAGER]: 'Store Manager (Operations & Orders)',
+    [ROLES.CHEF]: 'Packing Staff (Order Processing)',
+    [ROLES.WAITER]: 'Counter Staff (Customer Assistance)',
+    [ROLES.CASHIER]: 'Billing Staff (Payments & Orders)',
+    [ROLES.ORDER_TAKER]: 'Sales Assistant (Create orders)',
+    [ROLES.CUSTOM]: 'Custom (Select pages)',
+    [ROLES.HQ_ANALYST]: 'HQ Analyst (Read-only Analytics)',
+    [ROLES.INVENTORY_MANAGER]: 'Inventory Manager (Stock only)',
+};
+
+export const STREET_VENDOR_ROLE_DISPLAY_NAMES = {
+    [ROLES.MANAGER]: 'Operations Manager (Orders & Stall Ops)',
+    [ROLES.CHEF]: 'Cooking Staff (Preparation & Orders)',
+    [ROLES.WAITER]: 'Service Staff (Customer Handling)',
+    [ROLES.CASHIER]: 'Billing Staff (Payments & Orders)',
+    [ROLES.ORDER_TAKER]: 'Order Assistant (Create orders)',
+    [ROLES.CUSTOM]: 'Custom (Select pages)',
+    [ROLES.HQ_ANALYST]: 'HQ Analyst (Read-only Analytics)',
+    [ROLES.INVENTORY_MANAGER]: 'Inventory Manager (Stock only)',
+};
+
+export function getRoleDisplayName(role, businessType = 'restaurant') {
+    const effectiveRole = normalizeRole(role);
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    if (normalizedBusinessType === 'shop') {
+        return SHOP_ROLE_DISPLAY_NAMES[effectiveRole] || ROLE_DISPLAY_NAMES[effectiveRole] || effectiveRole;
+    }
+    if (normalizedBusinessType === 'street-vendor') {
+        return STREET_VENDOR_ROLE_DISPLAY_NAMES[effectiveRole] || ROLE_DISPLAY_NAMES[effectiveRole] || effectiveRole;
+    }
+    return ROLE_DISPLAY_NAMES[effectiveRole] || effectiveRole;
+}
 
 // ============================================
 // DASHBOARD PAGES FOR CUSTOM ROLE UI

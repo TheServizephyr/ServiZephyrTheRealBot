@@ -30,6 +30,14 @@ const formatDate = (dateStr) => {
     return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+const normalizeBusinessType = (value) => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'street_vendor') return 'street-vendor';
+    if (normalized === 'restaurant' || normalized === 'shop' || normalized === 'street-vendor') return normalized;
+    return null;
+};
+
 
 // --- SALES OVERVIEW COMPONENTS ---
 const SalesOverview = ({ data, loading }) => {
@@ -806,6 +814,20 @@ function AnalyticsPageContent() {
 
     const [analyticsData, setAnalyticsData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [businessType, setBusinessType] = useState('restaurant');
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    const isShopBusiness = normalizedBusinessType === 'shop';
+
+    useEffect(() => {
+        try {
+            const storedBusinessType = normalizeBusinessType(localStorage.getItem('businessType'));
+            if (storedBusinessType) {
+                setBusinessType(storedBusinessType);
+            }
+        } catch {
+            // Ignore localStorage access issues
+        }
+    }, []);
 
     useEffect(() => {
         const fetchAnalyticsData = async () => {
@@ -827,6 +849,8 @@ function AnalyticsPageContent() {
                     const parsed = JSON.parse(cachedRaw);
                     if (parsed?.ts && (Date.now() - parsed.ts) < ANALYTICS_CACHE_TTL_MS && parsed?.payload) {
                         setAnalyticsData(parsed.payload);
+                        const resolvedBusinessType = normalizeBusinessType(parsed.payload?.businessInfo?.businessType);
+                        if (resolvedBusinessType) setBusinessType(resolvedBusinessType);
                         setLoading(false);
                         return;
                     }
@@ -858,6 +882,8 @@ function AnalyticsPageContent() {
 
                 const data = await res.json();
                 setAnalyticsData(data);
+                const resolvedBusinessType = normalizeBusinessType(data?.businessInfo?.businessType);
+                if (resolvedBusinessType) setBusinessType(resolvedBusinessType);
                 sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), payload: data }));
 
             } catch (error) {
@@ -888,7 +914,7 @@ function AnalyticsPageContent() {
 
     const tabs = {
         sales: { label: "Sales Overview" },
-        menu: { label: "Menu Analytics" },
+        menu: { label: isShopBusiness ? "Item Analytics" : "Menu Analytics" },
         customers: { label: "Customer Insights" },
         riders: { label: "Rider Analytics" },
     };

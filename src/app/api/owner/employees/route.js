@@ -16,7 +16,8 @@ import {
     ROLE_PERMISSIONS,
     getPermissionsForRole,
     canManageRole,
-    ROLE_DISPLAY_NAMES,
+    getRoleDisplayName,
+    normalizeBusinessType,
     EMPLOYEE_ROLES,
     getInvitableRoles
 } from '@/lib/permissions';
@@ -39,6 +40,12 @@ function getCollectionName(businessType) {
     if (businessType === 'shop') return 'shops';
     if (businessType === 'street-vendor') return 'street_vendors';
     return 'restaurants';
+}
+
+function getBusinessTypeFromCollectionName(collectionName) {
+    if (collectionName === 'shops') return 'shop';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
 }
 
 // ============================================
@@ -99,6 +106,9 @@ export async function POST(req) {
 
         const outletId = accessContext.outletId;
         const collectionName = accessContext.collectionName;
+        const outletBusinessType =
+            normalizeBusinessType(accessContext?.outletData?.businessType) ||
+            getBusinessTypeFromCollectionName(collectionName);
 
         // 🔒 Rate limit check (10 invites per minute)
         const rateLimitCheck = employeeInviteLimiter.check(accessContext.uid, outletId);
@@ -222,7 +232,7 @@ export async function POST(req) {
             invitation: {
                 email,
                 role,
-                roleDisplay: role === 'custom' ? customRoleName : ROLE_DISPLAY_NAMES[role],
+                roleDisplay: role === 'custom' ? customRoleName : getRoleDisplayName(role, outletBusinessType),
                 inviteLink,
                 expiresAt: invitationData.expiresAt,
             }
@@ -250,6 +260,9 @@ export async function GET(req) {
         const outletData = accessContext.outletData;
         const outletId = accessContext.outletId;
         const collectionName = accessContext.collectionName;
+        const outletBusinessType =
+            normalizeBusinessType(outletData?.businessType) ||
+            getBusinessTypeFromCollectionName(collectionName);
         const currentUserId = accessContext.uid;
 
         // Role hierarchy for sorting (lower number = higher rank)
@@ -275,7 +288,7 @@ export async function GET(req) {
             userId: doc.id, // Ensure ID is present
             roleDisplay: doc.data().role === 'custom'
                 ? (doc.data().customRoleName || 'Custom')
-                : ROLE_DISPLAY_NAMES[doc.data().role],
+                : getRoleDisplayName(doc.data().role, outletBusinessType),
             hierarchyOrder: ROLE_HIERARCHY[doc.data().role] || 99,
         }));
 
@@ -290,7 +303,9 @@ export async function GET(req) {
             name: outletData.ownerName || outletData.restaurantName || outletData.name || 'Owner',
             phone: outletData.phone || outletData.ownerPhone || '',
             role: 'owner',
-            roleDisplay: 'Owner',
+            roleDisplay: outletBusinessType === 'shop'
+                ? 'Shop Owner'
+                : (outletBusinessType === 'street-vendor' ? 'Street Vendor Owner' : 'Restaurant Owner'),
             status: 'active',
             hierarchyOrder: 0,
             isOwner: true,
@@ -316,7 +331,7 @@ export async function GET(req) {
                 role: data.role,
                 roleDisplay: data.role === 'custom'
                     ? (data.customRoleName || 'Custom')
-                    : ROLE_DISPLAY_NAMES[data.role],
+                    : getRoleDisplayName(data.role, outletBusinessType),
                 status: 'pending',
                 invitedBy: data.invitedByName,
                 createdAt: data.createdAt?.toDate?.() || data.createdAt,
@@ -328,7 +343,7 @@ export async function GET(req) {
         // Get roles that current user can invite  
         const invitableRoles = getInvitableRoles(accessContext.role).map(role => ({
             value: role,
-            label: ROLE_DISPLAY_NAMES[role] || role,
+            label: getRoleDisplayName(role, outletBusinessType),
         }));
 
         return NextResponse.json({

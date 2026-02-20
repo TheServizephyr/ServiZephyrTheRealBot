@@ -22,7 +22,7 @@ import {
     Link as LinkIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { EMPLOYEE_ROLES, ROLE_DISPLAY_NAMES, OWNER_DASHBOARD_PAGES } from '@/lib/permissions';
+import { OWNER_DASHBOARD_PAGES } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
 // Invite Link Dialog Component
@@ -397,7 +397,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
                     <p className="text-slate-500 dark:text-slate-400 text-sm truncate">{employee.email}</p>
                     <div className="mt-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${roleColors[employee.role] || 'bg-slate-100 text-slate-600'}`}>
-                            {employee.roleDisplay?.en || employee.roleDisplay || employee.role}
+                            {employee.roleDisplay || employee.role}
                         </span>
                     </div>
                 </div>
@@ -562,7 +562,12 @@ export default function EmployeesPage() {
             const inviteLink = data.invitation?.inviteLink;
             if (inviteLink) {
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-                setInviteDialog({ isOpen: true, link: inviteLink, email, role });
+                setInviteDialog({
+                    isOpen: true,
+                    link: inviteLink,
+                    email,
+                    role: data.invitation?.roleDisplay || role,
+                });
             }
 
             setSuccessMessage(`Invitation sent to ${email}!`);
@@ -573,7 +578,7 @@ export default function EmployeesPage() {
                 email,
                 name,
                 role,
-                roleDisplay: role === 'custom' ? customRoleName : ROLE_DISPLAY_NAMES[role],
+                roleDisplay: data.invitation?.roleDisplay || (role === 'custom' ? customRoleName : role),
                 status: 'pending',
                 inviteLink: inviteLink,
             }]);
