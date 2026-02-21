@@ -4,20 +4,35 @@ import { getFirestore, verifyIdToken, verifyAndGetUid } from '@/lib/firebase-adm
 import { cookies } from 'next/headers';
 import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { trackEndpointRead } from '@/lib/readTelemetry';
+import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
 export const dynamic = 'force-dynamic';
 
 // GET: Fetch order data by tabId, phone, or ref
 export async function GET(req) {
+    const telemetryStartedAt = Date.now();
+    let telemetryStatus = 200;
+    let telemetryError = null;
+    let telemetryContext = null;
+    const respond = (payload, status = 200) => {
+        telemetryStatus = status;
+        return NextResponse.json(payload, { status });
+    };
+
     try {
         console.log("[API] GET /order/active called");
         const { searchParams } = new URL(req.url);
         const tabId = searchParams.get('tabId');
         const phone = searchParams.get('phone');
         const ref = searchParams.get('ref');
+        telemetryContext = {
+            hasTabId: !!tabId,
+            hasPhone: !!phone,
+            hasRef: !!ref,
+        };
 
         if (!tabId && !phone && !ref) {
-            return NextResponse.json({ message: 'TabId, Phone, or Ref is required' }, { status: 400 });
+            return respond({ message: 'TabId, Phone, or Ref is required' }, 400);
         }
 
         const firestore = await getFirestore();
@@ -39,7 +54,7 @@ export async function GET(req) {
             if (ref) {
                 targetCustomerId = deobfuscateGuestId(ref);
                 if (!targetCustomerId) {
-                    return NextResponse.json({ message: 'Invalid Ref' }, { status: 400 });
+                    return respond({ message: 'Invalid Ref' }, 400);
                 }
             } else if (phone) {
                 targetPhone = phone.replace(/\D/g, '').slice(-10);
@@ -108,7 +123,7 @@ export async function GET(req) {
 
             if (!isAuthorized) {
                 console.warn(`[API /order/active] Unauthorized access attempt for ${phone || ref}`);
-                return NextResponse.json({ message: 'Unauthorized. Please login.' }, { status: 401 });
+                return respond({ message: 'Unauthorized. Please login.' }, 401);
             }
 
             // --- QUERY EXECUTION ---
@@ -132,7 +147,7 @@ export async function GET(req) {
             }
 
             if (!userId) {
-                return NextResponse.json({ message: 'Could not resolve user identity' }, { status: 400 });
+                return respond({ message: 'Could not resolve user identity' }, 400);
             }
 
             // Query primarily by userId. Add phone-based fallbacks to support
@@ -212,7 +227,7 @@ export async function GET(req) {
             });
 
             console.log(`[API /order/active] Returning ${finalActiveOrders.length} active orders.`);
-            return NextResponse.json({ activeOrders: finalActiveOrders }, { status: 200 });
+            return respond({ activeOrders: finalActiveOrders }, 200);
         }
 
         // SCENARIO 2: DINE-IN (Query by TabId)
@@ -275,7 +290,7 @@ export async function GET(req) {
 
         if (uniqueDocs.size === 0) {
             console.log('[API /order/active] No documents found. Returning 404.');
-            return NextResponse.json({ message: 'No orders found for this tab' }, { status: 404 });
+            return respond({ message: 'No orders found for this tab' }, 404);
         }
 
         // Aggregate all items and calculate totals
@@ -311,18 +326,28 @@ export async function GET(req) {
 
         console.log(`[API /order/active] Final Aggregated Subtotal: ${subtotal}`);
 
-        return NextResponse.json({
+        return respond({
             items: allItems,
             subtotal,
             totalAmount: subtotal,
             grandTotal: subtotal,
             tab_name,
             customerName
-        }, { status: 200 });
+        }, 200);
 
     } catch (error) {
+        telemetryStatus = error?.status || 500;
+        telemetryError = error?.message || 'Failed to load active order';
         console.error("GET /api/order/active error:", error);
-        return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+        return respond({ message: 'Internal Server Error' }, telemetryStatus);
+    } finally {
+        void trackApiTelemetry({
+            endpoint: 'api.order.active',
+            durationMs: Date.now() - telemetryStartedAt,
+            statusCode: telemetryStatus,
+            errorMessage: telemetryError,
+            context: telemetryContext,
+        });
     }
 }
 

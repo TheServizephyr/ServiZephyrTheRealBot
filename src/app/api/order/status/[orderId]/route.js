@@ -3,19 +3,38 @@ import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 import { createRequestCache } from '@/lib/requestCache';
 import { trackEndpointRead } from '@/lib/readTelemetry';
+import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
 // Final states that should NOT be cached (polling already stopped on track page)
 const FINAL_STATES = ['delivered', 'cancelled', 'rejected'];
 
 export async function GET(request, { params }) {
+    const telemetryStartedAt = Date.now();
+    let telemetryStatus = 200;
+    let telemetryError = null;
+    let telemetryEndpoint = 'api.order.status.full';
+    let telemetryContext = null;
+    const respond = (payload, status = 200, headers = undefined) => {
+        telemetryStatus = status;
+        return NextResponse.json(payload, {
+            status,
+            ...(headers ? { headers } : {}),
+        });
+    };
+
     console.log("[API][Order Status] GET request received.");
     try {
         const { orderId } = params;
         const liteMode = ['1', 'true', 'yes'].includes(String(request.nextUrl.searchParams.get('lite') || '').toLowerCase());
+        telemetryEndpoint = liteMode ? 'api.order.status.lite' : 'api.order.status.full';
+        telemetryContext = {
+            liteMode,
+            orderId: orderId || null,
+        };
 
         if (!orderId) {
             console.log("[API][Order Status] Error: Order ID is missing from params.");
-            return NextResponse.json({ message: 'Order ID is missing.' }, { status: 400 });
+            return respond({ message: 'Order ID is missing.' }, 400);
         }
 
         // STEP 1: Check cache FIRST (server-side Redis)
@@ -27,12 +46,9 @@ export async function GET(request, { params }) {
                 const cachedData = await kv.get(cacheKey);
                 if (cachedData) {
                     console.log(`[Order Status API] ✅ Cache HIT for ${cacheKey}`);
-                    return NextResponse.json(cachedData, {
-                        status: 200,
-                        headers: {
-                            'X-Cache': 'HIT',
-                            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                        }
+                    return respond(cachedData, 200, {
+                        'X-Cache': 'HIT',
+                        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                     });
                 }
                 console.log(`[Order Status API] ❌ Cache MISS for ${cacheKey} - Fetching from Firestore`);
@@ -62,7 +78,7 @@ export async function GET(request, { params }) {
 
             if (tabOrdersQuery.empty) {
                 console.log(`[API][Order Status] Error: No orders found for tab ${orderId}.`);
-                return NextResponse.json({ message: 'No orders found for this tab.' }, { status: 404 });
+                return respond({ message: 'No orders found for this tab.' }, 404);
             }
 
             orderSnap = tabOrdersQuery.docs[0];
@@ -75,7 +91,7 @@ export async function GET(request, { params }) {
 
             if (!orderSnap.exists) {
                 console.log(`[API][Order Status] Error: Order document ${orderId} not found.`);
-                return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
+                return respond({ message: 'Order not found.' }, 404);
             }
         }
 
@@ -110,7 +126,7 @@ export async function GET(request, { params }) {
         // to prevent order enumeration via sequential IDs
         if (!isAuthorizedData && !trackingToken) {
             console.warn(`[API][Order Status] Access denied for order ${orderId}. No valid token or identity.`);
-            return NextResponse.json({ message: 'Unauthorized. Tracking token required.' }, { status: 403 });
+            return respond({ message: 'Unauthorized. Tracking token required.' }, 403);
         }
 
         // Fast path for polling/token checks: avoids extra business + rider reads and heavy aggregation.
@@ -145,12 +161,9 @@ export async function GET(request, { params }) {
             }
             await trackEndpointRead('api.order.status.lite', 1);
 
-            return NextResponse.json(litePayload, {
-                status: 200,
-                headers: {
-                    'X-Mode': 'lite',
-                    'X-Cache': 'MISS'
-                }
+            return respond(litePayload, 200, {
+                'X-Mode': 'lite',
+                'X-Cache': 'MISS',
             });
         }
 
@@ -278,7 +291,7 @@ export async function GET(request, { params }) {
 
         if (!businessDoc || !businessDoc.exists) {
             console.log(`[API][Order Status] Error: Business ${orderData.restaurantId} not found in collection ${collectionName}.`);
-            return NextResponse.json({ message: 'Business associated with order not found.' }, { status: 404 });
+            return respond({ message: 'Business associated with order not found.' }, 404);
         }
         const businessData = businessDoc.data();
         console.log("[API][Order Status] Business found.");
@@ -537,12 +550,9 @@ export async function GET(request, { params }) {
             // DON'T CACHE final states (polling already stopped via Phase 2 rules)
             console.log(`[Order Status API] Order ${orderId} in FINAL state (${orderData.status}) - NOT caching`);
             await trackEndpointRead('api.order.status.full', Math.max(1, requestCache.size()));
-            return NextResponse.json(responsePayload, {
-                status: 200,
-                headers: {
-                    'X-Cache': 'SKIP',
-                    'X-Final-State': 'true'
-                }
+            return respond(responsePayload, 200, {
+                'X-Cache': 'SKIP',
+                'X-Final-State': 'true',
             });
         }
 
@@ -560,16 +570,23 @@ export async function GET(request, { params }) {
         console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
         console.log(`[RequestCache] Deduplicated reads - Cache entries used: ${requestCache.size()}`);
         await trackEndpointRead('api.order.status.full', Math.max(1, requestCache.size()));
-        return NextResponse.json(responsePayload, {
-            status: 200,
-            headers: {
-                'X-Cache': 'MISS',
-                'X-Request-Cache-Size': requestCache.size().toString()
-            }
+        return respond(responsePayload, 200, {
+            'X-Cache': 'MISS',
+            'X-Request-Cache-Size': requestCache.size().toString(),
         });
 
     } catch (error) {
+        telemetryStatus = error?.status || 500;
+        telemetryError = error?.message || 'Failed to fetch order status';
         console.error("[API][Order Status] CRITICAL ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus);
+    } finally {
+        void trackApiTelemetry({
+            endpoint: telemetryEndpoint,
+            durationMs: Date.now() - telemetryStartedAt,
+            statusCode: telemetryStatus,
+            errorMessage: telemetryError,
+            context: telemetryContext,
+        });
     }
 }
