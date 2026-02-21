@@ -437,6 +437,8 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
+                    brand: String(editingItem.brand || '').trim(),
+                    productType: String(editingItem.productType || editingItem.type || '').trim(),
                     addOnGroups: isShop ? [] : (editingItem.addOnGroups || []),
                 });
             } else {
@@ -450,6 +452,8 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     isAvailable: true,
                     imageUrl: "",
                     tags: "",
+                    brand: "",
+                    productType: "",
                     addOnGroups: isShop ? [] : [],
                 });
             }
@@ -601,6 +605,10 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         setIsSaving(true);
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+            const normalizedBrand = isShop ? String(item.brand || '').trim() : '';
+            const normalizedProductType = isShop
+                ? String(item.productType || item.type || '').trim()
+                : '';
 
             let finalPortions;
             if (isShop || pricingType === 'single') {
@@ -644,6 +652,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
                 addOnGroups: finalAddOnGroups,
+                ...(isShop ? {
+                    brand: normalizedBrand,
+                    productType: normalizedProductType,
+                    type: normalizedProductType,
+                } : {}),
             };
 
 
@@ -685,6 +698,30 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 <Label htmlFor="description" className="text-right">{isShop ? 'Details' : 'Description'}</Label>
                                 <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder={isShop ? "e.g., Brand/Size/Color" : "e.g., 10 Pcs."} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
+                            {isShop && (
+                                <>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="brand" className="text-right">Brand</Label>
+                                        <input
+                                            id="brand"
+                                            value={item.brand || ''}
+                                            onChange={e => handleChange('brand', e.target.value)}
+                                            placeholder="e.g., Dove"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="productType" className="text-right">Type</Label>
+                                        <input
+                                            id="productType"
+                                            value={item.productType || ''}
+                                            onChange={e => handleChange('productType', e.target.value)}
+                                            placeholder="e.g., Soap, Shampoo, Biscuit"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                </>
+                            )}
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
                                 <select id="category" value={item.categoryId} onChange={handleCategoryChange} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
@@ -825,14 +862,20 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog 
     const placeholderText = isShop ? '[PASTE YOUR PRODUCT LIST HERE]' : '[PASTE YOUR MENU TEXT HERE]';
     const instructionsText = isShop ? 'your product list' : 'your menu text';
     const aiPrompt = isShop
-        ? `You are a retail catalog data extractor for a store. Convert the following product list/catalog text (or text from the provided image) into a clean JSON array for bulk store upload.
+        ? `You are a retail catalog data extractor for a store. Convert the following product list/catalog text (or text from the provided image) into a clean JSON array for bulk store upload with category grouping.
 
 Each object must strictly follow this format:
 {
   "name": "string (Product name, required)",
   "description": "string (Optional details like brand, pack size, variant)",
+  "brand": "string (Optional brand, e.g., 'Dove')",
+  "productType": "string (Optional product type, e.g., 'Soap', 'Biscuit')",
   "imageUrl": "string (Optional product image URL)",
   "categoryId": "string (Lowercase, dash-separated category slug, e.g., 'beauty-personal-care')",
+  "categoryTitle": "string (Optional display name, e.g., 'Beauty personal care')",
+  "categoryImageUrl": "string (Optional category card image URL for storefront categories)",
+  "superCategoryId": "string (Optional group slug, e.g., 'grocery-kitchen', 'snacks-drinks')",
+  "superCategoryTitle": "string (Optional group title, e.g., 'Grocery & Kitchen')",
   "portions": [
     { "name": "Full", "price": "number (Selling price in INR)" }
   ],
@@ -846,7 +889,9 @@ Important Rules:
 - Do NOT include restaurant-only fields like "isVeg" or "addOnGroups".
 - If category is unclear, use "general".
 - Keep price numeric only (no currency symbols, commas, or text).
+- Use consistent "brand" and "productType" values for similar products.
 - If product name appears multiple times, keep the best/most complete entry only.
+- Use same superCategoryId and superCategoryTitle for related categories (for grouped layout).
 
 Here is the text:
 ---
@@ -957,7 +1002,7 @@ ${placeholderText}
                             onChange={(e) => setJsonText(e.target.value)}
                             placeholder={
                                 isShop
-                                    ? '[\n  {\n    "name": "Dove Soap 100g",\n    "description": "Pack of 1",\n    "categoryId": "beauty-personal-care",\n    "portions": [{ "name": "Full", "price": 55 }],\n    "tags": ["bestseller"]\n  }\n]'
+                                    ? '[\n  {\n    "name": "Dove Soap 100g",\n    "description": "Pack of 1",\n    "brand": "Dove",\n    "productType": "Soap",\n    "categoryId": "beauty-personal-care",\n    "categoryTitle": "Beauty personal care",\n    "categoryImageUrl": "https://example.com/beauty.jpg",\n    "superCategoryId": "beauty-wellness",\n    "superCategoryTitle": "Beauty & Wellness",\n    "portions": [{ "name": "Full", "price": 55 }],\n    "tags": ["bestseller"]\n  }\n]'
                                     : '[\n  {\n    "name": "Paneer Butter Masala",\n    "categoryId": "main-course",\n    "isVeg": true,\n    "portions": [{ "name": "Full", "price": 240 }]\n  }\n]'
                             }
                             className="w-full h-96 mt-2 p-3 font-mono text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary"

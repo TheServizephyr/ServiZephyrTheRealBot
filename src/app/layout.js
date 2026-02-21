@@ -221,14 +221,35 @@ export default function RootLayout({ children }) {
         <Script id="sw-register" strategy="afterInteractive">
           {`
             if ('serviceWorker' in navigator) {
-              window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/service-worker.js')
-                  .then(function(registration) {
-                    console.log('[SW] Registration successful:', registration.scope);
-                  })
-                  .catch(function(error) {
-                    console.log('[SW] Registration failed:', error);
-                  });
+              const isProd = '${process.env.NODE_ENV}' === 'production';
+              window.addEventListener('load', async function() {
+                if (isProd) {
+                  navigator.serviceWorker.register('/service-worker.js')
+                    .then(function(registration) {
+                      console.log('[SW] Registration successful:', registration.scope);
+                    })
+                    .catch(function(error) {
+                      console.log('[SW] Registration failed:', error);
+                    });
+                  return;
+                }
+
+                // Dev safety: stale SW often causes chunk load errors during HMR.
+                try {
+                  const registrations = await navigator.serviceWorker.getRegistrations();
+                  await Promise.all(registrations.map(function(registration) {
+                    return registration.unregister();
+                  }));
+                  if (window.caches && typeof window.caches.keys === 'function') {
+                    const cacheKeys = await window.caches.keys();
+                    await Promise.all(cacheKeys.map(function(cacheKey) {
+                      return window.caches.delete(cacheKey);
+                    }));
+                  }
+                  console.log('[SW] Dev mode cleanup complete (unregistered + cache cleared).');
+                } catch (cleanupError) {
+                  console.log('[SW] Dev mode cleanup failed:', cleanupError);
+                }
               });
             }
           `}

@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,65 @@ const normalizeBusinessType = (value) => {
     if (normalized === 'shop' || normalized === 'store') return 'store';
     if (normalized === 'street_vendor') return 'street-vendor';
     return normalized || 'restaurant';
+};
+
+const STORE_SUPER_CATEGORY_PRIORITY = [
+    'Grocery & Kitchen',
+    'Snacks & Drinks',
+    'Beauty & Wellness',
+    'Household Essentials',
+    'Electronics & Appliances',
+    'More Categories',
+];
+
+const inferStoreSuperCategoryTitle = ({ categoryId, categoryTitle }) => {
+    const text = `${String(categoryId || '').toLowerCase()} ${String(categoryTitle || '').toLowerCase()}`;
+
+    if (/(electronics|appliance|gadget|mobile|laptop|computer|charger|earphone|headphone)/.test(text)) {
+        return 'Electronics & Appliances';
+    }
+    if (/(snack|drink|juice|tea|coffee|chocolate|sweet|biscuit|namkeen|instant|sauce|spread|ice-cream|ice cream|beverage)/.test(text)) {
+        return 'Snacks & Drinks';
+    }
+    if (/(beauty|wellness|personal|baby|pet|health|care|cosmetic|skin|hair)/.test(text)) {
+        return 'Beauty & Wellness';
+    }
+    if (/(clean|household|laundry|detergent|home care|kitchenware|utensil|disposable)/.test(text)) {
+        return 'Household Essentials';
+    }
+    if (/(vegetable|fruit|atta|rice|dal|oil|masala|dairy|bread|egg|grocery|meat|fish|bakery|cereal)/.test(text)) {
+        return 'Grocery & Kitchen';
+    }
+    return 'More Categories';
+};
+
+const DEFAULT_STORE_FILTERS = {
+    brand: 'all',
+    type: 'all',
+    priceRange: 'all',
+};
+
+const normalizeTextValue = (value) => String(value || '').trim();
+const normalizeFilterKey = (value) => normalizeTextValue(value).toLowerCase();
+
+const getItemBrandValue = (item) => normalizeTextValue(item?.brand);
+const getItemTypeValue = (item) => normalizeTextValue(item?.productType || item?.type);
+
+const getItemLowestPrice = (item) => {
+    const portions = Array.isArray(item?.portions) ? item.portions : [];
+    if (!portions.length) return 0;
+    return portions.reduce((min, portion) => {
+        const price = Number(portion?.price || 0);
+        return price < min ? price : min;
+    }, Number(portions[0]?.price || 0));
+};
+
+const matchesPriceRange = (price, rangeKey) => {
+    if (rangeKey === 'under-100') return price < 100;
+    if (rangeKey === '100-250') return price >= 100 && price <= 250;
+    if (rangeKey === '250-500') return price > 250 && price <= 500;
+    if (rangeKey === 'above-500') return price > 500;
+    return true;
 };
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), {
@@ -315,20 +374,26 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
     );
 };
 
-const StoreProductCard = ({ item, quantity, onAdd, onIncrement, onDecrement, categoryTitle }) => {
+const StoreProductCard = ({ item, quantity, onAdd, onIncrement, onDecrement, categoryTitle, layout = 'carousel' }) => {
     const minPricePortion = useMemo(() => {
         if (!Array.isArray(item?.portions) || item.portions.length === 0) return { price: 0 };
         return item.portions.reduce((min, portion) => (portion.price < min.price ? portion : min), item.portions[0]);
     }, [item?.portions]);
 
     const isOutOfStock = item?.isAvailable === false;
+    const optionCount = Array.isArray(item?.portions) ? item.portions.length : 0;
+    const showOptionsHint = optionCount > 1;
+
+    const isGridLayout = layout === 'grid';
 
     return (
         <div className={cn(
-            "min-w-[170px] max-w-[170px] rounded-xl border border-border bg-card p-3 shadow-sm",
+            isGridLayout
+                ? "w-full rounded-xl border border-border bg-card p-3 shadow-sm"
+                : "min-w-[170px] max-w-[170px] rounded-xl border border-border bg-card p-3 shadow-sm",
             isOutOfStock && "opacity-60"
         )}>
-            <div className="relative h-24 w-full rounded-lg bg-muted overflow-hidden">
+            <div className={cn("relative w-full rounded-lg bg-muted overflow-hidden", isGridLayout ? "h-28" : "h-24")}>
                 {item?.imageUrl ? (
                     <Image src={item.imageUrl} alt={item?.name || 'Product'} layout="fill" objectFit="cover" />
                 ) : (
@@ -336,7 +401,7 @@ const StoreProductCard = ({ item, quantity, onAdd, onIncrement, onDecrement, cat
                         <ShoppingBag size={28} />
                     </div>
                 )}
-                {categoryTitle && (
+                {categoryTitle && !isGridLayout && (
                     <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold text-foreground border border-border">
                         {categoryTitle}
                     </span>
@@ -362,10 +427,16 @@ const StoreProductCard = ({ item, quantity, onAdd, onIncrement, onDecrement, cat
                 ) : (
                     <button
                         type="button"
-                        className="h-8 rounded-md border border-green-600 bg-green-50 px-3 text-xs font-extrabold text-green-700 hover:bg-green-100"
+                        className={cn(
+                            "rounded-md border border-green-600 bg-green-50 px-3 text-green-700 hover:bg-green-100",
+                            showOptionsHint ? "h-10 min-w-[82px] flex flex-col items-center justify-center leading-none" : "h-8 text-xs font-extrabold"
+                        )}
                         onClick={() => onAdd(item)}
                     >
-                        ADD
+                        <span className="text-xs font-extrabold">ADD</span>
+                        {showOptionsHint && (
+                            <span className="text-[10px] font-semibold opacity-80 mt-0.5">{optionCount} options</span>
+                        )}
                     </button>
                 )}
             </div>
@@ -1454,6 +1525,8 @@ const OrderPageInternal = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('default');
     const [filters, setFilters] = useState({ veg: false, nonVeg: false, recommended: false });
+    const [storeFilters, setStoreFilters] = useState(DEFAULT_STORE_FILTERS);
+    const [selectedStoreCategoryId, setSelectedStoreCategoryId] = useState('');
     const [customizationItem, setCustomizationItem] = useState(null);
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     const [isDineInModalOpen, setIsDineInModalOpen] = useState(false);
@@ -2449,16 +2522,129 @@ const OrderPageInternal = () => {
         [itemLabel]
     );
 
-    const processedMenu = useMemo(() => {
-        let newMenu = JSON.parse(JSON.stringify(restaurantData.menu));
-        const lowercasedQuery = searchQuery.toLowerCase();
+    const normalizedSearchQuery = useMemo(
+        () => searchQuery.trim().toLowerCase(),
+        [searchQuery]
+    );
 
-        for (const category in newMenu) {
-            let items = newMenu[category];
-            if (lowercasedQuery) items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
+    const hasStoreSearchContext = isStoreBusiness && normalizedSearchQuery.length > 0;
+    const hasSelectedStoreCategoryContext = isStoreBusiness && Boolean(selectedStoreCategoryId);
+    const isStoreFilterContextActive = hasStoreSearchContext || hasSelectedStoreCategoryContext;
+
+    const customCategoryMetaMap = useMemo(() => {
+        const source = Array.isArray(restaurantData.customCategories) ? restaurantData.customCategories : [];
+        return source.reduce((acc, category) => {
+            const id = String(category?.id || '').trim();
+            if (id) {
+                acc[id] = {
+                    title: String(category?.title || '').trim(),
+                    imageUrl: String(category?.imageUrl || '').trim(),
+                    superCategoryId: String(category?.superCategoryId || '').trim().toLowerCase(),
+                    superCategoryTitle: String(category?.superCategoryTitle || '').trim(),
+                };
+            }
+            return acc;
+        }, {});
+    }, [restaurantData.customCategories]);
+
+    const storeContextItems = useMemo(() => {
+        if (!isStoreBusiness) return [];
+        const menuSource = restaurantData.menu || {};
+
+        let categoryKeys = [];
+        if (hasStoreSearchContext) {
+            categoryKeys = Object.keys(menuSource);
+        } else if (hasSelectedStoreCategoryContext && menuSource[selectedStoreCategoryId]) {
+            categoryKeys = [selectedStoreCategoryId];
+        }
+        if (categoryKeys.length === 0) return [];
+
+        return categoryKeys.flatMap((categoryKey) => {
+            const scopedItems = Array.isArray(menuSource[categoryKey]) ? menuSource[categoryKey] : [];
+            if (!normalizedSearchQuery) return scopedItems;
+            return scopedItems.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery));
+        });
+    }, [
+        isStoreBusiness,
+        restaurantData.menu,
+        hasStoreSearchContext,
+        hasSelectedStoreCategoryContext,
+        selectedStoreCategoryId,
+        normalizedSearchQuery,
+    ]);
+
+    const storeBrandOptions = useMemo(() => {
+        const unique = new Map();
+        storeContextItems.forEach((item) => {
+            const label = getItemBrandValue(item);
+            const key = normalizeFilterKey(label);
+            if (label && key && !unique.has(key)) unique.set(key, label);
+        });
+        return Array.from(unique.entries())
+            .sort((a, b) => a[1].localeCompare(b[1]))
+            .map(([value, label]) => ({ value, label }));
+    }, [storeContextItems]);
+
+    const storeTypeOptions = useMemo(() => {
+        const unique = new Map();
+        storeContextItems.forEach((item) => {
+            const label = getItemTypeValue(item);
+            const key = normalizeFilterKey(label);
+            if (label && key && !unique.has(key)) unique.set(key, label);
+        });
+        return Array.from(unique.entries())
+            .sort((a, b) => a[1].localeCompare(b[1]))
+            .map(([value, label]) => ({ value, label }));
+    }, [storeContextItems]);
+
+    const hasActiveStoreFilters = isStoreBusiness && (
+        filters.recommended
+        || storeFilters.brand !== 'all'
+        || storeFilters.type !== 'all'
+        || storeFilters.priceRange !== 'all'
+    );
+
+    const storeFilterContextLabel = useMemo(() => {
+        if (!isStoreFilterContextActive) return '';
+        if (hasStoreSearchContext) return 'search results';
+        const categoryTitle = customCategoryMetaMap[selectedStoreCategoryId]?.title
+            || selectedStoreCategoryId.replace(/-/g, ' ');
+        return `${categoryTitle} category`;
+    }, [isStoreFilterContextActive, hasStoreSearchContext, customCategoryMetaMap, selectedStoreCategoryId]);
+
+    const processedMenu = useMemo(() => {
+        const sourceMenu = restaurantData.menu || {};
+        const newMenu = {};
+        const selectedBrandKey = normalizeFilterKey(storeFilters.brand);
+        const selectedTypeKey = normalizeFilterKey(storeFilters.type);
+        const selectedPriceRangeKey = String(storeFilters.priceRange || 'all');
+
+        for (const category of Object.keys(sourceMenu)) {
+            let items = Array.isArray(sourceMenu[category]) ? [...sourceMenu[category]] : [];
+            if (normalizedSearchQuery) {
+                items = items.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery));
+            }
             if (!isStoreBusiness && filters.veg) items = items.filter(item => item.isVeg);
             if (!isStoreBusiness && filters.nonVeg) items = items.filter(item => !item.isVeg);
-            if (filters.recommended) items = items.filter(item => item.isRecommended);
+            if ((!isStoreBusiness || isStoreFilterContextActive) && filters.recommended) {
+                items = items.filter(item => item.isRecommended);
+            }
+
+            if (isStoreBusiness && isStoreFilterContextActive) {
+                const shouldFilterCurrentCategory = hasStoreSearchContext
+                    || (hasSelectedStoreCategoryContext && category === selectedStoreCategoryId);
+                if (shouldFilterCurrentCategory) {
+                    if (selectedBrandKey !== 'all') {
+                        items = items.filter((item) => normalizeFilterKey(getItemBrandValue(item)) === selectedBrandKey);
+                    }
+                    if (selectedTypeKey !== 'all') {
+                        items = items.filter((item) => normalizeFilterKey(getItemTypeValue(item)) === selectedTypeKey);
+                    }
+                    if (selectedPriceRangeKey !== 'all') {
+                        items = items.filter((item) => matchesPriceRange(getItemLowestPrice(item), selectedPriceRangeKey));
+                    }
+                }
+            }
 
             // --- START FIX: Sort by availability first, then by the selected criteria ---
             items.sort((a, b) => {
@@ -2467,8 +2653,8 @@ const OrderPageInternal = () => {
                 if (!a.isAvailable && b.isAvailable) return 1;
 
                 // Then apply the user's selected sort
-                if (sortBy === 'price-asc') return (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0);
-                if (sortBy === 'price-desc') return (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0);
+                if (sortBy === 'price-asc') return getItemLowestPrice(a) - getItemLowestPrice(b);
+                if (sortBy === 'price-desc') return getItemLowestPrice(b) - getItemLowestPrice(a);
                 if (sortBy === 'rating-desc') return (b.rating || 0) - (a.rating || 0);
 
                 return 0; // Default order
@@ -2478,7 +2664,18 @@ const OrderPageInternal = () => {
             newMenu[category] = items;
         }
         return newMenu;
-    }, [restaurantData.menu, sortBy, filters, searchQuery, isStoreBusiness]);
+    }, [
+        restaurantData.menu,
+        sortBy,
+        filters,
+        normalizedSearchQuery,
+        isStoreBusiness,
+        isStoreFilterContextActive,
+        hasStoreSearchContext,
+        hasSelectedStoreCategoryContext,
+        selectedStoreCategoryId,
+        storeFilters,
+    ]);
 
     const menuCategories = useMemo(() => Object.keys(processedMenu)
         .map(key => ({
@@ -2488,44 +2685,65 @@ const OrderPageInternal = () => {
         }))
         .filter(category => category.count > 0), [processedMenu]);
 
-    const customCategoryImageMap = useMemo(() => {
-        const source = Array.isArray(restaurantData.customCategories) ? restaurantData.customCategories : [];
-        return source.reduce((acc, category) => {
-            const id = String(category?.id || '').trim();
-            const imageUrl = String(category?.imageUrl || '').trim();
-            if (id && imageUrl) {
-                acc[id] = imageUrl;
-            }
-            return acc;
-        }, {});
-    }, [restaurantData.customCategories]);
-
     const storeCategoryShelves = useMemo(() => (
         menuCategories.map((category) => {
             const items = processedMenu[category.key] || [];
             const firstItemImage = items.find((item) => String(item?.imageUrl || '').trim())?.imageUrl || '';
+            const categoryMeta = customCategoryMetaMap[category.key] || {};
+            const resolvedTitle = categoryMeta.title || category.title;
+            const inferredSuperTitle = categoryMeta.superCategoryTitle || inferStoreSuperCategoryTitle({
+                categoryId: category.key,
+                categoryTitle: resolvedTitle,
+            });
+            const resolvedSuperCategoryId = categoryMeta.superCategoryId
+                || inferredSuperTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
             return {
                 ...category,
+                title: resolvedTitle,
                 items,
-                imageUrl: customCategoryImageMap[category.key] || firstItemImage || ''
+                imageUrl: categoryMeta.imageUrl || firstItemImage || '',
+                superCategoryId: resolvedSuperCategoryId || 'more-categories',
+                superCategoryTitle: inferredSuperTitle,
             };
         })
-    ), [menuCategories, processedMenu, customCategoryImageMap]);
+    ), [menuCategories, processedMenu, customCategoryMetaMap]);
 
-    const storeTopCategories = useMemo(
-        () => storeCategoryShelves.slice(0, 8),
-        [storeCategoryShelves]
-    );
+    const storeSuperCategorySections = useMemo(() => {
+        const grouped = storeCategoryShelves.reduce((acc, category) => {
+            const groupId = String(category.superCategoryId || 'more-categories');
+            if (!acc[groupId]) {
+                acc[groupId] = {
+                    id: groupId,
+                    title: category.superCategoryTitle || 'More Categories',
+                    categories: [],
+                };
+            }
+            acc[groupId].categories.push(category);
+            return acc;
+        }, {});
 
-    const storeFeaturedItems = useMemo(() => (
-        storeCategoryShelves
-            .flatMap((category) => (category.items || []).slice(0, 3).map((item) => ({
-                ...item,
-                categoryKey: category.key,
-                categoryTitle: category.title
-            })))
-            .slice(0, 12)
-    ), [storeCategoryShelves]);
+        return Object.values(grouped).sort((a, b) => {
+            const indexA = STORE_SUPER_CATEGORY_PRIORITY.indexOf(a.title);
+            const indexB = STORE_SUPER_CATEGORY_PRIORITY.indexOf(b.title);
+            const rankA = indexA === -1 ? Number.MAX_SAFE_INTEGER : indexA;
+            const rankB = indexB === -1 ? Number.MAX_SAFE_INTEGER : indexB;
+            if (rankA !== rankB) return rankA - rankB;
+            return a.title.localeCompare(b.title);
+        });
+    }, [storeCategoryShelves]);
+
+    const visibleStoreCategoryShelves = useMemo(() => {
+        if (!selectedStoreCategoryId) return storeCategoryShelves;
+        return storeCategoryShelves.filter((category) => category.key === selectedStoreCategoryId);
+    }, [storeCategoryShelves, selectedStoreCategoryId]);
+
+    useEffect(() => {
+        if (!isStoreBusiness || !selectedStoreCategoryId) return;
+        const hasCategory = Object.prototype.hasOwnProperty.call(restaurantData.menu || {}, selectedStoreCategoryId);
+        if (!hasCategory) {
+            setSelectedStoreCategoryId('');
+        }
+    }, [isStoreBusiness, restaurantData.menu, selectedStoreCategoryId]);
 
     const handleFilterChange = (filterKey) => {
         setFilters(prev => {
@@ -2535,6 +2753,15 @@ const OrderPageInternal = () => {
             if (filterKey === 'nonVeg' && newValue) newFilters.veg = false;
             return newFilters;
         });
+    };
+
+    const handleStoreFilterValueChange = (key, value) => {
+        setStoreFilters((prev) => ({ ...prev, [key]: value }));
+    };
+
+    const clearStoreFilters = () => {
+        setStoreFilters(DEFAULT_STORE_FILTERS);
+        setFilters((prev) => ({ ...prev, recommended: false }));
     };
 
     const handleSortChange = (sortValue) => {
@@ -2765,13 +2992,16 @@ const OrderPageInternal = () => {
     };
 
     const handleCategoryClick = (categoryId) => {
+        if (isStoreBusiness) {
+            setSelectedStoreCategoryId(categoryId);
+        }
         const section = document.getElementById(categoryId);
         if (section) {
             const yOffset = -120;
             const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
             window.scrollTo({ top: y, behavior: 'smooth' });
         }
-    }
+    };
 
     const handleCheckout = () => {
         const effectiveDeliveryType = tableIdFromUrl ? 'dine-in' : deliveryType;
@@ -3058,6 +3288,12 @@ const OrderPageInternal = () => {
     const trackOrdersStatusSummary = statusSourceOrders
         .map((order) => formatOrderStatusLabel(order?.status))
         .join(', ');
+    const showStoreModeSwitcher = isStoreBusiness &&
+        !tableIdFromUrl &&
+        deliveryType !== 'car-order' &&
+        orderTypeFromUrl !== 'car' &&
+        deliveryTypeFromUrl !== 'car-order' &&
+        !isCarSessionFromUrl;
     const floatingTrackOffset = (totalCartItems > 0 ? -80 : 0) + (isStoreBusiness ? -72 : 0);
     const menuFabOffset = (totalCartItems > 0 ? -80 : 0) + (shouldShowFloatingTrackToast ? -76 : 0);
 
@@ -3206,29 +3442,60 @@ const OrderPageInternal = () => {
                 {isStoreBusiness ? (
                     <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-md">
                         <div className="container mx-auto px-4 py-3">
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="text-xs font-extrabold uppercase text-foreground">Delivery in minutes</p>
-                                    <h1 className="text-xl font-extrabold text-foreground truncate">{restaurantData.name || 'Your Store'}</h1>
-                                    <button
-                                        type="button"
-                                        onClick={handleOpenAddressDrawer}
-                                        className="mt-1 flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground"
-                                    >
-                                        <MapPin size={12} className="shrink-0" />
-                                        <span className="truncate max-w-[70vw]">{customerLocation?.full || 'Set your delivery address'}</span>
-                                        <ChevronDown size={12} className="shrink-0" />
-                                    </button>
+                            <h1 className="text-xl font-extrabold text-foreground truncate">{restaurantData.name || 'Your Store'}</h1>
+                            {showStoreModeSwitcher && (
+                                <div className="mt-3 rounded-xl border border-border bg-card p-3">
+                                    <div className="flex rounded-lg bg-muted p-1">
+                                        {restaurantData.deliveryEnabled && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeliveryTypeChange('delivery')}
+                                                className={cn(
+                                                    "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
+                                                    deliveryType === 'delivery' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                                                )}
+                                            >
+                                                Delivery
+                                            </button>
+                                        )}
+                                        {restaurantData.pickupEnabled && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeliveryTypeChange('pickup')}
+                                                className={cn(
+                                                    "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
+                                                    deliveryType === 'pickup' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                                                )}
+                                            >
+                                                Pickup
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
+                                        {deliveryType === 'delivery' ? (
+                                            <>
+                                                <div className="min-w-0 flex items-center gap-2">
+                                                    <MapPin className="text-primary shrink-0" size={16} />
+                                                    <p className="truncate text-xs text-muted-foreground">
+                                                        {customerLocation?.full || 'No address selected'}
+                                                    </p>
+                                                </div>
+                                                <Button variant="link" className="h-auto p-0 text-primary" onClick={handleOpenAddressDrawer}>
+                                                    Change
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <div className="min-w-0 flex items-center gap-2">
+                                                <Store className="text-primary shrink-0" size={16} />
+                                                <p className="truncate text-xs text-muted-foreground">
+                                                    Pickup from {restaurantData.businessAddress?.full || restaurantData.name}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={handleOpenAddressDrawer}
-                                    className="h-10 w-10 rounded-full border border-border bg-card flex items-center justify-center text-muted-foreground hover:text-foreground"
-                                    aria-label="Open profile and address"
-                                >
-                                    <User size={18} />
-                                </button>
-                            </div>
+                            )}
                         </div>
                     </header>
                 ) : (
@@ -3314,16 +3581,172 @@ const OrderPageInternal = () => {
 
                 {isStoreBusiness ? (
                     <>
-                        <div className="sticky top-[77px] z-20 border-b border-border bg-background/95 backdrop-blur-md px-4 py-3">
-                            <div className="relative w-full">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                                <input
-                                    type="text"
-                                    placeholder='Search "atta, dal, soap and more"'
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-                                />
+                        <div className="z-20 border-b border-border bg-background/95 backdrop-blur-md px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                                    <input
+                                        type="text"
+                                        placeholder='Search "atta, dal, soap and more"'
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                                    />
+                                </div>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className={cn(
+                                                "h-11 px-3 rounded-xl",
+                                                sortBy !== 'default' && "border-primary text-primary"
+                                            )}
+                                        >
+                                            <ArrowUpDown size={16} />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="end" className="w-52">
+                                        <div className="space-y-2">
+                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sort</p>
+                                            <div className="flex flex-col gap-2">
+                                                <Button
+                                                    variant={sortBy === 'price-asc' ? 'default' : 'outline'}
+                                                    size="sm"
+                                                    onClick={() => handleSortChange('price-asc')}
+                                                >
+                                                    Price: Low to High
+                                                </Button>
+                                                <Button
+                                                    variant={sortBy === 'price-desc' ? 'default' : 'outline'}
+                                                    size="sm"
+                                                    onClick={() => handleSortChange('price-desc')}
+                                                >
+                                                    Price: High to Low
+                                                </Button>
+                                                <Button
+                                                    variant={sortBy === 'rating-desc' ? 'default' : 'outline'}
+                                                    size="sm"
+                                                    onClick={() => handleSortChange('rating-desc')}
+                                                >
+                                                    Top Rated
+                                                </Button>
+                                                <Button
+                                                    variant={sortBy === 'default' ? 'default' : 'ghost'}
+                                                    size="sm"
+                                                    onClick={() => setSortBy('default')}
+                                                >
+                                                    Reset Sort
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className={cn(
+                                                "h-11 px-3 rounded-xl",
+                                                hasActiveStoreFilters && "border-primary text-primary"
+                                            )}
+                                        >
+                                            <SlidersHorizontal size={16} />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="end" className="w-72">
+                                        <div className="space-y-3">
+                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter</p>
+                                            {!isStoreFilterContextActive ? (
+                                                <div className="rounded-lg border border-dashed border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                                                    Filters apply only on active search results or on a selected category.
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Applying on <span className="font-semibold text-foreground">{storeFilterContextLabel}</span>
+                                                    </p>
+                                                    {hasSelectedStoreCategoryContext && !hasStoreSearchContext && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="w-full"
+                                                            onClick={() => setSelectedStoreCategoryId('')}
+                                                        >
+                                                            Clear Selected Category
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant={filters.recommended ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        className="w-full"
+                                                        onClick={() => handleFilterChange('recommended')}
+                                                    >
+                                                        Recommended
+                                                    </Button>
+
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs text-muted-foreground">Brand</Label>
+                                                        <select
+                                                            value={storeFilters.brand}
+                                                            onChange={(event) => handleStoreFilterValueChange('brand', event.target.value)}
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                        >
+                                                            <option value="all">All brands</option>
+                                                            {storeBrandOptions.map((option) => (
+                                                                <option key={option.value} value={option.value}>
+                                                                    {option.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs text-muted-foreground">Type</Label>
+                                                        <select
+                                                            value={storeFilters.type}
+                                                            onChange={(event) => handleStoreFilterValueChange('type', event.target.value)}
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                        >
+                                                            <option value="all">All types</option>
+                                                            {storeTypeOptions.map((option) => (
+                                                                <option key={option.value} value={option.value}>
+                                                                    {option.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs text-muted-foreground">Price Range</Label>
+                                                        <select
+                                                            value={storeFilters.priceRange}
+                                                            onChange={(event) => handleStoreFilterValueChange('priceRange', event.target.value)}
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                        >
+                                                            <option value="all">All prices</option>
+                                                            <option value="under-100">Under Rs 100</option>
+                                                            <option value="100-250">Rs 100 - Rs 250</option>
+                                                            <option value="250-500">Rs 251 - Rs 500</option>
+                                                            <option value="above-500">Above Rs 500</option>
+                                                        </select>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="w-full"
+                                                onClick={clearStoreFilters}
+                                                disabled={!hasActiveStoreFilters}
+                                            >
+                                                Clear Filters
+                                            </Button>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
                             </div>
                         </div>
 
@@ -3338,133 +3761,94 @@ const OrderPageInternal = () => {
                                 </Alert>
                             )}
 
-                            {!tableIdFromUrl &&
-                                deliveryType !== 'car-order' &&
-                                orderTypeFromUrl !== 'car' &&
-                                deliveryTypeFromUrl !== 'car-order' &&
-                                !isCarSessionFromUrl && (
-                                    <div className="rounded-xl border border-border bg-card p-3">
-                                        <div className="flex rounded-lg bg-muted p-1">
-                                            {restaurantData.deliveryEnabled && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDeliveryTypeChange('delivery')}
-                                                    className={cn(
-                                                        "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
-                                                        deliveryType === 'delivery' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
-                                                    )}
-                                                >
-                                                    Delivery
-                                                </button>
-                                            )}
-                                            {restaurantData.pickupEnabled && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDeliveryTypeChange('pickup')}
-                                                    className={cn(
-                                                        "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
-                                                        deliveryType === 'pickup' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
-                                                    )}
-                                                >
-                                                    Pickup
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
-                                            {deliveryType === 'delivery' ? (
-                                                <>
-                                                    <div className="min-w-0 flex items-center gap-2">
-                                                        <MapPin className="text-primary shrink-0" size={16} />
-                                                        <p className="truncate text-xs text-muted-foreground">
-                                                            {customerLocation?.full || 'No address selected'}
-                                                        </p>
-                                                    </div>
-                                                    <Button variant="link" className="h-auto p-0 text-primary" onClick={handleOpenAddressDrawer}>
-                                                        Change
-                                                    </Button>
-                                                </>
-                                            ) : (
-                                                <div className="min-w-0 flex items-center gap-2">
-                                                    <Store className="text-primary shrink-0" size={16} />
-                                                    <p className="truncate text-xs text-muted-foreground">
-                                                        Pickup from {restaurantData.businessAddress?.full || restaurantData.name}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
                             {restaurantData.isOpen ? (
                                 <>
-                                    <section className="space-y-3">
+                                    <section className="space-y-4">
                                         <div className="flex items-center justify-between">
                                             <h2 className="text-lg font-extrabold text-foreground">Shop by Category</h2>
                                             <Button variant="ghost" className="h-auto p-0 text-xs text-primary" onClick={() => setIsMenuBrowserOpen(true)}>
                                                 See all
                                             </Button>
                                         </div>
-                                        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-                                            {storeTopCategories.map((category) => (
-                                                <button
-                                                    key={category.key}
-                                                    type="button"
-                                                    onClick={() => handleCategoryClick(category.key)}
-                                                    className="min-w-[220px] max-w-[220px] shrink-0 rounded-xl border border-border bg-card p-3 text-left hover:border-primary/60 hover:bg-muted/40 transition-colors"
-                                                >
-                                                    <div className="relative h-24 w-full rounded-lg bg-muted overflow-hidden">
-                                                        {category.imageUrl ? (
-                                                            <Image src={category.imageUrl} alt={category.title} layout="fill" objectFit="cover" />
-                                                        ) : (
-                                                            <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                                                                <ShoppingBag size={24} />
+                                        {storeSuperCategorySections.map((section) => (
+                                            <div key={section.id} className="space-y-3">
+                                                <h3 className="text-xl font-extrabold text-foreground">{section.title}</h3>
+                                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                                                    {section.categories.map((category) => (
+                                                        <button
+                                                            key={category.key}
+                                                            type="button"
+                                                            onClick={() => handleCategoryClick(category.key)}
+                                                            className={cn(
+                                                                "rounded-xl border border-border bg-card p-2 text-center hover:border-primary/60 hover:bg-muted/40 transition-colors",
+                                                                selectedStoreCategoryId === category.key && "border-primary/70 bg-primary/5"
+                                                            )}
+                                                        >
+                                                            <div className="relative h-20 w-full rounded-lg bg-muted overflow-hidden">
+                                                                {category.imageUrl ? (
+                                                                    <Image src={category.imageUrl} alt={category.title} layout="fill" objectFit="cover" />
+                                                                ) : (
+                                                                    <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                                                                        <ShoppingBag size={20} />
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                    <p className="mt-2 text-sm font-bold text-foreground line-clamp-2">{category.title}</p>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </section>
-
-                                    {storeFeaturedItems.length > 0 && (
-                                        <section className="space-y-3">
-                                            <h2 className="text-lg font-extrabold text-foreground">Frequently Bought</h2>
-                                            <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-                                                {storeFeaturedItems.map((item) => (
-                                                    <StoreProductCard
-                                                        key={`${item.categoryKey}-${item.id}`}
-                                                        item={item}
-                                                        categoryTitle={item.categoryTitle}
-                                                        quantity={cartItemQuantities[item.id] || 0}
-                                                        onAdd={handleIncrement}
-                                                        onIncrement={handleIncrement}
-                                                        onDecrement={handleDecrement}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </section>
-                                    )}
-
-                                    <section className="space-y-6">
-                                        {storeCategoryShelves.map((category) => (
-                                            <div id={category.key} key={category.key} className="scroll-mt-32 space-y-3">
-                                                <h3 className="text-lg font-extrabold text-foreground">{category.title}</h3>
-                                                <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-                                                    {category.items.map((item) => (
-                                                        <StoreProductCard
-                                                            key={item.id}
-                                                            item={item}
-                                                            quantity={cartItemQuantities[item.id] || 0}
-                                                            onAdd={handleIncrement}
-                                                            onIncrement={handleIncrement}
-                                                            onDecrement={handleDecrement}
-                                                        />
+                                                            <p className="mt-2 text-xs font-bold text-foreground line-clamp-2">{category.title}</p>
+                                                        </button>
                                                     ))}
                                                 </div>
                                             </div>
                                         ))}
+                                    </section>
+
+                                    <section className="space-y-6">
+                                        {visibleStoreCategoryShelves.map((category) => {
+                                            const isCategoryFocused = selectedStoreCategoryId === category.key;
+                                            const visibleItems = isCategoryFocused ? category.items : category.items.slice(0, 6);
+
+                                            return (
+                                                <div id={category.key} key={category.key} className="scroll-mt-32 space-y-3">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <h3 className="text-lg font-extrabold text-foreground">{category.title}</h3>
+                                                        {isCategoryFocused && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                className="h-auto p-0 text-xs text-primary"
+                                                                onClick={() => setSelectedStoreCategoryId('')}
+                                                            >
+                                                                Show all categories
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                        {visibleItems.map((item) => (
+                                                            <StoreProductCard
+                                                                key={item.id}
+                                                                item={item}
+                                                                layout="grid"
+                                                                quantity={cartItemQuantities[item.id] || 0}
+                                                                onAdd={handleIncrement}
+                                                                onIncrement={handleIncrement}
+                                                                onDecrement={handleDecrement}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                    {category.items.length > 6 && !isCategoryFocused && (
+                                                        <div className="pt-1">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                className="w-full h-10 rounded-xl font-semibold"
+                                                                onClick={() => setSelectedStoreCategoryId(category.key)}
+                                                            >
+                                                                See all items
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </section>
                                 </>
                             ) : (
