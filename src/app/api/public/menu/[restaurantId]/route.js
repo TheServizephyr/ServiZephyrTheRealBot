@@ -10,12 +10,45 @@ export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 const BUSINESS_COLLECTION_CACHE_TTL_SECONDS = 60 * 60; // 1 hour
+const MENU_MEMORY_CACHE_TTL_MS = 30 * 1000;
+const MENU_MEMORY_CACHE_MAX_ENTRIES = 200;
 const isMenuApiDebugEnabled = process.env.DEBUG_MENU_API === 'true';
 const debugLog = (...args) => {
     if (isMenuApiDebugEnabled) {
         console.log(...args);
     }
 };
+
+function getMenuMemoryCacheStore() {
+    if (!globalThis.__menuApiL1Cache) {
+        globalThis.__menuApiL1Cache = new Map();
+    }
+    return globalThis.__menuApiL1Cache;
+}
+
+function readMenuFromMemoryCache(cacheKey) {
+    const store = getMenuMemoryCacheStore();
+    const entry = store.get(cacheKey);
+    if (!entry) return null;
+    if (!entry.expiresAt || entry.expiresAt < Date.now()) {
+        store.delete(cacheKey);
+        return null;
+    }
+    return entry.value || null;
+}
+
+function writeMenuToMemoryCache(cacheKey, value) {
+    if (!cacheKey || !value) return;
+    const store = getMenuMemoryCacheStore();
+    if (store.size >= MENU_MEMORY_CACHE_MAX_ENTRIES) {
+        const oldestKey = store.keys().next().value;
+        if (oldestKey) store.delete(oldestKey);
+    }
+    store.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + MENU_MEMORY_CACHE_TTL_MS,
+    });
+}
 
 function normalizeMenuSource(value) {
     const raw = String(value || '').trim().toLowerCase();
@@ -164,11 +197,27 @@ export async function GET(req, { params }) {
         debugLog(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
 
         // STEP 3: Check Redis cache with version-specific key
+        if (!skipCache) {
+            const l1CacheData = readMenuFromMemoryCache(cacheKey);
+            if (l1CacheData) {
+                debugLog(`%c[Menu API] ✅ L1 CACHE HIT`, 'color: #22c55e; font-weight: bold');
+                const payload = { ...l1CacheData, isOpen: effectiveIsOpen };
+                await trackEndpointRead(telemetryEndpoint, 1);
+                return respond(payload, 200, {
+                    'X-Cache': 'L1-HIT',
+                    'X-Menu-Version': menuVersion.toString(),
+                    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
+                    'Vary': 'Accept-Encoding'
+                });
+            }
+        }
+
         if (isKvAvailable && !skipCache) {
             const cachedData = await kv.get(cacheKey);
             if (cachedData) {
                 debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
                 debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
+                writeMenuToMemoryCache(cacheKey, cachedData);
                 const payload = { ...cachedData, isOpen: effectiveIsOpen };
                 await trackEndpointRead(telemetryEndpoint, 1);
 
@@ -331,6 +380,7 @@ export async function GET(req, { params }) {
         };
 
         // STEP 5: Cache with version-based key and 12-hour TTL
+        writeMenuToMemoryCache(cacheKey, responseData);
         if (isKvAvailable) {
             kv.set(cacheKey, responseData, { ex: 43200 }) // 12 hours = 43200 seconds
                 .then(() => debugLog(`[Menu API] ✅ Cached as ${cacheKey} (TTL: 12 hours)`))

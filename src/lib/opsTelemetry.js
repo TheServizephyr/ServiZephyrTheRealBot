@@ -4,6 +4,8 @@ const TELEMETRY_ENABLED = process.env.ENABLE_OPS_TELEMETRY !== 'false';
 const TELEMETRY_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
 const RECENT_ERRORS_KEY = 'telemetry:ops:errors:recent';
 const MAX_RECENT_ERRORS = 250;
+const RECENT_ORDER_CREATES_KEY = 'telemetry:ops:order_create:recent';
+const MAX_RECENT_ORDER_CREATES = 400;
 const DEFAULT_TELEMETRY_TIMEZONE = 'Asia/Kolkata';
 
 const LATENCY_BUCKET_LIMITS = [100, 250, 500, 1000, 2000, 3000, 5000, 8000, 12000];
@@ -169,6 +171,8 @@ async function loadTelemetryDayMaps(day, safeLimit) {
     const writesKey = `telemetry:writes:${day}`;
     const writeRequestsKey = `telemetry:write_requests:${day}`;
 
+    const recentOrderCreateLimit = Math.max(50, safeLimit);
+
     const [
         reqMap,
         errMap,
@@ -180,6 +184,7 @@ async function loadTelemetryDayMaps(day, safeLimit) {
         writesMap,
         writeRequestsMap,
         recentErrorRows,
+        recentOrderCreateRows,
     ] = await Promise.all([
         kv.hgetall(reqKey),
         kv.hgetall(errKey),
@@ -191,6 +196,7 @@ async function loadTelemetryDayMaps(day, safeLimit) {
         kv.hgetall(writesKey),
         kv.hgetall(writeRequestsKey),
         kv.lrange(RECENT_ERRORS_KEY, 0, safeLimit - 1),
+        kv.lrange(RECENT_ORDER_CREATES_KEY, 0, recentOrderCreateLimit - 1),
     ]);
 
     return {
@@ -204,6 +210,7 @@ async function loadTelemetryDayMaps(day, safeLimit) {
         writesMap,
         writeRequestsMap,
         recentErrorRows,
+        recentOrderCreateRows,
     };
 }
 
@@ -269,6 +276,24 @@ export async function trackApiTelemetry({
             kv.ltrim(RECENT_ERRORS_KEY, 0, MAX_RECENT_ERRORS - 1),
         );
         pushExpireIfFirstTouch(ops, RECENT_ERRORS_KEY);
+    }
+
+    if (endpointName === 'api.order.create') {
+        const orderCreateEntry = {
+            at: new Date().toISOString(),
+            day,
+            endpoint: endpointName,
+            durationMs: safeDuration,
+            statusCode: safeStatus,
+            ok: safeStatus < 400,
+            message: errorMessage ? String(errorMessage).slice(0, 300) : null,
+            context: context && typeof context === 'object' ? context : null,
+        };
+        ops.push(
+            kv.lpush(RECENT_ORDER_CREATES_KEY, JSON.stringify(orderCreateEntry)),
+            kv.ltrim(RECENT_ORDER_CREATES_KEY, 0, MAX_RECENT_ORDER_CREATES - 1),
+        );
+        pushExpireIfFirstTouch(ops, RECENT_ORDER_CREATES_KEY);
     }
 
     try {
@@ -423,6 +448,7 @@ export async function getOpsTelemetrySnapshot({
             endpoints: [],
             funnel: { overall: {}, flows: [] },
             recentErrors: [],
+            recentOrderCreates: [],
             fallbackUsed: false,
         };
     }
@@ -458,6 +484,7 @@ export async function getOpsTelemetrySnapshot({
         writesMap,
         writeRequestsMap,
         recentErrorRows,
+        recentOrderCreateRows,
     } = dayMaps;
 
     const endpointNames = new Set([
@@ -526,6 +553,10 @@ export async function getOpsTelemetrySnapshot({
         .map((row) => parseJsonSafely(row))
         .filter((row) => row && row.day === activeDay)
         .slice(0, safeLimit);
+    const recentOrderCreates = (recentOrderCreateRows || [])
+        .map((row) => parseJsonSafely(row))
+        .filter((row) => row && row.day === activeDay)
+        .slice(0, Math.max(1, Math.min(20, safeLimit)));
 
     return {
         day: activeDay,
@@ -550,5 +581,6 @@ export async function getOpsTelemetrySnapshot({
         endpoints,
         funnel,
         recentErrors,
+        recentOrderCreates,
     };
 }

@@ -59,46 +59,34 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
     let serverSubtotal = 0;
     const validatedItems = [];
 
-    // ✅ FIX: Fetch individual item documents and group by categoryId
-    // Database structure: menu/{itemId} with categoryId field
-    // NOT: menu/{categoryId}/items array
-    const itemsSnapshot = await menuRef.get();
-    const categoriesMap = new Map();
+    const uniqueItemIds = [
+        ...new Set(
+            (items || [])
+                .map((item) => String(item?.id || '').trim())
+                .filter(Boolean)
+        )
+    ];
 
-    itemsSnapshot.forEach(doc => {
-        const itemData = doc.data();
-        const rawCategoryId = itemData.categoryId; // Keep raw for reference if needed
+    if (uniqueItemIds.length === 0) {
+        throw new PricingError('No valid item IDs provided');
+    }
 
-        if (!rawCategoryId) {
-            console.warn(`[OrderPricing] Item ${doc.id} has no categoryId, skipping`);
-            return;
-        }
+    // Performance fix: fetch only ordered item documents instead of entire menu collection.
+    const itemDocRefs = uniqueItemIds.map((itemId) => menuRef.doc(itemId));
+    const itemDocs = await firestore.getAll(...itemDocRefs);
+    const menuItemMap = new Map();
 
-        // ✅ FIX: Normalize category ID to lowercase for case-insensitive grouping
-        const normalizedCategoryId = rawCategoryId.toLowerCase().trim();
-
-        // Group items by categoryId
-        if (!categoriesMap.has(normalizedCategoryId)) {
-            categoriesMap.set(normalizedCategoryId, {
-                id: rawCategoryId, // Store original ID
-                items: []
-            });
-        }
-
-        categoriesMap.get(normalizedCategoryId).items.push({
-            ...itemData,
-            id: doc.id
+    itemDocs.forEach((docSnap) => {
+        if (!docSnap.exists) return;
+        menuItemMap.set(docSnap.id, {
+            ...docSnap.data(),
+            id: docSnap.id
         });
-    });
-
-    console.log(`[OrderPricing] Grouped ${itemsSnapshot.size} items into ${categoriesMap.size} categories`);
-    categoriesMap.forEach((cat, id) => {
-        console.log(`  - ${id}: ${cat.items.length} items`);
     });
 
     for (const item of items) {
         try {
-            const itemPrice = await validateAndCalculateItemPrice(item, categoriesMap);
+            const itemPrice = await validateAndCalculateItemPrice(item, menuItemMap);
             const itemQuantity = item.quantity || 1;
             const itemTotal = itemPrice * itemQuantity;
 
@@ -134,26 +122,21 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
  * Validate single item and calculate its price
  * 
  * @param {Object} item - Cart item
- * @param {Map} categoriesMap - Menu categories map
+ * @param {Map} menuItemMap - Menu item map keyed by itemId
  * @returns {Promise<number>} Validated item price
  */
-async function validateAndCalculateItemPrice(item, categoriesMap) {
-    // Find category (Case-Insensitive)
-    const normalizedReqCategoryId = item.categoryId?.toLowerCase().trim();
-    const category = categoriesMap.get(normalizedReqCategoryId);
-
-    if (!category) {
-        // Debug: Log available keys
-        const availableCategories = Array.from(categoriesMap.keys()).join(', ');
-        console.warn(`[OrderPricing] Category mismatch. Looking for '${normalizedReqCategoryId}', Available: [${availableCategories}]`);
-        throw new PricingError(`Category "${item.categoryId}" not found in menu`);
-    }
-
-    // Find menu item
-    const menuItem = category.items?.find(i => i.id === item.id);
+async function validateAndCalculateItemPrice(item, menuItemMap) {
+    const requestedItemId = String(item?.id || '').trim();
+    const menuItem = requestedItemId ? menuItemMap.get(requestedItemId) : null;
 
     if (!menuItem) {
-        throw new PricingError(`Item "${item.id}" not found in category "${item.categoryId}"`);
+        throw new PricingError(`Item "${item.id}" not found in menu`);
+    }
+
+    const requestedCategory = String(item?.categoryId || '').trim().toLowerCase();
+    const actualCategory = String(menuItem?.categoryId || '').trim().toLowerCase();
+    if (requestedCategory && actualCategory && requestedCategory !== actualCategory) {
+        throw new PricingError(`Category "${item.categoryId}" does not match menu item category`);
     }
 
     let basePrice = 0;

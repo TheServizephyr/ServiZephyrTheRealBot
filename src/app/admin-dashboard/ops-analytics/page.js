@@ -78,6 +78,12 @@ function formatErrorTime(isoTime) {
     });
 }
 
+function formatStatusCode(statusCode) {
+    const safe = Number(statusCode || 0);
+    if (!Number.isFinite(safe) || safe <= 0) return '-';
+    return String(Math.floor(safe));
+}
+
 function KpiCard({ title, value, subtitle, icon: Icon }) {
     return (
         <Card>
@@ -169,6 +175,8 @@ export default function AdminAnalyticsPage() {
     const funnelOverall = data?.funnel?.overall || {};
     const funnelFlows = data?.funnel?.flows || [];
     const recentErrors = data?.recentErrors || [];
+    const recentOrderCreates = data?.recentOrderCreates || [];
+    const latestOrderCreate = recentOrderCreates[0] || null;
     const isKvConfigured = data?.configured !== false;
     const telemetryTimeZone = data?.telemetryTimeZone || DEFAULT_TELEMETRY_TIMEZONE;
     const hasLegacyReadOnlyRows = !!data?.dataQuality?.hasLegacyReadOnlyRows;
@@ -363,6 +371,73 @@ export default function AdminAnalyticsPage() {
                             ))}
                         </tbody>
                     </table>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Last Order Create Detail</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {!latestOrderCreate ? (
+                        <p className="text-sm text-muted-foreground">No order-create event found for selected day.</p>
+                    ) : (
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                            <div className="rounded-lg border p-3">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Time</p>
+                                <p className="text-sm font-semibold mt-1">{formatErrorTime(latestOrderCreate.at)}</p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Latency</p>
+                                <p className="text-sm font-semibold mt-1">{formatMs(latestOrderCreate.durationMs)}</p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Status</p>
+                                <p className="text-sm font-semibold mt-1">{formatStatusCode(latestOrderCreate.statusCode)}</p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Flow</p>
+                                <p className="text-sm font-semibold mt-1">{String(latestOrderCreate?.context?.flow || 'other')}</p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Order Type</p>
+                                <p className="text-sm font-semibold mt-1">{latestOrderCreate?.context?.isAddonOrder ? 'Add More' : 'New Order'}</p>
+                            </div>
+                            <div className="rounded-lg border p-3">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Restaurant</p>
+                                <p className="text-sm font-semibold mt-1 break-all">{String(latestOrderCreate?.context?.restaurantId || '-')}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {recentOrderCreates.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[760px] text-sm">
+                                <thead>
+                                    <tr className="border-b text-muted-foreground text-xs uppercase tracking-wide">
+                                        <th className="py-2 text-left">At</th>
+                                        <th className="py-2 text-right">Latency</th>
+                                        <th className="py-2 text-right">Status</th>
+                                        <th className="py-2 text-left">Flow</th>
+                                        <th className="py-2 text-left">Type</th>
+                                        <th className="py-2 text-left">Restaurant</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {recentOrderCreates.slice(0, 8).map((item, index) => (
+                                        <tr key={`${item.at}-${index}`} className="border-b last:border-0">
+                                            <td className="py-2 whitespace-nowrap">{formatErrorTime(item.at)}</td>
+                                            <td className="py-2 text-right">{formatMs(item.durationMs)}</td>
+                                            <td className="py-2 text-right">{formatStatusCode(item.statusCode)}</td>
+                                            <td className="py-2 capitalize">{String(item?.context?.flow || 'other')}</td>
+                                            <td className="py-2">{item?.context?.isAddonOrder ? 'Add More' : 'New Order'}</td>
+                                            <td className="py-2 font-mono text-xs break-all">{String(item?.context?.restaurantId || '-')}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : null}
                 </CardContent>
             </Card>
 
