@@ -498,6 +498,77 @@ export async function PATCH(req) {
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
 
+        // --- 0. CATEGORY IMAGE UPDATE (Store categories) ---
+        if (updates && updates.categoryId && Object.prototype.hasOwnProperty.call(updates, 'imageUrl')) {
+            if (!['owner', 'manager'].includes(userRole)) {
+                return NextResponse.json({ message: 'Access Denied: Your role cannot update category image.' }, { status: 403 });
+            }
+
+            const normalizedCategoryId = String(updates.categoryId || '').trim().toLowerCase();
+            if (!normalizedCategoryId) {
+                return NextResponse.json({ message: 'Category ID is required.' }, { status: 400 });
+            }
+            if (normalizedCategoryId === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+                return NextResponse.json({ message: 'Open items category image cannot be changed here.' }, { status: 400 });
+            }
+
+            const imageUrl = String(updates.imageUrl || '').trim();
+            const categoryTitleFromInput = String(updates.categoryTitle || '').trim();
+            const fallbackTitle = normalizedCategoryId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const customCategoryRef = firestore
+                .collection(collectionName)
+                .doc(businessId)
+                .collection('custom_categories')
+                .doc(normalizedCategoryId);
+
+            const existingCategorySnap = await customCategoryRef.get();
+            if (existingCategorySnap.exists) {
+                const updatePayload = {
+                    updatedAt: FieldValue.serverTimestamp(),
+                };
+                if (categoryTitleFromInput) {
+                    updatePayload.title = categoryTitleFromInput;
+                }
+                if (imageUrl) {
+                    updatePayload.imageUrl = imageUrl;
+                } else {
+                    updatePayload.imageUrl = FieldValue.delete();
+                }
+                await customCategoryRef.update(updatePayload);
+            } else {
+                const latestCustomCategory = await firestore
+                    .collection(collectionName)
+                    .doc(businessId)
+                    .collection('custom_categories')
+                    .orderBy('order', 'desc')
+                    .limit(1)
+                    .get();
+                const maxOrder = latestCustomCategory.empty ? 0 : Number(latestCustomCategory.docs[0].data().order || 0);
+                const createPayload = {
+                    id: normalizedCategoryId,
+                    title: categoryTitleFromInput || fallbackTitle,
+                    order: maxOrder + 1,
+                    createdAt: FieldValue.serverTimestamp(),
+                    updatedAt: FieldValue.serverTimestamp(),
+                };
+                if (imageUrl) {
+                    createPayload.imageUrl = imageUrl;
+                }
+                await customCategoryRef.set(createPayload, { merge: true });
+            }
+
+            try {
+                const businessRef = firestore.collection(collectionName).doc(businessId);
+                await businessRef.update({ menuVersion: FieldValue.increment(1) });
+            } catch (versionError) {
+                console.error('[Menu API] menuVersion increment failed after category image update:', versionError);
+            }
+
+            return NextResponse.json({
+                message: imageUrl ? 'Category image updated successfully.' : 'Category image removed successfully.',
+            }, { status: 200 });
+        }
+
         // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
         if (updates && updates.id) {
             // 🔐 RBAC: Owner, Manager, Chef can toggle availability

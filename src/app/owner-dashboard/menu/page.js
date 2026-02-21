@@ -244,6 +244,10 @@ const MenuCategory = ({
     onSetStock = null,
     onAdjustStock = null,
     stockUpdatingItemId = null,
+    isStoreBusiness = false,
+    categoryImageUrl = '',
+    onUploadCategoryImage = null,
+    isCategoryImageSaving = false,
 }) => {
     const Icon = icon;
     const isExpanded = open === categoryId;
@@ -283,18 +287,45 @@ const MenuCategory = ({
             className="bg-card border border-border rounded-xl overflow-hidden"
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
         >
-            <button className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors" onClick={() => setOpen(isExpanded ? null : categoryId)}>
-                <div className="flex items-center gap-3">
-                    <div className="bg-primary/10 p-3 rounded-full">
-                        <Icon className="h-6 w-6 text-primary" />
+            <div className="flex items-center justify-between gap-3 p-4 hover:bg-muted/50 transition-colors">
+                <button
+                    type="button"
+                    className="flex items-center justify-between flex-1 min-w-0"
+                    onClick={() => setOpen(isExpanded ? null : categoryId)}
+                >
+                    <div className="flex items-center gap-3 min-w-0">
+                        {isStoreBusiness && categoryImageUrl ? (
+                            <div className="relative h-12 w-12 rounded-lg overflow-hidden border border-border bg-muted shrink-0">
+                                <Image src={categoryImageUrl} alt={title} layout="fill" objectFit="cover" />
+                            </div>
+                        ) : (
+                            <div className="bg-primary/10 p-3 rounded-full shrink-0">
+                                <Icon className="h-6 w-6 text-primary" />
+                            </div>
+                        )}
+                        <h3 className="text-lg font-semibold text-foreground truncate">{title}</h3>
+                        <span className="text-sm text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded-md shrink-0">({items.length})</span>
                     </div>
-                    <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-                    <span className="text-sm text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded-md">({items.length})</span>
-                </div>
-                <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
-                    <ChevronDown size={24} className="text-foreground" />
-                </motion.div>
-            </button>
+                    <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
+                        <ChevronDown size={24} className="text-foreground" />
+                    </motion.div>
+                </button>
+                {isStoreBusiness && canEdit && (
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        disabled={isCategoryImageSaving}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onUploadCategoryImage?.(categoryId, title);
+                        }}
+                    >
+                        {isCategoryImageSaving ? 'Uploading...' : 'Upload Image'}
+                    </Button>
+                )}
+            </div>
             <AnimatePresence>
                 {isExpanded && (
                     <motion.div
@@ -794,24 +825,28 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog 
     const placeholderText = isShop ? '[PASTE YOUR PRODUCT LIST HERE]' : '[PASTE YOUR MENU TEXT HERE]';
     const instructionsText = isShop ? 'your product list' : 'your menu text';
     const aiPrompt = isShop
-        ? `You are an expert data extractor. Convert the following product catalog text (or content from the provided image) into a structured JSON array. Each object in the array must strictly follow this format:
+        ? `You are a retail catalog data extractor for a store. Convert the following product list/catalog text (or text from the provided image) into a clean JSON array for bulk store upload.
+
+Each object must strictly follow this format:
 {
-  "name": "string (Product name)",
-  "description": "string (Optional details like brand/size)",
-  "imageUrl": "string (Optional URL to the product image)",
-  "categoryId": "string (Lowercase, dash-separated, e.g., 'beauty-personal-care')",
+  "name": "string (Product name, required)",
+  "description": "string (Optional details like brand, pack size, variant)",
+  "imageUrl": "string (Optional product image URL)",
+  "categoryId": "string (Lowercase, dash-separated category slug, e.g., 'beauty-personal-care')",
   "portions": [
-    { "name": "Full", "price": "number (Selling price)" }
+    { "name": "Full", "price": "number (Selling price in INR)" }
   ],
-  "tags": ["string", "... (Optional array like 'Bestseller', 'Fast Moving')"],
+  "tags": ["string", "... (Optional tags like 'Bestseller', 'Fast Moving', 'Daily Use')"],
   "isAvailable": "boolean (Optional, default true)"
 }
 
 Important Rules:
-- Keep exactly ONE price entry in 'portions' with name "Full".
-- Do NOT include restaurant-only fields such as 'isVeg' or 'addOnGroups'.
-- If category is not obvious, use 'general'.
-- The final output must be ONLY the JSON array, with no extra text or explanations.
+- Output ONLY a valid JSON array. No markdown, no explanation, no extra text.
+- Keep exactly ONE entry in "portions", and its "name" must be "Full".
+- Do NOT include restaurant-only fields like "isVeg" or "addOnGroups".
+- If category is unclear, use "general".
+- Keep price numeric only (no currency symbols, commas, or text).
+- If product name appears multiple times, keep the best/most complete entry only.
 
 Here is the text:
 ---
@@ -984,6 +1019,9 @@ export default function MenuPage() {
     const [stockDrafts, setStockDrafts] = useState({});
     const [stockSyncing, setStockSyncing] = useState(false);
     const [stockUpdatingItemId, setStockUpdatingItemId] = useState(null);
+    const [categoryImageUpdatingId, setCategoryImageUpdatingId] = useState(null);
+    const categoryImageInputRef = useRef(null);
+    const [categoryImageTarget, setCategoryImageTarget] = useState(null); // { categoryId, categoryTitle }
     const hasHydratedFromCacheRef = useRef(false);
     const isStoreBusiness = isStoreBusinessType(businessType);
 
@@ -1123,6 +1161,78 @@ export default function MenuPage() {
             }
         }
     }, [applyMenuPayload, buildScopedUrl, readCachedPayload, writeCachedPayload]);
+
+    const handleUploadCategoryImageClick = useCallback((categoryId, categoryTitle) => {
+        if (!isStoreBusiness || !canEdit) return;
+        const normalizedCategoryId = String(categoryId || '').trim().toLowerCase();
+        if (!normalizedCategoryId || normalizedCategoryId === RESERVED_OPEN_ITEMS_CATEGORY_ID) return;
+        setCategoryImageTarget({
+            categoryId: normalizedCategoryId,
+            categoryTitle: String(categoryTitle || '').trim() || normalizedCategoryId,
+        });
+        categoryImageInputRef.current?.click();
+    }, [isStoreBusiness, canEdit]);
+
+    const handleCategoryImageFileChange = useCallback(async (event) => {
+        const file = event.target.files?.[0];
+        const target = categoryImageTarget;
+        event.target.value = '';
+        if (!file || !target) return;
+
+        setCategoryImageUpdatingId(target.categoryId);
+        try {
+            const compressionOptions = {
+                maxSizeMB: 1,
+                maxWidthOrHeight: 1600,
+                useWebWorker: true,
+                fileType: 'image/jpeg',
+            };
+
+            let fileToUpload = file;
+            try {
+                fileToUpload = await imageCompression(file, compressionOptions);
+            } catch (compressionError) {
+                console.warn('Category image compression failed, uploading original file:', compressionError);
+            }
+
+            const uid = auth.currentUser?.uid;
+            if (!uid) throw new Error('User not authenticated');
+
+            const timestamp = Date.now();
+            const safeName = fileToUpload.name.replace(/[^a-zA-Z0-9.]/g, '_');
+            // Reuse existing allowed storage namespace used by menu item uploads.
+            const path = `menu-items/${uid}/category-${target.categoryId}-${timestamp}-${safeName}`;
+            const fileRef = storageRef(storage, path);
+            const snapshot = await uploadBytes(fileRef, fileToUpload, {
+                contentType: fileToUpload.type || 'image/jpeg',
+            });
+            const downloadURL = await getDownloadURL(snapshot.ref);
+
+            await handleApiCall('/api/owner/menu', 'PATCH', {
+                updates: {
+                    categoryId: target.categoryId,
+                    categoryTitle: target.categoryTitle,
+                    imageUrl: downloadURL,
+                },
+            });
+
+            await fetchMenu({ background: true, includeOpenItems: true });
+            toast({
+                title: 'Saved',
+                description: 'Category image uploaded successfully.',
+                variant: 'default',
+            });
+        } catch (error) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Upload Failed',
+                message: error.message || 'Could not upload category image.',
+            });
+        } finally {
+            setCategoryImageUpdatingId(null);
+            setCategoryImageTarget(null);
+        }
+    }, [categoryImageTarget, handleApiCall, fetchMenu, toast]);
 
     useEffect(() => {
         if (hasHydratedFromCacheRef.current) return;
@@ -1284,12 +1394,17 @@ export default function MenuPage() {
     const allCategories = useMemo(() => {
         const categories = { ...(isStoreBusiness ? shopCategoryConfig : restaurantCategoryConfig) };
         customCategories.forEach(cat => {
-            if (cat.id === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
+            const categoryId = String(cat?.id || '').trim();
+            if (!categoryId || categoryId === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
                 return;
             }
-            if (!categories[cat.id]) {
-                categories[cat.id] = { title: cat.title, icon: Utensils };
-            }
+            const previous = categories[categoryId] || {};
+            categories[categoryId] = {
+                ...previous,
+                title: cat.title || previous.title || categoryId.charAt(0).toUpperCase() + categoryId.slice(1).replace(/-/g, ' '),
+                icon: previous.icon || Utensils,
+                imageUrl: cat.imageUrl || previous.imageUrl || '',
+            };
         });
 
         // Ensure legacy/unknown category keys (e.g. "general") from menu docs are visible in dashboard.
@@ -1300,7 +1415,8 @@ export default function MenuPage() {
             if (!categories[categoryId]) {
                 categories[categoryId] = {
                     title: categoryId.charAt(0).toUpperCase() + categoryId.slice(1).replace(/-/g, ' '),
-                    icon: Utensils
+                    icon: Utensils,
+                    imageUrl: '',
                 };
             }
         });
@@ -1717,6 +1833,14 @@ export default function MenuPage() {
                 confirmText={confirmationDialog.confirmText}
             />
 
+            <input
+                type="file"
+                ref={categoryImageInputRef}
+                onChange={handleCategoryImageFileChange}
+                accept="image/*"
+                className="hidden"
+            />
+
             {/* Search & Bulk Actions Bar */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-3 bg-card border border-border rounded-xl">
                 <div className="flex items-center gap-2 w-full max-w-sm">
@@ -1774,6 +1898,10 @@ export default function MenuPage() {
                             onSetStock={setStoreStockFromDraft}
                             onAdjustStock={adjustStoreStock}
                             stockUpdatingItemId={stockUpdatingItemId}
+                            isStoreBusiness={isStoreBusiness}
+                            categoryImageUrl={config.imageUrl || ''}
+                            onUploadCategoryImage={handleUploadCategoryImageClick}
+                            isCategoryImageSaving={categoryImageUpdatingId === categoryId}
                         />
                     );
                 })}

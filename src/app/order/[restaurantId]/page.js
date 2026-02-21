@@ -315,7 +315,65 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
     );
 };
 
-const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick, catalogLabel = 'Menu' }) => {
+const StoreProductCard = ({ item, quantity, onAdd, onIncrement, onDecrement, categoryTitle }) => {
+    const minPricePortion = useMemo(() => {
+        if (!Array.isArray(item?.portions) || item.portions.length === 0) return { price: 0 };
+        return item.portions.reduce((min, portion) => (portion.price < min.price ? portion : min), item.portions[0]);
+    }, [item?.portions]);
+
+    const isOutOfStock = item?.isAvailable === false;
+
+    return (
+        <div className={cn(
+            "min-w-[170px] max-w-[170px] rounded-xl border border-border bg-card p-3 shadow-sm",
+            isOutOfStock && "opacity-60"
+        )}>
+            <div className="relative h-24 w-full rounded-lg bg-muted overflow-hidden">
+                {item?.imageUrl ? (
+                    <Image src={item.imageUrl} alt={item?.name || 'Product'} layout="fill" objectFit="cover" />
+                ) : (
+                    <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                        <ShoppingBag size={28} />
+                    </div>
+                )}
+                {categoryTitle && (
+                    <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold text-foreground border border-border">
+                        {categoryTitle}
+                    </span>
+                )}
+            </div>
+            <p className="mt-3 text-sm font-semibold text-foreground line-clamp-2 min-h-10">{item?.name}</p>
+            <p className="text-xs text-muted-foreground line-clamp-1">{item?.description || 'In stock'}</p>
+
+            <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-sm font-bold text-foreground">Rs {minPricePortion.price}</span>
+                {isOutOfStock ? (
+                    <span className="rounded-md bg-destructive/10 px-2 py-1 text-[10px] font-bold text-destructive">Out</span>
+                ) : quantity > 0 ? (
+                    <div className="h-8 rounded-md border border-border bg-background flex items-center">
+                        <button type="button" className="h-full w-7 text-primary" onClick={() => onDecrement(item.id)}>
+                            <Minus size={14} className="mx-auto" />
+                        </button>
+                        <span className="w-6 text-center text-xs font-bold">{quantity}</span>
+                        <button type="button" className="h-full w-7 text-primary" onClick={() => onIncrement(item)}>
+                            <Plus size={14} className="mx-auto" />
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        type="button"
+                        className="h-8 rounded-md border border-green-600 bg-green-50 px-3 text-xs font-extrabold text-green-700 hover:bg-green-100"
+                        onClick={() => onAdd(item)}
+                    >
+                        ADD
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick, catalogLabel = 'Menu', hideCounts = false }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-sm w-[90vw] rounded-2xl p-0 overflow-hidden shadow-xl gap-0">
@@ -346,9 +404,11 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick, catalo
                                 <span className="text-base font-medium text-foreground group-hover:text-primary transition-colors text-left">
                                     {category.title}
                                 </span>
-                                <span className="text-xs text-muted-foreground font-medium bg-muted px-2.5 py-1 rounded-full flex items-center justify-center min-w-[2rem]">
-                                    {category.count}
-                                </span>
+                                {!hideCounts && (
+                                    <span className="text-xs text-muted-foreground font-medium bg-muted px-2.5 py-1 rounded-full flex items-center justify-center min-w-[2rem]">
+                                        {category.count}
+                                    </span>
+                                )}
                             </button>
                         ))}
                         {/* Spacer for bottom blur */}
@@ -1373,6 +1433,7 @@ const OrderPageInternal = () => {
         name: '', status: null, logoUrl: '', bannerUrls: ['/order_banner.jpg'],
         deliveryCharge: 0, menu: {}, coupons: [], deliveryEnabled: true,
         pickupEnabled: false, dineInEnabled: true, businessAddress: null,
+        customCategories: [],
         dineInModel: 'post-paid',
         dineInOnlinePaymentEnabled: true,
         dineInPayAtCounterEnabled: true,
@@ -1828,6 +1889,7 @@ const OrderPageInternal = () => {
 
                     businessAddress: menuData.businessAddress || null,
                     businessType: menuData.businessType || 'restaurant',
+                    customCategories: menuData.customCategories || [],
                     dineInModel: menuData.dineInModel || 'post-paid',
 
                     // Detailed Payment Settings
@@ -2426,6 +2488,45 @@ const OrderPageInternal = () => {
         }))
         .filter(category => category.count > 0), [processedMenu]);
 
+    const customCategoryImageMap = useMemo(() => {
+        const source = Array.isArray(restaurantData.customCategories) ? restaurantData.customCategories : [];
+        return source.reduce((acc, category) => {
+            const id = String(category?.id || '').trim();
+            const imageUrl = String(category?.imageUrl || '').trim();
+            if (id && imageUrl) {
+                acc[id] = imageUrl;
+            }
+            return acc;
+        }, {});
+    }, [restaurantData.customCategories]);
+
+    const storeCategoryShelves = useMemo(() => (
+        menuCategories.map((category) => {
+            const items = processedMenu[category.key] || [];
+            const firstItemImage = items.find((item) => String(item?.imageUrl || '').trim())?.imageUrl || '';
+            return {
+                ...category,
+                items,
+                imageUrl: customCategoryImageMap[category.key] || firstItemImage || ''
+            };
+        })
+    ), [menuCategories, processedMenu, customCategoryImageMap]);
+
+    const storeTopCategories = useMemo(
+        () => storeCategoryShelves.slice(0, 8),
+        [storeCategoryShelves]
+    );
+
+    const storeFeaturedItems = useMemo(() => (
+        storeCategoryShelves
+            .flatMap((category) => (category.items || []).slice(0, 3).map((item) => ({
+                ...item,
+                categoryKey: category.key,
+                categoryTitle: category.title
+            })))
+            .slice(0, 12)
+    ), [storeCategoryShelves]);
+
     const handleFilterChange = (filterKey) => {
         setFilters(prev => {
             const newValue = !prev[filterKey];
@@ -2957,7 +3058,7 @@ const OrderPageInternal = () => {
     const trackOrdersStatusSummary = statusSourceOrders
         .map((order) => formatOrderStatusLabel(order?.status))
         .join(', ');
-    const floatingTrackOffset = totalCartItems > 0 ? -80 : 0;
+    const floatingTrackOffset = (totalCartItems > 0 ? -80 : 0) + (isStoreBusiness ? -72 : 0);
     const menuFabOffset = (totalCartItems > 0 ? -80 : 0) + (shouldShowFloatingTrackToast ? -76 : 0);
 
     return (
@@ -3020,6 +3121,7 @@ const OrderPageInternal = () => {
                     categories={menuCategories}
                     onCategoryClick={handleCategoryClick}
                     catalogLabel={catalogLabel}
+                    hideCounts={isStoreBusiness}
                 />
 
                 {/* ADDRESS SELECTION DRAWER - TOP SHEET */}
@@ -3101,16 +3203,46 @@ const OrderPageInternal = () => {
                     <BackButtonHandler onClose={handleCloseAddressSelector} />
                 )}
 
-                <header className="mb-16">
-                    <BannerCarousel
-                        images={restaurantData.bannerUrls}
-                        onClick={() => setIsBannerExpanded(true)}
-                        onIndexChange={setCurrentBannerIndex}
-                        onLogoClick={() => setIsLogoExpanded(true)}
-                        restaurantName={restaurantData.name}
-                        logoUrl={restaurantData.logoUrl}
-                    />
-                </header>
+                {isStoreBusiness ? (
+                    <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-md">
+                        <div className="container mx-auto px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-xs font-extrabold uppercase text-foreground">Delivery in minutes</p>
+                                    <h1 className="text-xl font-extrabold text-foreground truncate">{restaurantData.name || 'Your Store'}</h1>
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenAddressDrawer}
+                                        className="mt-1 flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground"
+                                    >
+                                        <MapPin size={12} className="shrink-0" />
+                                        <span className="truncate max-w-[70vw]">{customerLocation?.full || 'Set your delivery address'}</span>
+                                        <ChevronDown size={12} className="shrink-0" />
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleOpenAddressDrawer}
+                                    className="h-10 w-10 rounded-full border border-border bg-card flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                    aria-label="Open profile and address"
+                                >
+                                    <User size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+                ) : (
+                    <header className="mb-16">
+                        <BannerCarousel
+                            images={restaurantData.bannerUrls}
+                            onClick={() => setIsBannerExpanded(true)}
+                            onIndexChange={setCurrentBannerIndex}
+                            onLogoClick={() => setIsLogoExpanded(true)}
+                            restaurantName={restaurantData.name}
+                            logoUrl={restaurantData.logoUrl}
+                        />
+                    </header>
+                )}
 
                 {/* Logo Expansion Modal */}
                 <AnimatePresence>
@@ -3180,7 +3312,216 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
 
-                <div className="container mx-auto px-4 mt-6 space-y-4">
+                {isStoreBusiness ? (
+                    <>
+                        <div className="sticky top-[77px] z-20 border-b border-border bg-background/95 backdrop-blur-md px-4 py-3">
+                            <div className="relative w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                                <input
+                                    type="text"
+                                    placeholder='Search "atta, dal, soap and more"'
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="container mx-auto px-4 mt-4 space-y-5 pb-44">
+                            {restaurantData.isOpen === false && (
+                                <Alert className="border-red-500 bg-red-500/10">
+                                    <AlertCircle className="h-4 w-4 text-red-500" />
+                                    <AlertTitle className="text-red-500 font-bold">Store Currently Closed</AlertTitle>
+                                    <AlertDescription className="text-red-400">
+                                        {restaurantData.name} is currently closed and not accepting orders.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+
+                            {!tableIdFromUrl &&
+                                deliveryType !== 'car-order' &&
+                                orderTypeFromUrl !== 'car' &&
+                                deliveryTypeFromUrl !== 'car-order' &&
+                                !isCarSessionFromUrl && (
+                                    <div className="rounded-xl border border-border bg-card p-3">
+                                        <div className="flex rounded-lg bg-muted p-1">
+                                            {restaurantData.deliveryEnabled && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeliveryTypeChange('delivery')}
+                                                    className={cn(
+                                                        "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
+                                                        deliveryType === 'delivery' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                                                    )}
+                                                >
+                                                    Delivery
+                                                </button>
+                                            )}
+                                            {restaurantData.pickupEnabled && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeliveryTypeChange('pickup')}
+                                                    className={cn(
+                                                        "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
+                                                        deliveryType === 'pickup' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                                                    )}
+                                                >
+                                                    Pickup
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
+                                            {deliveryType === 'delivery' ? (
+                                                <>
+                                                    <div className="min-w-0 flex items-center gap-2">
+                                                        <MapPin className="text-primary shrink-0" size={16} />
+                                                        <p className="truncate text-xs text-muted-foreground">
+                                                            {customerLocation?.full || 'No address selected'}
+                                                        </p>
+                                                    </div>
+                                                    <Button variant="link" className="h-auto p-0 text-primary" onClick={handleOpenAddressDrawer}>
+                                                        Change
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <div className="min-w-0 flex items-center gap-2">
+                                                    <Store className="text-primary shrink-0" size={16} />
+                                                    <p className="truncate text-xs text-muted-foreground">
+                                                        Pickup from {restaurantData.businessAddress?.full || restaurantData.name}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                            {restaurantData.isOpen ? (
+                                <>
+                                    <section className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h2 className="text-lg font-extrabold text-foreground">Shop by Category</h2>
+                                            <Button variant="ghost" className="h-auto p-0 text-xs text-primary" onClick={() => setIsMenuBrowserOpen(true)}>
+                                                See all
+                                            </Button>
+                                        </div>
+                                        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+                                            {storeTopCategories.map((category) => (
+                                                <button
+                                                    key={category.key}
+                                                    type="button"
+                                                    onClick={() => handleCategoryClick(category.key)}
+                                                    className="min-w-[220px] max-w-[220px] shrink-0 rounded-xl border border-border bg-card p-3 text-left hover:border-primary/60 hover:bg-muted/40 transition-colors"
+                                                >
+                                                    <div className="relative h-24 w-full rounded-lg bg-muted overflow-hidden">
+                                                        {category.imageUrl ? (
+                                                            <Image src={category.imageUrl} alt={category.title} layout="fill" objectFit="cover" />
+                                                        ) : (
+                                                            <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                                                                <ShoppingBag size={24} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <p className="mt-2 text-sm font-bold text-foreground line-clamp-2">{category.title}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </section>
+
+                                    {storeFeaturedItems.length > 0 && (
+                                        <section className="space-y-3">
+                                            <h2 className="text-lg font-extrabold text-foreground">Frequently Bought</h2>
+                                            <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+                                                {storeFeaturedItems.map((item) => (
+                                                    <StoreProductCard
+                                                        key={`${item.categoryKey}-${item.id}`}
+                                                        item={item}
+                                                        categoryTitle={item.categoryTitle}
+                                                        quantity={cartItemQuantities[item.id] || 0}
+                                                        onAdd={handleIncrement}
+                                                        onIncrement={handleIncrement}
+                                                        onDecrement={handleDecrement}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </section>
+                                    )}
+
+                                    <section className="space-y-6">
+                                        {storeCategoryShelves.map((category) => (
+                                            <div id={category.key} key={category.key} className="scroll-mt-32 space-y-3">
+                                                <h3 className="text-lg font-extrabold text-foreground">{category.title}</h3>
+                                                <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+                                                    {category.items.map((item) => (
+                                                        <StoreProductCard
+                                                            key={item.id}
+                                                            item={item}
+                                                            quantity={cartItemQuantities[item.id] || 0}
+                                                            onAdd={handleIncrement}
+                                                            onIncrement={handleIncrement}
+                                                            onDecrement={handleDecrement}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </section>
+                                </>
+                            ) : (
+                                <div className="max-w-md rounded-2xl border-2 border-red-500/30 bg-card p-7 shadow-xl">
+                                    <div className="flex flex-col items-center text-center space-y-3">
+                                        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                                            <AlertCircle className="w-9 h-9 text-red-500" />
+                                        </div>
+                                        <h2 className="text-xl font-bold text-foreground">Store Closed Right Now</h2>
+                                        <p className="text-sm text-muted-foreground">Please check again after some time.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 backdrop-blur-md">
+                            <div className="grid grid-cols-3">
+                                <button
+                                    type="button"
+                                    className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-foreground"
+                                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                                >
+                                    <Home size={18} />
+                                    Home
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                        if (trackingUrl) {
+                                            router.push(trackingUrl);
+                                            return;
+                                        }
+                                        setInfoDialog({
+                                            isOpen: true,
+                                            title: 'No Active Order',
+                                            message: 'Place an order first to track it.'
+                                        });
+                                    }}
+                                >
+                                    <RefreshCw size={18} />
+                                    Orders
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                                    onClick={() => setIsMenuBrowserOpen(true)}
+                                >
+                                    <BookOpen size={18} />
+                                    Categories
+                                </button>
+                            </div>
+                        </nav>
+                    </>
+                ) : (
+                    <>
+                        <div className="container mx-auto px-4 mt-6 space-y-4">
 
                     {/* Restaurant Closed Warning */}
                     {restaurantData.isOpen === false && (
@@ -3507,7 +3848,9 @@ const OrderPageInternal = () => {
                             </motion.div>
                         </div>
                     )
-                }
+                        }
+                    </>
+                )}
 
                 <AnimatePresence>
                     {shouldShowFloatingTrackToast && (
@@ -3548,7 +3891,7 @@ const OrderPageInternal = () => {
                 <AnimatePresence>
                     {totalCartItems > 0 && (
                         <motion.div
-                            className="fixed bottom-0 left-0 right-0 z-30"
+                            className={cn("fixed left-0 right-0 z-30", isStoreBusiness ? "bottom-12" : "bottom-0")}
                             initial={{ y: 100, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: 100, opacity: 0 }}
@@ -3565,15 +3908,17 @@ const OrderPageInternal = () => {
                     )}
                 </AnimatePresence>
 
-                <motion.div
-                    className="fixed bottom-4 right-4 z-20"
-                    animate={{ y: menuFabOffset }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                >
-                    <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
-                        <BookOpen size={28} />
-                    </Button>
-                </motion.div>
+                {!isStoreBusiness && (
+                    <motion.div
+                        className="fixed bottom-4 right-4 z-20"
+                        animate={{ y: menuFabOffset }}
+                        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                    >
+                        <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
+                            <BookOpen size={28} />
+                        </Button>
+                    </motion.div>
+                )}
 
             </div >
         </>

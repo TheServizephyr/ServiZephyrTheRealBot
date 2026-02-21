@@ -317,6 +317,7 @@ export async function GET(req, { params }) {
             deliveryOrderSlabPerKmFee: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabPerKmFee || 15) : (businessData.deliveryOrderSlabPerKmFee || 15),
 
             menu: menuData,
+            customCategories: customCategories,
             coupons: coupons,
             loyaltyPoints: 0, // User-specific data removed for better caching
             // MERGED DELIVERY ENABLED STATUS
