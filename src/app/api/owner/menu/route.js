@@ -11,6 +11,7 @@ import { menuPriceLimiter, menuDeleteLimiter } from '@/lib/security/rate-limiter
 import { validatePriceChange, extractPortions } from '@/lib/security/validation-helpers';
 import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
 import { trackEndpointRead } from '@/lib/readTelemetry';
+import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
 // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
 // (Logic moved inside methods below)
@@ -37,6 +38,17 @@ const getOwnerMenuResponseCache = () => {
 };
 
 export async function GET(req) {
+    const telemetryStartedAt = Date.now();
+    let telemetryStatus = 200;
+    let telemetryError = null;
+    const respond = (payload, status = 200, headers = undefined) => {
+        telemetryStatus = status;
+        return NextResponse.json(payload, {
+            status,
+            ...(headers ? { headers } : {}),
+        });
+    };
+
     try {
         const firestore = await getFirestore();
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(req, 'view_menu');
@@ -52,7 +64,7 @@ export async function GET(req) {
         const businessData = businessSnap.data();
         const menuVersion = Number(businessData?.menuVersion || 0);
         if (versionOnly) {
-            return NextResponse.json({ businessId, menuVersion }, { status: 200 });
+            return respond({ businessId, menuVersion }, 200);
         }
         const compactCacheKey = compactMode
             ? `${collectionName}:${businessId}:v${menuVersion}:compact:${includeOpenItems ? 1 : 0}`
@@ -61,10 +73,7 @@ export async function GET(req) {
             const cache = getOwnerMenuResponseCache();
             const cached = cache.get(compactCacheKey);
             if (cached && (Date.now() - cached.ts) < MENU_RESPONSE_CACHE_TTL_MS) {
-                return NextResponse.json(cached.payload, {
-                    status: 200,
-                    headers: { 'x-owner-menu-cache': 'hit' }
-                });
+                return respond(cached.payload, 200, { 'x-owner-menu-cache': 'hit' });
             }
         }
 
@@ -187,11 +196,20 @@ export async function GET(req) {
             cache.set(compactCacheKey, { ts: Date.now(), payload });
         }
 
-        return NextResponse.json(payload, { status: 200 });
+        return respond(payload, 200);
 
     } catch (error) {
+        telemetryStatus = error?.status || 500;
+        telemetryError = error?.message || 'Owner menu GET failed';
         console.error("[API LOG] CRITICAL ERROR in GET /api/owner/menu:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+        return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus);
+    } finally {
+        void trackApiTelemetry({
+            endpoint: 'api.owner.menu.get',
+            durationMs: Date.now() - telemetryStartedAt,
+            statusCode: telemetryStatus,
+            errorMessage: telemetryError,
+        });
     }
 }
 

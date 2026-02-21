@@ -3,6 +3,7 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { subDays } from 'date-fns';
+import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
 function assertRestaurantOutlet(collectionName) {
     if (collectionName !== 'restaurants') {
@@ -27,6 +28,14 @@ async function getBusinessRef(req, checkRevoked = false) {
 }
 
 export async function GET(req) {
+    const telemetryStartedAt = Date.now();
+    let telemetryStatus = 200;
+    let telemetryError = null;
+    const respond = (payload, status = 200) => {
+        telemetryStatus = status;
+        return NextResponse.json(payload, { status });
+    };
+
     const firestore = await getFirestore();
     try {
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(
@@ -380,11 +389,20 @@ export async function GET(req) {
         const closedTabsSnap = await closedTabsQuery.get();
         const closedTabs = closedTabsSnap.docs.map(doc => ({ ...doc.data(), closedAt: doc.data().closedAt.toDate().toISOString() }));
 
-        return NextResponse.json({ tables: finalTablesData, serviceRequests, closedTabs, carOrders }, { status: 200 });
+        return respond({ tables: finalTablesData, serviceRequests, closedTabs, carOrders }, 200);
 
     } catch (error) {
+        telemetryStatus = error?.status || 500;
+        telemetryError = error?.message || 'Owner dine-in tables GET failed';
         console.error("[API dine-in-tables] CRITICAL GET ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+        return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus);
+    } finally {
+        void trackApiTelemetry({
+            endpoint: 'api.owner.dine-in-tables.get',
+            durationMs: Date.now() - telemetryStartedAt,
+            statusCode: telemetryStatus,
+            errorMessage: telemetryError,
+        });
     }
 }
 

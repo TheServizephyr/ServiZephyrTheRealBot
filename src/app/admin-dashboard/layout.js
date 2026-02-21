@@ -7,6 +7,7 @@ import {
   Store,
   Users,
   BarChart2,
+  Activity,
   Settings,
   MessageSquare,
   ChevronLeft,
@@ -188,6 +189,9 @@ function AdminLayoutContent({ children }) {
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/analytics" icon={BarChart2} isCollapsed={isCollapsed}>
                   Analytics
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/ops-analytics" icon={Activity} isCollapsed={isCollapsed}>
+                  Ops Analytics
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/audit-logs" icon={FileText} isCollapsed={isCollapsed}>
                   Audit Logs

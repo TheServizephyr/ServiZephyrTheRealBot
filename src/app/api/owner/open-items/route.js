@@ -3,8 +3,17 @@ import admin from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
+import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
 export async function GET(req) {
+    const telemetryStartedAt = Date.now();
+    let telemetryStatus = 200;
+    let telemetryError = null;
+    const respond = (payload, status = 200) => {
+        telemetryStatus = status;
+        return NextResponse.json(payload, { status });
+    };
+
     try {
         const { businessSnap } = await verifyOwnerWithAudit(
             req,
@@ -15,17 +24,26 @@ export async function GET(req) {
         );
 
         if (!businessSnap?.exists) {
-            return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+            return respond({ error: 'Business not found' }, 404);
         }
 
         const openItems = businessSnap.data()?.openItems || [];
-        return NextResponse.json({ items: openItems });
+        return respond({ items: openItems }, 200);
     } catch (error) {
+        telemetryStatus = error?.status || 500;
+        telemetryError = error?.message || 'Owner open-items GET failed';
         console.error('[GET /api/owner/open-items]', error);
-        return NextResponse.json(
+        return respond(
             { error: error.message || 'Failed to fetch open items' },
-            { status: error.status || 500 }
+            telemetryStatus
         );
+    } finally {
+        void trackApiTelemetry({
+            endpoint: 'api.owner.open-items.get',
+            durationMs: Date.now() - telemetryStartedAt,
+            statusCode: telemetryStatus,
+            errorMessage: telemetryError,
+        });
     }
 }
 

@@ -4,6 +4,7 @@ import { getFirestore } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { trackEndpointRead } from '@/lib/readTelemetry';
+import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
 export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
@@ -15,6 +16,12 @@ const debugLog = (...args) => {
         console.log(...args);
     }
 };
+
+function normalizeMenuSource(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    return raw.replace(/[^a-z0-9_-]/g, '').slice(0, 32);
+}
 
 async function resolveBusinessWithCollectionCache({ firestore, restaurantId, isKvAvailable }) {
     const collectionsToTry = ['restaurants', 'street_vendors', 'shops'];
@@ -85,13 +92,26 @@ async function resolveBusinessWithCollectionCache({ firestore, restaurantId, isK
 }
 
 export async function GET(req, { params }) {
+    const telemetryStartedAt = Date.now();
+    let telemetryStatus = 200;
+    let telemetryError = null;
+
     const { restaurantId } = params;
     const { searchParams } = new URL(req.url);
     const phone = searchParams.get('phone');
+    const menuSource = normalizeMenuSource(searchParams.get('src'));
+    const telemetryEndpoint = menuSource ? `api.public.menu.${menuSource}` : 'api.public.menu';
     const firestore = await getFirestore();
+    const respond = (payload, status = 200, headers = undefined) => {
+        telemetryStatus = status;
+        return NextResponse.json(payload, {
+            status,
+            ...(headers ? { headers } : {}),
+        });
+    };
 
     if (!restaurantId) {
-        return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
+        return respond({ message: 'Restaurant ID is required.' }, 400);
     }
 
     debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${restaurantId} at ${new Date().toISOString()}`);
@@ -109,7 +129,7 @@ export async function GET(req, { params }) {
 
         if (!winner) {
             debugLog(`[Menu API] ❌ Business not found for ${restaurantId} in any collection`);
-            return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
+            return respond({ message: 'Business not found.' }, 404);
         }
 
         let businessData = winner.businessData;
@@ -150,17 +170,14 @@ export async function GET(req, { params }) {
                 debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
                 debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
                 const payload = { ...cachedData, isOpen: effectiveIsOpen };
-                await trackEndpointRead('api.public.menu', 1);
+                await trackEndpointRead(telemetryEndpoint, 1);
 
-                return NextResponse.json(payload, {
-                    status: 200,
-                    headers: {
-                        'X-Cache': 'HIT',
-                        'X-Menu-Version': menuVersion.toString(),
-                        // CDN Cache: Fresh for 60s, serve stale for 10m
-                        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
-                        'Vary': 'Accept-Encoding'
-                    }
+                return respond(payload, 200, {
+                    'X-Cache': 'HIT',
+                    'X-Menu-Version': menuVersion.toString(),
+                    // CDN Cache: Fresh for 60s, serve stale for 10m
+                    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
+                    'Vary': 'Accept-Encoding'
                 });
             }
             debugLog(`%c[Menu API] ❌ CACHE MISS`, 'color: red; font-weight: bold');
@@ -198,7 +215,7 @@ export async function GET(req, { params }) {
             (couponsSnap?.size || 0) +
             (customCatSnap?.size || 0) +
             1; // delivery_settings doc
-        await trackEndpointRead('api.public.menu', estimatedReads);
+        await trackEndpointRead(telemetryEndpoint, estimatedReads);
 
         const restaurantCategoryConfig = {
             "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
@@ -320,23 +337,30 @@ export async function GET(req, { params }) {
         }
 
         // Return with no-cache headers to prevent browser caching
-        return NextResponse.json(responseData, {
-            status: 200,
-            headers: {
-                'X-Cache': 'MISS',
-                'X-Menu-Version': menuVersion.toString(),
-                'X-Debug-Source-Collection': collectionName,
-                'X-Debug-DB-IsOpen': String(businessData.isOpen),
-                'X-Debug-Effective-IsOpen': String(effectiveIsOpen),
-                // CDN Cache: Fresh for 60s, serve stale for 10m
-                'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
-                'Vary': 'Accept-Encoding'
-            }
+        return respond(responseData, 200, {
+            'X-Cache': 'MISS',
+            'X-Menu-Version': menuVersion.toString(),
+            'X-Debug-Source-Collection': collectionName,
+            'X-Debug-DB-IsOpen': String(businessData.isOpen),
+            'X-Debug-Effective-IsOpen': String(effectiveIsOpen),
+            // CDN Cache: Fresh for 60s, serve stale for 10m
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
+            'Vary': 'Accept-Encoding'
         });
 
     } catch (error) {
+        telemetryStatus = error?.status || 500;
+        telemetryError = error?.message || 'Menu API failed';
         console.error(`[API ERROR] /api/public/menu/${restaurantId}:`, error);
-        return NextResponse.json({ message: 'Internal Server Error: ' + error.message }, { status: 500 });
+        return respond({ message: 'Internal Server Error: ' + error.message }, telemetryStatus);
+    } finally {
+        void trackApiTelemetry({
+            endpoint: telemetryEndpoint,
+            durationMs: Date.now() - telemetryStartedAt,
+            statusCode: telemetryStatus,
+            errorMessage: telemetryError,
+            context: { restaurantId: String(restaurantId || ''), src: menuSource || null },
+        });
     }
 }
 

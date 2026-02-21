@@ -9,6 +9,7 @@ import { sendSystemMessage } from '@/lib/whatsapp';
 import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-upi-payment';
 import Razorpay from 'razorpay';
 import { trackEndpointRead } from '@/lib/readTelemetry';
+import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
 
 // (Redundant verifyOwnerAndGetBusiness removed in favor of verifyOwnerWithAudit)
@@ -257,6 +258,14 @@ function redactOrderForViewer(orderData = {}, canViewCustomerDetails = true, can
 
 
 export async function GET(req) {
+    const telemetryStartedAt = Date.now();
+    let telemetryStatus = 200;
+    let telemetryError = null;
+    const respond = (payload, status = 200) => {
+        telemetryStatus = status;
+        return NextResponse.json(payload, { status });
+    };
+
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
@@ -272,7 +281,7 @@ export async function GET(req) {
         );
 
         if (!callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_ORDERS)) {
-            return NextResponse.json({ message: 'Access Denied: You cannot view orders.' }, { status: 403 });
+            return respond({ message: 'Access Denied: You cannot view orders.' }, 403);
         }
 
         if (orderId) {
@@ -280,12 +289,12 @@ export async function GET(req) {
             const orderDoc = await orderRef.get();
 
             if (!orderDoc.exists) {
-                return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
+                return respond({ message: 'Order not found.' }, 404);
             }
 
             let orderData = orderDoc.data();
             if (orderData.restaurantId !== businessId) {
-                return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
+                return respond({ message: 'Access denied to this order.' }, 403);
             }
 
             if (orderData.orderDate && typeof orderData.orderDate.toDate === 'function') {
@@ -314,13 +323,13 @@ export async function GET(req) {
             await trackEndpointRead('api.owner.orders.get', 2 + (customerData ? 1 : 0));
 
 
-            return NextResponse.json({
+            return respond({
                 order: redactedOrderData,
                 restaurant: businessData,
                 customer: customerData,
                 canViewCustomerDetails,
                 canViewPaymentDetails,
-            }, { status: 200 });
+            }, 200);
         }
 
         const startDate = searchParams.get('startDate');
@@ -378,7 +387,7 @@ export async function GET(req) {
             });
             await trackEndpointRead('api.owner.orders.get', snap.size);
 
-            return NextResponse.json({ orders }, { status: 200 });
+            return respond({ orders }, 200);
 
         } else if (startDate && endDate) {
             // Ensure dates are valid Date objects
@@ -426,11 +435,20 @@ export async function GET(req) {
         });
         await trackEndpointRead('api.owner.orders.get', ordersSnap.size);
 
-        return NextResponse.json({ orders }, { status: 200 });
+        return respond({ orders }, 200);
 
     } catch (error) {
+        telemetryStatus = error?.status || 500;
+        telemetryError = error?.message || 'Owner orders GET failed';
         console.error("GET ORDERS ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+        return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus);
+    } finally {
+        void trackApiTelemetry({
+            endpoint: 'api.owner.orders.get',
+            durationMs: Date.now() - telemetryStartedAt,
+            statusCode: telemetryStatus,
+            errorMessage: telemetryError,
+        });
     }
 }
 

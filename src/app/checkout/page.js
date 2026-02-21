@@ -24,6 +24,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
+import { sendClientTelemetryEvent } from '@/lib/clientTelemetry';
 
 const SplitBillInterface = dynamic(() => import('@/components/SplitBillInterface'), { ssr: false });
 const CustomizationDrawer = dynamic(() => import('@/components/CustomizationDrawer'), { ssr: false });
@@ -208,6 +209,7 @@ const CheckoutPageInternal = () => {
     const selectedAddressRef = useRef(null);
     const outOfRangeNoticeKeyRef = useRef(null);
     const deliveryValidationCacheRef = useRef({ key: '', result: null, updatedAt: 0 });
+    const hasTrackedCheckoutOpenRef = useRef(false);
     const DELIVERY_VALIDATION_CACHE_TTL_MS = 15000;
 
     useEffect(() => {
@@ -439,6 +441,11 @@ const CheckoutPageInternal = () => {
 
             const deliveryType = derivedDeliveryType;
 
+            if (!hasTrackedCheckoutOpenRef.current) {
+                sendClientTelemetryEvent('checkout_opened', { flow: deliveryType });
+                hasTrackedCheckoutOpenRef.current = true;
+            }
+
             // ✅ RESTORE CAR DETAILS if present in saved cart
             if (deliveryType === 'car-order' && (savedCart.carSpot || savedCart.carDetails)) {
                 setCarOrderDetails({
@@ -476,7 +483,7 @@ const CheckoutPageInternal = () => {
                 deliveryType
             };
             const paymentSettingsPromise = fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
-            const menuPromise = fetch(`/api/public/menu/${restaurantId}`);
+            const menuPromise = fetch(`/api/public/menu/${restaurantId}?src=checkout_page`);
 
             // ... (Dine-in fetch logic lines 299-324 assume unchanged) ...
 

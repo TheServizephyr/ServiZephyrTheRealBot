@@ -31,6 +31,7 @@ import AddressSelectionList from '@/components/AddressSelectionList';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
+import { sendClientTelemetryEvent } from '@/lib/clientTelemetry';
 
 const isFullPortionLabel = (value) => String(value || '').trim().toLowerCase() === 'full';
 const normalizeBusinessType = (value) => {
@@ -930,6 +931,7 @@ const OrderPageInternal = () => {
     // NEW: Ref to track if we've attempted auto-open (prevents multiple triggers)
     const hasAttemptedAutoOpen = useRef(false);
     const isAddressSelectionInProgress = useRef(false);
+    const hasTrackedOrderPageOpen = useRef(false);
 
     // FETCH ADDRESSES FOR DRAWER
     useEffect(() => {
@@ -1431,6 +1433,26 @@ const OrderPageInternal = () => {
     const pickupLabel = isStoreBusiness ? 'Pick your items from' : 'Pick your order from';
     const canShowDineIn = !isStoreBusiness && restaurantData.dineInEnabled;
 
+    useEffect(() => {
+        if (hasTrackedOrderPageOpen.current) return;
+        if (!restaurantId) return;
+
+        let flow = 'delivery';
+        if (tableIdFromUrl) flow = 'dine-in';
+        if (
+            orderTypeFromUrl === 'car' ||
+            deliveryTypeFromUrl === 'car-order' ||
+            isCarSessionFromUrl
+        ) {
+            flow = 'car-order';
+        } else if (!tableIdFromUrl && ['delivery', 'pickup', 'dine-in'].includes(String(deliveryTypeFromUrl || '').toLowerCase())) {
+            flow = String(deliveryTypeFromUrl).toLowerCase();
+        }
+
+        sendClientTelemetryEvent('order_page_opened', { flow });
+        hasTrackedOrderPageOpen.current = true;
+    }, [restaurantId, tableIdFromUrl, orderTypeFromUrl, deliveryTypeFromUrl, isCarSessionFromUrl]);
+
     // ✅ Car Order: Bootstrap when explicit car params OR car session tab is present.
     useEffect(() => {
         const hasCarContextFromUrl =
@@ -1680,7 +1702,7 @@ const OrderPageInternal = () => {
     };
 
     // Force re-fetch on every page mount by using a timestamp key
-    const [fetchKey, setFetchKey] = useState(Date.now());
+    const [fetchKey, setFetchKey] = useState(0);
     const intervalRef = useRef(null);
     const lastForegroundRefreshAtRef = useRef(0);
 
@@ -1754,6 +1776,8 @@ const OrderPageInternal = () => {
     }, []);
 
     useEffect(() => {
+        if (!fetchKey) return;
+
         const abortController = new AbortController();
         let isActive = true;
 
@@ -1770,7 +1794,10 @@ const OrderPageInternal = () => {
             if (locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) { } }
 
             try {
-                const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}` : ''}`;
+                const query = new URLSearchParams();
+                query.set('src', 'order_page');
+                if (phone) query.set('phone', phone);
+                const url = `/api/public/menu/${restaurantId}?${query.toString()}`;
                 const menuRes = await fetch(url, { signal: abortController.signal });
                 const menuData = await menuRes.json();
 
