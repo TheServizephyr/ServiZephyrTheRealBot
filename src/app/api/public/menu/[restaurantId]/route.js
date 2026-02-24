@@ -229,7 +229,8 @@ export async function GET(req, { params }) {
     debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${requestedRestaurantId} (canonical: ${canonicalRestaurantId}) at ${new Date().toISOString()}`);
 
     // Check if Vercel KV is available (optional for local dev)
-    const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+    const isKvConfigured = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+    let isKvAvailable = isKvConfigured;
 
     try {
         // STEP 1: Resolve business collection (cache-first, fallback to multi-collection lookup)
@@ -317,24 +318,29 @@ export async function GET(req, { params }) {
         }
 
         if (isKvAvailable && !skipCache) {
-            const cachedData = await kv.get(cacheKey);
-            if (cachedData) {
-                debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
-                debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
-                writeMenuToMemoryCache(cacheKey, cachedData);
-                const payload = { ...cachedData, isOpen: effectiveIsOpen };
-                await trackEndpointRead(telemetryEndpoint, 1);
+            try {
+                const cachedData = await kv.get(cacheKey);
+                if (cachedData) {
+                    debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
+                    debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
+                    writeMenuToMemoryCache(cacheKey, cachedData);
+                    const payload = { ...cachedData, isOpen: effectiveIsOpen };
+                    await trackEndpointRead(telemetryEndpoint, 1);
 
-                return respond(payload, 200, {
-                    'X-Cache': 'HIT',
-                    'X-Menu-Version': menuVersion.toString(),
-                    // CDN Cache: Fresh for 60s, serve stale for 10m
-                    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
-                    'Vary': 'Accept-Encoding'
-                });
+                    return respond(payload, 200, {
+                        'X-Cache': 'HIT',
+                        'X-Menu-Version': menuVersion.toString(),
+                        // CDN Cache: Fresh for 60s, serve stale for 10m
+                        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
+                        'Vary': 'Accept-Encoding'
+                    });
+                }
+                debugLog(`%c[Menu API] ❌ CACHE MISS`, 'color: red; font-weight: bold');
+                debugLog(`[Menu API]    └─ Fetching from Firestore for key: ${cacheKey}`);
+            } catch (cacheReadErr) {
+                isKvAvailable = false;
+                console.warn(`[Menu API] KV read failed; falling back to Firestore for ${cacheRestaurantId}:`, cacheReadErr?.message || cacheReadErr);
             }
-            debugLog(`%c[Menu API] ❌ CACHE MISS`, 'color: red; font-weight: bold');
-            debugLog(`[Menu API]    └─ Fetching from Firestore for key: ${cacheKey}`);
         } else {
             debugLog(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${cacheRestaurantId}`);
         }
@@ -489,6 +495,8 @@ export async function GET(req, { params }) {
             kv.set(cacheKey, responseData, { ex: 43200 }) // 12 hours = 43200 seconds
                 .then(() => debugLog(`[Menu API] ✅ Cached as ${cacheKey} (TTL: 12 hours)`))
                 .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
+        } else if (isKvConfigured) {
+            debugLog(`[Menu API] ⚠️ KV configured but unavailable for this request; skipped cache write for ${cacheRestaurantId}`);
         }
 
         // Return with no-cache headers to prevent browser caching
