@@ -38,6 +38,13 @@ const proxyRoutes = require('./routes/proxy.routes');
 const app = express();
 app.disable('x-powered-by');
 
+if (config.cache.publicBootstrapTtlSec < 300) {
+  logger.warn(
+    { ttlSec: config.cache.publicBootstrapTtlSec },
+    'CACHE_PUBLIC_BOOTSTRAP_TTL_SEC is very low; public menu endpoint may stay slow under load.'
+  );
+}
+
 app.use(assignRequestId);
 app.use(httpLogger);
 app.use(requestTimeout(config.requestTimeoutMs));

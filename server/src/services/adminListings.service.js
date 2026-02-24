@@ -1,4 +1,4 @@
-const { getAuth } = require('../lib/firebaseAdmin');
+const { getAuth, FieldValue } = require('../lib/firebaseAdmin');
 const { HttpError } = require('../utils/httpError');
 const { resolveAdminContext } = require('./adminAccess.service');
 
@@ -185,6 +185,10 @@ async function patchAdminListings(req) {
   const restaurantRef = firestore.collection(collectionName).doc(restaurantId);
   const updateData = {
     approvalStatus: status.toLowerCase(),
+    // Public menu/bootstrap payload depends on listing-level fields.
+    // Bump menuVersion so long-lived caches bust immediately.
+    menuVersion: FieldValue.increment(1),
+    updatedAt: new Date(),
   };
 
   if (status === 'Suspended') {

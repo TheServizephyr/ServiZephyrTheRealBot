@@ -30,6 +30,7 @@ const STORE_CATEGORY_CONFIG = {
   'sports-outdoors': { title: 'Sports & Outdoors' },
   general: { title: 'General' },
 };
+const inflightBootstrapBuilds = new Map();
 
 function normalizeMenuSource(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -65,27 +66,7 @@ function mapMenuByCategories(menuSnap, categoryConfig) {
   return menuData;
 }
 
-async function buildBootstrapPayload({ restaurantId, source = '', skipCache = false }) {
-  const safeRestaurantId = String(restaurantId || '').trim();
-  if (!safeRestaurantId) throw new HttpError(400, 'Restaurant ID is required');
-
-  const firestore = await getFirestore();
-  const business = await findBusinessById({ firestore, businessId: safeRestaurantId });
-  const businessData = business.data || {};
-  const menuVersion = Number(businessData.menuVersion || 1);
-  const cacheKey = `public_bootstrap:${safeRestaurantId}:v${menuVersion}`;
-
-  if (!skipCache) {
-    const cached = await getCache(cacheKey);
-    if (cached.hit && cached.value) {
-      const payload = {
-        ...cached.value,
-        isOpen: getEffectiveBusinessOpenStatus(businessData),
-      };
-      return { payload, cacheStatus: cached.source === 'memory' ? 'L1-HIT' : 'HIT' };
-    }
-  }
-
+async function buildFreshBootstrapPayload({ business, businessData, safeRestaurantId, source }) {
   const [menuSnap, couponsSnap, deliveryConfigSnap, customCatSnap] = await Promise.all([
     business.ref.collection('menu').get(),
     business.ref.collection('coupons').where('status', '==', 'active').get(),
@@ -129,10 +110,10 @@ async function buildBootstrapPayload({ restaurantId, source = '', skipCache = fa
       maxDiscount: Number(coupon.maxDiscount || 0),
     }));
 
-  const payload = {
+  return {
     restaurantId: safeRestaurantId,
     sourceCollection: business.collectionName,
-    menuVersion,
+    menuVersion: Number(businessData.menuVersion || 1),
     telemetryEndpoint: source ? `api.public.menu.${source}` : 'api.public.menu',
 
     latitude:
@@ -199,9 +180,62 @@ async function buildBootstrapPayload({ restaurantId, source = '', skipCache = fa
     packagingChargeEnabled: Boolean(businessData.packagingChargeEnabled),
     packagingChargeAmount: Number(businessData.packagingChargeAmount || 0),
   };
+}
 
-  await setCache(cacheKey, payload, config.cache.publicBootstrapTtlSec);
-  return { payload, cacheStatus: 'MISS' };
+async function buildBootstrapPayload({ restaurantId, source = '', skipCache = false }) {
+  const safeRestaurantId = String(restaurantId || '').trim();
+  if (!safeRestaurantId) throw new HttpError(400, 'Restaurant ID is required');
+
+  const firestore = await getFirestore();
+  const business = await findBusinessById({ firestore, businessId: safeRestaurantId });
+  const businessData = business.data || {};
+  const menuVersion = Number(businessData.menuVersion || 1);
+  const cacheKey = `public_bootstrap:${safeRestaurantId}:v${menuVersion}`;
+
+  if (!skipCache) {
+    const cached = await getCache(cacheKey);
+    if (cached.hit && cached.value) {
+      const payload = {
+        ...cached.value,
+        isOpen: getEffectiveBusinessOpenStatus(businessData),
+      };
+      return { payload, cacheStatus: cached.source === 'memory' ? 'L1-HIT' : 'HIT' };
+    }
+  }
+  if (!skipCache) {
+    const inflight = inflightBootstrapBuilds.get(cacheKey);
+    if (inflight) {
+      const sharedPayload = await inflight;
+      return {
+        payload: {
+          ...sharedPayload,
+          isOpen: getEffectiveBusinessOpenStatus(businessData),
+        },
+        cacheStatus: 'MISS-COALESCED',
+      };
+    }
+  }
+
+  const buildPromise = buildFreshBootstrapPayload({
+    business,
+    businessData,
+    safeRestaurantId,
+    source,
+  });
+
+  if (!skipCache) {
+    inflightBootstrapBuilds.set(cacheKey, buildPromise);
+  }
+
+  try {
+    const payload = await buildPromise;
+    await setCache(cacheKey, payload, config.cache.publicBootstrapTtlSec);
+    return { payload, cacheStatus: 'MISS' };
+  } finally {
+    if (!skipCache) {
+      inflightBootstrapBuilds.delete(cacheKey);
+    }
+  }
 }
 
 module.exports = {

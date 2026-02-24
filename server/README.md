@@ -231,6 +231,7 @@ cp .env.example .env
 - `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN` (for `/api/whatsapp/webhook` and owner WhatsApp direct messaging)
 - `GEMINI_API_KEY` (or `GOOGLE_GENAI_API_KEY` / `GOOGLE_API_KEY`) for `/api/ai/scan-menu`
 - Optional cache: `KV_REST_API_URL` and `KV_REST_API_TOKEN`
+- Recommended perf setting: `CACHE_PUBLIC_BOOTSTRAP_TTL_SEC=43200` (safe because cache keys include `menuVersion`)
 - Optional telemetry tuning: `ENABLE_OPS_TELEMETRY`, `OPS_TELEMETRY_SAMPLE_RATE`
 
 Optional toggle:

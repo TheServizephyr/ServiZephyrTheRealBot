@@ -134,6 +134,13 @@ async function postAdminMigrateDeliverySettings(req) {
         };
 
         await doc.ref.collection('delivery_settings').doc('config').set(deliverySettings, { merge: true });
+        await doc.ref.set(
+          {
+            menuVersion: FieldValue.increment(1),
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
         results.migrated += 1;
       } catch (error) {
         results.errors.push(`${collectionName}/${doc.id}: ${error.message}`);
@@ -184,6 +191,8 @@ async function postAdminCleanupDeliverySettings(req) {
           deliveryFreeThreshold: FieldValue.delete(),
           deliveryOnlinePaymentEnabled: FieldValue.delete(),
           deliveryCodEnabled: FieldValue.delete(),
+          menuVersion: FieldValue.increment(1),
+          updatedAt: new Date(),
         });
 
         results.cleaned += 1;
@@ -239,6 +248,14 @@ async function postAdminMigrateCustomCategories(req) {
       }
 
       if (itemCount === 0) continue;
+      batch.set(
+        doc.ref,
+        {
+          menuVersion: FieldValue.increment(1),
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
 
       try {
         await batch.commit();
@@ -278,6 +295,8 @@ async function postAdminCleanupCustomCategories(req) {
         if (!subColSnap.empty || customCategories.length === 0) {
           await doc.ref.update({
             customCategories: FieldValue.delete(),
+            menuVersion: FieldValue.increment(1),
+            updatedAt: new Date(),
           });
           results.cleaned += 1;
         } else {
