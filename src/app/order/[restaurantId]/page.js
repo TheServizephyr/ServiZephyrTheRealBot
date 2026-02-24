@@ -41,6 +41,9 @@ const normalizeBusinessType = (value) => {
     return normalized || 'restaurant';
 };
 
+const encodePathSegment = (value) => encodeURIComponent(String(value || '').trim());
+const encodeQueryParam = (value) => encodeURIComponent(String(value || ''));
+
 const STORE_SUPER_CATEGORY_PRIORITY = [
     'Grocery & Kitchen',
     'Snacks & Drinks',
@@ -1432,7 +1435,7 @@ const OrderPageInternal = () => {
                 console.log("[Order Page] Identity found. Checking server for active orders...");
                 try {
                     // Update API call to support ref
-                    const res = await fetch(`/api/order/active?${identifierParam}&token=${token || ''}&restaurantId=${restaurantId}`);
+                    const res = await fetch(`/api/order/active?${identifierParam}&token=${encodeQueryParam(token || '')}&restaurantId=${encodeQueryParam(restaurantId)}`);
                     if (res.ok) {
                         const data = await res.json();
                         let serverOrders = [];
@@ -1931,13 +1934,13 @@ const OrderPageInternal = () => {
                 const query = new URLSearchParams();
                 query.set('src', 'order_page');
                 if (phone) query.set('phone', phone);
-                const url = `/api/public/menu/${restaurantId}?${query.toString()}`;
+                const url = `/api/public/menu/${encodePathSegment(restaurantId)}?${query.toString()}`;
                 const menuRes = await fetch(url, { signal: abortController.signal });
                 const menuData = await menuRes.json();
 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
 
-                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`, { signal: abortController.signal });
+                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${encodeQueryParam(restaurantId)}`, { signal: abortController.signal });
                 const settingsData = settingsRes.ok ? await settingsRes.json() : {};
 
                 // Map specific payment settings (fallback to true if undefined)
@@ -2023,7 +2026,7 @@ const OrderPageInternal = () => {
                     // First fetch table data from server
                     try {
                         console.log('📞 [DEBUG] Fetching table data for:', tableIdFromUrl);
-                        const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
+                        const tableRes = await fetch(`/api/owner/tables?restaurantId=${encodeQueryParam(restaurantId)}&tableId=${encodeQueryParam(tableIdFromUrl)}`);
                         console.log('📞 [DEBUG] Table API response status:', tableRes.status, tableRes.ok);
 
                         if (!tableRes.ok) {
@@ -3138,10 +3141,6 @@ const OrderPageInternal = () => {
         return <TokenVerificationLock message={tokenError} />;
     }
 
-    if (!isTokenValid) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
-    }
-
     if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
         // NEW: Special handling for cleaning_pending state
         if (dineInState === 'cleaning_pending') {
@@ -3178,6 +3177,10 @@ const OrderPageInternal = () => {
                 <p className="mt-2 text-muted-foreground">{error || `This ${businessLabel} is not accepting orders at the moment. Please check back later.`}</p>
             </div>
         );
+    }
+
+    if (!isTokenValid) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
 
     if (dineInState === 'needs_setup') {
@@ -4309,19 +4312,71 @@ const OrderPageInternal = () => {
     );
 };
 
-const OrderPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
-        <ThemeProvider
-            attribute="class"
-            defaultTheme="light"
-            enableSystem
-            disableTransitionOnChange
-        >
-            <ThemeColorUpdater />
-            <GlobalHapticHandler />
-            <OrderPageInternal />
-        </ThemeProvider>
-    </Suspense>
-);
+const OrderPage = () => {
+    const [isPathCanonicalized, setIsPathCanonicalized] = useState(false);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            setIsPathCanonicalized(true);
+            return;
+        }
+
+        try {
+            const currentUrl = new URL(window.location.href);
+            const prefix = '/order/';
+            const orderPrefixIndex = currentUrl.pathname.indexOf(prefix);
+
+            if (orderPrefixIndex === -1) {
+                setIsPathCanonicalized(true);
+                return;
+            }
+
+            const segmentStartIndex = orderPrefixIndex + prefix.length;
+            const currentSegment = currentUrl.pathname.slice(segmentStartIndex).split('/')[0];
+
+            if (!currentSegment) {
+                setIsPathCanonicalized(true);
+                return;
+            }
+
+            let decodedSegment = currentSegment;
+            try {
+                decodedSegment = decodeURIComponent(currentSegment);
+            } catch {
+                decodedSegment = currentSegment;
+            }
+
+            const canonicalSegment = encodeURIComponent(decodedSegment);
+            if (canonicalSegment !== currentSegment) {
+                currentUrl.pathname = `${prefix}${canonicalSegment}`;
+                window.location.replace(currentUrl.toString());
+                return;
+            }
+        } catch {
+            // Continue to render app even if URL canonicalization fails
+        }
+
+        setIsPathCanonicalized(true);
+    }, []);
+
+    if (!isPathCanonicalized) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
+    }
+
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
+            <ThemeProvider
+                attribute="class"
+                defaultTheme="light"
+                enableSystem
+                disableTransitionOnChange
+            >
+                <ThemeColorUpdater />
+                <GlobalHapticHandler />
+                <OrderPageInternal />
+            </ThemeProvider>
+        </Suspense>
+    );
+};
 
 export default OrderPage;

@@ -8,6 +8,7 @@ import { kv } from '@vercel/kv';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
+import { findBusinessById } from '@/services/business/businessService';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,45 @@ function normalizeBusinessType(value, fallbackCollectionName = null) {
     return 'restaurant';
 }
 
+function buildBusinessIdCandidates(value) {
+    const seed = String(value || '').trim();
+    if (!seed) return [];
+
+    const candidates = [];
+    const seen = new Set();
+    const add = (candidate) => {
+        const normalized = String(candidate || '').trim();
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        candidates.push(normalized);
+    };
+
+    add(seed);
+
+    let decoded = seed;
+    for (let i = 0; i < 2; i += 1) {
+        try {
+            const next = decodeURIComponent(decoded);
+            if (!next || next === decoded) break;
+            add(next);
+            decoded = next;
+        } catch {
+            break;
+        }
+    }
+
+    for (const candidate of [...candidates]) {
+        try {
+            const encoded = encodeURIComponent(candidate);
+            if (encoded !== candidate) add(encoded);
+        } catch {
+            // Ignore encoding errors and continue with existing candidates
+        }
+    }
+
+    return candidates;
+}
+
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -31,11 +71,28 @@ export async function GET(req) {
         if (businessIdFromQuery) {
             const firestore = await getFirestore();
             let businessDoc;
+            let matchedBusinessId = null;
             const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-            for (const collectionName of collectionsToTry) {
-                const docRef = firestore.collection(collectionName).doc(businessIdFromQuery);
-                businessDoc = await docRef.get();
-                if (businessDoc.exists) break;
+            const businessIdCandidates = buildBusinessIdCandidates(businessIdFromQuery);
+
+            for (const businessIdCandidate of businessIdCandidates) {
+                for (const collectionName of collectionsToTry) {
+                    const docRef = firestore.collection(collectionName).doc(businessIdCandidate);
+                    businessDoc = await docRef.get();
+                    if (businessDoc.exists) {
+                        matchedBusinessId = businessIdCandidate;
+                        break;
+                    }
+                }
+                if (businessDoc?.exists) break;
+            }
+
+            if (!businessDoc?.exists) {
+                const fallbackBusiness = await findBusinessById(firestore, businessIdFromQuery);
+                if (fallbackBusiness?.ref) {
+                    businessDoc = await fallbackBusiness.ref.get();
+                    matchedBusinessId = fallbackBusiness.id || businessDoc.id;
+                }
             }
 
             if (!businessDoc || !businessDoc.exists) {
@@ -89,6 +146,7 @@ export async function GET(req) {
                 deliveryOrderSlabPerKmFee: fallback('deliveryOrderSlabPerKmFee', 15),
                 pickupEnabled: fallback('pickupEnabled', true),
                 dineInEnabled: fallback('dineInEnabled', true),
+                restaurantId: matchedBusinessId || businessDoc.id,
             };
 
             // Coupons fetch is optional to avoid unnecessary Firestore reads on high-traffic public pages.

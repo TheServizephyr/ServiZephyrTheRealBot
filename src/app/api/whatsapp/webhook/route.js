@@ -210,8 +210,9 @@ const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) 
     const { userId } = await getOrCreateGuestProfile(firestore, normalizedPhone);
     const publicRef = obfuscateGuestId(userId);
     const encodedRef = encodeURIComponent(publicRef);
+    const encodedBusinessId = encodeURIComponent(String(business.id || '').trim());
 
-    const orderPath = `/order/${business.id}?ref=${encodedRef}`;
+    const orderPath = `/order/${encodedBusinessId}?ref=${encodedRef}`;
     let trackPath = `${orderPath}&from=track_last_order`;
 
     const latestOrderSnapshot = await firestore.collection('orders')
@@ -648,7 +649,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
 
                 // 3. Generate Link with only ref (no token)
-                const link = `https://servizephyr.com/order/${businessId}?ref=${publicRef}`;
+                const link = `https://servizephyr.com/order/${encodeURIComponent(String(businessId || '').trim())}?ref=${encodeURIComponent(publicRef)}`;
 
                 const collectionName = business.ref.parent.id;
                 await sendSystemMessage(fromNumber, `Here is your personal secure link to place an order:\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
@@ -700,7 +701,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     }
 
                     // Format: /track/[type]/[orderId]?token=...&ref=...&activeOrderId=...
-                    const link = `https://www.servizephyr.com/track/${trackingPath}${orderId}?token=${token}&ref=${publicRef}&activeOrderId=${orderId}`;
+                    const link = `https://www.servizephyr.com/track/${trackingPath}${encodeURIComponent(orderId)}?token=${encodeURIComponent(token)}&ref=${encodeURIComponent(publicRef)}&activeOrderId=${encodeURIComponent(orderId)}`;
 
                     const displayOrderId = latestOrder.customerOrderId ? `#${latestOrder.customerOrderId}` : `#${orderId.substring(0, 8)}`;
                     const collectionName = business.ref.parent.id;

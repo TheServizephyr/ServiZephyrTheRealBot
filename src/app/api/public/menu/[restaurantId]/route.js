@@ -5,6 +5,7 @@ import { kv } from '@vercel/kv';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
+import { findBusinessById } from '@/services/business/businessService';
 
 export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
@@ -54,6 +55,45 @@ function normalizeMenuSource(value) {
     const raw = String(value || '').trim().toLowerCase();
     if (!raw) return '';
     return raw.replace(/[^a-z0-9_-]/g, '').slice(0, 32);
+}
+
+function buildRestaurantIdCandidates(value) {
+    const seed = String(value || '').trim();
+    if (!seed) return [];
+
+    const candidates = [];
+    const seen = new Set();
+    const add = (candidate) => {
+        const normalized = String(candidate || '').trim();
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        candidates.push(normalized);
+    };
+
+    add(seed);
+
+    let decoded = seed;
+    for (let i = 0; i < 2; i += 1) {
+        try {
+            const next = decodeURIComponent(decoded);
+            if (!next || next === decoded) break;
+            add(next);
+            decoded = next;
+        } catch {
+            break;
+        }
+    }
+
+    for (const candidate of [...candidates]) {
+        try {
+            const encoded = encodeURIComponent(candidate);
+            if (encoded !== candidate) add(encoded);
+        } catch {
+            // Keep existing candidates
+        }
+    }
+
+    return candidates;
 }
 
 async function resolveBusinessWithCollectionCache({ firestore, restaurantId, isKvAvailable }) {
@@ -124,12 +164,36 @@ async function resolveBusinessWithCollectionCache({ firestore, restaurantId, isK
     return { winner, foundDocs, usedCollectionCache: false };
 }
 
+async function resolveBusinessAcrossCandidates({ firestore, restaurantIds, isKvAvailable }) {
+    for (const candidateRestaurantId of restaurantIds) {
+        const resolved = await resolveBusinessWithCollectionCache({
+            firestore,
+            restaurantId: candidateRestaurantId,
+            isKvAvailable,
+        });
+        if (resolved?.winner) {
+            return {
+                ...resolved,
+                resolvedRestaurantId: candidateRestaurantId,
+            };
+        }
+    }
+
+    return {
+        winner: null,
+        foundDocs: [],
+        usedCollectionCache: false,
+        resolvedRestaurantId: restaurantIds[0] || null,
+    };
+}
+
 export async function GET(req, { params }) {
     const telemetryStartedAt = Date.now();
     let telemetryStatus = 200;
     let telemetryError = null;
 
-    const { restaurantId } = params;
+    const requestedRestaurantId = String(params?.restaurantId || '').trim();
+    const restaurantIdCandidates = buildRestaurantIdCandidates(requestedRestaurantId);
     const { searchParams } = new URL(req.url);
     const phone = searchParams.get('phone');
     const menuSource = normalizeMenuSource(searchParams.get('src'));
@@ -143,38 +207,63 @@ export async function GET(req, { params }) {
         });
     };
 
-    if (!restaurantId) {
+    if (!requestedRestaurantId) {
         return respond({ message: 'Restaurant ID is required.' }, 400);
     }
 
-    debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${restaurantId} at ${new Date().toISOString()}`);
+    debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${requestedRestaurantId} at ${new Date().toISOString()}`);
 
     // Check if Vercel KV is available (optional for local dev)
     const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
 
     try {
         // STEP 1: Resolve business collection (cache-first, fallback to multi-collection lookup)
-        const { winner, foundDocs, usedCollectionCache } = await resolveBusinessWithCollectionCache({
+        const { winner, foundDocs, usedCollectionCache, resolvedRestaurantId } = await resolveBusinessAcrossCandidates({
             firestore,
-            restaurantId,
+            restaurantIds: restaurantIdCandidates,
             isKvAvailable
         });
 
-        if (!winner) {
-            debugLog(`[Menu API] ❌ Business not found for ${restaurantId} in any collection`);
+        let cacheRestaurantId = resolvedRestaurantId || requestedRestaurantId;
+        let resolvedWinner = winner;
+        let resolvedFoundDocs = foundDocs;
+        let resolvedUsedCollectionCache = usedCollectionCache;
+
+        if (!resolvedWinner) {
+            const fallbackBusiness = await findBusinessById(firestore, requestedRestaurantId);
+            if (fallbackBusiness?.ref) {
+                const fallbackSnapshot = await fallbackBusiness.ref.get();
+                if (fallbackSnapshot.exists) {
+                    const fallbackData = fallbackSnapshot.data();
+                    const fallbackVersion = fallbackData?.menuVersion || 1;
+                    cacheRestaurantId = fallbackSnapshot.id;
+                    resolvedWinner = {
+                        collectionName: fallbackBusiness.collection || fallbackBusiness.ref.parent.id,
+                        businessRef: fallbackBusiness.ref,
+                        businessData: fallbackData,
+                        version: fallbackVersion,
+                    };
+                    resolvedFoundDocs = [resolvedWinner];
+                    resolvedUsedCollectionCache = false;
+                }
+            }
+        }
+
+        if (!resolvedWinner) {
+            debugLog(`[Menu API] ❌ Business not found for ${requestedRestaurantId} in any collection`);
             return respond({ message: 'Business not found.' }, 404);
         }
 
-        let businessData = winner.businessData;
-        let businessRef = winner.businessRef;
-        let collectionName = winner.collectionName;
-        let menuVersion = winner.version;
+        let businessData = resolvedWinner.businessData;
+        let businessRef = resolvedWinner.businessRef;
+        let collectionName = resolvedWinner.collectionName;
+        let menuVersion = resolvedWinner.version;
 
-        if (!usedCollectionCache && foundDocs.length > 1) {
-            console.warn(`[Menu API] ⚠️ DUPLICATE DATA DETECTED for ${restaurantId}`);
-            foundDocs.forEach(d => debugLog(`   - Found in ${d.collectionName} (v${d.version})`));
+        if (!resolvedUsedCollectionCache && resolvedFoundDocs.length > 1) {
+            console.warn(`[Menu API] ⚠️ DUPLICATE DATA DETECTED for ${cacheRestaurantId}`);
+            resolvedFoundDocs.forEach(d => debugLog(`   - Found in ${d.collectionName} (v${d.version})`));
             debugLog(`   ✅ Selected winner: ${collectionName} (v${menuVersion})`);
-        } else if (usedCollectionCache) {
+        } else if (resolvedUsedCollectionCache) {
             debugLog(`[Menu API] ✅ Collection cache hit: ${collectionName} (v${menuVersion})`);
         } else {
             debugLog(`[Menu API] ✅ Found active business in ${collectionName} (v${menuVersion})`);
@@ -184,12 +273,12 @@ export async function GET(req, { params }) {
 
         // STEP 2: Build version-based cache key
         // PATCH: Added _patch4 to force cache refresh for new delivery fee engine fields
-        const cacheKey = `menu:${restaurantId}:v${menuVersion}_patch4`;
+        const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch4`;
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
         debugLog(`%c[Menu API] 📊 CACHE DEBUG`, 'color: cyan; font-weight: bold');
-        debugLog(`[Menu API]    ├─ Restaurant: ${restaurantId}`);
+        debugLog(`[Menu API]    ├─ Restaurant: ${cacheRestaurantId}`);
         debugLog(`[Menu API]    ├─ menuVersion from Firestore: ${menuVersion}`);
         debugLog(`[Menu API]    ├─ Generated cache key: ${cacheKey}`);
         debugLog(`[Menu API]    ├─ Redis KV available: ${isKvAvailable ? '✅ YES' : '❌ NO'}`);
@@ -232,14 +321,14 @@ export async function GET(req, { params }) {
             debugLog(`%c[Menu API] ❌ CACHE MISS`, 'color: red; font-weight: bold');
             debugLog(`[Menu API]    └─ Fetching from Firestore for key: ${cacheKey}`);
         } else {
-            debugLog(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${restaurantId}`);
+            debugLog(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${cacheRestaurantId}`);
         }
 
         // STEP 4: Cache miss - fetch from Firestore
         debugLog(`[Menu API] ✅ Found business: ${businessData.name}`);
         debugLog(`[Menu API] 📂 SOURCE COLLECTION: ${collectionName} (Critical Check)`);
         debugLog(`[Menu API] 🟢 isOpen status in DB: ${businessData.isOpen}`);
-        debugLog(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${restaurantId}/coupons`);
+        debugLog(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${cacheRestaurantId}/coupons`);
 
         // Fetch menu, coupons, AND delivery settings in parallel
         const [menuSnap, couponsSnap, deliveryConfigSnap] = await Promise.all([
@@ -402,7 +491,7 @@ export async function GET(req, { params }) {
     } catch (error) {
         telemetryStatus = error?.status || 500;
         telemetryError = error?.message || 'Menu API failed';
-        console.error(`[API ERROR] /api/public/menu/${restaurantId}:`, error);
+        console.error(`[API ERROR] /api/public/menu/${requestedRestaurantId}:`, error);
         return respond({ message: 'Internal Server Error: ' + error.message }, telemetryStatus);
     } finally {
         void trackApiTelemetry({
@@ -410,7 +499,7 @@ export async function GET(req, { params }) {
             durationMs: Date.now() - telemetryStartedAt,
             statusCode: telemetryStatus,
             errorMessage: telemetryError,
-            context: { restaurantId: String(restaurantId || ''), src: menuSource || null },
+            context: { restaurantId: String(requestedRestaurantId || ''), src: menuSource || null },
         });
     }
 }
