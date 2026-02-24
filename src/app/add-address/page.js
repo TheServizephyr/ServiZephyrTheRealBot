@@ -343,8 +343,9 @@ const AddAddressPageInternal = () => {
                         console.log('[Add Address] Customer data from ref:', customerData);
                         const refName = String(customerData?.name || '').trim();
                         const refPhone = String(customerData?.phone || '').replace(/\D/g, '').slice(-10);
-
-                        if (refName) {
+                        // Skip 'Guest' — it's a default fallback, not a real name
+                        const isRealName = refName && refName.toLowerCase() !== 'guest' && refName.toLowerCase() !== 'user';
+                        if (isRealName) {
                             setRecipientName(prev => prev || refName);
                             hasNameFromLookup = true;
                         }

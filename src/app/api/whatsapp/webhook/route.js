@@ -131,7 +131,7 @@ async function getBusiness(firestore, botPhoneNumberId) {
     console.warn(`[Webhook WA] getBusiness: No business found for botPhoneNumberId: ${botPhoneNumberId}`);
     return null;
 }
- 
+
 const generateSecureToken = async (firestore, userId) => {
     console.log(`[Webhook WA] generateSecureToken: Generating for userId: ${userId}`);
     const token = nanoid(24);
@@ -1129,6 +1129,23 @@ export async function POST(request) {
                 }
 
                 await conversationRef.set(conversationUpdate, { merge: true });
+
+                // Save WhatsApp display name to guest_profiles so add-address page can prefill it via ref
+                // Only update if we got a real name (not just the phone number as fallback)
+                if (customerNameFromPayload && customerNameFromPayload !== fromPhoneNumber) {
+                    try {
+                        const profileResult = await getOrCreateGuestProfile(firestore, fromPhoneNumber);
+                        if (profileResult?.userId) {
+                            const profileCollection = profileResult.isGuest ? 'guest_profiles' : 'users';
+                            await firestore.collection(profileCollection).doc(profileResult.userId).set(
+                                { name: customerNameFromPayload, whatsappName: customerNameFromPayload },
+                                { merge: true }
+                            );
+                        }
+                    } catch (nameErr) {
+                        console.warn('[Webhook WA] Could not save WhatsApp name to profile:', nameErr?.message);
+                    }
+                }
 
                 console.log(`[Webhook WA] Message ${message.id} logged for ${fromPhoneNumber}`);
 
