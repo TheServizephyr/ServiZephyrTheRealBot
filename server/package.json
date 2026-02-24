@@ -6,6 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
+    "build": "node -e \"console.log('No build step required for Express backend')\"",
     "start": "node src/index.js",
     "check": "node -e \"require('./src/app'); console.log('server app import ok')\"",
     "inventory:routes": "node scripts/generate-endpoint-inventory.js",
@@ -16,7 +17,7 @@
     "loadtest:peak": "k6 run loadtest/k6-peak.js"
   },
   "engines": {
-    "node": ">=18.17.0"
+    "node": ">=18.17.0 <21"
   },
   "dependencies": {
     "@upstash/redis": "^1.35.3",
