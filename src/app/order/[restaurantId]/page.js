@@ -41,8 +41,23 @@ const normalizeBusinessType = (value) => {
     return normalized || 'restaurant';
 };
 
-const encodePathSegment = (value) => encodeURIComponent(String(value || '').trim());
+const decodeUrlComponentRecursively = (value, maxPasses = 3) => {
+    let normalized = String(value || '').trim();
+    for (let i = 0; i < maxPasses; i += 1) {
+        try {
+            const decoded = decodeURIComponent(normalized);
+            if (!decoded || decoded === normalized) break;
+            normalized = decoded;
+        } catch {
+            break;
+        }
+    }
+    return normalized;
+};
+
+const encodePathSegment = (value) => encodeURIComponent(decodeUrlComponentRecursively(value));
 const encodeQueryParam = (value) => encodeURIComponent(String(value || ''));
+const encodeRestaurantIdParam = (value) => encodeURIComponent(decodeUrlComponentRecursively(value));
 
 const STORE_SUPER_CATEGORY_PRIORITY = [
     'Grocery & Kitchen',
@@ -1435,7 +1450,7 @@ const OrderPageInternal = () => {
                 console.log("[Order Page] Identity found. Checking server for active orders...");
                 try {
                     // Update API call to support ref
-                    const res = await fetch(`/api/order/active?${identifierParam}&token=${encodeQueryParam(token || '')}&restaurantId=${encodeQueryParam(restaurantId)}`);
+                    const res = await fetch(`/api/order/active?${identifierParam}&token=${encodeQueryParam(token || '')}&restaurantId=${encodeRestaurantIdParam(restaurantId)}`);
                     if (res.ok) {
                         const data = await res.json();
                         let serverOrders = [];
@@ -1940,7 +1955,7 @@ const OrderPageInternal = () => {
 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
 
-                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${encodeQueryParam(restaurantId)}`, { signal: abortController.signal });
+                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${encodeRestaurantIdParam(restaurantId)}`, { signal: abortController.signal });
                 const settingsData = settingsRes.ok ? await settingsRes.json() : {};
 
                 // Map specific payment settings (fallback to true if undefined)
@@ -2026,7 +2041,7 @@ const OrderPageInternal = () => {
                     // First fetch table data from server
                     try {
                         console.log('📞 [DEBUG] Fetching table data for:', tableIdFromUrl);
-                        const tableRes = await fetch(`/api/owner/tables?restaurantId=${encodeQueryParam(restaurantId)}&tableId=${encodeQueryParam(tableIdFromUrl)}`);
+                        const tableRes = await fetch(`/api/owner/tables?restaurantId=${encodeRestaurantIdParam(restaurantId)}&tableId=${encodeQueryParam(tableIdFromUrl)}`);
                         console.log('📞 [DEBUG] Table API response status:', tableRes.status, tableRes.ok);
 
                         if (!tableRes.ok) {
@@ -4339,12 +4354,7 @@ const OrderPage = () => {
                 return;
             }
 
-            let decodedSegment = currentSegment;
-            try {
-                decodedSegment = decodeURIComponent(currentSegment);
-            } catch {
-                decodedSegment = currentSegment;
-            }
+            const decodedSegment = decodeUrlComponentRecursively(currentSegment);
 
             const canonicalSegment = encodeURIComponent(decodedSegment);
             if (canonicalSegment !== currentSegment) {

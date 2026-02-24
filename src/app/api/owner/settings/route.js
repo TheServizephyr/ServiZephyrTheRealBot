@@ -22,6 +22,20 @@ function normalizeBusinessType(value, fallbackCollectionName = null) {
     return 'restaurant';
 }
 
+function decodeUrlComponentRecursively(value, maxPasses = 3) {
+    let normalized = String(value || '').trim();
+    for (let i = 0; i < maxPasses; i += 1) {
+        try {
+            const decoded = decodeURIComponent(normalized);
+            if (!decoded || decoded === normalized) break;
+            normalized = decoded;
+        } catch {
+            break;
+        }
+    }
+    return normalized;
+}
+
 function buildBusinessIdCandidates(value) {
     const seed = String(value || '').trim();
     if (!seed) return [];
@@ -64,7 +78,8 @@ function buildBusinessIdCandidates(value) {
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
-        const businessIdFromQuery = searchParams.get('restaurantId') || searchParams.get('businessId');
+        const businessIdRawFromQuery = searchParams.get('restaurantId') || searchParams.get('businessId');
+        const businessIdFromQuery = decodeUrlComponentRecursively(businessIdRawFromQuery);
         const includeCoupons = ['1', 'true', 'yes'].includes(String(searchParams.get('includeCoupons') || '').toLowerCase());
 
         // This block is for public-facing queries that only need payment settings.

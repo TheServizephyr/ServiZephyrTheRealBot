@@ -57,6 +57,20 @@ function normalizeMenuSource(value) {
     return raw.replace(/[^a-z0-9_-]/g, '').slice(0, 32);
 }
 
+function decodeUrlComponentRecursively(value, maxPasses = 3) {
+    let normalized = String(value || '').trim();
+    for (let i = 0; i < maxPasses; i += 1) {
+        try {
+            const decoded = decodeURIComponent(normalized);
+            if (!decoded || decoded === normalized) break;
+            normalized = decoded;
+        } catch {
+            break;
+        }
+    }
+    return normalized;
+}
+
 function buildRestaurantIdCandidates(value) {
     const seed = String(value || '').trim();
     if (!seed) return [];
@@ -193,7 +207,8 @@ export async function GET(req, { params }) {
     let telemetryError = null;
 
     const requestedRestaurantId = String(params?.restaurantId || '').trim();
-    const restaurantIdCandidates = buildRestaurantIdCandidates(requestedRestaurantId);
+    const canonicalRestaurantId = decodeUrlComponentRecursively(requestedRestaurantId);
+    const restaurantIdCandidates = buildRestaurantIdCandidates(canonicalRestaurantId);
     const { searchParams } = new URL(req.url);
     const phone = searchParams.get('phone');
     const menuSource = normalizeMenuSource(searchParams.get('src'));
@@ -211,7 +226,7 @@ export async function GET(req, { params }) {
         return respond({ message: 'Restaurant ID is required.' }, 400);
     }
 
-    debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${requestedRestaurantId} at ${new Date().toISOString()}`);
+    debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${requestedRestaurantId} (canonical: ${canonicalRestaurantId}) at ${new Date().toISOString()}`);
 
     // Check if Vercel KV is available (optional for local dev)
     const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
@@ -224,13 +239,13 @@ export async function GET(req, { params }) {
             isKvAvailable
         });
 
-        let cacheRestaurantId = resolvedRestaurantId || requestedRestaurantId;
+        let cacheRestaurantId = resolvedRestaurantId || canonicalRestaurantId;
         let resolvedWinner = winner;
         let resolvedFoundDocs = foundDocs;
         let resolvedUsedCollectionCache = usedCollectionCache;
 
         if (!resolvedWinner) {
-            const fallbackBusiness = await findBusinessById(firestore, requestedRestaurantId);
+            const fallbackBusiness = await findBusinessById(firestore, canonicalRestaurantId);
             if (fallbackBusiness?.ref) {
                 const fallbackSnapshot = await fallbackBusiness.ref.get();
                 if (fallbackSnapshot.exists) {
