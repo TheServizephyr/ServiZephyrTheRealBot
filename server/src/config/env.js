@@ -18,7 +18,7 @@ const rawEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().optional().default(''),
   ENABLE_LEGACY_PROXY: z.string().optional().default('true'),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
-  CACHE_PUBLIC_BOOTSTRAP_TTL_SEC: z.coerce.number().int().positive().default(60),
+  CACHE_PUBLIC_BOOTSTRAP_TTL_SEC: z.coerce.number().int().positive().default(43200), // 12 hours — safe because cache key includes menuVersion
   CACHE_ORDER_STATUS_LITE_TTL_SEC: z.coerce.number().int().positive().default(3),
   CACHE_ORDER_STATUS_FULL_TTL_SEC: z.coerce.number().int().positive().default(30),
   ENABLE_WEBSOCKETS: z.string().optional().default('true'),

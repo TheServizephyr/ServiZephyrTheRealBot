@@ -5,7 +5,7 @@ const { normalizeBusinessType } = require('./business.service');
 const { resolveOwnerContext, PERMISSIONS } = require('./accessControl.service');
 
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
-const OWNER_MENU_CACHE_TTL_SEC = 30;
+const OWNER_MENU_CACHE_TTL_SEC = 43200; // 12 hours — cache key includes menuVersion so writes auto-bust it
 
 function isTruthy(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());

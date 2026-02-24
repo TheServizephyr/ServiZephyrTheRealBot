@@ -428,6 +428,18 @@ async function patchAuthenticatedOwnerSettings(req) {
     await businessRef.collection('delivery_settings').doc('config').set(deliveryUpdates, { merge: true });
   }
 
+  // Bump menuVersion if any public-facing field changed (delivery, GST, name, logo, etc.)
+  // This automatically busts the 12h public menu cache without waiting for TTL to expire.
+  const publicFacingFieldsChanged =
+    Object.keys(businessUpdateData).some((key) =>
+      key !== 'updatedAt' && key !== 'isOpen' // isOpen already bumps menuVersion above
+    ) || Object.keys(deliveryUpdates).length > 0;
+
+  if (publicFacingFieldsChanged && !businessUpdateData.menuVersion) {
+    // isOpen change already sets businessUpdateData.menuVersion — avoid double increment
+    businessUpdateData.menuVersion = FieldValue.increment(1);
+  }
+
   if (Object.keys(businessUpdateData).length > 0) {
     businessUpdateData.updatedAt = new Date();
     await businessRef.update(businessUpdateData);
