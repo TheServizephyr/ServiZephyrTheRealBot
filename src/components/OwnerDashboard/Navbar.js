@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import InfoDialog from "@/components/InfoDialog";
 import SystemStatusDialog from "@/components/SystemStatusDialog";
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,6 +75,36 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
     fetchOwnerSettings();
   }, [fetchOwnerSettings]);
 
+  // Real-time UI evaluation for Auto-Schedule (updates toggle without refreshing page)
+  useEffect(() => {
+    if (!autoScheduleEnabled) return;
+
+    // Evaluate immediately when enabled/changed
+    const evaluatedStatus = getEffectiveBusinessOpenStatus({
+      autoScheduleEnabled,
+      openingTime,
+      closingTime,
+      isOpen: restaurantStatus
+    });
+    if (evaluatedStatus !== restaurantStatus) {
+      setRestaurantStatus(evaluatedStatus);
+    }
+
+    const interval = setInterval(() => {
+      const isNowOpen = getEffectiveBusinessOpenStatus({
+        autoScheduleEnabled,
+        openingTime,
+        closingTime,
+        isOpen: restaurantStatus
+      });
+      if (isNowOpen !== restaurantStatus) {
+        setRestaurantStatus(isNowOpen);
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, [autoScheduleEnabled, openingTime, closingTime, restaurantStatus]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mediaQuery = window.matchMedia('(max-width: 767.98px)');
@@ -108,22 +139,36 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   // ... (rest of the functions remain the same) ...
 
   const handleStatusToggle = async (newStatus) => {
-    // ... (existing code)
     setLoadingStatus(true);
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error("Not authenticated");
       const idToken = await currentUser.getIdToken();
+
+      const payload = { isOpen: newStatus };
+      let overridingSchedule = false;
+
+      // If they manually toggle while auto-schedule is ON, we must disable auto-schedule
+      if (autoScheduleEnabled) {
+        payload.autoScheduleEnabled = false;
+        overridingSchedule = true;
+      }
+
       const res = await fetch('/api/owner/settings', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`
         },
-        body: JSON.stringify({ isOpen: newStatus })
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error("Failed to update status");
+
       setRestaurantStatus(newStatus);
+      if (overridingSchedule) {
+        setAutoScheduleEnabled(false);
+        setInfoDialog({ isOpen: true, title: "Schedule Disabled", message: `Auto-schedule has been turned OFF because you manually set the status to ${newStatus ? 'Open' : 'Closed'}.` });
+      }
     } catch (error) {
       setInfoDialog({ isOpen: true, title: "Error", message: `Error updating status: ${error.message}` });
     } finally {
@@ -160,6 +205,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
 
       setInfoDialog({ isOpen: true, title: "Saved", message: "Schedule updated successfully." });
       setShowScheduleEditor(false);
+      fetchOwnerSettings();
     } catch (error) {
       setInfoDialog({ isOpen: true, title: "Error", message: `Could not save schedule: ${error.message}` });
     } finally {
