@@ -35,12 +35,12 @@ async function handleCleanTable(req) {
         const body = await req.json();
         console.log('[Clean Table] 🔍 Request body:', body);
 
-        const { tabId, token, restaurantId, tableId: incomingTableId } = body;
+        const { tabId, token, restaurantId, tableId: incomingTableId, dineInTabId } = body;
 
-        if (!tabId) {
-            console.log('[Clean Table] ❌ Missing tabId');
+        if (!tabId && !dineInTabId) {
+            console.log('[Clean Table] ❌ Missing tabId and dineInTabId');
             return NextResponse.json(
-                { error: 'Missing required field: tabId' },
+                { error: 'Missing required field: tabId or dineInTabId' },
                 { status: 400 }
             );
         }
@@ -48,7 +48,7 @@ async function handleCleanTable(req) {
         // ✅ Token validation only if token is provided (customer flow)
         // Owner dashboard doesn't send token (already authenticated via Bearer)
         if (token) {
-            const isValid = await validateTabToken(tabId, token);
+            const isValid = await validateTabToken(tabId || dineInTabId, token);
             if (!isValid) {
                 return NextResponse.json(
                     { error: 'Invalid token' },
@@ -67,16 +67,29 @@ async function handleCleanTable(req) {
         // ✅ Try to find tab in multiple locations (V1 vs V2 structure)
         let tabRef, tabSnap;
 
-        // Try global collection first (V1 structure)
-        tabRef = firestore.collection('dine_in_tabs').doc(tabId);
-        tabSnap = await tabRef.get();
+        // ✅ PRIORITY 1: If dashboard sent the real dineInTabId, try that first (most reliable)
+        if (dineInTabId && businessRef) {
+            console.log(`[Clean Table] Trying real dineInTabId: ${dineInTabId}`);
+            tabRef = businessRef.collection('dineInTabs').doc(dineInTabId);
+            tabSnap = await tabRef.get();
+            if (tabSnap.exists) {
+                console.log(`[Clean Table] ✅ Found tab via dineInTabId: ${dineInTabId}`);
+            }
+        }
 
-        // If not found and restaurantId provided, try restaurant subcollection (V2 structure)
-        if (!tabSnap.exists && businessRef) {
+        // PRIORITY 2: Try global collection (V1 structure) with tabId
+        if (!tabSnap?.exists && tabId) {
+            tabRef = firestore.collection('dine_in_tabs').doc(tabId);
+            tabSnap = await tabRef.get();
+        }
+
+        // PRIORITY 3: Try restaurant subcollection (V2 structure) with tabId
+        if (!tabSnap.exists && businessRef && tabId) {
             console.log(`[Clean Table] Tab not in global collection, checking restaurant subcollection for ${restaurantId}`);
             tabRef = businessRef.collection('dineInTabs').doc(tabId);
             tabSnap = await tabRef.get();
         }
+
 
         if (!tabSnap.exists) {
             console.log(`[Clean Table] ❌ Tab ${tabId} not found in any location`);

@@ -213,6 +213,16 @@ export async function GET(req) {
             await Promise.all(tabPromises);
         }
 
+        // CRITICAL: Filter out order groups whose tab has been completed
+        // completedTabIds was built above but never used as a filter - fixing that now
+        if (completedTabIds.size > 0) {
+            orderGroups.forEach((group, groupKey) => {
+                if (group.dineInTabId && completedTabIds.has(group.dineInTabId)) {
+                    orderGroups.delete(groupKey);
+                }
+            });
+        }
+
         // Now add grouped orders to tables
         // ✅ Cleaned orders already excluded by query
         orderGroups.forEach((group, groupKey) => {

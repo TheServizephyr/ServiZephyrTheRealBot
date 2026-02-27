@@ -10,7 +10,7 @@ export async function PATCH(req) {
         const firestore = await getFirestore();
         const body = await req.json();
 
-        const { orderId, dineInTabId, paymentStatus, paymentMethod } = body;
+        const { orderId, dineInTabId, paymentStatus, paymentMethod, trackingToken } = body;
 
         if (!orderId && !dineInTabId) {
             return NextResponse.json(
@@ -20,14 +20,20 @@ export async function PATCH(req) {
         }
 
         // 🔐 AUTH & OWNERSHIP CHECK
-        const uid = await verifyAndGetUid(req);
+        let uid = null;
+        try {
+            uid = await verifyAndGetUid(req);
+        } catch (e) {
+            // Might be a guest user parsing a public tracking page using a trackingToken
+        }
 
 
         console.log('[API][PATCH /order/update] Updating payment status:', {
             orderId,
             dineInTabId,
             paymentStatus,
-            paymentMethod
+            paymentMethod,
+            hasToken: !!trackingToken
         });
 
         // Find orders to update
@@ -48,6 +54,19 @@ export async function PATCH(req) {
                 .where('status', '!=', 'rejected')
                 .get();
 
+            // Check authorization: User must own at least ONE order in the tab
+            if (!ordersSnap.empty) {
+                const isValidToken = trackingToken && ordersSnap.docs.some(doc => doc.data().trackingToken === trackingToken);
+                const isValidOwner = uid && ordersSnap.docs.some(doc => {
+                    const data = doc.data();
+                    return uid === data.userId || uid === data.customerId || uid === data.restaurantId;
+                });
+
+                if (!isValidToken && !isValidOwner) {
+                    return NextResponse.json({ message: 'Unauthorized. You do not own this order tab.' }, { status: 403 });
+                }
+            }
+
             ordersToUpdate = ordersSnap.docs;
         } else if (orderId) {
             // Update single order
@@ -55,7 +74,10 @@ export async function PATCH(req) {
             if (orderDoc.exists) {
                 const orderData = orderDoc.data();
                 // Ownership check
-                if (uid !== orderData.userId && uid !== orderData.customerId && uid !== orderData.restaurantId) {
+                const isValidToken = trackingToken && orderData.trackingToken === trackingToken;
+                const isValidOwner = uid && (uid === orderData.userId || uid === orderData.customerId || uid === orderData.restaurantId);
+
+                if (!isValidToken && !isValidOwner) {
                     return NextResponse.json({ message: 'Unauthorized. You do not own this order.' }, { status: 403 });
                 }
                 ordersToUpdate = [orderDoc];

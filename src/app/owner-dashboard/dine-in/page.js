@@ -1077,7 +1077,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    onClearTab(group.id, tableData.id, group.pax_count);
+                                                    onClearTab(group.dineInTabId || group.id, tableData.id, group.pax_count);
                                                 }}
                                                 className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground"
                                             >
@@ -2365,13 +2365,21 @@ const DineInPageContent = () => {
         try {
             // ✅ Using new dine-in cleanup endpoint
             const cleanupEndpoint = '/api/dine-in/clean-table';
+
+            // ✅ CRITICAL: Also find the real dineInTabId from tab/group data so the API
+            // can directly locate the Firestore tab doc even if tabId is a groupKey.
+            const table = allData?.tables?.find(t => t.id === tableId);
+            const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+            const realDineInTabId = tabData?.dineInTabId;
+
             const payload = {
                 tabId,
                 tableId: isCarSlot ? null : tableId,
-                restaurantId: restaurantDetails?.id // ✅ Add restaurantId for tab lookup
+                restaurantId: restaurantDetails?.id,
+                dineInTabId: realDineInTabId || null // ✅ Send the real Firestore tab doc ID
             };
 
-            console.log(`[Owner Dashboard] Cleaning tab with endpoint: ${cleanupEndpoint}`);
+            console.log(`[Owner Dashboard] Cleaning tab with endpoint: ${cleanupEndpoint}, realTabId: ${realDineInTabId}`);
 
             await handleApiCall('PATCH', payload, cleanupEndpoint);
             setInfoDialog({

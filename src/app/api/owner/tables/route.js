@@ -231,37 +231,40 @@ export async function POST(req) {
                     throw new Error('Invalid party size.');
                 }
 
-                // Calculate live occupancy from active dine-in orders.
-                const activeOrdersQuery = firestore.collection('orders')
-                    .where('restaurantId', '==', businessRef.id)
-                    .where('deliveryType', '==', 'dine-in')
-                    .where('tableId', '==', actualTableId)
-                    .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'pay_at_counter']);
-                const activeOrdersSnap = await transaction.get(activeOrdersQuery);
-
-                const activePartyPaxMap = new Map();
-                activeOrdersSnap.docs.forEach((doc) => {
-                    const orderData = doc.data() || {};
-                    const partyKey = orderData.dineInTabId
-                        || orderData.tabId
-                        || orderData.dineInToken
-                        || `${actualTableId}:${String(orderData.tab_name || orderData.customerName || doc.id).toLowerCase()}`;
-                    if (!activePartyPaxMap.has(partyKey)) {
-                        activePartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
-                    }
-                });
-                const currentActivePax = Array.from(activePartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
-
-                // Keep create-tab capacity aligned with owner dashboard/customer UI:
-                // use occupied seats (db/live) and don't block solely due to uncleaned historical orders.
-                // Keep POST behavior aligned with GET:
-                // trust table doc pax first (owner dashboard source), fallback to live order pax only when db is zero.
-                const effectiveOccupiedPax = Math.min(
-                    maxCapacity || (dbCurrentPax > 0 ? dbCurrentPax : currentActivePax),
-                    (dbCurrentPax > 0 ? dbCurrentPax : currentActivePax)
+                // ✅ GROUND TRUTH: Calculate occupied pax from actual open dineInTabs (not stale table doc)
+                const openTabsSnap = await transaction.get(
+                    businessRef.collection('dineInTabs')
+                        .where('tableId', '==', actualTableId)
+                        .where('status', 'in', ['active', 'inactive'])
                 );
+                const tabBasedPax = openTabsSnap.docs.reduce((sum, doc) => {
+                    return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
+                }, 0);
+
+                // Use tab-based pax as the primary source; fallback to dbCurrentPax only if no tabs exist
+                // and there are active orders (legacy case)
+                let effectiveOccupiedPax = tabBasedPax;
+                if (tabBasedPax === 0 && dbCurrentPax === 0) {
+                    // Also check live orders as a safety net for legacy data
+                    const activeOrdersQuery = firestore.collection('orders')
+                        .where('restaurantId', '==', businessRef.id)
+                        .where('deliveryType', '==', 'dine-in')
+                        .where('tableId', '==', actualTableId)
+                        .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'pay_at_counter']);
+                    const activeOrdersSnap = await transaction.get(activeOrdersQuery);
+                    const activePartyPaxMap = new Map();
+                    activeOrdersSnap.docs.forEach((doc) => {
+                        const orderData = doc.data() || {};
+                        const partyKey = orderData.dineInTabId || orderData.tabId || doc.id;
+                        if (!activePartyPaxMap.has(partyKey)) {
+                            activePartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
+                        }
+                    });
+                    effectiveOccupiedPax = Array.from(activePartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
+                }
+
                 const availableCapacity = Math.max(0, maxCapacity - effectiveOccupiedPax);
-                console.log(`[API tables] create_tab capacity check ${actualTableId}: max=${maxCapacity}, dbPax=${dbCurrentPax}, livePax=${currentActivePax}, occupied=${effectiveOccupiedPax}, requested=${requestedPax}, available=${availableCapacity}`);
+                console.log(`[API tables] create_tab capacity check ${actualTableId}: max=${maxCapacity}, dbPax=${dbCurrentPax}, tabPax=${tabBasedPax}, occupied=${effectiveOccupiedPax}, requested=${requestedPax}, available=${availableCapacity}`);
 
                 if (requestedPax > availableCapacity) {
                     throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
@@ -308,10 +311,12 @@ export async function PATCH(req) {
             tableId,
             tabId,
             action,
-            trackingToken
+            trackingToken,
+            pax_count,
+            tab_name
         } = await req.json();
 
-        if (!['customer_done', 'customer_exit'].includes(action)) {
+        if (!['customer_done', 'customer_exit', 'update_pax'].includes(action)) {
             return NextResponse.json({ message: 'Invalid action.' }, { status: 400 });
         }
 
@@ -341,6 +346,65 @@ export async function PATCH(req) {
         }
 
         const tableRef = businessRef.collection('tables').doc(actualTableId);
+
+        // ✅ UPDATE PAX: Atomically update tab pax_count and recalculate table current_pax
+        if (action === 'update_pax') {
+            if (!tabId) {
+                return NextResponse.json({ message: 'Tab ID is required to update pax.' }, { status: 400 });
+            }
+            const newPax = Number(pax_count);
+            if (!Number.isFinite(newPax) || newPax < 1) {
+                return NextResponse.json({ message: 'Invalid pax count.' }, { status: 400 });
+            }
+
+            const result = await firestore.runTransaction(async (transaction) => {
+                const tableDoc = await transaction.get(tableRef);
+                if (!tableDoc.exists) throw new Error('Table not found.');
+
+                const tabRef = businessRef.collection('dineInTabs').doc(String(tabId));
+                const tabSnap = await transaction.get(tabRef);
+                if (!tabSnap.exists) throw new Error('Tab not found.');
+
+                const oldPax = Number(tabSnap.data()?.pax_count || 0);
+                const maxCapacity = Number(tableDoc.data()?.max_capacity || 0);
+
+                // Recalculate total pax from all open tabs
+                const openTabsSnap = await transaction.get(
+                    businessRef.collection('dineInTabs')
+                        .where('tableId', '==', actualTableId)
+                        .where('status', 'in', ['active', 'inactive'])
+                );
+
+                let totalPax = 0;
+                openTabsSnap.docs.forEach(doc => {
+                    if (doc.id === String(tabId)) {
+                        totalPax += newPax; // Use new value for this tab
+                    } else {
+                        totalPax += Math.max(0, Number(doc.data()?.pax_count || 0));
+                    }
+                });
+
+                if (totalPax > maxCapacity) {
+                    throw new Error(`Cannot update: total pax (${totalPax}) would exceed table capacity (${maxCapacity}).`);
+                }
+
+                // Update tab
+                const tabUpdate = { pax_count: newPax, updatedAt: FieldValue.serverTimestamp() };
+                if (tab_name) tabUpdate.tab_name = tab_name;
+                transaction.update(tabRef, tabUpdate);
+
+                // Update table
+                transaction.update(tableRef, {
+                    current_pax: totalPax,
+                    state: totalPax >= maxCapacity ? 'full' : (totalPax > 0 ? 'occupied' : 'available')
+                });
+
+                return { oldPax, newPax, totalPax };
+            });
+
+            console.log(`[API tables] update_pax ${tabId}: ${result.oldPax} → ${result.newPax}, table total: ${result.totalPax}`);
+            return NextResponse.json({ message: 'Pax updated successfully.', ...result }, { status: 200 });
+        }
 
         // Legacy notify-only action (no seat release) kept for backward compatibility.
         if (action === 'customer_done' && !tabId) {
@@ -378,6 +442,7 @@ export async function PATCH(req) {
         }
 
         const result = await firestore.runTransaction(async (transaction) => {
+            // ── ALL READS FIRST ──
             const tableDoc = await transaction.get(tableRef);
             if (!tableDoc.exists) {
                 const err = new Error('Table not found.');
@@ -387,6 +452,7 @@ export async function PATCH(req) {
 
             const tabRef = businessRef.collection('dineInTabs').doc(String(tabId));
             const tabSnap = await transaction.get(tabRef);
+            console.log(`[customer_exit] tabId="${tabId}", tabSnap.exists=${tabSnap.exists}`);
 
             const tabOrdersByPrimaryIdSnap = await transaction.get(
                 firestore.collection('orders')
@@ -407,6 +473,16 @@ export async function PATCH(req) {
                 );
                 tabOrderDocs = tabOrdersByLegacyIdSnap.docs;
             }
+            console.log(`[customer_exit] tabOrderDocs.length=${tabOrderDocs.length}`);
+
+            // ✅ MOVED: Read openTabs BEFORE any writes (Firestore requirement)
+            const openTabsSnap = await transaction.get(
+                businessRef.collection('dineInTabs')
+                    .where('tableId', '==', actualTableId)
+                    .where('status', 'in', ['active', 'inactive'])
+            );
+            console.log(`[customer_exit] openTabsSnap: ${openTabsSnap.size} docs, actualTableId="${actualTableId}"`);
+            openTabsSnap.docs.forEach(d => console.log(`  openTab: id="${d.id}" status="${d.data()?.status}" pax=${d.data()?.pax_count} tableId="${d.data()?.tableId}"`));
 
             if (!tabSnap.exists && tabOrderDocs.length === 0) {
                 const err = new Error('Tab session not found.');
@@ -414,6 +490,7 @@ export async function PATCH(req) {
                 throw err;
             }
 
+            // ── ALL WRITES BELOW ──
             const finalStatuses = new Set(['delivered', 'cancelled', 'rejected', 'picked_up', 'paid']);
             const activeOrders = tabOrderDocs.filter((doc) => {
                 const status = String(doc.data()?.status || '').toLowerCase();
@@ -436,34 +513,30 @@ export async function PATCH(req) {
             if (paxToRelease <= 0) {
                 paxToRelease = Math.max(0, Number(tabOrderDocs[0]?.data()?.pax_count || 0));
             }
+            console.log(`[customer_exit] paxToRelease=${paxToRelease}`);
 
-            // Mark tab orders as cleaned so they move to history and don't affect customer seat calculations.
+            // Mark tab orders as cleaned so they move to history
             tabOrderDocs.forEach((doc) => {
                 const orderUpdate = {
                     tableExitRequestedAt: FieldValue.serverTimestamp(),
                     tableExitRequestedBy: 'customer'
                 };
-
-                // If no active order is running, we can safely move tab orders to cleaned history.
                 if (!hasRunningOrders) {
                     orderUpdate.cleaned = true;
                     orderUpdate.cleanedAt = FieldValue.serverTimestamp();
                 }
-
                 transaction.set(doc.ref, orderUpdate, { merge: true });
             });
 
-            const openTabsSnap = await transaction.get(
-                businessRef.collection('dineInTabs')
-                    .where('tableId', '==', actualTableId)
-                    .where('status', 'in', ['active', 'inactive'])
-            );
-
+            // Recalculate pax from pre-read openTabs data
             let recalculatedPax = openTabsSnap.docs.reduce((sum, doc) => {
                 return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
             }, 0);
 
-            if (openTabsSnap.docs.some((doc) => doc.id === String(tabId))) {
+            const tabFoundInOpen = openTabsSnap.docs.some((doc) => doc.id === String(tabId));
+            console.log(`[customer_exit] recalculatedPax(before)=${recalculatedPax}, tabFoundInOpen=${tabFoundInOpen}`);
+
+            if (tabFoundInOpen) {
                 recalculatedPax = Math.max(0, recalculatedPax - paxToRelease);
             }
 
@@ -472,9 +545,17 @@ export async function PATCH(req) {
                 ? Math.max(0, dbCurrentPax - paxToRelease)
                 : Math.max(0, recalculatedPax);
 
+            console.log(`[customer_exit] FINAL: dbCurrentPax=${dbCurrentPax}, nextPax=${nextPax}, openTabsSnap.empty=${openTabsSnap.empty}`);
+
+            // When customer self-releases with no active orders → table is available immediately
+            // When active orders remain → needs_cleaning (staff needs to handle those orders)
+            let nextState = 'available';
+            if (nextPax > 0) nextState = 'occupied';
+            else if (hasRunningOrders) nextState = 'needs_cleaning';
+
             transaction.set(tableRef, {
                 current_pax: nextPax,
-                state: nextPax > 0 ? 'occupied' : 'needs_cleaning',
+                state: nextState,
                 customerMarkedDoneAt: FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp()
             }, { merge: true });

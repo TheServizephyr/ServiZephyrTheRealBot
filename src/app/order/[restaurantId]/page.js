@@ -26,7 +26,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import ThemeColorUpdater from '@/components/ThemeColorUpdater';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
-
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import AddressSelectionList from '@/components/AddressSelectionList';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
@@ -607,7 +607,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
 
     // Removed internal newTabPax/newTabName state - now using props
 
-    const handleStartTab = () => {
+    const handleStartTab = async () => {
         const pax = Number(newTabPax);
         const name = newTabName.trim();
         if (pax < 1) {
@@ -629,10 +629,18 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             return;
         }
 
-        if (isEditing) {
-            onUpdateTab(pax, name);
-        } else {
-            onStartNewTab(pax, name);
+        setIsSaving(true);
+        try {
+            if (isEditing) {
+                await onUpdateTab(pax, name);
+            } else {
+                await onStartNewTab(pax, name);
+            }
+        } catch (error) {
+            // Parent component will show the error dialog, we just need to catch here to prevent unhandled promise rejection
+            console.error(error);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -817,7 +825,9 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                         <Label>What&apos;s a name for your tab?</Label>
                                         <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan&apos;s Group" className="mt-1" />
                                     </div>
-                                    <Button onClick={handleStartTab} className="w-full">{isEditing ? 'Save Changes' : 'Start Ordering'}</Button>
+                                    <Button onClick={handleStartTab} disabled={isSaving} className="w-full">
+                                        {isSaving ? (isEditing ? 'Saving...' : 'Starting...') : (isEditing ? 'Save Changes' : 'Start Ordering')}
+                                    </Button>
                                 </div>
                             </motion.div>
                         )}
@@ -1039,6 +1049,7 @@ const OrderPageInternal = () => {
     const [tokenError, setTokenError] = useState('');
     const [isLogoExpanded, setIsLogoExpanded] = useState(false);
     const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+    const [isConfirmReleaseOpen, setIsConfirmReleaseOpen] = useState(false);
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
 
@@ -1797,6 +1808,21 @@ const OrderPageInternal = () => {
         localStorage.setItem(dineInTabKey, JSON.stringify(newTabInfo));
         console.log('[Dine-In] New tab created:', newTabInfo);
 
+        const restoredDetails = {
+            tab_name: newTabInfo.name,
+            pax_count: newTabInfo.pax_count,
+            tabId: newTabInfo.id
+        };
+
+        setUserDetails(restoredDetails);
+        setDetailsProvided(true);
+        setShowWelcome(true);
+
+        // Also save to permanent dine-in storage
+        try {
+            saveDineInDetails(restaurantId, tableIdFromUrl, restoredDetails);
+        } catch (e) { }
+
         // Update state
         setActiveTabInfo(newTabInfo);
         setDineInState('ready');
@@ -1832,11 +1858,38 @@ const OrderPageInternal = () => {
         setIsDineInModalOpen(false);
     };
 
-    const handleUpdateTab = (pax, name) => {
-        // Update local details
+    const handleUpdateTab = async (pax, name) => {
+        // Update local details immediately (optimistic)
         const updatedDetails = { ...userDetails, tab_name: name, pax_count: pax };
         setUserDetails(updatedDetails);
         setActiveTabInfo(prev => ({ ...prev, name: name, pax_count: pax }));
+
+        // ✅ CRITICAL: Sync to Firestore so dineInTabs.pax_count and tables.current_pax are updated
+        if (activeTabInfo?.id && tableIdFromUrl && restaurantId) {
+            try {
+                const res = await fetch('/api/owner/tables', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'update_pax',
+                        restaurantId,
+                        tableId: tableIdFromUrl,
+                        tabId: activeTabInfo.id,
+                        pax_count: pax,
+                        tab_name: name
+                    })
+                });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    console.error('[Dine-In] Failed to update pax on server:', errData.message);
+                    setInfoDialog({ isOpen: true, title: "Update Error", message: errData.message || 'Could not sync pax update to server.' });
+                } else {
+                    console.log('[Dine-In] ✅ Pax updated on server');
+                }
+            } catch (err) {
+                console.error('[Dine-In] Error syncing pax update:', err);
+            }
+        }
 
         // Update persistence
         if (tableIdFromUrl) {
@@ -2034,148 +2087,167 @@ const OrderPageInternal = () => {
             if (tableIdFromUrl) {
                 setDeliveryType('dine-in');
 
-                if (tabIdFromUrl) {
-                    setActiveTabInfo({ id: tabIdFromUrl, name: 'Active Tab', total: 0 });
-                    setDineInState('ready');
-                } else {
-                    // First fetch table data from server
-                    try {
-                        console.log('📞 [DEBUG] Fetching table data for:', tableIdFromUrl);
-                        const tableRes = await fetch(`/api/owner/tables?restaurantId=${encodeRestaurantIdParam(restaurantId)}&tableId=${encodeQueryParam(tableIdFromUrl)}`);
-                        console.log('📞 [DEBUG] Table API response status:', tableRes.status, tableRes.ok);
+                // ALWAYS fetch table data from server, even with tabIdFromUrl
+                try {
+                    console.log('📞 [DEBUG] Fetching table data for:', tableIdFromUrl);
+                    const tableRes = await fetch(`/api/owner/tables?restaurantId=${encodeRestaurantIdParam(restaurantId)}&tableId=${encodeQueryParam(tableIdFromUrl)}`);
+                    console.log('📞 [DEBUG] Table API response status:', tableRes.status, tableRes.ok);
 
-                        if (!tableRes.ok) {
-                            const errorData = await tableRes.json();
-                            console.error('❌ [DEBUG] Table API error:', errorData);
-                            // Table doesn't exist
-                            const outletLabelForTable = normalizeBusinessType(restaurantData.businessType) === 'store' ? 'store' : 'restaurant';
-                            setError(`Table "${tableIdFromUrl}" does not exist at this ${outletLabelForTable}. Please check the QR code or contact the staff.`);
-                            setLoading(false);
-                            setDineInState('error');
-                            return;
-                        }
+                    if (!tableRes.ok) {
+                        const errorData = await tableRes.json();
+                        console.error('❌ [DEBUG] Table API error:', errorData);
+                        // Table doesn't exist
+                        const outletLabelForTable = normalizeBusinessType(restaurantData.businessType) === 'store' ? 'store' : 'restaurant';
+                        setError(`Table "${tableIdFromUrl}" does not exist at this ${outletLabelForTable}. Please check the QR code or contact the staff.`);
+                        setLoading(false);
+                        setDineInState('error');
+                        return;
+                    }
 
-                        const tableData = await tableRes.json();
-                        console.log('📊 [DEBUG] Table data received:', tableData);
+                    const tableData = await tableRes.json();
+                    console.log('📊 [DEBUG] Table data received:', tableData);
 
-                        // NEW: Smart cleaning status handling
-                        const seatsOccupiedNow = Number(tableData.current_pax || 0);
-                        const tableCapacityNow = Number(tableData.max_capacity || 0);
-                        const seatsLeftForNewGuests = Math.max(0, tableCapacityNow - seatsOccupiedNow);
+                    // NEW: Smart cleaning status handling
+                    const seatsOccupiedNow = Number(tableData.current_pax || 0);
+                    const tableCapacityNow = Number(tableData.max_capacity || 0);
+                    const seatsLeftForNewGuests = Math.max(0, tableCapacityNow - seatsOccupiedNow);
 
-                        if (tableData.hasUncleanedOrders) {
-                            console.log('🧹 [DEBUG] Table has uncleaned orders:', tableData.uncleanedOrdersCount);
-                            // Only block when live occupied seats have already reached table capacity.
-                            // Uncleaned historical orders should not falsely block fresh seating when table still has capacity.
-                            if (seatsLeftForNewGuests <= 0) {
-                                console.log('❌ [DEBUG] No available seats - BLOCKING');
-                                const message = `This table is temporarily unavailable while previous dine-in orders are being cleaned.\n\n📊 Table Status:\n• Seats currently occupied: ${seatsOccupiedNow}/${tableCapacityNow}\n• Seats available right now: ${seatsLeftForNewGuests}\n• Orders awaiting cleanup: ${tableData.uncleanedOrdersCount}\n\nPlease wait a few minutes or choose another table.`;
-                                setError(message);
-                                setLoading(false);
-                                setDineInState('cleaning_pending');
-                                console.log(`[Dine-In] Table ${tableIdFromUrl} BLOCKED - No available seats while cleaning`);
-                                return;
-                            } else {
-                                // Seats available - show info but ALLOW ordering
-                                console.log('✅ [DEBUG] Seats available despite cleaning - ALLOWING');
-                                console.log(`[Dine-In] Table ${tableIdFromUrl} has ${seatsLeftForNewGuests} available seats, ${tableData.uncleanedOrdersCount} orders cleaning - ALLOWING order`);
-                                // Optional: Store cleaning info to show later as warning banner
-                                setTableStatus(prev => ({
-                                    ...prev,
-                                    cleaningWarning: {
-                                        availableSeats: seatsLeftForNewGuests,
-                                        uncleanedCount: tableData.uncleanedOrdersCount
-                                    }
-                                }));
-                            }
-                        }
-
-                        // Reset in-memory dine-in identity only when no active tab is selected yet.
-                        if (!tabIdFromUrl) {
-                            setDetailsProvided(false);
-                            setShowWelcome(false);
-                            setUserDetails(null);
-                        }
-
-                        // Check localStorage for existing tab AFTER fetching server data
-                        const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
-                        const savedTabData = localStorage.getItem(dineInTabKey);
-                        let recoveredTabInfo = null;
-
-                        if (savedTabData) {
-                            try {
-                                const tabInfo = JSON.parse(savedTabData);
-                                console.log('[Dine-In] Found existing tab in localStorage:', tabInfo);
-
-                                // SERVER-SIDE VALIDATION: Check if this tab is still active on server
-                                const isTabStillActive = tableData.activeTabs?.some(tab => tab.id === tabInfo.id);
-
-                                if (isTabStillActive) {
-                                    console.log('[Dine-In] Tab validated as active on server, opening setup modal with prefilled details.');
-                                    recoveredTabInfo = tabInfo;
-                                } else {
-                                    console.log('[Dine-In] Tab no longer active on server, clearing localStorage');
-                                    localStorage.removeItem(dineInTabKey);
-                                    // Continue to show modal
-                                }
-                            } catch (e) {
-                                console.error('[Dine-In] Error parsing saved tab:', e);
-                                localStorage.removeItem(dineInTabKey);
-                            }
-                        }
-                        // Calculate table state
-                        let state = 'available';
-                        const backendState = String(tableData.state || '').toLowerCase();
-                        const occupiedSeats = Number(tableData.current_pax || 0);
-                        const maxCapacity = Number(tableData.max_capacity || 0);
-                        const isActuallyFull = maxCapacity > 0 && occupiedSeats >= maxCapacity;
-                        if (backendState === 'needs_cleaning') state = 'needs_cleaning';
-                        else if (isActuallyFull) state = 'full';
-                        else if (occupiedSeats > 0) state = 'occupied';
-
-                        console.log('📊 [DEBUG] Table state calculated:', state);
-
-                        setTableStatus({
-                            ...tableData,
-                            state,
-                            activeTabs: tableData.activeTabs || [],
-                            tableId: tableIdFromUrl,
-                        });
-
-                        console.log('💾 [DEBUG] Table status set, now checking table state:', state);
-                        if (state === 'full') {
-                            console.log('❌ [DEBUG] Table FULL - will NOT open modal');
-                            setDineInState('full');
-                        } else if (state === 'needs_cleaning') {
-                            setError('This table is being cleaned right now. Please wait for restaurant staff to mark it clean.');
+                    if (tableData.hasUncleanedOrders) {
+                        console.log('🧹 [DEBUG] Table has uncleaned orders:', tableData.uncleanedOrdersCount);
+                        if (seatsLeftForNewGuests <= 0) {
+                            console.log('❌ [DEBUG] No available seats - BLOCKING');
+                            const message = `This table is temporarily unavailable while previous dine-in orders are being cleaned.\n\n📊 Table Status:\n• Seats currently occupied: ${seatsOccupiedNow}/${tableCapacityNow}\n• Seats available right now: ${seatsLeftForNewGuests}\n• Orders awaiting cleanup: ${tableData.uncleanedOrdersCount}\n\nPlease wait a few minutes or choose another table.`;
+                            setError(message);
                             setLoading(false);
                             setDineInState('cleaning_pending');
+                            return;
                         } else {
-                            console.log('✅ [DEBUG] Table not full, opening setup modal...');
-                            // Prefill values from stored details for convenience, but always open setup modal on QR table entry.
+                            // Seats available - show info but ALLOW ordering
+                            setTableStatus(prev => ({
+                                ...prev,
+                                cleaningWarning: {
+                                    availableSeats: seatsLeftForNewGuests,
+                                    uncleanedCount: tableData.uncleanedOrdersCount
+                                }
+                            }));
+                        }
+                    }
+
+                    // Reset in-memory dine-in identity only when no active tab is selected yet.
+                    if (!tabIdFromUrl) {
+                        setDetailsProvided(false);
+                        setShowWelcome(false);
+                        setUserDetails(null);
+                    }
+
+                    // Check localStorage for existing tab AFTER fetching server data
+                    const dineInTabKey = `dineInTab_${restaurantId}_${tableIdFromUrl}`;
+                    const savedTabData = localStorage.getItem(dineInTabKey);
+                    let recoveredTabInfo = null;
+
+                    if (savedTabData) {
+                        try {
+                            const tabInfo = JSON.parse(savedTabData);
+                            console.log('[Dine-In] Found existing tab in localStorage:', tabInfo);
+
+                            // SERVER-SIDE VALIDATION: Check if this tab is still active on server
+                            const isTabStillActive = tableData.activeTabs?.some(tab => tab.id === tabInfo.id);
+
+                            if (isTabStillActive) {
+                                console.log('[Dine-In] Tab validated as active on server, auto-restoring session.');
+                                recoveredTabInfo = tabInfo;
+
+                                const restoredDetails = {
+                                    tab_name: tabInfo.name || tabInfo.tab_name || 'Guest',
+                                    pax_count: tabInfo.pax_count || 1,
+                                    tabId: tabInfo.id
+                                };
+                                setUserDetails(restoredDetails);
+                                setDetailsProvided(true);
+                                setShowWelcome(true);
+                                setActiveTabInfo({ id: tabInfo.id, name: restoredDetails.tab_name, pax_count: restoredDetails.pax_count });
+                            } else {
+                                console.log('[Dine-In] Tab no longer active on server, clearing localStorage');
+                                localStorage.removeItem(dineInTabKey);
+                            }
+                        } catch (e) {
+                            console.error('[Dine-In] Error parsing saved tab:', e);
+                            localStorage.removeItem(dineInTabKey);
+                        }
+                    }
+
+                    // IF no localStorage, BUT tabIdFromUrl is present, auto-restore using server data! (e.g. Add More Items / Deep Link)
+                    if (!recoveredTabInfo && tabIdFromUrl) {
+                        const activeUrlTab = tableData.activeTabs?.find(tab => tab.id === tabIdFromUrl);
+                        if (activeUrlTab) {
+                            console.log('[Dine-In] URL tab validated directly from server data, auto-restoring session.');
+                            recoveredTabInfo = activeUrlTab;
+
+                            const restoredDetails = {
+                                tab_name: activeUrlTab.name || activeUrlTab.tab_name || 'Guest',
+                                pax_count: activeUrlTab.pax_count || 1,
+                                tabId: activeUrlTab.id
+                            };
+                            setUserDetails(restoredDetails);
+                            setDetailsProvided(true);
+                            setShowWelcome(true);
+                            setActiveTabInfo({ id: activeUrlTab.id, name: restoredDetails.tab_name, pax_count: restoredDetails.pax_count });
+
+                            // Optional: Resave to persistent storage for this device to fix the gap
+                            try {
+                                localStorage.setItem(dineInTabKey, JSON.stringify(restoredDetails));
+                                saveDineInDetails(restaurantId, tableIdFromUrl, restoredDetails);
+                            } catch (e) { }
+                        }
+                    }
+
+                    // Calculate table state
+                    let state = 'available';
+                    const backendState = String(tableData.state || '').toLowerCase();
+                    const occupiedSeats = Number(tableData.current_pax || 0);
+                    const maxCapacity = Number(tableData.max_capacity || 0);
+                    const isActuallyFull = maxCapacity > 0 && occupiedSeats >= maxCapacity;
+                    if (backendState === 'needs_cleaning') state = 'needs_cleaning';
+                    else if (isActuallyFull) state = 'full';
+                    else if (occupiedSeats > 0) state = 'occupied';
+
+                    console.log('📊 [DEBUG] Table state calculated:', state);
+
+                    setTableStatus({
+                        ...tableData,
+                        state,
+                        activeTabs: tableData.activeTabs || [],
+                        tableId: tableIdFromUrl,
+                    });
+
+                    console.log('💾 [DEBUG] Table status set, now checking table state:', state);
+                    if (state === 'full') {
+                        setDineInState('full');
+                    } else if (state === 'needs_cleaning') {
+                        setError('This table is being cleaned right now. Please wait for restaurant staff to mark it clean.');
+                        setLoading(false);
+                        setDineInState('cleaning_pending');
+                    } else {
+                        if (recoveredTabInfo) {
+                            setNewTabPax(recoveredTabInfo.pax_count || 1);
+                            setNewTabName(recoveredTabInfo.name || recoveredTabInfo.tab_name || '');
+                            setDineInState('ready');
+                        } else {
                             const persistentDetails = getDineInDetails(restaurantId, tableIdFromUrl);
-
-                            console.log('🔍 [DEBUG] persistentDetails:', persistentDetails);
-                            console.log('🔍 [DEBUG] restaurantId:', restaurantId, 'tableId:', tableIdFromUrl);
-
                             if (persistentDetails) {
                                 setNewTabPax(persistentDetails.pax_count || 1);
                                 setNewTabName(persistentDetails.tab_name || '');
-                            }
-                            if (recoveredTabInfo) {
-                                setNewTabPax(recoveredTabInfo.pax_count || 1);
-                                setNewTabName(recoveredTabInfo.name || persistentDetails?.tab_name || '');
                             }
                             setIsEditingModal(false);
                             setDineInState('ready_to_select');
                             setIsDineInModalOpen(true);
                         }
-                    } catch (error) {
-                        console.error('[Dine-In] Error fetching table:', error);
-                        setError(`Unable to load table information: ${error.message}`);
-                        setLoading(false);
-                        setDineInState('error');
                     }
+                } catch (error) {
+                    console.error('[Dine-In] Error fetching table:', error);
+                    setError(`Unable to load table information: ${error.message}`);
+                    setLoading(false);
+                    setDineInState('error');
                 }
 
             } else {
@@ -2986,9 +3058,9 @@ const OrderPageInternal = () => {
             });
 
             setTimeout(() => {
-                try { window.close(); } catch { }
-                router.replace(`/order/${restaurantId}`);
-            }, 900);
+                // Stay on the same table page, just reload fresh (like scanning QR again)
+                window.location.reload();
+            }, 1500);
         } catch (error) {
             setInfoDialog({
                 isOpen: true,
@@ -3317,7 +3389,7 @@ const OrderPageInternal = () => {
 
     return (
         <>
-            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
 
             {isQrScannerOpen && <QrScanner onClose={() => setIsQrScannerOpen(false)} onScanSuccess={(decodedText) => { setIsQrScannerOpen(false); window.location.href = decodedText; }} />}
 
@@ -3925,18 +3997,18 @@ const OrderPageInternal = () => {
                     <>
                         <div className="container mx-auto px-4 mt-6 space-y-4">
 
-                    {/* Restaurant Closed Warning */}
-                    {restaurantData.isOpen === false && (
-                        <Alert className="border-red-500 bg-red-500/10">
-                            <AlertCircle className="h-4 w-4 text-red-500" />
-                            <AlertTitle className="text-red-500 font-bold">{businessLabelTitle} Currently Closed</AlertTitle>
-                            <AlertDescription className="text-red-400">
-                                Sorry, {restaurantData.name} is currently closed and not accepting orders. Please check back later or contact the {businessLabel} for more information.
-                            </AlertDescription>
-                        </Alert>
-                    )}
+                            {/* Restaurant Closed Warning */}
+                            {restaurantData.isOpen === false && (
+                                <Alert className="border-red-500 bg-red-500/10">
+                                    <AlertCircle className="h-4 w-4 text-red-500" />
+                                    <AlertTitle className="text-red-500 font-bold">{businessLabelTitle} Currently Closed</AlertTitle>
+                                    <AlertDescription className="text-red-400">
+                                        Sorry, {restaurantData.name} is currently closed and not accepting orders. Please check back later or contact the {businessLabel} for more information.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
 
-                    {/* ✅ NEW: Delivery Distance Validation Status - HIDDEN AS PER USER REQUEST
+                            {/* ✅ NEW: Delivery Distance Validation Status - HIDDEN AS PER USER REQUEST
                     {deliveryType === 'delivery' && deliveryValidation && (
                         <motion.div
                             initial={{ opacity: 0, y: -10 }}
@@ -3972,284 +4044,286 @@ const OrderPageInternal = () => {
                     */}
 
 
-                    {/* NEW: Cleaning Info Banner - When seats available but cleaning pending */}
-                    {
-                        tableStatus?.cleaningWarning && (
-                            <Alert className="border-orange-500 bg-orange-500/10">
-                                <Wind className="h-4 w-4 text-orange-500" />
-                                <AlertTitle className="text-orange-600 dark:text-orange-400 font-bold">Table Partially Occupied</AlertTitle>
-                                <AlertDescription className="text-orange-600/90 dark:text-orange-400/90">
-                                    Some guests are finishing up. <strong>{tableStatus.cleaningWarning.availableSeats} seat{tableStatus.cleaningWarning.availableSeats > 1 ? 's' : ''} available</strong> for you to order. {tableStatus.cleaningWarning.uncleanedCount} order{tableStatus.cleaningWarning.uncleanedCount > 1 ? 's' : ''} being cleaned.
-                                </AlertDescription>
-                            </Alert>
-                        )
-                    }
+                            {/* NEW: Cleaning Info Banner - When seats available but cleaning pending */}
+                            {
+                                tableStatus?.cleaningWarning && (
+                                    <Alert className="border-orange-500 bg-orange-500/10">
+                                        <Wind className="h-4 w-4 text-orange-500" />
+                                        <AlertTitle className="text-orange-600 dark:text-orange-400 font-bold">Table Partially Occupied</AlertTitle>
+                                        <AlertDescription className="text-orange-600/90 dark:text-orange-400/90">
+                                            Some guests are finishing up. <strong>{tableStatus.cleaningWarning.availableSeats} seat{tableStatus.cleaningWarning.availableSeats > 1 ? 's' : ''} available</strong> for you to order. {tableStatus.cleaningWarning.uncleanedCount} order{tableStatus.cleaningWarning.uncleanedCount > 1 ? 's' : ''} being cleaned.
+                                        </AlertDescription>
+                                    </Alert>
+                                )
+                            }
 
 
-                    {
-                        restaurantData.businessType !== 'street-vendor' &&
-                        !tableIdFromUrl &&
-                        deliveryType !== 'car-order' &&
-                        orderTypeFromUrl !== 'car' &&
-                        deliveryTypeFromUrl !== 'car-order' &&
-                        !isCarSessionFromUrl && (
-                            <div className="bg-card p-4 rounded-lg border border-border">
-                                <div className="flex bg-muted p-1 rounded-lg">
-                                    {restaurantData.deliveryEnabled && (
-                                        <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-primary text-primary-foreground')}>
-                                            <Bike size={16} /> Delivery
-                                        </button>
-                                    )}
-                                    {restaurantData.pickupEnabled && (
-                                        <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-primary text-primary-foreground')}>
-                                            <ShoppingBag size={16} /> Pickup
-                                        </button>
-                                    )}
-                                    {canShowDineIn && (
-                                        <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
-                                            <ConciergeBell size={16} /> Dine-In
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
-                                    {deliveryType === 'delivery' ? (
-                                        <>
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <MapPin className="text-primary flex-shrink-0" size={20} />
-                                                <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
-                                            </div>
-                                            <Button
-                                                variant="link"
-                                                className="text-primary p-0 h-auto font-semibold flex-shrink-0"
-                                                onClick={handleOpenAddressDrawer}
-                                            >
-                                                Change
-                                            </Button>
-                                        </>
-                                    ) : deliveryType === 'pickup' ? (
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            <Store className="text-primary flex-shrink-0" size={20} />
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">{pickupLabel}</p>
-                                                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantData.businessAddress?.full || restaurantData.name)}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-foreground truncate flex items-center gap-1 hover:underline text-primary">
-                                                    {restaurantData.businessAddress?.full || 'N/A'} <ExternalLink size={12} />
-                                                </a>
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        )
-                    }
-                    {/* ✅ Car Order Info Block (Replacing Header) */}
-                    {
-                        deliveryType === 'car-order' && carOrderDetails && (
-                            <div className="bg-card p-4 rounded-lg border border-border shadow-sm flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="bg-primary/10 p-2.5 rounded-full">
-                                        <Car className="text-primary h-6 w-6" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                                            Car Order
-                                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20 uppercase tracking-wide font-bold">
-                                                {carOrderDetails.carSpot || 'No Spot'}
-                                            </span>
-                                        </h2>
-                                        <p className="text-sm text-muted-foreground font-medium">
-                                            {carOrderDetails.carDetails} • {carOrderDetails.phone}
-                                        </p>
-                                    </div>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setIsCarOrderModalOpen(true)}
-                                    className="gap-1 text-primary hover:text-primary hover:bg-primary/10"
-                                >
-                                    <Edit2 className="h-4 w-4" /> Edit
-                                </Button>
-                            </div>
-                        )
-                    }
-                    {
-                        tableIdFromUrl && (
-                            <div className="bg-card p-4 rounded-lg border border-border space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <ConciergeBell className="text-primary" />
-                                    <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
-                                </div>
-                                <div className="flex flex-wrap items-center justify-end gap-2">
-                                    <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
-                                        <Bell size={18} className="text-primary" /> Call Waiter
-                                    </Button>
-                                    <Button
-                                        onClick={handleReleaseSeat}
-                                        variant="outline"
-                                        disabled={isReleasingSeat}
-                                        className="flex items-center gap-2 border-orange-500/60 text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 font-semibold"
-                                    >
-                                        {isReleasingSeat ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
-                                        {isReleasingSeat ? 'Releasing...' : 'Release Seat'}
-                                    </Button>
-                                </div>
-                            </div>
-                        )
-                    }
-
-                    {/* Track Live Order Button - Only for Dine-In with existing order */}
-                    {
-                        deliveryType === 'dine-in' && liveOrder && liveOrder.restaurantId === restaurantId && trackingUrl && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-gradient-to-r from-yellow-400 to-orange-400 p-4 rounded-lg border-2 border-yellow-500 shadow-lg"
-                            >
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
-                                            <Navigation className="text-white" size={20} />
-                                        </div>
-                                        <div>
-                                            <p className="text-white font-bold text-sm">Your Order is Active</p>
-                                            <p className="text-white/80 text-xs">Track your order status</p>
-                                        </div>
-                                    </div>
-                                    <Button
-                                        asChild
-                                        className="bg-white text-black hover:bg-white/90 font-bold"
-                                    >
-                                        <a href={trackingUrl}>
-                                            Track Order
-                                        </a>
-                                    </Button>
-                                </div>
-                            </motion.div>
-                        )
-                    }
-
-                    <div className="relative w-full">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-                        <input
-                            type="text"
-                            placeholder={searchPlaceholder}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
-                        />
-                    </div>
-                </div >
-
-                {/* Only show menu if restaurant is open */}
-                {
-                    restaurantData.isOpen ? (
-                        <>
-
-                            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
-                                <div className="container mx-auto px-4">
-                                    <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
-                                                    <SlidersHorizontal size={14} /> Filters <ChevronDown size={14} />
+                            {
+                                restaurantData.businessType !== 'street-vendor' &&
+                                !tableIdFromUrl &&
+                                deliveryType !== 'car-order' &&
+                                orderTypeFromUrl !== 'car' &&
+                                deliveryTypeFromUrl !== 'car-order' &&
+                                !isCarSessionFromUrl && (
+                                    <div className="bg-card p-4 rounded-lg border border-border">
+                                        <div className="flex bg-muted p-1 rounded-lg">
+                                            {restaurantData.deliveryEnabled && (
+                                                <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-primary text-primary-foreground')}>
+                                                    <Bike size={16} /> Delivery
                                                 </button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-64">
-                                                <div className="grid gap-4">
-                                                    <div className="space-y-2">
-                                                        <h4 className="font-medium leading-none">Sort by</h4>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
-                                                            <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
-                                                            <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
-                                                        </div>
+                                            )}
+                                            {restaurantData.pickupEnabled && (
+                                                <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-primary text-primary-foreground')}>
+                                                    <ShoppingBag size={16} /> Pickup
+                                                </button>
+                                            )}
+                                            {canShowDineIn && (
+                                                <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
+                                                    <ConciergeBell size={16} /> Dine-In
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
+                                            {deliveryType === 'delivery' ? (
+                                                <>
+                                                    <div className="flex items-center gap-3 overflow-hidden">
+                                                        <MapPin className="text-primary flex-shrink-0" size={20} />
+                                                        <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
+                                                    </div>
+                                                    <Button
+                                                        variant="link"
+                                                        className="text-primary p-0 h-auto font-semibold flex-shrink-0"
+                                                        onClick={handleOpenAddressDrawer}
+                                                    >
+                                                        Change
+                                                    </Button>
+                                                </>
+                                            ) : deliveryType === 'pickup' ? (
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <Store className="text-primary flex-shrink-0" size={20} />
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">{pickupLabel}</p>
+                                                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantData.businessAddress?.full || restaurantData.name)}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-foreground truncate flex items-center gap-1 hover:underline text-primary">
+                                                            {restaurantData.businessAddress?.full || 'N/A'} <ExternalLink size={12} />
+                                                        </a>
                                                     </div>
                                                 </div>
-                                            </PopoverContent>
-                                        </Popover>
-
-                                        {!isStoreBusiness && (
-                                            <>
-                                                <button
-                                                    onClick={() => handleFilterChange('veg')}
-                                                    className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
-                                                >
-                                                    <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
-                                                    Veg
-                                                </button>
-
-                                                <button
-                                                    onClick={() => handleFilterChange('nonVeg')}
-                                                    className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
-                                                >
-                                                    <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
-                                                    Non-veg
-                                                </button>
-                                            </>
-                                        )}
+                                            ) : null}
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
+                                )
+                            }
+                            {/* ✅ Car Order Info Block (Replacing Header) */}
+                            {
+                                deliveryType === 'car-order' && carOrderDetails && (
+                                    <div className="bg-card p-4 rounded-lg border border-border shadow-sm flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-primary/10 p-2.5 rounded-full">
+                                                <Car className="text-primary h-6 w-6" />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                                    Car Order
+                                                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20 uppercase tracking-wide font-bold">
+                                                        {carOrderDetails.carSpot || 'No Spot'}
+                                                    </span>
+                                                </h2>
+                                                <p className="text-sm text-muted-foreground font-medium">
+                                                    {carOrderDetails.carDetails} • {carOrderDetails.phone}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setIsCarOrderModalOpen(true)}
+                                            className="gap-1 text-primary hover:text-primary hover:bg-primary/10"
+                                        >
+                                            <Edit2 className="h-4 w-4" /> Edit
+                                        </Button>
+                                    </div>
+                                )
+                            }
+                            {
+                                tableIdFromUrl && (
+                                    <div className="bg-card p-4 rounded-lg border border-border space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <ConciergeBell className="text-primary" />
+                                            <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-end gap-2">
+                                            <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
+                                                <Bell size={18} className="text-primary" /> Call Waiter
+                                            </Button>
+                                            {detailsProvided && (
+                                                <Button
+                                                    onClick={() => setIsConfirmReleaseOpen(true)}
+                                                    variant="outline"
+                                                    disabled={isReleasingSeat}
+                                                    className="flex items-center gap-2 border-orange-500/60 text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 font-semibold"
+                                                >
+                                                    {isReleasingSeat ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+                                                    {isReleasingSeat ? 'Releasing...' : 'Release Seat'}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            }
 
-                            <div className="container mx-auto px-4 mt-6 pb-40">
-                                <main>
-                                    <div className="space-y-8">
-                                        {menuCategories.map(({ key, title }) => (
-                                            <section id={key} key={key} className="scroll-mt-24">
-                                                <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                                <div className="flex flex-col">
-                                                    {processedMenu[key].map(item => (
-                                                        <MenuItemCard
-                                                            key={item.id}
-                                                            item={item}
-                                                            quantity={cartItemQuantities[item.id] || 0}
-                                                            onAdd={handleIncrement}
-                                                            onIncrement={handleIncrement}
-                                                            onDecrement={handleDecrement}
-                                                        />
-                                                    ))}
+                            {/* Track Live Order Button - Only for Dine-In with existing order */}
+                            {
+                                deliveryType === 'dine-in' && liveOrder && liveOrder.restaurantId === restaurantId && trackingUrl && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="bg-gradient-to-r from-yellow-400 to-orange-400 p-4 rounded-lg border-2 border-yellow-500 shadow-lg"
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
+                                                    <Navigation className="text-white" size={20} />
                                                 </div>
-                                            </section>
-                                        ))}
-                                    </div>
-                                </main>
+                                                <div>
+                                                    <p className="text-white font-bold text-sm">Your Order is Active</p>
+                                                    <p className="text-white/80 text-xs">Track your order status</p>
+                                                </div>
+                                            </div>
+                                            <Button
+                                                asChild
+                                                className="bg-white text-black hover:bg-white/90 font-bold"
+                                            >
+                                                <a href={trackingUrl}>
+                                                    Track Order
+                                                </a>
+                                            </Button>
+                                        </div>
+                                    </motion.div>
+                                )
+                            }
+
+                            <div className="relative w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+                                <input
+                                    type="text"
+                                    placeholder={searchPlaceholder}
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                                />
                             </div>
-                        </>
-                    ) : (
-                        <div className="container mx-auto px-4 mt-6 pb-40">
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="max-w-md mx-auto"
-                            >
-                                <div className="bg-card border-2 border-red-500/30 rounded-2xl p-8 shadow-2xl">
-                                    <div className="flex flex-col items-center text-center space-y-4">
-                                        {/* Icon */}
-                                        <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center">
-                                            <AlertCircle className="w-12 h-12 text-red-500" />
-                                        </div>
+                        </div >
 
-                                        {/* Title */}
-                                        <h2 className="text-2xl font-bold text-foreground">
-                                            We&apos;re Currently Closed
-                                        </h2>
+                        {/* Only show menu if restaurant is open */}
+                        {
+                            restaurantData.isOpen ? (
+                                <>
 
-                                        {/* Message */}
-                                        <p className="text-muted-foreground text-base leading-relaxed">
-                                            {restaurantData.name} is not accepting orders at the moment.
-                                            Please check back later or contact this {businessLabel} for more information.
-                                        </p>
+                                    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
+                                        <div className="container mx-auto px-4">
+                                            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
+                                                            <SlidersHorizontal size={14} /> Filters <ChevronDown size={14} />
+                                                        </button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-64">
+                                                        <div className="grid gap-4">
+                                                            <div className="space-y-2">
+                                                                <h4 className="font-medium leading-none">Sort by</h4>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
+                                                                    <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
+                                                                    <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
 
-                                        {/* Decorative element */}
-                                        <div className="pt-4 flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Clock className="w-4 h-4" />
-                                            <span>We&apos;ll be back soon!</span>
+                                                {!isStoreBusiness && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleFilterChange('veg')}
+                                                            className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
+                                                        >
+                                                            <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
+                                                            Veg
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => handleFilterChange('nonVeg')}
+                                                            className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
+                                                        >
+                                                            <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
+                                                            Non-veg
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
+
+                                    <div className="container mx-auto px-4 mt-6 pb-40">
+                                        <main>
+                                            <div className="space-y-8">
+                                                {menuCategories.map(({ key, title }) => (
+                                                    <section id={key} key={key} className="scroll-mt-24">
+                                                        <h3 className="text-2xl font-bold mb-4">{title}</h3>
+                                                        <div className="flex flex-col">
+                                                            {processedMenu[key].map(item => (
+                                                                <MenuItemCard
+                                                                    key={item.id}
+                                                                    item={item}
+                                                                    quantity={cartItemQuantities[item.id] || 0}
+                                                                    onAdd={handleIncrement}
+                                                                    onIncrement={handleIncrement}
+                                                                    onDecrement={handleDecrement}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </section>
+                                                ))}
+                                            </div>
+                                        </main>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="container mx-auto px-4 mt-6 pb-40">
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="max-w-md mx-auto"
+                                    >
+                                        <div className="bg-card border-2 border-red-500/30 rounded-2xl p-8 shadow-2xl">
+                                            <div className="flex flex-col items-center text-center space-y-4">
+                                                {/* Icon */}
+                                                <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center">
+                                                    <AlertCircle className="w-12 h-12 text-red-500" />
+                                                </div>
+
+                                                {/* Title */}
+                                                <h2 className="text-2xl font-bold text-foreground">
+                                                    We&apos;re Currently Closed
+                                                </h2>
+
+                                                {/* Message */}
+                                                <p className="text-muted-foreground text-base leading-relaxed">
+                                                    {restaurantData.name} is not accepting orders at the moment.
+                                                    Please check back later or contact this {businessLabel} for more information.
+                                                </p>
+
+                                                {/* Decorative element */}
+                                                <div className="pt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <Clock className="w-4 h-4" />
+                                                    <span>We&apos;ll be back soon!</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </motion.div>
                                 </div>
-                            </motion.div>
-                        </div>
-                    )
+                            )
                         }
                     </>
                 )}
@@ -4322,6 +4396,17 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
 
+                <ConfirmationDialog
+                    isOpen={isConfirmReleaseOpen}
+                    onClose={() => setIsConfirmReleaseOpen(false)}
+                    onConfirm={handleReleaseSeat}
+                    title="Release Seat?"
+                    description="Are you sure you want to release this seat? Your current session will be closed."
+                    confirmText="Yes, Release"
+                    cancelText="Cancel"
+                    variant="destructive"
+                    icon={LogOut}
+                />
             </div >
         </>
     );

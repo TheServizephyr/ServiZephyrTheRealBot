@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CookingPot, Home, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock, UtensilsCrossed, Info, Users } from 'lucide-react';
+import { Check, CookingPot, HandCoins, QrCode, Home, Loader2, RefreshCw, ArrowLeft, XCircle, Wallet, Split, ShoppingBag, PlusCircle, IndianRupee, Sparkles, CheckCircle, Plus, History, Clock, UtensilsCrossed, Info, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { isFinalState, getPollingInterval, getPollingStartTime, clearPollingTimer, POLLING_MAX_TIME } from '@/lib/trackingConstants';
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { getDineInDetails } from '@/lib/dineInStorage';
 import { rtdb } from '@/lib/firebase'; // ✅ RTDB for real-time tracking
 import { ref, onValue, off } from 'firebase/database'; // ✅ RTDB listeners
+import Script from 'next/script';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -89,7 +90,10 @@ function DineInTrackingContent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isVisible, setIsVisible] = useState(true); // RULE 1
-    const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+    const [isPaymentChoiceModalOpen, setIsPaymentChoiceModalOpen] = useState(false);
+    const [isConfirmPayOpen, setIsConfirmPayOpen] = useState(false);
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    const [paymentSettings, setPaymentSettings] = useState(null);
     const [isMarkingDone, setIsMarkingDone] = useState(false);
     const [cancellingId, setCancellingId] = useState(null);
 
@@ -202,6 +206,22 @@ function DineInTrackingContent() {
         fetchData();
     }, [fetchData]);
 
+    // Fetch Payment Settings
+    useEffect(() => {
+        if (orderData?.restaurant?.id) {
+            fetch(`/api/owner/settings?restaurantId=${orderData.restaurant.id}`)
+                .then(res => res.json())
+                .then(data => {
+                    setPaymentSettings({
+                        dineInPayAtCounterEnabled: data.dineInPayAtCounterEnabled !== false, // default true
+                        dineInOnlinePaymentEnabled: data.dineInOnlinePaymentEnabled === true, // default false
+                        razorpayKeyId: data.razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+                    });
+                })
+                .catch(err => console.error(err));
+        }
+    }, [orderData?.restaurant?.id]);
+
     // ✅ RTDB LISTENER: Real-time dine-in status updates (NO POLLING!)
     useEffect(() => {
         if (!orderId || !orderData) return;
@@ -311,9 +331,33 @@ function DineInTrackingContent() {
         router.push(url);
     };
 
+    const handleRequestBillClick = () => {
+        if (!paymentSettings) return;
+
+        if (paymentSettings.dineInPayAtCounterEnabled && paymentSettings.dineInOnlinePaymentEnabled) {
+            // Both options enabled, show choice modal
+            setIsPaymentChoiceModalOpen(true);
+        } else if (paymentSettings.dineInOnlinePaymentEnabled) {
+            // Only online enabled
+            handlePayOnline();
+        } else if (paymentSettings.dineInPayAtCounterEnabled) {
+            // Only offline enabled
+            handlePayAtCounter();
+        } else {
+            // Fallback: If both disabled (edge case), default to pay at counter
+            handlePayAtCounter();
+        }
+    };
+
     const handlePayAtCounter = async () => {
-        // Customer chose Pay at Counter - update payment status
+        // Customer chose Pay at Counter - open confirmation modal
+        setIsConfirmPayOpen(true);
+    };
+
+    const executePayAtCounter = async () => {
+        setIsConfirmPayOpen(false);
         setIsMarkingDone(true);
+        setIsPaymentChoiceModalOpen(false);
         try {
             const res = await fetch(`/api/order/update`, {
                 method: 'PATCH',
@@ -322,7 +366,8 @@ function DineInTrackingContent() {
                     orderId: orderId,
                     dineInTabId: orderData.order?.dineInTabId,
                     paymentStatus: 'pay_at_counter',
-                    paymentMethod: 'counter'
+                    paymentMethod: 'counter',
+                    trackingToken: sessionToken
                 })
             });
 
@@ -330,8 +375,6 @@ function DineInTrackingContent() {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to update payment status');
             }
-
-            setIsPayModalOpen(false);
 
             // Refresh data to show updated status
             fetchData(true);
@@ -343,16 +386,72 @@ function DineInTrackingContent() {
         }
     };
 
-    const handlePayOnline = () => {
-        const { restaurantId, tableId, tabId } = getDineInContext();
-        const params = new URLSearchParams();
-        if (restaurantId) params.set('restaurantId', restaurantId);
-        if (tableId) params.set('table', tableId);
-        if (tabId) params.set('tabId', tabId);
-        if (sessionToken) params.set('session_token', sessionToken);
-        params.set('deliveryType', 'dine-in'); // CRITICAL: Tell checkout this is dine-in
-        // Directly navigate to checkout (no modal)
-        router.push(`/checkout?${params.toString()}`);
+    const handlePayOnline = async () => {
+        if (isProcessingPayment) return;
+        setIsProcessingPayment(true);
+        setIsPaymentChoiceModalOpen(false);
+
+        try {
+            // 1. Create Razorpay order
+            const res = await fetch('/api/payment/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    grandTotal: billDetails.grandTotal,
+                    restaurantId: orderData.restaurant.id
+                })
+            });
+
+            if (!res.ok) throw new Error("Failed to initialize payment");
+            const data = await res.json();
+
+            // 2. Open Razorpay modal
+            const options = {
+                key: paymentSettings?.razorpayKeyId,
+                amount: data.amount,
+                currency: data.currency,
+                name: orderData.restaurant.name || "ServiZephyr",
+                description: "Dine-In Bill Settlement",
+                order_id: data.id,
+                theme: { color: "#10b981" }, // matches primary
+                handler: async function (response) {
+                    console.log("Payment Success:", response);
+                    // 3. Update orders to 'paid'
+                    const updateRes = await fetch(`/api/order/update`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderId: orderId, // active order
+                            dineInTabId: orderData.order?.dineInTabId || searchParams.get('tabId') || null,
+                            paymentStatus: 'paid',
+                            paymentMethod: 'online'
+                        })
+                    });
+
+                    if (updateRes.ok) {
+                        fetchData(true); // Re-fetch to show success screen
+                    } else {
+                        alert("Payment successful but failed to update status. Please show screen at counter.");
+                    }
+                },
+                modal: {
+                    ondismiss: function () {
+                        setIsProcessingPayment(false);
+                    }
+                }
+            };
+
+            if (typeof window !== 'undefined' && window.Razorpay) {
+                const rzp = new window.Razorpay(options);
+                rzp.open();
+            } else {
+                throw new Error("Razorpay SDK not loaded.");
+            }
+        } catch (err) {
+            console.error("Online payment error:", err);
+            alert("Error starting online payment. Please try again or pay at counter.");
+            setIsProcessingPayment(false);
+        }
     };
 
     const handleSplitBill = () => {
@@ -378,49 +477,23 @@ function DineInTrackingContent() {
         }
     };
 
-    const handleExitTable = async ({ redirectToMenu = true, showAlert = true } = {}) => {
+    const handleExitTable = async () => {
         setIsMarkingDone(true);
         try {
-            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
-            if (!restaurantId || !tableId || !tabId) {
-                throw new Error('Missing table session details.');
-            }
+            const { restaurantId, tableId } = getDineInContext();
 
-            const res = await fetch('/api/owner/tables', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    restaurantId,
-                    tableId,
-                    tabId,
-                    trackingToken,
-                    action: 'customer_exit'
-                })
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                if (res.status === 404 && String(data?.message || '').toLowerCase().includes('tab session not found')) {
-                    clearLocalDineInSession(restaurantId, tableId);
-                    if (redirectToMenu) router.replace(`/order/${restaurantId}`);
-                    return;
-                }
-                throw new Error(data?.message || 'Could not close table session.');
-            }
-
+            // Just clear the customer's local session cache
             clearLocalDineInSession(restaurantId, tableId);
-            const restaurantName = orderData?.restaurant?.name || 'our restaurant';
+            setIsExitModalOpen(false);
 
-            if (showAlert) {
-                alert(`Thank you for visiting ${restaurantName}. Please come again soon!`);
-            }
-
-            if (redirectToMenu) {
-                try { window.close(); } catch { }
+            // After exiting, simply redirect to the restaurant menu page
+            if (restaurantId) {
                 router.replace(`/order/${restaurantId}`);
+            } else {
+                router.back();
             }
         } catch (err) {
             console.error('Error exiting table:', err);
-            alert(err.message || 'Unable to exit table right now.');
         } finally {
             setIsMarkingDone(false);
         }
@@ -455,6 +528,7 @@ function DineInTrackingContent() {
 
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
     const [batchToCancel, setBatchToCancel] = useState(null);
+    const [isExitModalOpen, setIsExitModalOpen] = useState(false);
 
     const initiateCancel = (batchId) => {
         setBatchToCancel(batchId);
@@ -523,7 +597,7 @@ function DineInTrackingContent() {
             'This order was cancelled by the restaurant.';
 
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
+            <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background p-6 text-center green-theme font-sans text-foreground">
                 <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
@@ -539,7 +613,7 @@ function DineInTrackingContent() {
                     <p className="text-muted-foreground text-lg mb-6">
                         {cancellationReason}
                     </p>
-                    {isCarOrder ? (
+                    <div className="flex flex-col gap-3">
                         <Button
                             onClick={handleBackToMenu}
                             className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
@@ -547,16 +621,17 @@ function DineInTrackingContent() {
                             <Home className="mr-2 h-5 w-5" />
                             Back to Menu
                         </Button>
-                    ) : (
-                        <Button
-                            onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
-                            className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
-                            disabled={isMarkingDone}
-                        >
-                            <Home className="mr-2 h-5 w-5" />
-                            {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
-                        </Button>
-                    )}
+                        {!isCarOrder && (
+                            <Button
+                                onClick={() => setIsExitModalOpen(true)}
+                                variant="outline"
+                                className="w-full h-12 text-lg bg-transparent border-2 border-foreground/20 hover:bg-foreground/10 text-foreground"
+                                disabled={isMarkingDone}
+                            >
+                                {isMarkingDone ? 'Exiting...' : 'Exit Table'}
+                            </Button>
+                        )}
+                    </div>
                 </motion.div>
             </div>
         );
@@ -565,7 +640,7 @@ function DineInTrackingContent() {
     // ✅ FULL-SCREEN CELEBRATION VIEW - When ALL orders PAID!
     if (allOrdersPaid) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center relative overflow-hidden">
+            <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background p-6 text-center relative overflow-hidden green-theme font-sans text-foreground">
                 {/* Balloons */}
                 {Array.from({ length: 12 }).map((_, i) => (
                     <div
@@ -612,7 +687,7 @@ function DineInTrackingContent() {
                     <p className="text-2xl font-bold text-primary mb-6">
                         Thank you for dining with us!
                     </p>
-                    {isCarOrder ? (
+                    <div className="flex flex-col gap-3">
                         <Button
                             onClick={handleBackToMenu}
                             className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
@@ -620,16 +695,77 @@ function DineInTrackingContent() {
                             <Home className="mr-2 h-5 w-5" />
                             Back to Menu
                         </Button>
-                    ) : (
-                        <Button
-                            onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
-                            className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
-                            disabled={isMarkingDone}
-                        >
-                            <Home className="mr-2 h-5 w-5" />
-                            {isMarkingDone ? 'Closing Session...' : 'Exit Table & Back to Menu'}
-                        </Button>
-                    )}
+                        {!isCarOrder && (
+                            <Button
+                                onClick={() => setIsExitModalOpen(true)}
+                                variant="outline"
+                                className="w-full h-12 text-lg bg-transparent border-2 border-foreground/20 hover:bg-foreground/10 text-foreground"
+                                disabled={isMarkingDone}
+                            >
+                                {isMarkingDone ? 'Exiting...' : 'Exit Table'}
+                            </Button>
+                        )}
+                    </div>
+
+                    {/* Exit Confirmation Dialog */}
+                    <Dialog open={isExitModalOpen} onOpenChange={setIsExitModalOpen}>
+                        <DialogContent className="sm:max-w-md w-11/12 rounded-xl bg-card border-border">
+                            <DialogHeader>
+                                <DialogTitle className="text-xl">Exit Table?</DialogTitle>
+                                <DialogDescription>
+                                    Thank you for visiting {orderData?.restaurant?.name || 'our restaurant'}! Are you sure you are ready to give up your seat and exit the table?
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="flex-row sm:justify-end gap-3 pt-4">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setIsExitModalOpen(false)}
+                                    className="flex-1 sm:flex-none"
+                                    disabled={isMarkingDone}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="default"
+                                    onClick={handleExitTable}
+                                    className="flex-1 sm:flex-none bg-primary hover:bg-primary/90"
+                                    disabled={isMarkingDone}
+                                >
+                                    {isMarkingDone ? 'Exiting...' : 'Yes, Exit'}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* Exit Confirmation Dialog */}
+                    <Dialog open={isExitModalOpen} onOpenChange={setIsExitModalOpen}>
+                        <DialogContent className="sm:max-w-md w-11/12 rounded-xl bg-card border-border">
+                            <DialogHeader>
+                                <DialogTitle className="text-xl">Exit Table?</DialogTitle>
+                                <DialogDescription>
+                                    Thank you for visiting {orderData?.restaurant?.name || 'our restaurant'}! Are you sure you are ready to give up your seat and exit the table?
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="flex-row sm:justify-end gap-3 pt-4">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setIsExitModalOpen(false)}
+                                    className="flex-1 sm:flex-none"
+                                    disabled={isMarkingDone}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="default"
+                                    onClick={handleExitTable}
+                                    className="flex-1 sm:flex-none bg-primary hover:bg-primary/90"
+                                    disabled={isMarkingDone}
+                                >
+                                    {isMarkingDone ? 'Exiting...' : 'Yes, Exit'}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </motion.div>
             </div>
         );
@@ -639,35 +775,74 @@ function DineInTrackingContent() {
     const isServed = orderData.order.status === 'delivered';
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
-            {/* Pay Modal */}
-            <Dialog open={isPayModalOpen} onOpenChange={setIsPayModalOpen}>
-                <DialogContent className="bg-card border-border text-foreground max-w-sm">
+        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme font-sans pb-safe">
+            {/* Payment Gateway Scripts */}
+            <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+            <Script src="https://mercury.phonepe.com/web/bundle/checkout.js" strategy="lazyOnload" />
+
+            {/* Payment Choice Modal */}
+            <Dialog open={isPaymentChoiceModalOpen} onOpenChange={setIsPaymentChoiceModalOpen}>
+                <DialogContent className="sm:max-w-md w-11/12 rounded-xl bg-card border-border">
                     <DialogHeader>
-                        <DialogTitle>How would you like to pay?</DialogTitle>
-                        <DialogDescription>Select your preferred payment method</DialogDescription>
+                        <DialogTitle className="text-xl">How would you like to pay?</DialogTitle>
+                        <DialogDescription>
+                            Select a payment method to settle your bill.
+                        </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-3 py-4">
-                        <Button onClick={handlePayAtCounter} variant="outline" className="w-full h-14 justify-start text-left" disabled={isMarkingDone}>
-                            <IndianRupee className="mr-3 h-5 w-5" />
-                            <div>
-                                <p className="font-semibold">{isMarkingDone ? 'Updating...' : 'Pay at Counter'}</p>
-                                <p className="text-xs text-muted-foreground">Cash, UPI, or Card at billing counter</p>
+                    <div className="flex flex-col gap-3 py-4">
+                        <Button
+                            variant="outline"
+                            className="h-20 flex items-center justify-start gap-4 px-6 border border-border hover:border-primary hover:bg-primary/5 transition-all shadow-sm"
+                            onClick={handlePayOnline}
+                        >
+                            <div className="bg-primary/10 p-2.5 rounded-full text-primary">
+                                <QrCode className="h-6 w-6" />
+                            </div>
+                            <div className="flex flex-col items-start text-left">
+                                <span className="font-bold text-base text-foreground">Pay Online</span>
+                                <span className="text-xs text-muted-foreground mt-0.5">UPI, Cards, Wallets directly</span>
                             </div>
                         </Button>
-                        <Button onClick={handlePayOnline} className="w-full h-14 justify-start text-left bg-primary hover:bg-primary/90">
-                            <Wallet className="mr-3 h-5 w-5" />
-                            <div>
-                                <p className="font-semibold">Pay Online (Full Bill)</p>
-                                <p className="text-xs opacity-80">Pay the entire bill via UPI/Card</p>
+                        <Button
+                            variant="outline"
+                            className="h-20 flex items-center justify-start gap-4 px-6 border border-border hover:border-primary hover:bg-primary/5 transition-all shadow-sm"
+                            onClick={handlePayAtCounter}
+                            disabled={isMarkingDone}
+                        >
+                            <div className="bg-primary/10 p-2.5 rounded-full text-primary">
+                                <HandCoins className="h-6 w-6" />
+                            </div>
+                            <div className="flex flex-col items-start text-left">
+                                <span className="font-bold text-base text-foreground">Pay at Counter</span>
+                                <span className="text-xs text-muted-foreground mt-0.5">Cash, UPI, or Card at the desk</span>
                             </div>
                         </Button>
-                        <Button onClick={handleSplitBill} variant="outline" className="w-full h-14 justify-start text-left">
-                            <Split className="mr-3 h-5 w-5" />
-                            <div>
-                                <p className="font-semibold">Split Bill</p>
-                                <p className="text-xs text-muted-foreground">Share payment with your group</p>
-                            </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Confirm Pay at Counter Modal */}
+            <Dialog open={isConfirmPayOpen} onOpenChange={setIsConfirmPayOpen}>
+                <DialogContent className="sm:max-w-md w-11/12 rounded-xl bg-card border-border">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl">Are you ready to pay?</DialogTitle>
+                        <DialogDescription>
+                            We will notify the staff to prepare your bill at the counter.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex justify-end gap-3 py-4">
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsConfirmPayOpen(false)}
+                            disabled={isMarkingDone}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={executePayAtCounter}
+                            disabled={isMarkingDone}
+                        >
+                            {isMarkingDone ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirm'}
                         </Button>
                     </div>
                 </DialogContent>
@@ -1045,18 +1220,6 @@ function DineInTrackingContent() {
                         <Plus className="mr-2 h-5 w-5" /> {isServed ? 'Order Again' : 'Add More Items'}
                     </Button>
 
-                    {!isCarOrder && (
-                        <Button
-                            onClick={() => handleExitTable({ redirectToMenu: true, showAlert: true })}
-                            variant="outline"
-                            disabled={isMarkingDone}
-                            className="w-full h-12 border-orange-500 text-orange-500 hover:bg-orange-500/10"
-                        >
-                            <Home className="mr-2 h-5 w-5" />
-                            {isMarkingDone ? 'Closing Session...' : 'Release Seat & Exit'}
-                        </Button>
-                    )}
-
                     {/* Pay Bill Button OR Status Message */}
                     {/* Pay Bill Button OR Status Message */}
                     {!isCarOrder && (
@@ -1069,19 +1232,24 @@ function DineInTrackingContent() {
                                 <div className="w-full h-14 bg-orange-100 text-orange-800 border-orange-200 border rounded flex items-center justify-center font-bold text-lg animate-pulse">
                                     🏪 Please Pay at Counter
                                 </div>
-                            ) : (
+                            ) : isServed ? (
                                 <Button
-                                    onClick={handlePayOnline} // Opens Modal
-                                    disabled={orderData?.order?.status === 'pending'}
-                                    className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={handleRequestBillClick} // Modified to handle Choice Modal
+                                    disabled={isProcessingPayment}
+                                    className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
                                 >
-                                    <Wallet className="mr-3 h-6 w-6" />
-                                    {orderData?.order?.status === 'pending'
-                                        ? 'Waiting for Restaurant Confirmation...'
-                                        : `Pay Bill - ${formatCurrency(billDetails?.grandTotal || 0)}`
-                                    }
+                                    {isProcessingPayment ? (
+                                        <>
+                                            <Loader2 className="mr-3 h-6 w-6 animate-spin" /> Processing Payment...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wallet className="mr-3 h-6 w-6" />
+                                            Pay Bill - {formatCurrency(billDetails?.grandTotal || 0)}
+                                        </>
+                                    )}
                                 </Button>
-                            )}
+                            ) : null}
                         </>
                     )}
                 </div>
