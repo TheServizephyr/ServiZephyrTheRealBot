@@ -75,6 +75,21 @@ function buildBusinessIdCandidates(value) {
     return candidates;
 }
 
+function normalizeGstCalculationMode(value, fallback = 'included') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'excluded') return 'excluded';
+    if (normalized === 'included') return 'included';
+    return fallback;
+}
+
+function getGstCalculationModeFromBusinessData(businessData = {}) {
+    if (businessData?.gstCalculationMode) {
+        return normalizeGstCalculationMode(businessData.gstCalculationMode, 'included');
+    }
+    if (businessData?.gstIncludedInPrice === false) return 'excluded';
+    return 'included';
+}
+
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -136,6 +151,8 @@ export async function GET(req) {
                 gstEnabled: businessData.gstEnabled || false,
                 gstPercentage: businessData.gstPercentage || businessData.gstRate || 0,
                 gstMinAmount: businessData.gstMinAmount || 0,
+                gstCalculationMode: getGstCalculationModeFromBusinessData(businessData),
+                gstIncludedInPrice: getGstCalculationModeFromBusinessData(businessData) === 'included',
                 convenienceFeeEnabled: businessData.convenienceFeeEnabled || false,
                 convenienceFeeRate: businessData.convenienceFeeRate || 2.5,
                 convenienceFeePaidBy: businessData.convenienceFeePaidBy || 'customer',
@@ -267,6 +284,8 @@ export async function GET(req) {
             gstEnabled: businessData?.gstEnabled || false,
             gstRate: businessData?.gstPercentage || businessData?.gstRate || 5,
             gstMinAmount: businessData?.gstMinAmount || 0,
+            gstCalculationMode: getGstCalculationModeFromBusinessData(businessData),
+            gstIncludedInPrice: getGstCalculationModeFromBusinessData(businessData) === 'included',
             convenienceFeeEnabled: businessData?.convenienceFeeEnabled || false,
             convenienceFeeRate: businessData?.convenienceFeeRate || 2.5,
             convenienceFeePaidBy: businessData?.convenienceFeePaidBy || 'customer',
@@ -409,6 +428,14 @@ export async function PATCH(req) {
             businessUpdateData.gstRate = updates.gstPercentage; // Sync for backward compatibility
         }
         if (updates.gstMinAmount !== undefined) businessUpdateData.gstMinAmount = updates.gstMinAmount;
+        if (updates.gstCalculationMode !== undefined || updates.gstIncludedInPrice !== undefined) {
+            const requestedMode = updates.gstCalculationMode !== undefined
+                ? updates.gstCalculationMode
+                : (updates.gstIncludedInPrice === false ? 'excluded' : 'included');
+            const normalizedGstMode = normalizeGstCalculationMode(requestedMode, 'included');
+            businessUpdateData.gstCalculationMode = normalizedGstMode;
+            businessUpdateData.gstIncludedInPrice = normalizedGstMode === 'included';
+        }
         if (updates.convenienceFeeEnabled !== undefined) businessUpdateData.convenienceFeeEnabled = updates.convenienceFeeEnabled;
         if (updates.convenienceFeeRate !== undefined) businessUpdateData.convenienceFeeRate = updates.convenienceFeeRate;
         if (updates.convenienceFeePaidBy !== undefined) businessUpdateData.convenienceFeePaidBy = updates.convenienceFeePaidBy;
@@ -528,6 +555,8 @@ export async function PATCH(req) {
             gstEnabled: finalBusinessData?.gstEnabled || false,
             gstRate: finalBusinessData?.gstPercentage || finalBusinessData?.gstRate || 5,
             gstMinAmount: finalBusinessData?.gstMinAmount || 0,
+            gstCalculationMode: getGstCalculationModeFromBusinessData(finalBusinessData),
+            gstIncludedInPrice: getGstCalculationModeFromBusinessData(finalBusinessData) === 'included',
             convenienceFeeEnabled: finalBusinessData?.convenienceFeeEnabled || false,
             convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,
             convenienceFeePaidBy: finalBusinessData?.convenienceFeePaidBy || 'customer',

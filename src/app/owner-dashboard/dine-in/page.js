@@ -27,7 +27,52 @@ import { usePolling } from '@/lib/usePolling';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
-const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading, onCreateNew, onShowQr }) => {
+const toAmount = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const getItemQuantity = (item = {}) => {
+    const qty = parseInt(item?.quantity ?? item?.qty ?? 1, 10);
+    return Number.isFinite(qty) && qty > 0 ? qty : 1;
+};
+
+const getItemVariantSuffix = (item = {}) => {
+    const variant = String(
+        item?.portion?.name ||
+        item?.selectedPortion?.name ||
+        item?.variant ||
+        item?.portionName ||
+        item?.size ||
+        ''
+    ).trim();
+    if (!variant) return '';
+    if (variant.toLowerCase() === 'full') return '';
+    return ` (${variant})`;
+};
+
+const getItemAddons = (item = {}) => {
+    if (Array.isArray(item?.selectedAddOns)) return item.selectedAddOns;
+    if (Array.isArray(item?.addons)) return item.addons;
+    return [];
+};
+
+const getItemLineTotal = (item = {}) => {
+    const hasStoredLineTotal = item?.totalPrice !== undefined && item?.totalPrice !== null && item?.totalPrice !== '';
+    const storedLineTotal = toAmount(item?.totalPrice, NaN);
+    if (hasStoredLineTotal && Number.isFinite(storedLineTotal)) {
+        return storedLineTotal;
+    }
+    const qty = getItemQuantity(item);
+    const unitPrice = toAmount(item?.price, 0);
+    const addonsTotal = getItemAddons(item).reduce((sum, addon) => {
+        const addonQty = Math.max(1, parseInt(addon?.quantity ?? 1, 10) || 1);
+        return sum + (toAmount(addon?.price, 0) * addonQty);
+    }, 0);
+    return (unitPrice * qty) + addonsTotal;
+};
+
+const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading, onCreateNew, onShowQr, onManageTabs }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-4xl">
@@ -64,13 +109,22 @@ const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loadi
                                         <td className="p-4">{table.max_capacity}</td>
                                         <td className="p-4">{table.current_pax || 0}</td>
                                         <td className="p-4 flex justify-end gap-2">
-                                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onShowQr(table)}>
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="h-9 px-3"
+                                                onClick={() => onManageTabs(table)}
+                                                title="Open table tabs and manage running sessions"
+                                            >
+                                                <ShoppingBag size={14} className="mr-1.5" /> Tabs
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onShowQr(table)} title="Show Table QR">
                                                 <QrCode size={16} />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(table)}>
+                                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(table)} title="Edit Table">
                                                 <Edit size={16} />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => onDelete(table.id)}>
+                                            <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => onDelete(table.id)} title="Delete Table">
                                                 <Trash2 size={16} />
                                             </Button>
                                         </td>
@@ -88,6 +142,97 @@ const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loadi
         </Dialog>
     );
 }
+
+const ManageTableTabsModal = ({ isOpen, onClose, table, onMarkAsPaid, onClearTab, onPrintBill, buttonLoading, userRole }) => {
+    const tabGroups = useMemo(() => {
+        if (!table) return [];
+        const pending = Array.isArray(table.pendingOrders) ? table.pendingOrders : [];
+        const active = Object.values(table.tabs || {});
+        return [...pending, ...active].sort((a, b) => {
+            const getTime = (v) => {
+                if (!v) return 0;
+                if (typeof v === 'object' && v._seconds) return v._seconds * 1000;
+                const d = new Date(v);
+                return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+            };
+            const timeA = getTime(a?.orderDate || a?.createdAt);
+            const timeB = getTime(b?.orderDate || b?.createdAt);
+            return timeB - timeA;
+        });
+    }, [table]);
+
+    if (!table) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground w-[calc(100vw-2rem)] max-w-[720px] max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Manage Tabs - Table {table.id}</DialogTitle>
+                    <DialogDescription>
+                        Review active tabs, mark payments, print bills, or clear closed tabs.
+                    </DialogDescription>
+                </DialogHeader>
+                
+                <div className="space-y-3 py-2">
+                    {tabGroups.length > 0 ? (
+                        tabGroups.map((group) => {
+                            const tabId = String(group?.dineInTabId || group?.id || '');
+                            const mainStatus = String(group?.mainStatus || group?.status || 'pending').toLowerCase();
+                            const isPaid = group?.isPaid === true || String(group?.paymentStatus || '').toLowerCase() === 'paid';
+                            const canMarkPaid = !isPaid && mainStatus === 'delivered' && ['owner', 'manager', 'cashier'].includes(userRole);
+                            const totalAmount = Number(group?.totalAmount || 0);
+                            const orderCount = Array.isArray(group?.orderBatches) ? group.orderBatches.length : Object.keys(group?.orders || {}).length;
+
+                            return (
+                                <div key={tabId || `${group?.tab_name}-${group?.pax_count}`} className="rounded-lg border border-border bg-card p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="font-semibold">
+                                                {group?.tab_name || 'Guest'} <span className="text-muted-foreground">({group?.pax_count || 1} guests)</span>
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Status: {mainStatus.replace(/_/g, ' ')} | Orders: {orderCount} | Total: {formatCurrency(totalAmount)}
+                                            </p>
+                                        </div>
+                                        {isPaid && <span className="text-xs font-semibold text-green-500">PAID</span>}
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <Button size="sm" variant="outline" onClick={() => onPrintBill({ tableId: table.id, ...group })}>
+                                            <Printer className="mr-2 h-3.5 w-3.5" /> Print Bill
+                                        </Button>
+                                        {canMarkPaid && (
+                                            <Button
+                                                size="sm"
+                                                className="bg-green-600 hover:bg-green-700"
+                                                disabled={buttonLoading === `paid_${tabId}`}
+                                                onClick={() => onMarkAsPaid(table.id, tabId)}
+                                            >
+                                                {buttonLoading === `paid_${tabId}` ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Wallet className="mr-2 h-3.5 w-3.5" />}
+                                                Mark Paid
+                                            </Button>
+                                        )}
+                                        <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={() => onClearTab(tabId, table.id, group?.pax_count || 0)}
+                                        >
+                                            <X className="mr-2 h-3.5 w-3.5" /> Clear Tab
+                                        </Button>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                            No active tabs on this table right now.
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -190,6 +335,63 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     }, [order?.orders]);
 
     const totalBill = useMemo(() => Object.values(order?.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order?.orders]);
+    const lineItems = useMemo(() => allItems.flatMap((o) => o?.items || []), [allItems]);
+
+    const itemSubtotal = useMemo(() => {
+        return lineItems.reduce((sum, item) => sum + getItemLineTotal(item), 0);
+    }, [lineItems]);
+
+    const totalCgst = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.cgst, 0), 0), [allItems]);
+    const totalSgst = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.sgst, 0), 0), [allItems]);
+    const totalDiscount = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.discount, 0), 0), [allItems]);
+    const totalPackaging = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.packagingCharge, 0), 0), [allItems]);
+    const totalService = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.serviceCharge, 0), 0), [allItems]);
+    const totalPlatformFee = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.platformFee, 0), 0), [allItems]);
+    const totalTip = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.tipAmount, 0), 0), [allItems]);
+    const totalDeliveryCharge = useMemo(() => allItems.reduce((sum, o) => sum + toAmount(o?.deliveryCharge, 0), 0), [allItems]);
+    const totalTax = totalCgst + totalSgst;
+    const gstModes = useMemo(
+        () => allItems.map((o) => String(o?.gstCalculationMode || '').trim().toLowerCase()).filter(Boolean),
+        [allItems]
+    );
+    const hasIncludedMode = gstModes.includes('included');
+    const hasExcludedMode = gstModes.includes('excluded');
+    const taxLooksIncluded = totalTax > 0 && Math.abs(totalBill - itemSubtotal) <= 0.05;
+    const isTaxIncluded = (hasIncludedMode && !hasExcludedMode) || taxLooksIncluded;
+
+    const effectiveGstRate = useMemo(() => {
+        if (totalTax <= 0) return 0;
+        const configuredRate = toAmount(restaurant?.gstRate, NaN);
+        if (Number.isFinite(configuredRate) && configuredRate > 0) return configuredRate;
+
+        if (isTaxIncluded) {
+            const taxableBase = itemSubtotal - totalTax;
+            if (taxableBase > 0) return (totalTax / taxableBase) * 100;
+            return 0;
+        }
+        if (itemSubtotal > 0) {
+            return (totalTax / itemSubtotal) * 100;
+        }
+        return 0;
+    }, [isTaxIncluded, itemSubtotal, restaurant?.gstRate, totalTax]);
+
+    const displayItemSubtotal = useMemo(() => {
+        if (!isTaxIncluded || effectiveGstRate <= 0) return itemSubtotal;
+        const gstFactor = 1 + (effectiveGstRate / 100);
+        return lineItems.reduce((sum, item) => sum + (getItemLineTotal(item) / gstFactor), 0);
+    }, [effectiveGstRate, isTaxIncluded, itemSubtotal, lineItems]);
+
+    const computedGrandFromComponents =
+        displayItemSubtotal +
+        totalCgst +
+        totalSgst +
+        totalPackaging +
+        totalService +
+        totalPlatformFee +
+        totalTip +
+        totalDeliveryCharge -
+        totalDiscount;
+    const roundOffOnly = Number((totalBill - computedGrandFromComponents).toFixed(2));
 
     if (!order || !restaurant) return null;
 
@@ -221,17 +423,105 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {allItems.flatMap(o => o.items).map((item, index) => (
+                            {lineItems.map((item, index) => (
                                 <tr key={index} className="border-b border-dotted border-black">
-                                    <td className="py-1">{item.name}</td>
-                                    <td className="text-center py-1">{item.quantity}</td>
-                                    <td className="text-right py-1">{formatCurrency((item.totalPrice || item.price))}</td>
+                                    <td className="py-1">
+                                        {(() => {
+                                            const grossLineTotal = getItemLineTotal(item);
+                                            return (
+                                                <>
+                                        <div>{item.name}{getItemVariantSuffix(item)}</div>
+                                        {getItemAddons(item).length > 0 && (
+                                            <div className="text-[10px] opacity-80">
+                                                {getItemAddons(item).map((addon, addonIdx) => {
+                                                    const addonQty = Math.max(1, parseInt(addon?.quantity ?? 1, 10) || 1);
+                                                    return (
+                                                        <div key={addonIdx}>
+                                                            + {addon.name}{addonQty > 1 ? ` x${addonQty}` : ''} ({formatCurrency(toAmount(addon?.price, 0) * addonQty)})
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                                </>
+                                            );
+                                        })()}
+                                    </td>
+                                    <td className="text-center py-1">{getItemQuantity(item)}</td>
+                                    <td className="text-right py-1">
+                                        {formatCurrency(
+                                            (isTaxIncluded && effectiveGstRate > 0)
+                                                ? (getItemLineTotal(item) / (1 + (effectiveGstRate / 100)))
+                                                : getItemLineTotal(item)
+                                        )}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
 
-                    <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
+                    <div className="text-xs space-y-1 pb-2 border-b border-dotted border-black">
+                        <div className="flex justify-between">
+                            <span>{isTaxIncluded ? 'Taxable Subtotal' : 'Items Subtotal'}</span>
+                            <span>{formatCurrency(displayItemSubtotal)}</span>
+                        </div>
+                        {totalCgst > 0 && (
+                            <div className="flex justify-between">
+                                <span>CGST</span>
+                                <span>{formatCurrency(totalCgst)}</span>
+                            </div>
+                        )}
+                        {totalSgst > 0 && (
+                            <div className="flex justify-between">
+                                <span>SGST</span>
+                                <span>{formatCurrency(totalSgst)}</span>
+                            </div>
+                        )}
+                        {totalPackaging > 0 && (
+                            <div className="flex justify-between">
+                                <span>Packaging</span>
+                                <span>{formatCurrency(totalPackaging)}</span>
+                            </div>
+                        )}
+                        {totalService > 0 && (
+                            <div className="flex justify-between">
+                                <span>Service Charge</span>
+                                <span>{formatCurrency(totalService)}</span>
+                            </div>
+                        )}
+                        {totalPlatformFee > 0 && (
+                            <div className="flex justify-between">
+                                <span>Platform Fee</span>
+                                <span>{formatCurrency(totalPlatformFee)}</span>
+                            </div>
+                        )}
+                        {totalDeliveryCharge > 0 && (
+                            <div className="flex justify-between">
+                                <span>Delivery Charge</span>
+                                <span>{formatCurrency(totalDeliveryCharge)}</span>
+                            </div>
+                        )}
+                        {totalTip > 0 && (
+                            <div className="flex justify-between">
+                                <span>Tip</span>
+                                <span>{formatCurrency(totalTip)}</span>
+                            </div>
+                        )}
+                        {totalDiscount > 0 && (
+                            <div className="flex justify-between">
+                                <span>Discount</span>
+                                <span>-{formatCurrency(totalDiscount)}</span>
+                            </div>
+                        )}
+                        {Math.abs(roundOffOnly) > 0.01 && (
+                            <div className="flex justify-between">
+                                <span>Round Off</span>
+                                <span>{formatCurrency(roundOffOnly)}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex justify-between font-bold text-lg pt-2 mt-1 border-t-2 border-black">
                         <span>GRAND TOTAL</span>
                         <span>{formatCurrency(totalBill)}</span>
                     </div>
@@ -253,6 +543,14 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
 };
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, confirmText, paymentMethod, setPaymentMethod, isDestructive = false }) => {
+    const paymentOptions = [
+        { value: 'cod', label: 'Cash' },
+        { value: 'upi', label: 'UPI' },
+        { value: 'card', label: 'Card' },
+        { value: 'online', label: 'Online' },
+        { value: 'other', label: 'Other' },
+    ];
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
@@ -262,18 +560,24 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
                 </DialogHeader>
                 {paymentMethod && (
                     <div className="py-4">
-                        <Label htmlFor="payment-method">Select Payment Method</Label>
-                        <select
-                            id="payment-method"
-                            value={paymentMethod}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                            className="mt-1 w-full p-2 border rounded-md bg-input border-border"
-                        >
-                            <option value="cod">Cash</option>
-                            <option value="upi">UPI</option>
-                            <option value="card">Card</option>
-                            <option value="other">Other</option>
-                        </select>
+                        <Label>Select Payment Method</Label>
+                        <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {paymentOptions.map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setPaymentMethod(option.value)}
+                                    className={cn(
+                                        "h-10 rounded-md border text-sm font-semibold transition-colors",
+                                        paymentMethod === option.value
+                                            ? "border-primary bg-primary text-primary-foreground"
+                                            : "border-border bg-card hover:bg-muted"
+                                    )}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
                 <DialogFooter>
@@ -672,13 +976,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                     );
                                                                 })()}
 
-                                                                {/* Undo button - Separated to show even when main action is hidden (e.g., delivered) */}
+                                                                {/* Undo button for valid non-final states */}
                                                                 {(() => {
                                                                     const undoMap = {
                                                                         'confirmed': 'pending',
                                                                         'preparing': 'confirmed',
-                                                                        'ready_for_pickup': 'preparing',
-                                                                        'delivered': 'ready_for_pickup'
+                                                                        'ready_for_pickup': 'preparing'
                                                                     };
                                                                     const undoPrev = undoMap[orderBatch.status];
 
@@ -942,17 +1245,16 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         {(() => {
                                                             const reverseConfig = {
                                                                 'preparing': 'confirmed',
-                                                                'ready_for_pickup': 'preparing',
-                                                                'delivered': 'ready_for_pickup'
+                                                                'ready_for_pickup': 'preparing'
                                                             };
                                                             const prevStatus = reverseConfig[mainStatus];
 
                                                             // Recalculate batches for this scope
                                                             const statusBatches = group.orderBatches?.filter(b => b.status === mainStatus) || [];
 
-                                                            // Show if previous status exists AND (more than 1 item OR status is delivered where main button is hidden)
+                                                            // Show only when previous status exists and there are at least 2 orders in same state
                                                             if (!prevStatus || statusBatches.length === 0) return null;
-                                                            if (statusBatches.length <= 1 && mainStatus !== 'delivered') return null;
+                                                            if (statusBatches.length <= 1) return null;
 
                                                             const orderIds = statusBatches.map(b => b.id);
 
@@ -1036,7 +1338,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     // Use clear tab directly as "Clean Table" implies finishing the session
-                                                                    onClearTab(group.dineInTabId || group.id, tableData.id, group.pax_count);
+                                                                    onClearTab(group.dineInTabId || group.id, tableData.id, group.pax_count, { action: 'clean_table', skipSettlementPrompt: true });
                                                                 }}
                                                                 className="w-full mt-2 bg-blue-600 hover:bg-blue-700"
                                                             >
@@ -1077,7 +1379,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    onClearTab(group.dineInTabId || group.id, tableData.id, group.pax_count);
+                                                    onClearTab(group.dineInTabId || group.id, tableData.id, group.pax_count, { action: 'empty_tab_clear', skipSettlementPrompt: true });
                                                 }}
                                                 className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground"
                                             >
@@ -1113,6 +1415,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurantName = '' }) => {
     const isCarSpotTheme = qrType === 'car-spot';
     const qrStyle = { shapeRendering: 'crispEdges' };
+    const tableQrRenderStyle = {
+        ...qrStyle,
+        width: 'min(72vw, 320px)',
+        height: 'auto',
+        display: 'block',
+    };
 
     const handleDownload = async () => {
         const printableNode = innerRef?.current;
@@ -1217,16 +1525,46 @@ const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurant
                     </div>
                 </div>
             ) : (
-                <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
-                    <QRCode
-                        value={text}
-                        size={1024}
-                        level={"M"}
-                        includeMargin={true}
-                        renderAs="svg"
-                        style={qrStyle}
-                    />
-                    <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
+                <div
+                    ref={innerRef}
+                    className="bg-white rounded-[24px] border-4 border-yellow-400 shadow-2xl overflow-hidden w-full max-w-[420px] mx-auto"
+                >
+                    <div className="bg-gradient-to-br from-yellow-300 via-yellow-200 to-white px-5 py-5 text-center border-b border-yellow-200">
+                        <h3 className="mt-2 text-2xl leading-tight font-black text-black uppercase break-words">
+                            {restaurantName || 'Restaurant'}
+                        </h3>
+                        <p className="mt-2 text-[11px] font-bold text-black uppercase tracking-[0.18em]">Table {tableName}</p>
+                        <p className="mt-2 text-2xl font-extrabold text-yellow-700 tracking-wide uppercase">Order Here</p>
+                    </div>
+
+                    <div className="px-5 pt-5 pb-4 text-center bg-white">
+                        <div className="inline-flex items-center justify-center p-3 rounded-2xl border-2 border-yellow-300 shadow-md bg-white">
+                            <QRCode
+                                value={text}
+                                size={1024}
+                                level={"H"}
+                                includeMargin={true}
+                                renderAs="svg"
+                                style={tableQrRenderStyle}
+                                imageSettings={{
+                                    src: '/logo.png',
+                                    height: 180,
+                                    width: 180,
+                                    excavate: true
+                                }}
+                            />
+                        </div>
+
+                        <p className="mt-3 text-[11px] text-gray-700">
+                            Scan the above QR using Google Lens or any other supported scanner.
+                        </p>
+
+                        <div className="mt-4 pt-3 border-t border-yellow-200">
+                            <p className="text-[11px] font-bold text-black uppercase tracking-wide">
+                                Powered by ServiZephyr
+                            </p>
+                        </div>
+                    </div>
                 </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm">
@@ -1237,7 +1575,7 @@ const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurant
     );
 };
 
-const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialTable, onEditTable, onDeleteTable, showInfoDialog }) => {
+const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, restaurantName, initialTable, onEditTable, onDeleteTable, showInfoDialog }) => {
     const [tableName, setTableName] = useState('');
     const [maxCapacity, setMaxCapacity] = useState(4);
     const [qrValue, setQrValue] = useState('');
@@ -1294,7 +1632,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
+            <DialogContent className="bg-background border-border text-foreground w-[calc(100vw-2rem)] max-w-[760px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{initialTable ? `Manage Table: ${initialTable.id}` : 'Create a New Table'}</DialogTitle>
                     <DialogDescription>
@@ -1302,8 +1640,8 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="sm:col-span-2">
                             <Label htmlFor="table-name">Table Name / Number</Label>
                             <Input
                                 id="table-name"
@@ -1328,7 +1666,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
                         <Save className="mr-2 h-4 w-4" /> {initialTable ? 'Save Changes' : 'Save Table & Generate QR'}
                     </Button>
 
-                    {qrValue && <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />}
+                    {qrValue && <QrCodeDisplay text={qrValue} tableName={tableName} restaurantName={restaurantName} innerRef={printRef} />}
 
                     {initialTable && (
                         <div className="pt-4 border-t border-dashed">
@@ -1351,14 +1689,14 @@ const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
+            <DialogContent className="bg-background border-border text-foreground w-[calc(100vw-2rem)] max-w-[560px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>QR Code for Table: {table.id}</DialogTitle>
                     <DialogDescription>
                         Customers can scan this code with their phone camera to open the menu and order directly from this table.
                     </DialogDescription>
                 </DialogHeader>
-                <QrCodeDisplay text={qrValue} tableName={table.id} innerRef={printRef} />
+                <QrCodeDisplay text={qrValue} tableName={table.id} restaurantName={restaurant.name} innerRef={printRef} />
             </DialogContent>
         </Dialog>
     );
@@ -1582,7 +1920,7 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
     );
 };
 
-const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
+const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, compact = false }) => {
     const [requests, setRequests] = useState([]);
     const [isExpanded, setIsExpanded] = useState(true);
 
@@ -1632,6 +1970,73 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
 
     if (requests.length === 0 && !isExpanded) return null;
 
+    if (compact) {
+        const hasActiveRequests = requests.length > 0;
+        const visibleRequests = requests.slice(0, 4);
+        return (
+            <div className="space-y-2">
+                <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn(
+                        "h-12 rounded-xl border px-4 flex items-center justify-between backdrop-blur-sm",
+                        hasActiveRequests
+                            ? "bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-yellow-500/20 border-amber-400/40"
+                            : "bg-card border-border"
+                    )}
+                >
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Bell size={16} className={cn(hasActiveRequests ? "text-amber-300" : "text-muted-foreground")} />
+                        <p className="text-sm font-semibold truncate">Live Service Requests</p>
+                    </div>
+                    {hasActiveRequests ? (
+                        <div className="flex items-center gap-2">
+                            <span className="inline-flex h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-xs font-semibold text-amber-200">{requests.length} Active</span>
+                        </div>
+                    ) : (
+                        <span className="text-xs text-muted-foreground">All clear</span>
+                    )}
+                </motion.div>
+
+                {hasActiveRequests && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {visibleRequests.map((req, index) => {
+                            const createdAt = req?.createdAt ? new Date(req.createdAt) : null;
+                            const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
+                                ? formatDistanceToNow(createdAt, { addSuffix: true })
+                                : 'just now';
+                            const requestKey = req?.id || `${req?.tableId || 'table'}_${index}`;
+
+                            return (
+                                <div key={requestKey} className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold truncate">Table {req?.tableId || '-'}</p>
+                                        <p className="text-xs text-muted-foreground truncate">Needs assistance • {createdLabel}</p>
+                                    </div>
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-8 w-8 bg-green-500/20 hover:bg-green-500/30 text-green-300 shrink-0"
+                                        onClick={() => handleAcknowledge(req.id)}
+                                        title="Acknowledge"
+                                    >
+                                        <CheckCircle size={16} />
+                                    </Button>
+                                </div>
+                            );
+                        })}
+                        {requests.length > visibleRequests.length && (
+                            <div className="rounded-lg border border-dashed border-amber-400/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200/90">
+                                +{requests.length - visibleRequests.length} more active request(s)
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     return (
         <AnimatePresence>
             {isExpanded && (
@@ -1639,7 +2044,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId }) => {
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    className="relative overflow-hidden backdrop-blur-xl bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 dark:from-amber-500/20 dark:via-orange-500/15 dark:to-yellow-500/20 border border-amber-300 dark:border-amber-400/30 shadow-2xl shadow-amber-500/20 rounded-2xl p-6 mb-6"
+                    className="relative overflow-hidden backdrop-blur-xl bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 dark:from-amber-500/20 dark:via-orange-500/15 dark:to-yellow-500/20 border border-amber-300 dark:border-amber-400/30 shadow-2xl shadow-amber-500/20 rounded-2xl p-6 mb-6 lg:mb-0"
                 >
                     {/* Animated background gradient orbs */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-amber-300/30 dark:bg-amber-400/20 rounded-full blur-3xl"></div>
@@ -1871,12 +2276,18 @@ const buildCarVirtualTables = (carOrders = []) => {
 const DineInPageContent = () => {
     const [allData, setAllData] = useState({ tables: [], serviceRequests: [], closedTabs: [], carOrders: [] });
     const [loading, setLoading] = useState(true);
+    const [dineInOnlyItems, setDineInOnlyItems] = useState([]);
+    const [dineInOnlyLoading, setDineInOnlyLoading] = useState(false);
+    const [isDineInMenuOpen, setIsDineInMenuOpen] = useState(false);
     const [buttonLoading, setButtonLoading] = useState(null); // Track which button is loading
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
+    const [isManageTableTabsModalOpen, setIsManageTableTabsModalOpen] = useState(false);
+    const [manageTabsTableId, setManageTabsTableId] = useState('');
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+    const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
@@ -1889,8 +2300,10 @@ const DineInPageContent = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => { }, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
     const [activeStatusFilter, setActiveStatusFilter] = useState('Pending'); // Status filter tabs
+    const [tableSearchQuery, setTableSearchQuery] = useState('');
     const [selectedCards, setSelectedCards] = useState(new Set()); // Batch selection
     const [batchLoading, setBatchLoading] = useState(false); // Batch operation loading
+    const dineInMenuSectionRef = useRef(null);
 
     // Global undo state - tracks last bulk action for reversing
     const [lastBulkAction, setLastBulkAction] = useState(null);
@@ -2044,12 +2457,72 @@ const DineInPageContent = () => {
         }
     }, [handleApiCall, businessType]);
 
+    const fetchDineInOnlyMenu = useCallback(async () => {
+        if (businessType !== 'restaurant') {
+            setDineInOnlyItems([]);
+            setDineInOnlyLoading(false);
+            return;
+        }
+
+        const user = auth.currentUser;
+        if (!user) {
+            setDineInOnlyItems([]);
+            setDineInOnlyLoading(false);
+            return;
+        }
+
+        setDineInOnlyLoading(true);
+        try {
+            const idToken = await user.getIdToken();
+            const url = new URL('/api/owner/menu', window.location.origin);
+            url.searchParams.set('dashboard', '1');
+            if (impersonatedOwnerId) {
+                url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            } else if (employeeOfOwnerId) {
+                url.searchParams.set('employee_of', employeeOfOwnerId);
+            }
+
+            const res = await fetch(url.toString(), {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${idToken}` },
+            });
+
+            if (!res.ok) {
+                const errorBody = await res.json().catch(() => ({}));
+                throw new Error(errorBody?.message || 'Failed to fetch menu');
+            }
+
+            const data = await res.json();
+            const menuSource = data?.menu || {};
+            const items = Object.entries(menuSource).flatMap(([categoryId, categoryItems]) =>
+                (Array.isArray(categoryItems) ? categoryItems : []).map((item) => ({
+                    ...item,
+                    categoryId: item?.categoryId || categoryId
+                }))
+            );
+            const dineInExclusiveItems = items
+                .filter((item) => item?.isDineInExclusive === true)
+                .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
+            setDineInOnlyItems(dineInExclusiveItems);
+        } catch (error) {
+            console.error('[Dine-In Dashboard] Failed to fetch dine-in only menu:', error);
+            setDineInOnlyItems([]);
+        } finally {
+            setDineInOnlyLoading(false);
+        }
+    }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+
     // Adaptive Polling for data
     usePolling(fetchData, {
         interval: 15000,
         enabled: businessType === 'restaurant' && !!(impersonatedOwnerId || employeeOfOwnerId),
         deps: [impersonatedOwnerId, employeeOfOwnerId, businessType]
     });
+
+    useEffect(() => {
+        if (!auth.currentUser) return;
+        fetchDineInOnlyMenu();
+    }, [auth.currentUser, businessType, impersonatedOwnerId, employeeOfOwnerId, fetchDineInOnlyMenu]);
 
     // 🔄 SYNC LOGIC: Handle data drift detected by GET Endpoint
     useEffect(() => {
@@ -2234,6 +2707,19 @@ const DineInPageContent = () => {
         };
     }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id, businessType]);
 
+    const getItemDisplayPrice = (item) => {
+        const portions = Array.isArray(item?.portions) ? item.portions : [];
+        if (portions.length > 0) {
+            const preferred = portions.find((p) => String(p?.name || '').toLowerCase() === 'full') || portions[0];
+            return Number(preferred?.price || 0);
+        }
+        return Number(item?.price || 0);
+    };
+
+    const handleRefreshView = async () => {
+        await Promise.allSettled([fetchData(true), fetchDineInOnlyMenu()]);
+    };
+
 
     const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({
@@ -2317,34 +2803,58 @@ const DineInPageContent = () => {
         }
     };
 
-    const handleClearTab = async (tabId, tableId, paxCount) => {
+    const confirmClearTab = (tabId, tableId, paxCount, options = {}) => {
+        const table = allData?.tables?.find(t => t.id === tableId);
+        const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+        const hasOrders = Object.keys(tabData?.orders || {}).length > 0;
+        const isAlreadyPaid = tabData?.isPaid === true || String(tabData?.paymentStatus || '').toLowerCase() === 'paid';
+        const skipSettlementPrompt = options?.skipSettlementPrompt === true;
+        const needsPaymentSelection = hasOrders && !isAlreadyPaid && !skipSettlementPrompt;
+
+        setConfirmationState({
+            isOpen: true,
+            title: "Clear Tab",
+            description: needsPaymentSelection
+                ? `Please select settlement mode before closing this tab for Table ${tableId}. This keeps payment analytics accurate.`
+                : `This will close the tab for Table ${tableId} and release seats.`,
+            confirmText: "Clear Tab",
+            paymentMethod: needsPaymentSelection ? 'cod' : null,
+            onConfirm: (method) => {
+                handleClearTab(tabId, tableId, paxCount, needsPaymentSelection ? method : null);
+                setConfirmationState({ isOpen: false });
+            },
+        });
+    };
+
+    const handleClearTab = async (tabId, tableId, paxCount, settlementMethod = null) => {
         const normalizedTableId = String(tableId || '').trim();
         const normalizedTabId = String(tabId || '').trim();
         const isCarSlot = normalizedTableId.toLowerCase().startsWith('car spot');
         const carSlotName = isCarSlot
             ? normalizedTableId.replace(/^car\s+spot\s*/i, '').trim()
             : '';
+        const table = allData?.tables?.find(t => t.id === tableId);
+        const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+        const orderIds = Object.keys(tabData?.orders || {});
+        const hasOrders = orderIds.length > 0;
 
         // Optimistic update - remove tab/order from view
         setAllData(prev => {
             if (!prev?.tables) return prev;
-            const updatedTables = prev.tables.map(table => {
-                if (table.id === tableId) {
-                    // Remove from tabs if exists
-                    const { [tabId]: removedTab, ...remainingTabs } = table.tabs || {};
-                    // Remove from pendingOrders if exists
-                    const updatedPending = (table.pendingOrders || []).filter(order => order.id !== tabId);
-                    // Update current_pax
-                    const newPax = Math.max(0, (table.current_pax || 0) - (paxCount || 0));
+            const updatedTables = prev.tables.map(tableItem => {
+                if (tableItem.id === tableId) {
+                    const { [tabId]: removedTab, ...remainingTabs } = tableItem.tabs || {};
+                    const updatedPending = (tableItem.pendingOrders || []).filter(order => order.id !== tabId);
+                    const newPax = Math.max(0, (tableItem.current_pax || 0) - (paxCount || 0));
                     return {
-                        ...table,
+                        ...tableItem,
                         tabs: remainingTabs,
                         pendingOrders: updatedPending,
                         current_pax: newPax,
-                        state: Object.keys(remainingTabs).length === 0 && updatedPending.length === 0 ? 'available' : table.state
+                        state: Object.keys(remainingTabs).length === 0 && updatedPending.length === 0 ? 'available' : tableItem.state
                     };
                 }
-                return table;
+                return tableItem;
             });
 
             const updatedCarOrders = isCarSlot
@@ -2363,23 +2873,23 @@ const DineInPageContent = () => {
         });
 
         try {
-            // ✅ Using new dine-in cleanup endpoint
-            const cleanupEndpoint = '/api/dine-in/clean-table';
+            if (hasOrders && settlementMethod) {
+                await handleApiCall('PATCH', {
+                    orderIds,
+                    paymentStatus: 'paid',
+                    paymentMethod: settlementMethod
+                }, '/api/owner/orders');
+            }
 
-            // ✅ CRITICAL: Also find the real dineInTabId from tab/group data so the API
-            // can directly locate the Firestore tab doc even if tabId is a groupKey.
-            const table = allData?.tables?.find(t => t.id === tableId);
-            const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+            const cleanupEndpoint = '/api/dine-in/clean-table';
             const realDineInTabId = tabData?.dineInTabId;
 
             const payload = {
                 tabId,
                 tableId: isCarSlot ? null : tableId,
                 restaurantId: restaurantDetails?.id,
-                dineInTabId: realDineInTabId || null // ✅ Send the real Firestore tab doc ID
+                dineInTabId: realDineInTabId || null
             };
-
-            console.log(`[Owner Dashboard] Cleaning tab with endpoint: ${cleanupEndpoint}, realTabId: ${realDineInTabId}`);
 
             await handleApiCall('PATCH', payload, cleanupEndpoint);
             setInfoDialog({
@@ -2393,8 +2903,7 @@ const DineInPageContent = () => {
             await fetchData(true);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear tab: ${error.message}` });
         }
-    }
-
+    };
     const handleUpdateStatus = async (orderId, newStatus) => {
         // Set loading state
         setButtonLoading(`status_${orderId}`);
@@ -2465,12 +2974,17 @@ const DineInPageContent = () => {
         if (!allData || !allData.tables) return [];
         return allData.tables;
     }, [allData]);
+    const manageTabsTable = useMemo(() => {
+        if (!manageTabsTableId) return null;
+        return (allData?.tables || []).find((table) => String(table.id) === String(manageTabsTableId)) || null;
+    }, [allData?.tables, manageTabsTableId]);
 
     const handleOpenEditModal = (table = null) => {
         if (!restaurantDetails?.id) {
             setInfoDialog({ isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables." });
             return;
         }
+        setIsManageTablesModalOpen(false); // Close manage modal before opening editor
         setEditingTable(table);
         setIsQrGeneratorModalOpen(true);
     };
@@ -2485,8 +2999,16 @@ const DineInPageContent = () => {
         setIsQrDisplayModalOpen(true);
     };
 
+    const handleOpenManageTabsModal = (table) => {
+        if (!table?.id) return;
+        setIsManageTablesModalOpen(false);
+        setManageTabsTableId(String(table.id));
+        setIsManageTableTabsModalOpen(true);
+    };
+
     const renderTableCards = () => {
         const carTables = buildCarVirtualTables(allData.carOrders || []);
+        const normalizedSearch = String(tableSearchQuery || '').trim().toLowerCase();
 
         // Combine Real Tables + Car Tables
         const combinedData = [...activeTableData, ...carTables];
@@ -2530,6 +3052,25 @@ const DineInPageContent = () => {
             return mainStatus === filterValue;
         };
 
+        const matchesSearch = (table, group) => {
+            if (!normalizedSearch) return true;
+
+            const tableIdMatch = String(table?.id || '').toLowerCase().includes(normalizedSearch);
+            if (tableIdMatch) return true;
+
+            const tabNameMatch = String(group?.tab_name || '').toLowerCase().includes(normalizedSearch);
+            if (tabNameMatch) return true;
+
+            const groupItems = [
+                ...(Array.isArray(group?.items) ? group.items : []),
+                ...(Array.isArray(group?.orderBatches)
+                    ? group.orderBatches.flatMap((batch) => (Array.isArray(batch?.items) ? batch.items : []))
+                    : [])
+            ];
+
+            return groupItems.some((item) => String(item?.name || '').toLowerCase().includes(normalizedSearch));
+        };
+
         // Filter tables to only show those with orders matching the filter
         const filteredTables = sortedTables.map(table => {
             // Special handling for "Needs Cleaning" tab - show tables with paid tabs needing cleaning
@@ -2537,7 +3078,7 @@ const DineInPageContent = () => {
                 // Check if table has any paid tabs (isPaid === true for group)
                 const paidTabs = {};
                 Object.entries(table.tabs || {}).forEach(([key, group]) => {
-                    if (group.isPaid === true || group.paymentStatus === 'paid') {
+                    if ((group.isPaid === true || group.paymentStatus === 'paid') && matchesSearch(table, group)) {
                         paidTabs[key] = group;
                     }
                 });
@@ -2555,12 +3096,12 @@ const DineInPageContent = () => {
             // For "Delivered" tab (Cashier) OR "Served" tab (Waiter)
             if (activeStatusFilter === 'Delivered' || activeStatusFilter === 'Served') {
                 const deliveredPendingOrders = (table.pendingOrders || []).filter(group =>
-                    group.mainStatus === 'delivered'
+                    group.mainStatus === 'delivered' && matchesSearch(table, group)
                 );
 
                 const deliveredTabs = {};
                 Object.entries(table.tabs || {}).forEach(([key, group]) => {
-                    if (group.mainStatus === 'delivered' || group.status === 'delivered') {
+                    if ((group.mainStatus === 'delivered' || group.status === 'delivered') && matchesSearch(table, group)) {
                         deliveredTabs[key] = group;
                     }
                 });
@@ -2577,12 +3118,12 @@ const DineInPageContent = () => {
 
             // Filter pending orders and tabs based on status (for other tabs)
             const filteredPendingOrders = (table.pendingOrders || []).filter(group =>
-                matchesFilter(group.mainStatus || 'pending', table)
+                matchesFilter(group.mainStatus || 'pending', table) && matchesSearch(table, group)
             );
 
             const filteredTabs = {};
             Object.entries(table.tabs || {}).forEach(([key, group]) => {
-                if (matchesFilter(group.mainStatus || group.status, table)) {
+                if (matchesFilter(group.mainStatus || group.status, table) && matchesSearch(table, group)) {
                     filteredTabs[key] = group;
                 }
             });
@@ -2608,7 +3149,7 @@ const DineInPageContent = () => {
                     onMarkAsCleaned={handleMarkAsCleaned}
                     onConfirmOrder={(orderId) => handleUpdateStatus(orderId, 'confirmed')}
                     onRejectOrder={handleRejectOrder}
-                    onClearTab={handleClearTab}
+                    onClearTab={confirmClearTab}
                     onUpdateStatus={handleUpdateStatus}
                     onMarkForCleaning={() => { }} // TODO: implement
                     buttonLoading={buttonLoading}
@@ -2623,6 +3164,14 @@ const DineInPageContent = () => {
     };
 
     const tableCards = renderTableCards();
+    const isOwnerOrManager = userRole === 'owner' || userRole === 'manager';
+    const canViewHistory = userRole === 'owner' || userRole === 'manager' || userRole === 'cashier';
+    const hasCompactActions = canViewHistory || isOwnerOrManager;
+    const dineInQuerySuffix = impersonatedOwnerId
+        ? `?impersonate_owner_id=${impersonatedOwnerId}`
+        : employeeOfOwnerId
+            ? `?employee_of=${employeeOfOwnerId}`
+            : '';
 
     if (isBusinessTypeResolved && businessType !== 'restaurant') {
         return (
@@ -2640,7 +3189,30 @@ const DineInPageContent = () => {
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={allData.closedTabs || []} />
-            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allData.tables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
+            <ManageTablesModal
+                isOpen={isManageTablesModalOpen}
+                onClose={() => setIsManageTablesModalOpen(false)}
+                allTables={allData.tables}
+                onEdit={handleOpenEditModal}
+                onDelete={handleDeleteTable}
+                loading={loading}
+                onCreateNew={() => handleOpenEditModal(null)}
+                onShowQr={handleOpenQrDisplayModal}
+                onManageTabs={handleOpenManageTabsModal}
+            />
+            <ManageTableTabsModal
+                isOpen={isManageTableTabsModalOpen}
+                onClose={() => {
+                    setIsManageTableTabsModalOpen(false);
+                    setManageTabsTableId('');
+                }}
+                table={manageTabsTable}
+                onMarkAsPaid={confirmMarkAsPaid}
+                onClearTab={confirmClearTab}
+                onPrintBill={setBillData}
+                buttonLoading={buttonLoading}
+                userRole={userRole}
+            />
             {billData && (
                 <BillModal
                     order={billData}
@@ -2656,7 +3228,7 @@ const DineInPageContent = () => {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
+            {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} restaurantName={restaurantDetails?.name} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
             <CarSpotQrModal
                 isOpen={isCarSpotQrModalOpen}
@@ -2675,60 +3247,183 @@ const DineInPageContent = () => {
                 paymentMethod={confirmationState.paymentMethod}
                 setPaymentMethod={(method) => setConfirmationState(prev => ({ ...prev, paymentMethod: method }))}
             />
+            <Dialog open={isActionsModalOpen} onOpenChange={setIsActionsModalOpen}>
+                <DialogContent className="bg-background border-border text-foreground max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Dine-In Actions</DialogTitle>
+                        <DialogDescription>Quick tools for dine-in operations.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-1 gap-3 py-2">
+                        {canViewHistory && (
+                            <Link href={`/owner-dashboard/dine-in-history${dineInQuerySuffix}`} onClick={() => setIsActionsModalOpen(false)}>
+                                <Button variant="outline" className="w-full justify-start">
+                                    <History size={16} className="mr-2" /> Dine-In History
+                                </Button>
+                            </Link>
+                        )}
+                        {isOwnerOrManager && (
+                            <Button
+                                variant="outline"
+                                className="w-full justify-start"
+                                onClick={() => {
+                                    const nextOpen = !isDineInMenuOpen;
+                                    setIsDineInMenuOpen(nextOpen);
+                                    setIsActionsModalOpen(false);
+                                    if (nextOpen) {
+                                        setTimeout(() => {
+                                            dineInMenuSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        }, 50);
+                                    }
+                                }}
+                            >
+                                <Salad size={16} className="mr-2" /> {isDineInMenuOpen ? 'Close Dine-In Menu' : 'Dine-In Menu'}
+                            </Button>
+                        )}
+                        {isOwnerOrManager && (
+                            <Button
+                                variant="outline"
+                                className="w-full justify-start"
+                                disabled={loading || !restaurantDetails}
+                                onClick={() => {
+                                    setIsManageTablesModalOpen(true);
+                                    setIsActionsModalOpen(false);
+                                }}
+                            >
+                                <TableIcon size={16} className="mr-2" /> Manage Tables
+                            </Button>
+                        )}
+                        {isOwnerOrManager && (
+                            <Button
+                                variant="outline"
+                                className="w-full justify-start border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700"
+                                onClick={() => {
+                                    setIsCarSpotQrModalOpen(true);
+                                    setIsActionsModalOpen(false);
+                                }}
+                            >
+                                <QrCode size={16} className="mr-2" /> Car Spot QR
+                            </Button>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
 
 
-            <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
+            <div className="flex flex-col lg:flex-row justify-between lg:items-start mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
                 </div>
+                <div className="w-full lg:flex-1 lg:max-w-4xl lg:ml-auto">
+                    <div className="flex items-center gap-2 justify-end">
+                        <div className="relative flex-1 max-w-xs sm:max-w-sm lg:max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            value={tableSearchQuery}
+                            onChange={(e) => setTableSearchQuery(e.target.value)}
+                            placeholder="Search table, tab, item..."
+                            className="pl-10"
+                        />
+                        </div>
+                        {canViewHistory && (
+                            <Link href={`/owner-dashboard/dine-in-history${dineInQuerySuffix}`} className="hidden lg:block">
+                                <Button variant="outline" className="h-10">
+                                    <History size={16} className="mr-2" /> History
+                                </Button>
+                            </Link>
+                        )}
+                        {isOwnerOrManager && (
+                            <Button
+                                onClick={() => setIsManageTablesModalOpen(true)}
+                                variant="outline"
+                                className="h-10 hidden lg:inline-flex"
+                                disabled={loading || !restaurantDetails}
+                            >
+                                <TableIcon size={16} className="mr-2" /> Manage Tables
+                            </Button>
+                        )}
+                        <Button
+                            onClick={handleRefreshView}
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 hidden lg:inline-flex"
+                            title="Refresh View"
+                            disabled={loading || dineInOnlyLoading}
+                        >
+                            <RefreshCw size={18} className={cn((loading || dineInOnlyLoading) && "animate-spin")} />
+                        </Button>
+                        {hasCompactActions && (
+                            <Button
+                                onClick={() => setIsActionsModalOpen(true)}
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10"
+                                title="Dine-In Actions"
+                            >
+                                <MoreVertical size={18} />
+                            </Button>
+                        )}
+                    </div>
+                </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                {/* 🔐 RBAC: Create Order button - Only for Owner, Manager, Waiter */}
-                {(userRole === 'owner' || userRole === 'manager' || userRole === 'waiter') && (
-                    <Link href={`/owner-dashboard/dine-in-waiter${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}>
-                        <Button variant="default" className="h-20 flex-col gap-1 w-full bg-primary hover:bg-primary/90">
-                            <Plus size={20} /> Create Order
+            <div className="mb-8 grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-4 items-start">
+                {(userRole === 'owner' || userRole === 'manager' || userRole === 'waiter') ? (
+                    <Link href={`/owner-dashboard/dine-in-waiter${dineInQuerySuffix}`} className="w-full">
+                        <Button variant="default" className="h-12 w-full bg-primary hover:bg-primary/90">
+                            <Plus size={16} className="mr-2" /> Create Order
                         </Button>
                     </Link>
+                ) : (
+                    <div />
                 )}
-
-
-                {/* 🔐 RBAC: Dine-In History - Only for Owner, Manager, Cashier */}
-                {(userRole === 'owner' || userRole === 'manager' || userRole === 'cashier') && (
-                    <Link href={`/owner-dashboard/dine-in-history${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}>
-                        <Button variant="outline" className="h-20 flex-col gap-1 w-full" disabled={loading}>
-                            <History size={20} /> Dine-In History
-                        </Button>
-                    </Link>
-                )}
-                <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
-                    <Salad size={20} /> Dine-In Menu
-                </Button>
-
-                {/* 🔐 RBAC: Manage Tables - Only for Owner, Manager */}
-                {(userRole === 'owner' || userRole === 'manager') && (
-                    <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading || !restaurantDetails}>
-                        <TableIcon size={20} /> Manage Tables
-                    </Button>
-                )}
-                <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
-                </Button>
-
-                {/* ✅ New: Car Spot QR Button */}
-                {(userRole === 'owner' || userRole === 'manager') && (
-                    <Button onClick={() => setIsCarSpotQrModalOpen(true)} variant="outline" className="h-20 flex-col gap-1 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700">
-                        <QrCode size={20} /> Car Spot QR
-                    </Button>
-                )}
+                <div className="w-full">
+                    <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} employeeOfOwnerId={employeeOfOwnerId} compact />
+                </div>
             </div>
 
 
+            {isDineInMenuOpen && (
+                <div ref={dineInMenuSectionRef} className="mb-8 rounded-xl border border-border bg-card p-5">
+                    <div className="mb-4 flex items-center gap-2">
+                        <Salad size={18} className="text-primary" />
+                        <h2 className="text-lg font-bold">Dine-In Only Menu</h2>
+                    </div>
 
-
-            <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} employeeOfOwnerId={employeeOfOwnerId} />
+                    {dineInOnlyLoading ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-pulse">
+                            {[...Array(4)].map((_, idx) => (
+                                <div key={idx} className="h-16 rounded-lg bg-muted" />
+                            ))}
+                        </div>
+                    ) : dineInOnlyItems.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {dineInOnlyItems.map((item) => (
+                                <div key={item.id} className="rounded-lg border border-border bg-background px-4 py-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="font-semibold text-foreground truncate">{item.name}</p>
+                                        <span className="text-sm font-bold text-primary">{formatCurrency(getItemDisplayPrice(item))}</span>
+                                    </div>
+                                    <p className="mt-1 text-xs text-muted-foreground capitalize">
+                                        Category: {String(item.categoryId || 'general').replace(/-/g, ' ')}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+                            No items found. You can add items from{' '}
+                            <Link
+                                href={`/owner-dashboard/menu${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : ''}`}
+                                className="font-semibold text-foreground underline hover:text-primary"
+                            >
+                                Menu
+                            </Link>{' '}
+                            that are specific to <span className="font-semibold text-foreground">Dine-In Only</span>.
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4">
                 <h2 className="text-xl font-bold">Live Tables</h2>

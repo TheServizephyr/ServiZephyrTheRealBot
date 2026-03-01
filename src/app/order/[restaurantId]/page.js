@@ -1561,6 +1561,7 @@ const OrderPageInternal = () => {
     const [isDineInModalOpen, setIsDineInModalOpen] = useState(false);
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [waiterToast, setWaiterToast] = useState({ isOpen: false, message: '', type: 'success' });
 
     // ✅ Car Order state
     const orderTypeFromUrl = searchParams.get('orderType');
@@ -1583,6 +1584,14 @@ const OrderPageInternal = () => {
     const [newTabName, setNewTabName] = useState('');
     const [isEditingModal, setIsEditingModal] = useState(false);
     const [isReleasingSeat, setIsReleasingSeat] = useState(false);
+
+    useEffect(() => {
+        if (!waiterToast.isOpen) return undefined;
+        const timer = setTimeout(() => {
+            setWaiterToast((prev) => ({ ...prev, isOpen: false }));
+        }, 2200);
+        return () => clearTimeout(timer);
+    }, [waiterToast.isOpen]);
 
     const normalizedBusinessType = useMemo(
         () => normalizeBusinessType(restaurantData.businessType),
@@ -2048,6 +2057,7 @@ const OrderPageInternal = () => {
                     // Add-on Charges
                     gstEnabled: settingsData.gstEnabled,
                     gstRate: settingsData.gstRate,
+                    gstCalculationMode: settingsData.gstCalculationMode || (settingsData.gstIncludedInPrice === false ? 'excluded' : 'included'),
                     gstMinAmount: settingsData.gstMinAmount,
                     convenienceFeeEnabled: settingsData.convenienceFeeEnabled,
                     convenienceFeeRate: settingsData.convenienceFeeRate,
@@ -2565,6 +2575,7 @@ const OrderPageInternal = () => {
             // Add-on Charges
             gstEnabled: restaurantData.gstEnabled,
             gstRate: restaurantData.gstRate,
+            gstCalculationMode: restaurantData.gstCalculationMode || (restaurantData.gstIncludedInPrice === false ? 'excluded' : 'included'),
             gstMinAmount: restaurantData.gstMinAmount,
             convenienceFeeEnabled: restaurantData.convenienceFeeEnabled,
             convenienceFeeRate: restaurantData.convenienceFeeRate,
@@ -2711,6 +2722,11 @@ const OrderPageInternal = () => {
 
         for (const category of Object.keys(sourceMenu)) {
             let items = Array.isArray(sourceMenu[category]) ? [...sourceMenu[category]] : [];
+            // Dine-in exclusive items should be visible only in dine-in flow.
+            items = items.filter((item) => {
+                if (item?.isDineInExclusive !== true) return true;
+                return deliveryType === 'dine-in';
+            });
             if (normalizedSearchQuery) {
                 items = items.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery));
             }
@@ -2759,6 +2775,7 @@ const OrderPageInternal = () => {
         sortBy,
         filters,
         normalizedSearchQuery,
+        deliveryType,
         isStoreBusiness,
         isStoreFilterContextActive,
         hasStoreSearchContext,
@@ -3075,9 +3092,17 @@ const OrderPageInternal = () => {
     const handleCallWaiter = async () => {
         try {
             await fetch('/api/owner/service-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, tableId: tableIdFromUrl, dineInTabId: activeTabInfo.id }) });
-            setInfoDialog({ isOpen: true, title: "Request Sent!", message: "A waiter has been notified and will be with you shortly." });
+            setWaiterToast({
+                isOpen: true,
+                type: 'success',
+                message: 'Request sent. Waiter has been notified.'
+            });
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: "Could not send request. " + error.message });
+            setWaiterToast({
+                isOpen: true,
+                type: 'error',
+                message: `Could not send request${error?.message ? `: ${error.message}` : '.'}`
+            });
         }
     };
 
@@ -3390,6 +3415,25 @@ const OrderPageInternal = () => {
     return (
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
+            <AnimatePresence>
+                {waiterToast.isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                        className={cn(
+                            "fixed top-4 left-1/2 -translate-x-1/2 z-[120] px-3.5 py-2 rounded-lg border shadow-lg text-xs sm:text-sm font-medium backdrop-blur-sm",
+                            waiterToast.type === 'error'
+                                ? "bg-red-500/95 text-white border-red-400"
+                                : "bg-emerald-500/95 text-white border-emerald-400"
+                        )}
+                        role="status"
+                        aria-live="polite"
+                    >
+                        {waiterToast.message}
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {isQrScannerOpen && <QrScanner onClose={() => setIsQrScannerOpen(false)} onScanSuccess={(decodedText) => { setIsQrScannerOpen(false); window.location.href = decodedText; }} />}
 

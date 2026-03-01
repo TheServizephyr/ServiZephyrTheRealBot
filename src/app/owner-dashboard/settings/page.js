@@ -257,6 +257,7 @@ const ImageUpload = ({ label, currentImage, onFileSelect, isEditing, folderPath 
 
 // --- Main Page Component ---
 function SettingsPageContent() {
+    const router = useRouter();
     // ... (State hooks same) ...
     const [user, setUser] = useState(null);
     const [editedUser, setEditedUser] = useState(null);
@@ -318,7 +319,8 @@ function SettingsPageContent() {
                     uid: currentUser.uid, // ✅ Critical for Storage Paths
                     bannerUrls: data.bannerUrls || [],
                     address: data.address && typeof data.address === 'object' ? data.address : defaultAddress,
-                    dineInModel: data.dineInModel || 'post-paid' // Default to Post-Paid
+                    dineInModel: data.dineInModel || 'post-paid', // Default to Post-Paid
+                    gstCalculationMode: data.gstCalculationMode || (data.gstIncludedInPrice === false ? 'excluded' : 'included'),
                 };
                 setUser(userData);
                 setEditedUser(userData);
@@ -497,6 +499,7 @@ function SettingsPageContent() {
             payload = {
                 gstEnabled: editedUser.gstEnabled,
                 gstPercentage: editedUser.gstPercentage,
+                gstCalculationMode: editedUser.gstCalculationMode || 'included',
             }
         }
 
@@ -526,7 +529,8 @@ function SettingsPageContent() {
             const finalUser = {
                 ...updatedUser,
                 address: updatedUser.address && typeof updatedUser.address === 'object' ? updatedUser.address : defaultAddress,
-                dineInModel: updatedUser.dineInModel || 'post-paid'
+                dineInModel: updatedUser.dineInModel || 'post-paid',
+                gstCalculationMode: updatedUser.gstCalculationMode || (updatedUser.gstIncludedInPrice === false ? 'excluded' : 'included'),
             };
             setUser(finalUser);
             setEditedUser(finalUser);
@@ -608,6 +612,9 @@ function SettingsPageContent() {
 
     // Show business owner sections if: owner accessing their own data OR employee/admin viewing owner's data
     const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor' || !!employeeOfOwnerId || !!impersonatedOwnerId;
+    const settingsQuerySuffix = impersonatedOwnerId
+        ? `?impersonate_owner_id=${impersonatedOwnerId}`
+        : (employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '');
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
@@ -620,6 +627,32 @@ function SettingsPageContent() {
             <DeleteAccountModal isOpen={isDeleteModalOpen} setIsOpen={setDeleteModalOpen} />
 
             <h1 className="text-3xl font-bold tracking-tight">User Profile & Settings</h1>
+
+            {isBusinessOwner && (
+                <SectionCard
+                    title="Business Shortcuts"
+                    description="Quick access to outlet setup tools moved from sidebar."
+                >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Button
+                            variant="outline"
+                            className="justify-start h-11"
+                            onClick={() => router.push(`/owner-dashboard/location${settingsQuerySuffix}`)}
+                        >
+                            <MapPin className="mr-2 h-4 w-4" />
+                            Location
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="justify-start h-11"
+                            onClick={() => router.push(`/owner-dashboard/connections${settingsQuerySuffix}`)}
+                        >
+                            <Bot className="mr-2 h-4 w-4" />
+                            Connections
+                        </Button>
+                    </div>
+                </SectionCard>
+            )}
 
             {/* Profile Information Section */}
             <SectionCard
@@ -966,6 +999,29 @@ function SettingsPageContent() {
                                         className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed"
                                         placeholder="e.g., 18"
                                     />
+
+                                    <div className="mt-4">
+                                        <Label className="font-semibold">GST Price Mode</Label>
+                                        <p className="text-xs text-muted-foreground mb-3">Choose whether menu prices already include GST or GST should be added on top.</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Button
+                                                type="button"
+                                                variant={(editedUser.gstCalculationMode || 'included') === 'included' ? 'default' : 'outline'}
+                                                onClick={() => setEditedUser({ ...editedUser, gstCalculationMode: 'included' })}
+                                                disabled={!isEditingGst}
+                                            >
+                                                GST Included
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant={(editedUser.gstCalculationMode || 'included') === 'excluded' ? 'default' : 'outline'}
+                                                onClick={() => setEditedUser({ ...editedUser, gstCalculationMode: 'excluded' })}
+                                                disabled={!isEditingGst}
+                                            >
+                                                GST Excluded
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>

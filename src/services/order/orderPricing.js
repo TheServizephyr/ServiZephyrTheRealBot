@@ -47,9 +47,10 @@ function getBusinessCollection(businessType) {
  * @param {string} params.restaurantId - Business ID
  * @param {Array} params.items - Cart items from client
  * @param {string} params.businessType - Business type
+ * @param {string} params.deliveryType - Requested order flow (delivery/pickup/dine-in/car-order)
  * @returns {Promise<Object>} Server-calculated pricing
  */
-export async function calculateServerTotal({ restaurantId, items, businessType = 'restaurant' }) {
+export async function calculateServerTotal({ restaurantId, items, businessType = 'restaurant', deliveryType = 'delivery' }) {
     console.log(`[OrderPricing] Calculating server total for ${restaurantId}`);
 
     const firestore = await getFirestore();
@@ -86,7 +87,7 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
 
     for (const item of items) {
         try {
-            const itemPrice = await validateAndCalculateItemPrice(item, menuItemMap);
+            const itemPrice = await validateAndCalculateItemPrice(item, menuItemMap, deliveryType);
             const itemQuantity = item.quantity || 1;
             const itemTotal = itemPrice * itemQuantity;
 
@@ -123,14 +124,20 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
  * 
  * @param {Object} item - Cart item
  * @param {Map} menuItemMap - Menu item map keyed by itemId
+ * @param {string} deliveryType - Requested order flow
  * @returns {Promise<number>} Validated item price
  */
-async function validateAndCalculateItemPrice(item, menuItemMap) {
+async function validateAndCalculateItemPrice(item, menuItemMap, deliveryType) {
     const requestedItemId = String(item?.id || '').trim();
     const menuItem = requestedItemId ? menuItemMap.get(requestedItemId) : null;
 
     if (!menuItem) {
         throw new PricingError(`Item "${item.id}" not found in menu`);
+    }
+
+    const normalizedDeliveryType = String(deliveryType || '').trim().toLowerCase();
+    if (menuItem?.isDineInExclusive === true && normalizedDeliveryType !== 'dine-in') {
+        throw new PricingError(`"${menuItem.name}" is available only for dine-in orders`);
     }
 
     const requestedCategory = String(item?.categoryId || '').trim().toLowerCase();
@@ -264,22 +271,44 @@ export function validatePriceMatch(clientSubtotal, serverSubtotal, tolerance = 1
 export function calculateTaxes(subtotal, businessData) {
     const gstEnabled = businessData.gstEnabled || false;
     const gstRate = businessData.gstPercentage !== undefined ? businessData.gstPercentage : (businessData.gstRate || 5);
+    const gstCalculationMode = String(
+        businessData?.gstCalculationMode ||
+        (businessData?.gstIncludedInPrice === false ? 'excluded' : 'included')
+    ).toLowerCase();
+    const isIncludedInPrice = gstCalculationMode !== 'excluded';
 
     if (!gstEnabled) {
         return {
             cgst: 0,
             sgst: 0,
-            totalTax: 0
+            totalTax: 0,
+            isIncludedInPrice: false
+        };
+    }
+
+    if (isIncludedInPrice) {
+        const safeSubtotal = Number(subtotal) || 0;
+        const taxableBase = safeSubtotal / (1 + (gstRate / 100));
+        const totalTax = Math.max(0, safeSubtotal - taxableBase);
+        const cgst = Math.round((totalTax / 2) * 100) / 100;
+        const sgst = Math.round((totalTax / 2) * 100) / 100;
+
+        return {
+            cgst,
+            sgst,
+            totalTax: cgst + sgst,
+            isIncludedInPrice: true
         };
     }
 
     const halfRate = gstRate / 2;
-    const cgst = Math.round((subtotal * halfRate) / 100);
-    const sgst = Math.round((subtotal * halfRate) / 100);
+    const cgst = Math.round((subtotal * halfRate) / 100) / 100;
+    const sgst = Math.round((subtotal * halfRate) / 100) / 100;
 
     return {
         cgst,
         sgst,
-        totalTax: cgst + sgst
+        totalTax: cgst + sgst,
+        isIncludedInPrice: false
     };
 }

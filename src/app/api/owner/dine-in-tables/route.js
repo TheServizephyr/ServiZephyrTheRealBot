@@ -38,6 +38,11 @@ export async function GET(req) {
 
     const firestore = await getFirestore();
     try {
+        const { searchParams } = new URL(req.url);
+        const includeEmptyTabs = ['1', 'true', 'yes'].includes(
+            String(searchParams.get('include_empty_tabs') || '').toLowerCase()
+        );
+
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(
             req,
             'fetch_dine_in_tables',
@@ -67,18 +72,38 @@ export async function GET(req) {
             });
         });
 
-        // 2. Fetch all active tabs
-        // DISABLED: Loading tabs from dineInTabs causes duplicates because orders are already grouped below
-        // const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
+        // 2. Optional: include empty/joinable tabs for waiter flow.
+        // This keeps newly-created tabs visible even before first order.
+        if (includeEmptyTabs) {
+            const joinableTabsSnap = await businessRef.collection('dineInTabs')
+                .where('status', 'in', ['active', 'inactive'])
+                .get();
 
-        // 3. Group active tabs by their tableId
-        // activeTabsSnap.forEach(tabDoc => {
-        //     const tabData = tabDoc.data();
-        //     if (tableMap.has(tabData.tableId)) {
-        //         const table = tableMap.get(tabData.tableId);
-        //         table.tabs[tabData.id] = { ...tabData, orders: {} };
-        //     }
-        // });
+            joinableTabsSnap.forEach((tabDoc) => {
+                const tabData = tabDoc.data() || {};
+                const tableId = String(tabData.tableId || '').trim();
+                if (!tableId || !tableMap.has(tableId)) return;
+
+                const table = tableMap.get(tableId);
+                table.tabs[tabDoc.id] = {
+                    id: tabDoc.id,
+                    dineInTabId: tabDoc.id,
+                    tableId,
+                    tab_name: tabData.tab_name || 'Guest',
+                    pax_count: Number(tabData.pax_count || 1),
+                    status: tabData.status || 'inactive',
+                    mainStatus: tabData.status || 'inactive',
+                    orders: {},
+                    orderBatches: [],
+                    items: [],
+                    hasPending: false,
+                    hasConfirmed: false,
+                    totalAmount: Number(tabData.totalBill || 0),
+                    paymentStatus: tabData.paymentStatus || 'pending',
+                    isPaid: tabData.paymentStatus === 'paid'
+                };
+            });
+        }
 
         // 4. Fetch all relevant orders that are not finished or rejected
         // IMPORTANT: Include 'delivered' status - tabs should stay visible until cleaned
@@ -285,7 +310,10 @@ export async function GET(req) {
                 table.pendingOrders.push(groupData);
             } else {
                 // Active orders go to tabs (detailed view)
-                // Override any existing tab from dineInTabs with full orderGroup details
+                // Override placeholder tab (if any) with full orderGroup details
+                if (group.dineInTabId && table.tabs[group.dineInTabId]) {
+                    delete table.tabs[group.dineInTabId];
+                }
                 table.tabs[groupKey] = groupData;
             }
         });
@@ -440,9 +468,41 @@ export async function POST(req) {
                     if (!tableDoc.exists) throw new Error("Table not found.");
 
                     const tableData = tableDoc.data();
-                    const availableCapacity = tableData.max_capacity - (tableData.current_pax || 0);
+                    const maxCapacity = Math.max(0, Number(tableData.max_capacity || 0));
+                    const requestedPax = Math.max(0, Number(pax_count || 0));
 
-                    if (pax_count > availableCapacity) {
+                    // Ground truth from open tabs
+                    const openTabsSnap = await transaction.get(
+                        businessRef.collection('dineInTabs')
+                            .where('tableId', '==', tableId)
+                            .where('status', 'in', ['active', 'inactive'])
+                    );
+                    const tabBasedPax = openTabsSnap.docs.reduce((sum, doc) =>
+                        sum + Math.max(0, Number(doc.data()?.pax_count || 0)), 0);
+
+                    // Safety net from active orders
+                    const activeOrdersSnap = await transaction.get(
+                        firestore.collection('orders')
+                            .where('restaurantId', '==', businessRef.id)
+                            .where('deliveryType', '==', 'dine-in')
+                            .where('tableId', '==', tableId)
+                            .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'pay_at_counter'])
+                    );
+                    const activePartyPax = new Map();
+                    activeOrdersSnap.docs.forEach((doc) => {
+                        const order = doc.data() || {};
+                        if (order.cleaned === true) return;
+                        const partyKey = order.dineInTabId || order.tabId || order.dineInToken || doc.id;
+                        if (!activePartyPax.has(partyKey)) {
+                            activePartyPax.set(partyKey, Math.max(1, Number(order.pax_count || 1)));
+                        }
+                    });
+                    const orderBasedPax = Array.from(activePartyPax.values()).reduce((sum, pax) => sum + pax, 0);
+
+                    const effectiveOccupiedPax = Math.max(tabBasedPax, orderBasedPax);
+                    const availableCapacity = Math.max(0, maxCapacity - effectiveOccupiedPax);
+
+                    if (requestedPax > availableCapacity) {
                         throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
                     }
 
@@ -453,16 +513,17 @@ export async function POST(req) {
                         restaurantId: businessRef.id,
                         status: 'inactive', // Tab starts as inactive until first order
                         tab_name,
-                        pax_count: Number(pax_count),
+                        pax_count: requestedPax,
                         createdAt: FieldValue.serverTimestamp(),
                         totalBill: 0,
                         orders: {}
                     };
                     transaction.set(newTabRef, newTabData);
 
+                    const nextPax = Math.min(maxCapacity || (effectiveOccupiedPax + requestedPax), effectiveOccupiedPax + requestedPax);
                     transaction.update(tableRef, {
-                        current_pax: FieldValue.increment(Number(pax_count)),
-                        state: 'occupied'
+                        current_pax: nextPax,
+                        state: nextPax >= maxCapacity ? 'full' : 'occupied'
                     });
                 });
                 return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
@@ -549,7 +610,41 @@ export async function PATCH(req) {
                 .get();
 
             if (ordersQuery.empty) {
-                return NextResponse.json({ message: 'No active orders found for this tab.' }, { status: 404 });
+                // Support clearing empty/inactive tabs that have no orders yet.
+                const tabRef = businessRef.collection('dineInTabs').doc(tabId);
+                const tabSnap = await tabRef.get();
+                if (!tabSnap.exists) {
+                    return NextResponse.json({ message: 'No active orders or tab found for this tab ID.' }, { status: 404 });
+                }
+
+                const tabData = tabSnap.data() || {};
+                const resolvedTableId = String(tabData.tableId || tableId || '').trim();
+
+                await tabRef.set({
+                    status: 'completed',
+                    closedAt: FieldValue.serverTimestamp(),
+                    cleanedAt: FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                if (resolvedTableId) {
+                    const tableRefResolved = businessRef.collection('tables').doc(resolvedTableId);
+                    const openTabsSnap = await businessRef.collection('dineInTabs')
+                        .where('tableId', '==', resolvedTableId)
+                        .where('status', 'in', ['active', 'inactive'])
+                        .get();
+
+                    const recalculatedPax = openTabsSnap.docs.reduce((sum, doc) => {
+                        return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
+                    }, 0);
+
+                    await tableRefResolved.set({
+                        current_pax: recalculatedPax,
+                        state: recalculatedPax > 0 ? 'occupied' : 'available',
+                        updatedAt: FieldValue.serverTimestamp()
+                    }, { merge: true });
+                }
+
+                return NextResponse.json({ message: 'Empty tab cleared successfully.' }, { status: 200 });
             }
 
             // Batch update all orders to 'picked_up' status

@@ -93,8 +93,6 @@ const getSettingsItems = (businessType, effectiveOwnerId, paramName = 'impersona
   }
   return [
     { name: "My Profile", icon: UserCircle, href: appendParam("/owner-dashboard/my-profile"), featureId: "my-profile" },
-    { name: "Location", icon: MapPin, href: appendParam("/owner-dashboard/location"), featureId: "location" },
-    { name: "Connections", icon: Bot, href: appendParam("/owner-dashboard/connections"), featureId: "connections" },
     // { name: "Payouts", icon: Banknote, href: appendParam("/owner-dashboard/payouts"), featureId: "payouts" },
     // { name: "Onboarding", icon: Banknote, href: appendParam("/owner-dashboard/payout-settings"), featureId: "payout-settings" },
     { name: "Settings", icon: Settings, href: appendParam("/owner-dashboard/settings"), featureId: "settings" },
@@ -253,6 +251,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   // Fetch WhatsApp Unread Count
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+  const [dineInPendingOrdersCount, setDineInPendingOrdersCount] = useState(0);
+  const [dineInServiceRequestsCount, setDineInServiceRequestsCount] = useState(0);
   const hasBootstrappedPendingNotifRef = useRef(false);
   const prevPendingCountRef = useRef(0);
   const hasBootstrappedWaNotifRef = useRef(false);
@@ -414,6 +414,96 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     return () => unsubscribe();
   }, [businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
 
+  // Dine-In badge counts (pending dine-in orders + pending service requests)
+  useEffect(() => {
+    if (businessType === 'street-vendor') return;
+    if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
+
+    let unsubscribeOrders = () => { };
+
+    const setupListeners = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const restaurantsQuery = query(
+          collection(db, 'restaurants'),
+          where('ownerId', '==', user.uid),
+          limit(1)
+        );
+        const restaurantSnapshot = await getDocs(restaurantsQuery);
+        if (restaurantSnapshot.empty) return;
+        const restaurantId = restaurantSnapshot.docs[0].id;
+
+        const dineInOrdersQuery = query(
+          collection(db, 'orders'),
+          where('restaurantId', '==', restaurantId),
+          where('deliveryType', '==', 'dine-in'),
+          where('status', '==', 'pending')
+        );
+
+        unsubscribeOrders = onSnapshot(dineInOrdersQuery, (snapshot) => {
+          setDineInPendingOrdersCount(snapshot.size);
+        }, (error) => {
+          console.error('Error listening to dine-in pending orders:', error);
+        });
+      } catch (error) {
+        console.error('Error setting up dine-in badge listeners:', error);
+      }
+    };
+
+    setupListeners();
+    return () => {
+      unsubscribeOrders();
+    };
+  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+
+  // Service request count via API (more reliable with Firestore security rules)
+  useEffect(() => {
+    if (businessType === 'street-vendor') return;
+    if (employeeOfOwnerId || !auth.currentUser) return;
+
+    let intervalId = null;
+    let isMounted = true;
+
+    const fetchServiceRequestCount = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user || !isMounted) return;
+        const idToken = await user.getIdToken();
+        const url = new URL('/api/owner/service-requests', window.location.origin);
+        if (impersonatedOwnerId) {
+          url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        }
+
+        const res = await fetch(url.toString(), {
+          headers: { Authorization: `Bearer ${idToken}` }
+        });
+
+        if (!res.ok) {
+          if (isMounted) setDineInServiceRequestsCount(0);
+          return;
+        }
+
+        const data = await res.json();
+        if (isMounted) {
+          setDineInServiceRequestsCount(Array.isArray(data?.requests) ? data.requests.length : 0);
+        }
+      } catch (error) {
+        console.error('Error fetching dine-in service requests count:', error);
+        if (isMounted) setDineInServiceRequestsCount(0);
+      }
+    };
+
+    fetchServiceRequestCount();
+    intervalId = setInterval(fetchServiceRequestCount, 15000);
+
+    return () => {
+      isMounted = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+
   useEffect(() => {
     if (impersonatedOwnerId || employeeOfOwnerId) return;
     const unread = whatsappUnreadCount || 0;
@@ -465,6 +555,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                     ? whatsappUnreadCount
                     : item.featureId === 'live-orders'
                       ? pendingOrdersCount
+                      : item.featureId === 'dine-in'
+                        ? (dineInPendingOrdersCount + dineInServiceRequestsCount)
                       : 0
                 }}
                 isCollapsed={isCollapsed}

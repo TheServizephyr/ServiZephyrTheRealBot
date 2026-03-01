@@ -1,0 +1,1559 @@
+
+> servizephyr-main-app@0.1.0 dev
+> next dev
+
+ ⚠ Port 3000 is in use, trying 3001 instead.
+  ▲ Next.js 14.2.33
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2s
+ ○ Compiling / ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ Compiled / in 28.5s (1864 modules)
+motion() is deprecated. Use motion.create() instead.
+[Firebase] ✓ Auth persistence configured: LOCAL
+[Firebase] ✓ Auth persistence configured: LOCAL
+ GET / 200 in 26306ms
+ ✓ Compiled in 2s (770 modules)
+ ○ Compiling /api/auth/check-role ...
+ ✓ Compiled /api/auth/check-role in 948ms (1099 modules)
+[DEBUG] /api/auth/check-role: Received a request.
+[firebase-admin] Found FIREBASE_SERVICE_ACCOUNT_JSON env var.
+[firebase-admin] Successfully parsed FIREBASE_SERVICE_ACCOUNT_JSON.
+[firebase-admin] Firebase Admin SDK initialized successfully.
+[DEBUG] /api/auth/check-role: Token verified for UID: roQFxnWgU4XJrZxqTh8Ifvad1P82
+[DEBUG] /api/auth/check-role: Firestore 'users' document fetched. Exists: true
+[DEBUG] /api/auth/check-role: User document data: {
+  uid: 'roQFxnWgU4XJrZxqTh8Ifvad1P82',
+  email: 'humfakeh@gmail.com',
+  name: 'Fake Guy',
+  role: 'owner',
+  profilePictureUrl: 'https://lh3.googleusercontent.com/a/ACg8ocL8txu90M76N25GFf2huBqmpZXRpSl96GKc69Ho5mGuJNmYOA=s96-c',
+  phone: '8934035716',
+  notifications: { newOrders: true, dailySummary: true, marketing: true },
+  customerId: 'CS_260205220135',
+  addresses: [
+    {
+      id: 'addr_1761196385292',
+      label: 'ghar hai ghar',
+      name: 'utkarsh p',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761206141258',
+      label: 'ghar hai ghar',
+      name: 'utkarsh',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761206649608',
+      label: 'ghar hai ghar',
+      name: 'utkarsh',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761206670305',
+      label: 'ghar hai ghar',
+      name: 'utkarsh p',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761207070256',
+      label: 'ghar hai ghar',
+      name: 'utkarsh p',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761207430296',
+      label: 'ghar hai ghar',
+      name: 'utkarsh',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761208646382',
+      label: 'ghar hai ghar',
+      name: 'utkarsh p',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761209142637',
+      label: 'ghar hai ghar',
+      name: 'utkarsh p',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761210460840',
+      label: 'ghar hai ghar',
+      name: 'utkarsh',
+      phone: '8922035716',
+      alternatePhone: '8934035716',
+      full: 'ghar mera hai kyu mai btau'
+    },
+    {
+      id: 'addr_1761555015531',
+      label: 'Work',
+      name: 'Fake hwhGuy',
+      phone: '6131636362',
+      street: 'Hehhe',
+      landmark: 'Huw',
+      city: 'Delhi Division',
+      state: 'Delhi',
+      pincode: '110011',
+      country: 'India',
+      full: 'Hehhe, Huw, Central Secretariat, Delhi Division, Delhi - 110011',
+      latitude: 28.6139,
+      longitude: 77.209
+    },
+    {
+      id: 'addr_1761915780704',
+      label: 'Home',
+      name: 'Ashwani',
+      phone: '9027872803',
+      alternatePhone: '',
+      street: 'Friends colony muradnagar,opposite to KIET ghaziabad,',
+      landmark: '',
+      city: 'Ghaziabad',
+      pincode: '201206',
+      state: 'Uttar Pradesh',
+      country: 'IN',
+      full: 'Friends colony muradnagar,opposite to KIET ghaziabad,, Ghaziabad, Uttar Pradesh - 201206'
+    },
+    {
+      id: 'addr_1761918167144',
+      label: 'Home',
+      name: 'Fake Guy',
+      phone: '9027872803',
+      street: 'Central Secretariat',
+      landmark: '',
+      city: 'New Delhi',
+      state: 'Delhi',
+      pincode: '110011',
+      country: 'IN',
+      full: 'J675+HJ6, Rajpath Area, Central Secretariat, New Delhi, Delhi 110011, India',
+      latitude: 28.6139,
+      longitude: 77.209
+    },
+    {
+      id: 'addr_1761918187859',
+      label: 'Home',
+      name: 'Fake Guy',
+      phone: '9027872803',
+      street: 'Central Secretariat',
+      landmark: '',
+      city: 'New Delhi',
+      state: 'Delhi',
+      pincode: '110011',
+      country: 'IN',
+      full: 'J675+HJ6, Rajpath Area, Central Secretariat, New Delhi, Delhi 110011, India',
+      latitude: 28.6139,
+      longitude: 77.209
+    },
+    {
+      id: 'addr_1761918586278',
+      label: 'Dost ka Ghar',
+      name: 'Ashwani Baghel',
+      phone: '9027872803',
+      street: '',
+      landmark: '',
+      city: 'Asalat Nagar',
+      state: 'Uttar Pradesh',
+      pincode: '201206',
+      country: 'IN',
+      full: 'Chaudhry Niwas, Gali no.1, Muradnagar, Uttar Pradesh 201206, India',
+      latitude: 28.7540416,
+      longitude: 77.4944786
+    },
+    {
+      id: 'addr_1770644813308',
+      label: 'Home',
+      name: 'Fake Guy',
+      phone: '8934035716',
+      street: 'Phase - I',
+      landmark: '',
+      city: 'Asalat Nagar',
+      state: 'Uttar Pradesh',
+      pincode: '201206',
+      country: 'IN',
+      full: 'QF4W+F9V, Phase - I, Muradnagar, Asalat Nagar, Uttar Pradesh 201206, India',
+      latitude: 28.7562275,
+      longitude: 77.4958844
+    }
+  ]
+}
+[DEBUG] /api/auth/check-role: Role: owner, LinkedOutlets count: 0
+[DEBUG] /api/auth/check-role: LinkedOutlets: []
+[DEBUG] /api/auth/check-role: hasEmployeeRole: false, isOwnerOrVendor: true, role: owner
+[DEBUG] /api/auth/check-role: Role found in 'users': 'owner'. Returning 200.
+ POST /api/auth/check-role 200 in 6252ms
+ ○ Compiling /owner-dashboard ...
+ ✓ Compiled /owner-dashboard in 8.9s (3182 modules)
+[Firebase] ✓ Auth persistence configured: LOCAL
+[Firebase] ✓ Auth persistence configured: LOCAL
+ GET /owner-dashboard 200 in 9693ms
+ ○ Compiling /api/owner/settings ...
+ ✓ Compiled /api/owner/connections in 1465ms (1892 modules)
+ ✓ Compiled (1900 modules)
+[API /settings] Verifying owner...
+[API /employee/me] UID verified: roQFxnWgU4XJrZxqTh8Ifvad1P82
+[API /employee/me] Firebase services initialized
+[API /employee/me] User record fetched for roQFxnWgU4XJrZxqTh8Ifvad1P82
+ GET /api/owner/status 200 in 3518ms
+ GET /api/employee/me 200 in 3893ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 6146ms
+[API /settings] Verifying owner...
+ GET /api/owner/connections 200 in 6569ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 3427ms
+[API /settings] Verifying owner...
+ GET /api/owner/dashboard-data?filter=Today 200 in 9497ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 3513ms
+ ○ Compiling /owner-dashboard/dine-in ...
+ ✓ Compiled /owner-dashboard/dine-in in 6.3s (3493 modules)
+ ○ Compiling /api/owner/dine-in-tables ...
+ ✓ Compiled /api/owner/dine-in-tables in 790ms (1995 modules)
+ ✓ Compiled (2003 modules)
+[API /settings] Verifying owner...
+[API /employee/me] UID verified: roQFxnWgU4XJrZxqTh8Ifvad1P82
+[API /employee/me] Firebase services initialized
+[API /employee/me] User record fetched for roQFxnWgU4XJrZxqTh8Ifvad1P82
+ GET /api/owner/status 200 in 3537ms
+ GET /api/employee/me 200 in 3581ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 4173ms
+[API /settings] Verifying owner...
+ GET /api/owner/service-requests 200 in 4397ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1635ms
+ GET /api/owner/service-requests 200 in 1456ms
+[API /settings] Verifying owner...
+ GET /api/owner/dine-in-tables 200 in 5948ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1201ms
+ GET /api/owner/dine-in-tables 200 in 3101ms
+ GET /api/owner/dine-in-tables 200 in 3083ms
+ GET /api/owner/dine-in-tables 200 in 2902ms
+ GET /api/owner/service-requests 200 in 1221ms
+ GET /api/owner/service-requests 200 in 1211ms
+ GET /api/owner/service-requests 200 in 1187ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 65557ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 42226ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 44122ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 43529ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 42500ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 44423ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 44860ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 46904ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 43775ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 45970ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 44272ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 42572ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 43036ms
+ GET /api/owner/service-requests 200 in 30544ms
+ GET /api/owner/service-requests 200 in 4040ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect EHOSTUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 200 in 4524ms
+GET SERVICE REQUESTS ERROR: Error: 14 UNAVAILABLE: No connection established. Last error: Error: connect ENETUNREACH 2404:6800:4002:818::200a:443. Resolution note: 
+    at callErrorFromStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\call.js:32:19)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:359:73)
+    at Object.onReceiveStatus (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client-interceptors.js:327:181)
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\resolving-call.js:135:78
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)
+for call at
+    at ServiceClientImpl.makeServerStreamRequest (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\client.js:342:32)
+    at ServiceClientImpl.<anonymous> (s:\ServiZephyrTheRealBot\node_modules\google-gax\node_modules\@grpc\grpc-js\build\src\make-client.js:105:19)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\v1\firestore_client.js:242:33
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streamingApiCaller.js:38:28
+    at s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\normalCalls\timeout.js:44:16
+    at Object.request (s:\ServiZephyrTheRealBot\node_modules\google-gax\build\src\streamingCalls\streaming.js:234:40)
+    at Timeout.makeRequest [as _onTimeout] (s:\ServiZephyrTheRealBot\node_modules\retry-request\index.js:159:28)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+Caused by: Error
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1040:27
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at Firestore.getAll (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\index.js:1031:32)
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:182:36
+    at s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:110:30
+    at NoopContextManager.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\context\NoopContextManager.js:25:19)
+    at ContextAPI.with (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\api\context.js:60:46)
+    at NoopTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\NoopTracer.js:65:31)
+    at ProxyTracer.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@opentelemetry\api\build\src\trace\ProxyTracer.js:36:24)
+    at EnabledTraceUtil.startActiveSpan (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\telemetry\enabled-trace-util.js:102:28)
+    at DocumentReference.get (s:\ServiZephyrTheRealBot\node_modules\@google-cloud\firestore\build\src\reference\document-reference.js:181:43)
+    at verifyOwnerAndGetBusinessRef (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:17:71)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/owner/service-requests/route.js:38:29)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (s:\ServiZephyrTheRealBot\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\base-server.js:818:17)
+    at async s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (s:\ServiZephyrTheRealBot\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (s:\ServiZephyrTheRealBot\node_modules\next\dist\server\lib\start-server.js:141:13) {
+  code: 14,
+  details: 'No connection established. Last error: Error: connect ENETUNREACH 2404:6800:4002:818::200a:443. Resolution note: ',
+  metadata: Metadata {
+    internalRepr: Map(0) {},
+    opaqueData: Map(0) {},
+    options: {}
+  }
+}
+ GET /api/owner/service-requests 500 in 43998ms
+ GET /api/owner/service-requests 200 in 16617ms
+ GET /api/owner/service-requests 200 in 7635ms
+ GET /api/owner/service-requests 200 in 3683ms
+ GET /api/owner/service-requests 200 in 2302ms
+ GET /api/owner/service-requests 200 in 1467ms
+ GET /api/owner/service-requests 200 in 1387ms
+ GET /api/owner/service-requests 200 in 1485ms
+ GET /api/owner/service-requests 200 in 1854ms
+ GET /api/owner/service-requests 200 in 2955ms
+ GET /api/owner/service-requests 200 in 27174ms
+ GET /api/owner/service-requests 200 in 2316ms
+ GET /api/owner/service-requests 200 in 2289ms
+ GET /api/owner/service-requests 200 in 1571ms
+ GET /api/owner/service-requests 200 in 1773ms
+ GET /api/owner/service-requests 200 in 1303ms
+ GET /api/owner/service-requests 200 in 2118ms
+ GET /api/owner/service-requests 200 in 1287ms
+ GET /api/owner/service-requests 200 in 1403ms
+ GET /api/owner/service-requests 200 in 1485ms
+ GET /api/owner/service-requests 200 in 1333ms
+ GET /api/owner/service-requests 200 in 1560ms
+ GET /api/owner/service-requests 200 in 1303ms
+ GET /api/owner/service-requests 200 in 1416ms
+ GET /api/owner/service-requests 200 in 1404ms
+ GET /api/owner/service-requests 200 in 1436ms
+ GET /api/owner/service-requests 200 in 1262ms
+ GET /api/owner/service-requests 200 in 1426ms
+ GET /api/owner/service-requests 200 in 1331ms
+ GET /api/owner/service-requests 200 in 1542ms
+ GET /api/owner/service-requests 200 in 1323ms
+ GET /api/owner/service-requests 200 in 1303ms
+ GET /api/owner/service-requests 200 in 1614ms
+ GET /api/owner/service-requests 200 in 1358ms
+ GET /api/owner/service-requests 200 in 1287ms
+ GET /api/owner/service-requests 200 in 1445ms
+ GET /api/owner/service-requests 200 in 1382ms
+ GET /api/owner/service-requests 200 in 1695ms
+ GET /api/owner/service-requests 200 in 1506ms
+ GET /api/owner/service-requests 200 in 1504ms
+ GET /api/owner/service-requests 200 in 1714ms
+ GET /api/owner/service-requests 200 in 1514ms
+ GET /api/owner/service-requests 200 in 1273ms
+ GET /api/owner/service-requests 200 in 1526ms
+ GET /api/owner/service-requests 200 in 1352ms
+ GET /api/owner/service-requests 200 in 1510ms
+ GET /api/owner/service-requests 200 in 1315ms
+ GET /api/owner/service-requests 200 in 1427ms
+ GET /api/owner/service-requests 200 in 1529ms
+ GET /api/owner/service-requests 200 in 1565ms
+ GET /api/owner/service-requests 200 in 1571ms
+ GET /api/owner/service-requests 200 in 1372ms
+ GET /api/owner/service-requests 200 in 1589ms
+ GET /api/owner/service-requests 200 in 1284ms
+ GET /api/owner/service-requests 200 in 1288ms
+ GET /api/owner/service-requests 200 in 1500ms
+ GET /api/owner/service-requests 200 in 1479ms
+ GET /api/owner/service-requests 200 in 1306ms
+ GET /api/owner/service-requests 200 in 1290ms
+ GET /api/owner/service-requests 200 in 1321ms
+ GET /api/owner/service-requests 200 in 1233ms
+ GET /api/owner/service-requests 200 in 1330ms
+ GET /api/owner/service-requests 200 in 1442ms
+ GET /api/owner/service-requests 200 in 1352ms
+ GET /api/owner/service-requests 200 in 1253ms
+ GET /api/owner/service-requests 200 in 1362ms
+ GET /api/owner/service-requests 200 in 1279ms
+ GET /api/owner/service-requests 200 in 1342ms
+ GET /api/owner/service-requests 200 in 1236ms
+ GET /api/owner/service-requests 200 in 1272ms
+ GET /api/owner/service-requests 200 in 1200ms
+ GET /api/owner/service-requests 200 in 1290ms
+ GET /api/owner/service-requests 200 in 1403ms
+ GET /api/owner/service-requests 200 in 1266ms
+ GET /api/owner/service-requests 200 in 1415ms
+ GET /api/owner/service-requests 200 in 1316ms
+ GET /api/owner/service-requests 200 in 1318ms
+ GET /api/owner/service-requests 200 in 4386ms
+ GET /api/owner/service-requests 200 in 2465ms
+ GET /api/owner/service-requests 200 in 2361ms
+ GET /api/owner/service-requests 200 in 2473ms
+ GET /api/owner/service-requests 200 in 1628ms
+ GET /api/owner/service-requests 200 in 1300ms
+ GET /api/owner/service-requests 200 in 1229ms
+ GET /api/owner/service-requests 200 in 1280ms
+ GET /api/owner/service-requests 200 in 1428ms
+ GET /api/owner/service-requests 200 in 1343ms
+ GET /api/owner/service-requests 200 in 1289ms
+ GET /api/owner/service-requests 200 in 1494ms
+ GET /api/owner/service-requests 200 in 1232ms
+ GET /api/owner/service-requests 200 in 1265ms
+ GET /api/owner/service-requests 200 in 1217ms
+ GET /api/owner/service-requests 200 in 1216ms
+ GET /api/owner/service-requests 200 in 1532ms
+ GET /api/owner/service-requests 200 in 1327ms
+ GET /api/owner/service-requests 200 in 1440ms
+ GET /api/owner/service-requests 200 in 1342ms
+ GET /api/owner/service-requests 200 in 1449ms
+ GET /api/owner/service-requests 200 in 1350ms
+ GET /api/owner/service-requests 200 in 1236ms
+ GET /api/owner/service-requests 200 in 1207ms
+ GET /api/owner/service-requests 200 in 1377ms
+ GET /api/owner/service-requests 200 in 1162ms
+ GET /api/owner/service-requests 200 in 1201ms
+ GET /api/owner/service-requests 200 in 1250ms
+ GET /api/owner/service-requests 200 in 1230ms
+ GET /api/owner/service-requests 200 in 1386ms
+ GET /api/owner/service-requests 200 in 1204ms
+ GET /api/owner/service-requests 200 in 1456ms
+ GET /api/owner/service-requests 200 in 1322ms
+ GET /api/owner/service-requests 200 in 1230ms
+ GET /api/owner/service-requests 200 in 1450ms
+ GET /api/owner/service-requests 200 in 1252ms
+ GET /api/owner/service-requests 200 in 1558ms
+ GET /api/owner/service-requests 200 in 1568ms
+ GET /api/owner/service-requests 200 in 1470ms
+ GET /api/owner/service-requests 200 in 1265ms
+ GET /api/owner/service-requests 200 in 1581ms
+ GET /api/owner/service-requests 200 in 1289ms
+ GET /api/owner/service-requests 200 in 1598ms
+ GET /api/owner/service-requests 200 in 1258ms
+ GET /api/owner/service-requests 200 in 1503ms
+ GET /api/owner/service-requests 200 in 1412ms
+ GET /api/owner/service-requests 200 in 1277ms
+ GET /api/owner/service-requests 200 in 1272ms
+ GET /api/owner/service-requests 200 in 1324ms
+ GET /api/owner/service-requests 200 in 1233ms
+ GET /api/owner/service-requests 200 in 1449ms
+ GET /api/owner/service-requests 200 in 1422ms
+ GET /api/owner/service-requests 200 in 1453ms
+ GET /api/owner/service-requests 200 in 1256ms
+ GET /api/owner/service-requests 200 in 1246ms
+ GET /api/owner/service-requests 200 in 1268ms
+ GET /api/owner/service-requests 200 in 1375ms
+ GET /api/owner/service-requests 200 in 1256ms
+ GET /api/owner/service-requests 200 in 1291ms
+ GET /api/owner/service-requests 200 in 1294ms
+ GET /api/owner/service-requests 200 in 1404ms
+ GET /api/owner/service-requests 200 in 2916ms
+ GET /api/owner/service-requests 200 in 2548ms
+ GET /api/owner/service-requests 200 in 2230ms
+ GET /api/owner/service-requests 200 in 2484ms
+ GET /api/owner/service-requests 200 in 1433ms
+ GET /api/owner/service-requests 200 in 1439ms
+ GET /api/owner/service-requests 200 in 1353ms
+ GET /api/owner/service-requests 200 in 1320ms
+ GET /api/owner/service-requests 200 in 1266ms
+ GET /api/owner/service-requests 200 in 1363ms
+ GET /api/owner/service-requests 200 in 1412ms
+ GET /api/owner/service-requests 200 in 1380ms
+ GET /api/owner/service-requests 200 in 1229ms
+ GET /api/owner/service-requests 200 in 1367ms
+ GET /api/owner/service-requests 200 in 1425ms
+ GET /api/owner/service-requests 200 in 1201ms
+ GET /api/owner/service-requests 200 in 1538ms
+ GET /api/owner/service-requests 200 in 1303ms
+ GET /api/owner/service-requests 200 in 1405ms
+ GET /api/owner/service-requests 200 in 1247ms
+ GET /api/owner/service-requests 200 in 1277ms
+ GET /api/owner/service-requests 200 in 1360ms
+ GET /api/owner/service-requests 200 in 1235ms
+ GET /api/owner/service-requests 200 in 1230ms
+ GET /api/owner/service-requests 200 in 1239ms
+ GET /api/owner/service-requests 200 in 1315ms
+ GET /api/owner/service-requests 200 in 1305ms
+ GET /api/owner/service-requests 200 in 1353ms
+ GET /api/owner/service-requests 200 in 1193ms
+ GET /api/owner/service-requests 200 in 1388ms
+ GET /api/owner/service-requests 200 in 1474ms
+ GET /api/owner/service-requests 200 in 1275ms
+ GET /api/owner/service-requests 200 in 1258ms
+ GET /api/owner/service-requests 200 in 1276ms
+ GET /api/owner/service-requests 200 in 1316ms
+ GET /api/owner/service-requests 200 in 1245ms
+ GET /api/owner/service-requests 200 in 1267ms
+ GET /api/owner/service-requests 200 in 1445ms
+ GET /api/owner/service-requests 200 in 1346ms
+ GET /api/owner/service-requests 200 in 1352ms
+ GET /api/owner/service-requests 200 in 1376ms
+ GET /api/owner/service-requests 200 in 1380ms
+ GET /api/owner/service-requests 200 in 1371ms
+ GET /api/owner/service-requests 200 in 1266ms
+ GET /api/owner/service-requests 200 in 1232ms
+ GET /api/owner/service-requests 200 in 1462ms
+ GET /api/owner/service-requests 200 in 1456ms
+ GET /api/owner/service-requests 200 in 1219ms
+ GET /api/owner/service-requests 200 in 1381ms
+ GET /api/owner/service-requests 200 in 1383ms
+ GET /api/owner/service-requests 200 in 1378ms
+ GET /api/owner/service-requests 200 in 1322ms
+ GET /api/owner/service-requests 200 in 1307ms
+ GET /api/owner/service-requests 200 in 1448ms
+ GET /api/owner/service-requests 200 in 1339ms
+ GET /api/owner/service-requests 200 in 1267ms
+ GET /api/owner/service-requests 200 in 1739ms
+ GET /api/owner/service-requests 200 in 1450ms
+ GET /api/owner/service-requests 200 in 1276ms
+ GET /api/owner/service-requests 200 in 1473ms
+ GET /api/owner/service-requests 200 in 1311ms
+ GET /api/owner/service-requests 200 in 1242ms
+ GET /api/owner/service-requests 200 in 3123ms
+ GET /api/owner/service-requests 200 in 2232ms
+ GET /api/owner/service-requests 200 in 2430ms
+ GET /api/owner/service-requests 200 in 2253ms
+ GET /api/owner/service-requests 200 in 1645ms
+ GET /api/owner/service-requests 200 in 1311ms
+ GET /api/owner/service-requests 200 in 1410ms
+ GET /api/owner/service-requests 200 in 1252ms
+ GET /api/owner/service-requests 200 in 1435ms
+ GET /api/owner/service-requests 200 in 1655ms
+ GET /api/owner/service-requests 200 in 1607ms
+ GET /api/owner/service-requests 200 in 1453ms
+ GET /api/owner/service-requests 200 in 1361ms
+ GET /api/owner/service-requests 200 in 1245ms
+ GET /api/owner/service-requests 200 in 1418ms
+ GET /api/owner/service-requests 200 in 1261ms
+ GET /api/owner/service-requests 200 in 1397ms
+ GET /api/owner/service-requests 200 in 1350ms
+ GET /api/owner/service-requests 200 in 1500ms
+ GET /api/owner/service-requests 200 in 1372ms
+ GET /api/owner/service-requests 200 in 1289ms
+ GET /api/owner/service-requests 200 in 1461ms
+ GET /api/owner/service-requests 200 in 1263ms
+ GET /api/owner/service-requests 200 in 1246ms
+ GET /api/owner/service-requests 200 in 1404ms
+ GET /api/owner/service-requests 200 in 1501ms
+ GET /api/owner/service-requests 200 in 1399ms
+ GET /api/owner/service-requests 200 in 1228ms
+ GET /api/owner/service-requests 200 in 1186ms
+ ✓ Compiled in 5.3s (3361 modules)
+ ✓ Compiled in 2.1s (3361 modules)
+ GET /api/owner/service-requests 200 in 1651ms
+ GET /api/owner/service-requests 200 in 1278ms
+ GET /api/owner/service-requests 200 in 1379ms
+ GET /api/owner/service-requests 200 in 1426ms
+ GET /api/owner/service-requests 200 in 2602ms
+ GET /api/owner/service-requests 200 in 1216ms
+ GET /api/owner/service-requests 200 in 1237ms
+ GET /api/owner/service-requests 200 in 1239ms
+ GET /api/owner/service-requests 200 in 1392ms
+[Firebase] ✓ Auth persistence configured: LOCAL
+[Firebase] ✓ Auth persistence configured: LOCAL
+ GET /owner-dashboard/dine-in 200 in 1163ms
+ ○ Compiling /api/owner/settings ...
+ ✓ Compiled /api/employee/me in 1924ms (1863 modules)
+ ✓ Compiled (1997 modules)
+[API /settings] Verifying owner...
+[API /employee/me] UID verified: roQFxnWgU4XJrZxqTh8Ifvad1P82
+[API /employee/me] Firebase services initialized
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/status 200 in 2997ms
+[API /employee/me] User record fetched for roQFxnWgU4XJrZxqTh8Ifvad1P82
+ GET /api/owner/service-requests 200 in 4039ms
+ GET /api/owner/settings 200 in 4341ms
+ GET /api/employee/me 200 in 3421ms
+[API /settings] Verifying owner...
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/service-requests 200 in 1190ms
+ GET /api/owner/settings 200 in 1166ms
+[API /settings] Verifying owner...
+ GET /api/owner/dine-in-tables 200 in 6001ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1243ms
+[API /settings] Verifying owner...
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1250ms
+[API /settings] Verifying owner...
+ GET /api/owner/dine-in-tables 200 in 2881ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1220ms
+ GET /api/owner/dine-in-tables 200 in 2806ms
+ GET /api/owner/dine-in-tables 200 in 2672ms
+ GET /api/owner/service-requests 200 in 1430ms
+ GET /api/owner/service-requests 200 in 1308ms
+ GET /api/owner/service-requests 200 in 1385ms
+ GET /api/owner/service-requests 200 in 1425ms
+ GET /api/owner/service-requests 200 in 1447ms
+ ✓ Compiled in 3s (3361 modules)
+ GET /api/owner/service-requests 200 in 1372ms
+ GET /api/owner/service-requests 200 in 1751ms
+ GET /api/owner/service-requests 200 in 1423ms
+ GET /api/owner/service-requests 200 in 1435ms
+ GET /api/owner/service-requests 200 in 1367ms
+ GET /api/owner/service-requests 200 in 1342ms
+ GET /api/owner/service-requests 200 in 1494ms
+[Firebase] ✓ Auth persistence configured: LOCAL
+[Firebase] ✓ Auth persistence configured: LOCAL
+ GET /owner-dashboard/dine-in 200 in 1006ms
+ ○ Compiling /api/owner/dine-in-tables ...
+ ✓ Compiled /api/owner/status in 1467ms (1985 modules)
+ ✓ Compiled /api/employee/me in 1ms (1995 modules)
+ ✓ Compiled in 1ms (1997 modules)
+ ✓ Compiled in 1ms (1997 modules)
+[API /settings] Verifying owner...
+ ✓ Compiled in 1ms (1997 modules)
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/service-requests 200 in 5428ms
+ GET /api/owner/settings 200 in 5434ms
+[API /employee/me] UID verified: roQFxnWgU4XJrZxqTh8Ifvad1P82
+[API /employee/me] Firebase services initialized
+[API /settings] Verifying owner...
+ GET /api/owner/status 200 in 5209ms
+[API /employee/me] User record fetched for roQFxnWgU4XJrZxqTh8Ifvad1P82
+ GET /api/employee/me 200 in 6036ms
+ GET /api/owner/service-requests 200 in 2842ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 3287ms
+ GET /api/owner/dine-in-tables 200 in 9442ms
+ ✓ Compiled in 6s (3511 modules)
+ ✓ Compiled in 1ms (1997 modules)
+ ✓ Compiled in 1ms (1997 modules)
+ ✓ Compiled in 1ms (1997 modules)
+[API /settings] Verifying owner...
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 7183ms
+[API /settings] Verifying owner...
+ GET /api/owner/service-requests 200 in 1380ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1179ms
+[API /settings] Verifying owner...
+ GET /api/owner/dine-in-tables 200 in 7958ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1280ms
+ GET /api/owner/dine-in-tables 200 in 2845ms
+ GET /api/owner/dine-in-tables 200 in 3048ms
+ GET /api/owner/service-requests 200 in 1218ms
+ GET /api/owner/service-requests 200 in 1291ms
+ ✓ Compiled in 3.6s (3511 modules)
+[Firebase] ✓ Auth persistence configured: LOCAL
+[Firebase] ✓ Auth persistence configured: LOCAL
+ GET /owner-dashboard/dine-in 200 in 1026ms
+[API /settings] Verifying owner...
+[API /employee/me] UID verified: roQFxnWgU4XJrZxqTh8Ifvad1P82
+[API /employee/me] Firebase services initialized
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1212ms
+[API /settings] Verifying owner...
+ GET /api/owner/service-requests 200 in 1285ms
+ GET /api/owner/status 200 in 856ms
+[API /employee/me] User record fetched for roQFxnWgU4XJrZxqTh8Ifvad1P82
+ GET /api/employee/me 200 in 1396ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1231ms
+ GET /api/owner/service-requests 200 in 1221ms
+[API /settings] Verifying owner...
+ GET /api/owner/dine-in-tables 200 in 2864ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1226ms
+[API /settings] Verifying owner...
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1316ms
+[API /settings] Verifying owner...
+ GET /api/owner/dine-in-tables 200 in 2882ms
+[API /settings] Owner verified: roQFxnWgU4XJrZxqTh8Ifvad1P82 for business patel-ki-hatti
+ GET /api/owner/settings 200 in 1531ms
+ GET /api/owner/dine-in-tables 200 in 2835ms
+ GET /api/owner/dine-in-tables 200 in 3028ms
+ GET /api/owner/service-requests 200 in 1359ms
+ GET /api/owner/service-requests 200 in 1209ms
+ ✓ Compiled in 2.2s (3511 modules)
+ GET /api/owner/service-requests 200 in 1256ms
+ ✓ Compiled in 2.6s (3511 modules)
+ GET /api/owner/service-requests 200 in 1338ms
+ GET /api/owner/service-requests 200 in 1383ms
+ GET /api/owner/service-requests 200 in 1432ms
+ GET /api/owner/service-requests 200 in 1247ms
+^C^C

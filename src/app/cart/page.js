@@ -23,6 +23,8 @@ const ORDER_STATE = {
     ERROR: 'error'
 };
 
+const roundToTwo = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
 const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -124,6 +126,7 @@ const CartPageInternal = () => {
                                 gstEnabled: freshSettings.gstEnabled,
                                 gstRate: freshSettings.gstPercentage || freshSettings.gstRate || 0,
                                 gstMinAmount: freshSettings.gstMinAmount,
+                                gstCalculationMode: freshSettings.gstCalculationMode || (freshSettings.gstIncludedInPrice === false ? 'excluded' : 'included'),
                                 coupons: freshSettings.coupons || [],
                             };
 
@@ -430,7 +433,10 @@ const CartPageInternal = () => {
         }
     };
 
-    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
+    const subtotal = useMemo(() => {
+        const rawSubtotal = cart.reduce((sum, item) => sum + (item.totalPrice * item.quantity), 0);
+        return roundToTwo(rawSubtotal);
+    }, [cart]);
 
     const { totalDiscount, couponDiscount, specialCouponDiscount } = useMemo(() => {
         let couponDiscount = 0;
@@ -462,21 +468,35 @@ const CartPageInternal = () => {
     }, [appliedCoupons, subtotal]);
 
     const { cgst, sgst, grandTotal } = useMemo(() => {
-        const taxableAmount = subtotal - totalDiscount;
+        const taxableAmount = roundToTwo(subtotal - totalDiscount);
         let cgstAmount = 0;
         let sgstAmount = 0;
+        const gstCalculationMode = cartData?.gstCalculationMode || (cartData?.gstIncludedInPrice === false ? 'excluded' : 'included');
 
         if (cartData?.gstEnabled && taxableAmount > 0) {
             if (taxableAmount >= (cartData.gstMinAmount || 0)) {
                 const totalGstRate = cartData.gstRate || 5;
                 const halfGstRate = totalGstRate / 2;
-                cgstAmount = taxableAmount * (halfGstRate / 100);
-                sgstAmount = taxableAmount * (halfGstRate / 100);
+                if (gstCalculationMode === 'included') {
+                    const baseAmount = taxableAmount / (1 + (totalGstRate / 100));
+                    const totalGstAmount = taxableAmount - baseAmount;
+                    cgstAmount = roundToTwo(totalGstAmount / 2);
+                    sgstAmount = roundToTwo(totalGstAmount / 2);
+                } else {
+                    cgstAmount = roundToTwo(taxableAmount * (halfGstRate / 100));
+                    sgstAmount = roundToTwo(taxableAmount * (halfGstRate / 100));
+                }
             }
         }
 
-        const total = taxableAmount + cgstAmount + sgstAmount;
-        return { cgst: cgstAmount, sgst: sgstAmount, grandTotal: total };
+        const totalRaw = gstCalculationMode === 'included'
+            ? taxableAmount
+            : (taxableAmount + cgstAmount + sgstAmount);
+        return {
+            cgst: roundToTwo(cgstAmount),
+            sgst: roundToTwo(sgstAmount),
+            grandTotal: roundToTwo(totalRaw)
+        };
     }, [subtotal, totalDiscount, cartData]);
 
     const handleToggleCoupon = (couponToToggle) => {

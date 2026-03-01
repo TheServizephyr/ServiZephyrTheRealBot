@@ -679,7 +679,8 @@ export async function processOrderV1(body, firestore) {
             pricing = await calculateServerTotal({
                 restaurantId,
                 items,
-                businessType
+                businessType,
+                deliveryType
             });
 
             // Validate against client subtotal (with small tolerance)
@@ -827,7 +828,8 @@ export async function processOrderV1(body, firestore) {
             finalDeliveryCharge = 0;
         }
 
-        const serverGrandTotal = netSubtotal + serverCgst + serverSgst + finalDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0);
+        const gstComponent = taxes.isIncludedInPrice ? 0 : (serverCgst + serverSgst);
+        const serverGrandTotal = netSubtotal + gstComponent + finalDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0);
 
         console.log(`[API /order/create] Server Finals:`);
         console.log(`  Subtotal: ₹${pricing.serverSubtotal}`);
