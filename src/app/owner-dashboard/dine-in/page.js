@@ -3,7 +3,9 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home, Loader2, RotateCcw, Plus, Car } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home, Loader2, RotateCcw, Plus, Car, ListOrdered, PhoneCall, MessageCircle } from 'lucide-react';
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/components/ui/use-toast";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -13,6 +15,13 @@ import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -172,7 +181,7 @@ const ManageTableTabsModal = ({ isOpen, onClose, table, onMarkAsPaid, onClearTab
                         Review active tabs, mark payments, print bills, or clear closed tabs.
                     </DialogDescription>
                 </DialogHeader>
-                
+
                 <div className="space-y-3 py-2">
                     {tabGroups.length > 0 ? (
                         tabGroups.map((group) => {
@@ -430,19 +439,19 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                                             const grossLineTotal = getItemLineTotal(item);
                                             return (
                                                 <>
-                                        <div>{item.name}{getItemVariantSuffix(item)}</div>
-                                        {getItemAddons(item).length > 0 && (
-                                            <div className="text-[10px] opacity-80">
-                                                {getItemAddons(item).map((addon, addonIdx) => {
-                                                    const addonQty = Math.max(1, parseInt(addon?.quantity ?? 1, 10) || 1);
-                                                    return (
-                                                        <div key={addonIdx}>
-                                                            + {addon.name}{addonQty > 1 ? ` x${addonQty}` : ''} ({formatCurrency(toAmount(addon?.price, 0) * addonQty)})
+                                                    <div>{item.name}{getItemVariantSuffix(item)}</div>
+                                                    {getItemAddons(item).length > 0 && (
+                                                        <div className="text-[10px] opacity-80">
+                                                            {getItemAddons(item).map((addon, addonIdx) => {
+                                                                const addonQty = Math.max(1, parseInt(addon?.quantity ?? 1, 10) || 1);
+                                                                return (
+                                                                    <div key={addonIdx}>
+                                                                        + {addon.name}{addonQty > 1 ? ` x${addonQty}` : ''} ({formatCurrency(toAmount(addon?.price, 0) * addonQty)})
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
+                                                    )}
                                                 </>
                                             );
                                         })()}
@@ -663,9 +672,15 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     ];
 
     // 🚨 CRITICAL FIX: Pre-filter groups to remove tabs where ALL orders are cancelled/rejected
-    // This prevents empty table cards from showing as "Occupied" with ghost "Active Tabs"
+    // Also include 'active' or 'inactive' tabs that have no orders (seated customers who haven't ordered yet)
     const activeGroups = allGroups.filter(group => {
         const allOrders = Object.values(group.orders || {});
+
+        // If it's a new tab with no orders, only show if it's active or inactive (seated)
+        if (allOrders.length === 0) {
+            return group.status === 'active' || group.status === 'inactive';
+        }
+
         const activeOrders = allOrders.filter(o => o.status !== 'cancelled' && o.status !== 'rejected');
         return activeOrders.length > 0; // Only keep groups with at least 1 active order
     });
@@ -1703,7 +1718,8 @@ const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
 };
 
 // ✅ NEW: Car Spot QR Generator + Saved List Modal
-const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDialog }) => {
+const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall }) => {
+    const { toast } = useToast();
     const [spotLabel, setSpotLabel] = useState('');
     const [qrValue, setQrValue] = useState('');
     const [savedSpots, setSavedSpots] = useState([]);
@@ -1727,7 +1743,7 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
             setSavedSpots(Array.isArray(data?.spots) ? data.spots : []);
         } catch (error) {
             console.error('[Car Spot QR] Failed to load spots:', error);
-            showInfoDialog?.({ isOpen: true, title: 'Error', message: `Could not load saved car spots: ${error.message}` });
+            toast({ title: 'Error', description: `Could not load saved car spots: ${error.message}`, variant: "destructive" });
         } finally {
             setLoadingSpots(false);
         }
@@ -1751,7 +1767,7 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
     const handleSaveSpot = async () => {
         const trimmedSpot = String(spotLabel || '').trim();
         if (!trimmedSpot) {
-            showInfoDialog?.({ isOpen: true, title: 'Missing Spot', message: 'Please enter a spot label first.' });
+            toast({ title: 'Missing Spot', description: 'Please enter a spot label first.', variant: "destructive" });
             return;
         }
 
@@ -1765,9 +1781,9 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
                 await loadSavedSpots();
             }
             setQrValue(buildCarSpotUrl(trimmedSpot));
-            showInfoDialog?.({ isOpen: true, title: 'Saved', message: `Car spot "${trimmedSpot}" saved successfully.` });
+            toast({ title: 'Saved', description: `Car spot "${trimmedSpot}" saved successfully.` });
         } catch (error) {
-            showInfoDialog?.({ isOpen: true, title: 'Error', message: `Could not save car spot: ${error.message}` });
+            toast({ title: 'Error', description: `Could not save car spot: ${error.message}`, variant: "destructive" });
         } finally {
             setSavingSpot(false);
         }
@@ -1785,9 +1801,9 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
         if (!url) return;
         try {
             await navigator.clipboard.writeText(url);
-            showInfoDialog?.({ isOpen: true, title: 'Copied', message: `Link copied for spot "${spot.spotLabel}".` });
+            toast({ title: 'Copied', description: `Link copied for spot "${spot.spotLabel}".` });
         } catch (error) {
-            showInfoDialog?.({ isOpen: true, title: 'Copy Failed', message: 'Could not copy link.' });
+            toast({ title: 'Copy Failed', description: 'Could not copy link.', variant: "destructive" });
         }
     };
 
@@ -1797,9 +1813,9 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
         try {
             await handleApiCall('DELETE', { spotId: spot.id }, '/api/owner/car-spots');
             setSavedSpots((prev) => prev.filter((savedSpot) => savedSpot.id !== spot.id));
-            showInfoDialog?.({ isOpen: true, title: 'Deleted', message: `Removed car spot "${spot.spotLabel}".` });
+            toast({ title: 'Deleted', description: `Removed car spot "${spot.spotLabel}".` });
         } catch (error) {
-            showInfoDialog?.({ isOpen: true, title: 'Error', message: `Could not delete car spot: ${error.message}` });
+            toast({ title: 'Error', description: `Could not delete car spot: ${error.message}`, variant: "destructive" });
         } finally {
             setDeletingSpotId(null);
         }
@@ -1919,6 +1935,7 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall, showInfoDi
         </Dialog>
     );
 };
+
 
 const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, compact = false }) => {
     const [requests, setRequests] = useState([]);
@@ -2293,11 +2310,12 @@ const DineInPageContent = () => {
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [isQrGeneratorModalOpen, setIsQrGeneratorModalOpen] = useState(false);
     const [isCarSpotQrModalOpen, setIsCarSpotQrModalOpen] = useState(false); // ✅ Car Spot QR
+
+    const { toast } = useToast();
     const [restaurantDetails, setRestaurantDetails] = useState(null);
     const [businessType, setBusinessType] = useState('restaurant');
     const [isBusinessTypeResolved, setIsBusinessTypeResolved] = useState(false);
     const [billData, setBillData] = useState(null);
-    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => { }, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
     const [activeStatusFilter, setActiveStatusFilter] = useState('Pending'); // Status filter tabs
     const [tableSearchQuery, setTableSearchQuery] = useState('');
@@ -2434,7 +2452,7 @@ const DineInPageContent = () => {
         }
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'API call failed');
+        if (!res.ok) throw new Error(data.message || data.error || 'API call failed');
         return data;
     };
 
@@ -2447,7 +2465,7 @@ const DineInPageContent = () => {
 
         if (!isManualRefresh) setLoading(true);
         try {
-            const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
+            const data = await handleApiCall('GET', { include_empty_tabs: 'true' }, '/api/owner/dine-in-tables');
             setAllData(data || { tables: [], serviceRequests: [], closedTabs: [], carOrders: [] });
         } catch (error) {
             console.error("[Dine-In Dashboard] Fetch data error:", error);
@@ -2573,6 +2591,7 @@ const DineInPageContent = () => {
                         address: settingsData.address,
                         gstin: settingsData.gstin
                     });
+
                 } else {
                     setBusinessType('restaurant');
                     console.error("[Dine-In Dashboard] Failed to fetch restaurant settings.");
@@ -2583,9 +2602,11 @@ const DineInPageContent = () => {
             } finally {
                 setIsBusinessTypeResolved(true);
             }
-        }
+        };
+
         fetchAndSetRestaurantDetails();
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+
 
     const handleSaveTable = async (tableName, maxCapacity) => {
         try {
@@ -2774,10 +2795,10 @@ const DineInPageContent = () => {
             // Refetch to get updated data
             await fetchData(true);
             setButtonLoading(null);
-            setInfoDialog({ isOpen: true, title: "Success", message: "Payment marked as received. Table marked for cleaning." });
+            toast({ title: "Success", description: "Payment marked as received. Table marked for cleaning." });
         } catch (error) {
             setButtonLoading(null);
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark as paid: ${error.message}` });
+            toast({ variant: "destructive", title: "Error", description: `Could not mark as paid: ${error.message}` });
         }
     };
 
@@ -2796,10 +2817,10 @@ const DineInPageContent = () => {
 
         try {
             await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
-            setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
+            toast({ title: "Success", description: `Table ${tableId} is now available.` });
         } catch (error) {
             await fetchData(true);
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not update table status: ${error.message}` });
+            toast({ variant: "destructive", title: "Error", description: `Could not update table status: ${error.message}` });
         }
     };
 
@@ -2835,6 +2856,10 @@ const DineInPageContent = () => {
             : '';
         const table = allData?.tables?.find(t => t.id === tableId);
         const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+
+        // Robust ID extraction: use real dineInTabId from Firestore if available
+        const realDineInTabId = tabData?.dineInTabId || tabData?.id || tabId;
+
         const orderIds = Object.keys(tabData?.orders || {});
         const hasOrders = orderIds.length > 0;
 
@@ -2845,12 +2870,13 @@ const DineInPageContent = () => {
                 if (tableItem.id === tableId) {
                     const { [tabId]: removedTab, ...remainingTabs } = tableItem.tabs || {};
                     const updatedPending = (tableItem.pendingOrders || []).filter(order => order.id !== tabId);
-                    const newPax = Math.max(0, (tableItem.current_pax || 0) - (paxCount || 0));
+
+                    // 🚨 FIX: Don't subtract pax here. The backend recalculates based on remaining open tabs.
+                    // Doing it here AND in backend causes sync issues and negative pax.
                     return {
                         ...tableItem,
                         tabs: remainingTabs,
                         pendingOrders: updatedPending,
-                        current_pax: newPax,
                         state: Object.keys(remainingTabs).length === 0 && updatedPending.length === 0 ? 'available' : tableItem.state
                     };
                 }
@@ -2882,26 +2908,24 @@ const DineInPageContent = () => {
             }
 
             const cleanupEndpoint = '/api/dine-in/clean-table';
-            const realDineInTabId = tabData?.dineInTabId;
 
             const payload = {
-                tabId,
+                tabId: tabId,
                 tableId: isCarSlot ? null : tableId,
                 restaurantId: restaurantDetails?.id,
-                dineInTabId: realDineInTabId || null
+                dineInTabId: realDineInTabId
             };
 
             await handleApiCall('PATCH', payload, cleanupEndpoint);
-            setInfoDialog({
-                isOpen: true,
+            toast({
                 title: "Success",
-                message: isCarSlot
+                description: isCarSlot
                     ? `Car order session on Slot ${carSlotName || 'N/A'} has been cleared.`
                     : `Tab on Table ${tableId} has been cleared.`
             });
         } catch (error) {
             await fetchData(true);
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear tab: ${error.message}` });
+            toast({ variant: "destructive", title: "Error", description: `Could not clear tab: ${error.message}` });
         }
     };
     const handleUpdateStatus = async (orderId, newStatus) => {
@@ -2950,7 +2974,7 @@ const DineInPageContent = () => {
             // Revert optimistic update on error
             await fetchData(true);
             setButtonLoading(null);
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not update status: ${error.message}` });
+            toast({ variant: "destructive", title: "Error", description: `Could not update status: ${error.message}` });
         }
     }
 
@@ -2963,10 +2987,10 @@ const DineInPageContent = () => {
             await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
             await fetchData(true); // Refetch to remove rejected order
             setButtonLoading(null);
-            setInfoDialog({ isOpen: true, title: "Success", message: "Order rejected." });
+            toast({ title: "Success", description: "Order rejected." });
         } catch (error) {
             setButtonLoading(null);
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not reject order: ${error.message}` });
+            toast({ variant: "destructive", title: "Error", description: `Could not reject order: ${error.message}` });
         }
     }
 
@@ -2981,7 +3005,7 @@ const DineInPageContent = () => {
 
     const handleOpenEditModal = (table = null) => {
         if (!restaurantDetails?.id) {
-            setInfoDialog({ isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables." });
+            toast({ variant: "destructive", title: "Error", description: "Restaurant data is not loaded yet. Cannot manage tables." });
             return;
         }
         setIsManageTablesModalOpen(false); // Close manage modal before opening editor
@@ -2991,7 +3015,7 @@ const DineInPageContent = () => {
 
     const handleOpenQrDisplayModal = (table) => {
         if (!restaurantDetails?.id) {
-            setInfoDialog({ isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot show QR code." });
+            toast({ variant: "destructive", title: "Error", description: "Restaurant data is not loaded yet. Cannot show QR code." });
             return;
         }
         setDisplayTable(table);
@@ -3222,21 +3246,15 @@ const DineInPageContent = () => {
                     printRef={billPrintRef}
                 />
             )}
-            <InfoDialog
-                isOpen={infoDialog.isOpen}
-                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-                title={infoDialog.title}
-                message={infoDialog.message}
-            />
-            {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} restaurantName={restaurantDetails?.name} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
+            {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} restaurantName={restaurantDetails?.name} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={({ title, message, variant }) => toast({ variant: variant === 'error' ? 'destructive' : 'default', title, description: message })} />}
             <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
             <CarSpotQrModal
                 isOpen={isCarSpotQrModalOpen}
                 onClose={() => setIsCarSpotQrModalOpen(false)}
                 restaurant={restaurantDetails}
                 handleApiCall={handleApiCall}
-                showInfoDialog={setInfoDialog}
             />
+
             <ConfirmationModal
                 isOpen={confirmationState.isOpen}
                 onClose={() => setConfirmationState({ ...confirmationState, isOpen: false })}
@@ -3304,6 +3322,7 @@ const DineInPageContent = () => {
                                 <QrCode size={16} className="mr-2" /> Car Spot QR
                             </Button>
                         )}
+
                     </div>
                 </DialogContent>
             </Dialog>
@@ -3317,13 +3336,13 @@ const DineInPageContent = () => {
                 <div className="w-full lg:flex-1 lg:max-w-4xl lg:ml-auto">
                     <div className="flex items-center gap-2 justify-end">
                         <div className="relative flex-1 max-w-xs sm:max-w-sm lg:max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            value={tableSearchQuery}
-                            onChange={(e) => setTableSearchQuery(e.target.value)}
-                            placeholder="Search table, tab, item..."
-                            className="pl-10"
-                        />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                value={tableSearchQuery}
+                                onChange={(e) => setTableSearchQuery(e.target.value)}
+                                placeholder="Search table, tab, item..."
+                                className="pl-10"
+                            />
                         </div>
                         {canViewHistory && (
                             <Link href={`/owner-dashboard/dine-in-history${dineInQuerySuffix}`} className="hidden lg:block">

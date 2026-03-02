@@ -299,6 +299,7 @@ export async function GET(req) {
             paymentQRCode: businessData?.paymentQRCode || null, // ✅ Return QR Code URL
             upiId: businessData?.upiId || '',
             upiPayeeName: businessData?.upiPayeeName || businessData?.name || '',
+            isWaitlistEnabled: businessData?.isWaitlistEnabled || false,
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -455,6 +456,7 @@ export async function PATCH(req) {
         if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
         if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
         if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
+        if (updates.isWaitlistEnabled !== undefined) businessUpdateData.isWaitlistEnabled = updates.isWaitlistEnabled;
 
         // Handle delivery settings update here IF provided (Legacy support or single-save screens)
         // If frontend sends delivery params to THIS endpoint, we should forward them to sub-collection
@@ -570,6 +572,7 @@ export async function PATCH(req) {
             paymentQRCode: finalBusinessData?.paymentQRCode || null,
             upiId: finalBusinessData?.upiId || '',
             upiPayeeName: finalBusinessData?.upiPayeeName || finalBusinessData?.name || '',
+            isWaitlistEnabled: finalBusinessData?.isWaitlistEnabled || false,
         };
 
         return NextResponse.json(responseData, { status: 200 });

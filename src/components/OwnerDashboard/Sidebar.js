@@ -65,7 +65,7 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
     isStoreBusiness
       ? { name: "Items", icon: PackageIcon, href: appendParam("/owner-dashboard/menu"), featureId: "menu" }
       : { name: "Menu", icon: Salad, href: appendParam("/owner-dashboard/menu"), featureId: "menu" },
-    // { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" },
+    { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" },
     { name: "Team", icon: Users, href: appendParam("/owner-dashboard/employees"), featureId: "employees" },
     { name: "Customers", icon: Users, href: appendParam("/owner-dashboard/customers"), featureId: "customers" },
     { name: "WhatsApp Direct", icon: MessageSquare, href: appendParam("/owner-dashboard/whatsapp-direct"), featureId: "whatsapp-direct" },
@@ -180,7 +180,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     }
 
     // 2. Only allow essential setup pages for pending/rejected accounts
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'location', 'profile', 'qr', 'coupons', 'employees', 'my-profile'];
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'location', 'profile', 'qr', 'coupons', 'employees', 'my-profile', 'bookings', 'dine-in', 'whatsapp-direct'];
     if (alwaysEnabled.includes(featureId)) {
       return false;
     }
@@ -251,6 +251,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   // Fetch WhatsApp Unread Count
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+  const [waitlistEntriesCount, setWaitlistEntriesCount] = useState(0);
   const [dineInPendingOrdersCount, setDineInPendingOrdersCount] = useState(0);
   const [dineInServiceRequestsCount, setDineInServiceRequestsCount] = useState(0);
   const hasBootstrappedPendingNotifRef = useRef(false);
@@ -458,6 +459,49 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     };
   }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
 
+  // Fetch Waitlist Count (Real-time)
+  useEffect(() => {
+    if (businessType === 'street-vendor') return;
+    if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
+
+    let unsubscribe = () => { };
+
+    const setupListener = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const restaurantsQuery = query(
+          collection(db, 'restaurants'),
+          where('ownerId', '==', user.uid),
+          limit(1)
+        );
+        const restaurantSnapshot = await getDocs(restaurantsQuery);
+
+        if (restaurantSnapshot.empty) return;
+        const restaurantId = restaurantSnapshot.docs[0].id;
+
+        const waitlistQuery = query(
+          collection(db, 'restaurants', restaurantId, 'waitlist'),
+          where('status', 'in', ['pending', 'notified'])
+        );
+
+        unsubscribe = onSnapshot(waitlistQuery, (snapshot) => {
+          setWaitlistEntriesCount(snapshot.size);
+        }, (error) => {
+          console.error("Error listening to waitlist:", error);
+        });
+
+      } catch (error) {
+        console.error("Error setting up waitlist listener:", error);
+      }
+    };
+
+    setupListener();
+
+    return () => unsubscribe();
+  }, [impersonatedOwnerId, employeeOfOwnerId, businessType]);
+
   // Service request count via API (more reliable with Firestore security rules)
   useEffect(() => {
     if (businessType === 'street-vendor') return;
@@ -557,7 +601,9 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                       ? pendingOrdersCount
                       : item.featureId === 'dine-in'
                         ? (dineInPendingOrdersCount + dineInServiceRequestsCount)
-                      : 0
+                        : item.featureId === 'bookings'
+                          ? waitlistEntriesCount
+                          : 0
                 }}
                 isCollapsed={isCollapsed}
                 isDisabled={getIsDisabled(item.featureId)}
