@@ -1440,14 +1440,20 @@ const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurant
         console.log('[Dine-In QR Download] Starting capture...');
 
         try {
-            // Buffer for image settling
-            await new Promise(r => setTimeout(r, 500));
+            // Buffer to ensure fonts and images are settled
+            await new Promise(r => setTimeout(r, 600));
 
             const pngUrl = await toPng(printableNode, {
                 cacheBust: true,
-                pixelRatio: 3,
+                pixelRatio: 4,
                 backgroundColor: '#ffffff',
-                skipFonts: false
+                skipFonts: false,
+                width: 420, // Lock width for capture consistency
+                style: {
+                    margin: '0',
+                    padding: '0',
+                    transform: 'none'
+                }
             });
 
             const downloadLink = document.createElement("a");

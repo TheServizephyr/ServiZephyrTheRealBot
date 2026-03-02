@@ -140,13 +140,19 @@ const WaitlistQrModal = ({ isOpen, onClose, restaurant }) => {
 
         try {
             // Ensure images are loaded before capture
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 600));
 
             const pngUrl = await toPng(posterRef.current, {
                 cacheBust: true,
-                pixelRatio: 3,
+                pixelRatio: 4,
                 backgroundColor: '#ffffff',
                 skipFonts: false,
+                width: 460, // Lock width for capture consistency
+                style: {
+                    margin: '0',
+                    padding: '0',
+                    transform: 'none'
+                }
             });
 
             const link = document.createElement("a");
