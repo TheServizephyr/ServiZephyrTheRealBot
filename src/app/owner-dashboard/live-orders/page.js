@@ -135,6 +135,14 @@ const getOrderGrandTotal = (order = {}) => {
     return Math.max(0, fallbackTotal);
 };
 
+const getItemLineTotal = (item = {}) => {
+    const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
+    const storedLineTotal = toAmount(item?.totalPrice, NaN);
+    if (Number.isFinite(storedLineTotal)) return storedLineTotal;
+    const unitPrice = toAmount(item?.price, 0);
+    return unitPrice * quantity;
+};
+
 
 const RejectOrderModal = ({
     order,
@@ -931,7 +939,7 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
                                             })()}
                                         </div>
                                         {/* Line Total Calculation */}
-                                        <span className="font-semibold">₹{((item.totalPrice || item.price || 0) * item.quantity).toFixed(2)}</span>
+                                        <span className="font-semibold">₹{getItemLineTotal(item).toFixed(2)}</span>
                                     </div>
                                 </div>
                             ))}
@@ -1098,10 +1106,8 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             {/* Items List (Preview) */}
             <div className="space-y-1.5 py-1">
                 {(order.items || []).slice(0, 3).map((item, idx) => {
-                    // Safe Price parsing - Prioritize totalPrice (Unit Price)
-                    const unitPrice = parseFloat(item.totalPrice || item.price) || 0;
                     const qty = parseInt(item.quantity) || 1;
-                    const lineTotal = unitPrice * qty;
+                    const lineTotal = getItemLineTotal(item);
 
                     return (
                         <div key={idx} className="flex justify-between items-start text-sm">

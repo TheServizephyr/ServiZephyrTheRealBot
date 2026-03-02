@@ -37,7 +37,7 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
             <>
               <item.icon size={22} />
               {item.badge > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-green-500 text-white text-[10px] font-bold h-4 w-4 flex items-center justify-center rounded-full shadow-sm animate-in zoom-in border border-background">
+                <span className="absolute -top-1.5 -right-1.5 bg-green-500 text-white text-[10px] font-bold h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full shadow-sm animate-in zoom-in border border-background leading-none">
                   {item.badge > 99 ? '99+' : item.badge}
                 </span>
               )}

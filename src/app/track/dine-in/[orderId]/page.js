@@ -15,6 +15,7 @@ import { ref, onValue, off } from 'firebase/database'; // ✅ RTDB listeners
 import Script from 'next/script';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const roundToTwo = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 const statusConfig = {
     pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
@@ -269,14 +270,22 @@ function DineInTrackingContent() {
         // For dine-in, we need to fetch ALL orders with same dineInTabId
         // But for now, show current order's items
         // TODO: Fetch all orders with same dineInTabId from API
+        const subtotal = roundToTwo(order.subtotal || order.totalAmount || 0);
+        const cgst = roundToTwo(order.cgst || 0);
+        const sgst = roundToTwo(order.sgst || 0);
+        const discount = roundToTwo(order.coupon?.discount || 0);
+        const grandTotal = roundToTwo(order.totalAmount || 0);
+        const visibleComputedTotal = roundToTwo(subtotal + cgst + sgst - discount);
+        const roundOff = roundToTwo(grandTotal - visibleComputedTotal);
 
         return {
             items: order.items || [],
-            subtotal: order.subtotal || order.totalAmount || 0,
-            cgst: order.cgst || 0,
-            sgst: order.sgst || 0,
-            discount: order.coupon?.discount || 0,
-            grandTotal: order.totalAmount || 0,
+            subtotal,
+            cgst,
+            sgst,
+            discount,
+            roundOff,
+            grandTotal,
         };
     }, [orderData]);
 
@@ -1197,6 +1206,12 @@ function DineInTrackingContent() {
                                         <div className="flex justify-between text-sm text-green-500">
                                             <span>Discount</span>
                                             <span>-{formatCurrency(billDetails.discount)}</span>
+                                        </div>
+                                    )}
+                                    {Math.abs(billDetails.roundOff) >= 0.01 && (
+                                        <div className="flex justify-between text-sm text-muted-foreground">
+                                            <span>Round Off / Adj.</span>
+                                            <span>{billDetails.roundOff >= 0 ? '+' : '-'}{formatCurrency(Math.abs(billDetails.roundOff))}</span>
                                         </div>
                                     )}
                                 </div>

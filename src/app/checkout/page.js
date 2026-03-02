@@ -678,6 +678,7 @@ const CheckoutPageInternal = () => {
                         gstEnabled: paymentData.gstEnabled || false,
                         gstRate: paymentData.gstPercentage || paymentData.gstRate || 0,
                         gstMinAmount: paymentData.gstMinAmount || 0,
+                        gstCalculationMode: paymentData.gstCalculationMode || (paymentData.gstIncludedInPrice === false ? 'excluded' : 'included'),
                         convenienceFeeEnabled: paymentData.convenienceFeeEnabled || false,
                         convenienceFeeRate: paymentData.convenienceFeeRate || 2.5,
                         convenienceFeePaidBy: paymentData.convenienceFeePaidBy || 'customer',
@@ -931,16 +932,24 @@ const CheckoutPageInternal = () => {
 
         let cgstAmount = 0;
         let sgstAmount = 0;
+        const gstCalculationMode = vendorCharges?.gstCalculationMode || 'included';
         if (vendorCharges?.gstEnabled && taxableAmount > 0) {
             if (taxableAmount >= (vendorCharges.gstMinAmount || 0)) {
                 const totalGstRate = vendorCharges.gstPercentage !== undefined ? vendorCharges.gstPercentage : (vendorCharges.gstRate || 5);
                 const halfGstRate = totalGstRate / 2;
-                cgstAmount = taxableAmount * (halfGstRate / 100);
-                sgstAmount = taxableAmount * (halfGstRate / 100);
+                if (gstCalculationMode === 'included') {
+                    const baseAmount = taxableAmount / (1 + (totalGstRate / 100));
+                    const totalGstAmount = taxableAmount - baseAmount;
+                    cgstAmount = totalGstAmount / 2;
+                    sgstAmount = totalGstAmount / 2;
+                } else {
+                    cgstAmount = taxableAmount * (halfGstRate / 100);
+                    sgstAmount = taxableAmount * (halfGstRate / 100);
+                }
             }
         }
         const internalPackagingCharge = (diningPreference === 'takeaway' && vendorCharges?.packagingChargeEnabled) ? (vendorCharges.packagingChargeAmount || 0) : 0;
-        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + cgstAmount + sgstAmount + tip + internalPackagingCharge;
+        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + tip + internalPackagingCharge + (gstCalculationMode === 'included' ? 0 : (cgstAmount + sgstAmount));
 
         let calculatedConvenienceFee = 0;
         if (selectedPaymentMethod === 'online' && vendorCharges?.convenienceFeeEnabled) {

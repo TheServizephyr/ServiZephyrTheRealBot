@@ -90,9 +90,8 @@ async function handleCleanTable(req) {
             tabSnap = await tabRef.get();
         }
 
-
         if (!tabSnap?.exists) {
-            console.log(`[Clean Table] ❌ Tab ${tabId} not found in any location`);
+            console.log(`[Clean Table] ❌ Tab ${tabId || dineInTabId} not found in any location, entering fallback`);
 
             const sessionOrdersMap = new Map();
             const dineInLikeDeliveryTypes = ['dine-in', 'car-order'];
@@ -286,8 +285,11 @@ async function handleCleanTable(req) {
             const tabData = tabSnap.data();
 
             // Step 2: Check pending amount (skip for V2 tabs that don't have this field)
-            if (tabData.pendingAmount !== undefined && tabData.pendingAmount > 0.01) {
+            // ✅ relax this for owners (no token) to allow clearing drifted tabs
+            if (token && tabData.pendingAmount !== undefined && tabData.pendingAmount > 0.01) {
                 throw new Error(`Pending amount: ₹${tabData.pendingAmount.toFixed(2)}`);
+            } else if (tabData.pendingAmount > 0.01) {
+                console.warn(`[Clean Table] ⚠️ Owner clearing tab with pending amount: ₹${tabData.pendingAmount}`);
             }
 
             // Close tab - only include fields that exist

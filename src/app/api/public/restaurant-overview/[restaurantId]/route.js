@@ -251,6 +251,7 @@ export async function GET(_req, { params }) {
                     delivery: businessData.deliveryEnabled !== false,
                     pickup: businessData.pickupEnabled !== false,
                     dineIn: businessData.dineInEnabled !== false,
+                    waitlist: businessData.isWaitlistEnabled === true,
                 },
                 coordinates: getCoordinates(businessData),
                 rating: {

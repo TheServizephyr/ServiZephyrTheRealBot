@@ -384,6 +384,8 @@ export async function GET(req) {
         let onlineOrderRevenue = 0;
         let manualCallOrderCount = 0;
         let manualCallOrderRevenue = 0;
+        let dineInOrderCount = 0;
+        let dineInOrderRevenue = 0;
         let counterBillCount = 0;
         let counterBillRevenue = 0;
 
@@ -433,7 +435,11 @@ export async function GET(req) {
             }
 
             const manualCallOrder = isManualCallOrder(data);
-            if (manualCallOrder) {
+            const isDineInOrder = String(data?.deliveryType || '').toLowerCase() === 'dine-in';
+            if (isDineInOrder) {
+                dineInOrderCount += 1;
+                dineInOrderRevenue += amount;
+            } else if (manualCallOrder) {
                 manualCallOrderCount += 1;
                 manualCallOrderRevenue += amount;
             } else {
@@ -536,6 +542,7 @@ export async function GET(req) {
             .sort((a, b) => b.count - a.count);
 
         const orderSourceBreakdown = [
+            { name: 'Dine-In Orders', value: dineInOrderCount, revenue: dineInOrderRevenue },
             { name: 'Online Orders', value: onlineOrderCount, revenue: onlineOrderRevenue },
             { name: 'Manual Call Orders', value: manualCallOrderCount, revenue: manualCallOrderRevenue },
             { name: 'Offline Counter Bills', value: counterBillCount, revenue: counterBillRevenue },
@@ -559,9 +566,11 @@ export async function GET(req) {
                 avgPrepTime: Math.round(avgPrepTime),
                 onlineOrders: onlineOrderCount,
                 manualCallOrders: manualCallOrderCount,
+                dineInOrders: dineInOrderCount,
                 counterBills: counterBillCount,
                 onlineOrderRevenue,
                 manualCallRevenue: manualCallOrderRevenue,
+                dineInRevenue: dineInOrderRevenue,
                 counterBillRevenue,
             },
             salesTrend,

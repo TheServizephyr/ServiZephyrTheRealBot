@@ -704,6 +704,8 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     const [activeModal, setActiveModal] = useState('main');
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
+    const [geofenceDistance, setGeofenceDistance] = useState(0);
+    const [geofenceError, setGeofenceError] = useState(null);
 
     const [hour, setHour] = useState(19);
     const [minute, setMinute] = useState(0);
@@ -797,6 +799,50 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             setInfoDialog({ isOpen: true, title: "Input Error", message: "Please enter a name for your tab." });
             return;
         }
+
+        // --- GEO-FENCING CHECK ---
+        setIsSaving(true);
+        try {
+            if (!isEditing) {
+                // Get current position
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 5000,
+                        maximumAge: 0
+                    });
+                });
+
+                const { latitude, longitude } = position.coords;
+                const restaurantLat = Number(tableStatus?.restaurantCoordinates?.lat || tableStatus?.restaurantCoordinates?.latitude);
+                const restaurantLng = Number(tableStatus?.restaurantCoordinates?.lng || tableStatus?.restaurantCoordinates?.longitude);
+
+                if (restaurantLat && restaurantLng) {
+                    const R = 6371; // km
+                    const dLat = (latitude - restaurantLat) * Math.PI / 180;
+                    const dLon = (longitude - restaurantLng) * Math.PI / 180;
+                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(restaurantLat * Math.PI / 180) * Math.cos(latitude * Math.PI / 180) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const distance = R * c; // km
+
+                    if (distance > 0.2) { // 200 meters
+                        setGeofenceDistance(distance);
+                        setActiveModal('geofence_fail');
+                        setIsSaving(false);
+                        return;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Geo-location error:", error);
+            setGeofenceError(error.message);
+            setActiveModal('location_denied');
+            setIsSaving(false);
+            return;
+        }
+
         // Use availableSeats from backend (includes uncleaned pax subtraction)
         const availableCapacity = tableStatus.availableSeats !== undefined
             ? tableStatus.availableSeats
@@ -805,10 +851,10 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         // Skip capacity check if editing (since they are already seated)
         if (!isEditing && pax > availableCapacity) {
             setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s). ${tableStatus.hasUncleanedOrders ? 'Some seats are being cleaned.' : ''}` });
+            setIsSaving(false);
             return;
         }
 
-        setIsSaving(true);
         try {
             if (isEditing) {
                 await onUpdateTab(pax, name);
@@ -1050,6 +1096,56 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 <DialogFooter className="mt-6">
                                     <Button onClick={onClose} className="w-full">Okay</Button>
                                 </DialogFooter>
+                            </motion.div>
+                        )}
+                        {activeModal === 'geofence_fail' && (
+                            <motion.div key="geofence_fail" className="p-8 text-center space-y-6">
+                                <div className="flex flex-col items-center gap-4">
+                                    <div className="w-20 h-20 rounded-full bg-amber-500/10 flex items-center justify-center">
+                                        <MapPin className="w-10 h-10 text-amber-500" />
+                                    </div>
+                                    <DialogHeader>
+                                        <DialogTitle className="text-2xl">You appear to be far away</DialogTitle>
+                                        <DialogDescription className="text-base pt-2">
+                                            You are approximately <span className="font-bold text-foreground">{geofenceDistance < 1 ? `${Math.round(geofenceDistance * 1000)}m` : `${geofenceDistance.toFixed(1)}km`}</span> away from the restaurant.
+                                            <br /><br />
+                                            If you are planning to visit us soon, you can reserve a table in advance!
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                </div>
+                                <div className="space-y-3 pt-4">
+                                    <Button onClick={() => setActiveModal('book')} className="w-full h-12 text-lg gap-2">
+                                        <CalendarClock size={20} /> Book a Table Now
+                                    </Button>
+                                    <Button onClick={onClose} variant="ghost" className="w-full">
+                                        I&apos;ll check back later
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+                        {activeModal === 'location_denied' && (
+                            <motion.div key="location_denied" className="p-8 text-center space-y-6">
+                                <div className="flex flex-col items-center gap-4">
+                                    <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center">
+                                        <AlertTriangle className="w-10 h-10 text-destructive" />
+                                    </div>
+                                    <DialogHeader>
+                                        <DialogTitle className="text-2xl">Location Access Required</DialogTitle>
+                                        <DialogDescription className="text-base pt-2">
+                                            We need your location to verify you are at the restaurant so you can start ordering.
+                                            <br /><br />
+                                            Please enable location permissions in your browser settings.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                </div>
+                                <div className="space-y-3 pt-4">
+                                    <Button onClick={handleStartTab} className="w-full h-12 text-lg gap-2">
+                                        <RefreshCw size={20} /> Retry Verification
+                                    </Button>
+                                    <Button onClick={() => setActiveModal('main')} variant="ghost" className="w-full">
+                                        Back to Options
+                                    </Button>
+                                </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -1740,6 +1836,7 @@ const OrderPageInternal = () => {
     const [isDineInModalOpen, setIsDineInModalOpen] = useState(false);
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [waiterToast, setWaiterToast] = useState({ isOpen: false, message: '', type: 'success' });
 
     // ✅ Car Order state
     const orderTypeFromUrl = searchParams.get('orderType');
@@ -1762,6 +1859,14 @@ const OrderPageInternal = () => {
     const [newTabName, setNewTabName] = useState('');
     const [isEditingModal, setIsEditingModal] = useState(false);
     const [isReleasingSeat, setIsReleasingSeat] = useState(false);
+
+    useEffect(() => {
+        if (!waiterToast.isOpen) return undefined;
+        const timer = setTimeout(() => {
+            setWaiterToast((prev) => ({ ...prev, isOpen: false }));
+        }, 2200);
+        return () => clearTimeout(timer);
+    }, [waiterToast.isOpen]);
 
     const normalizedBusinessType = useMemo(
         () => normalizeBusinessType(restaurantData.businessType),
@@ -2227,6 +2332,7 @@ const OrderPageInternal = () => {
                     // Add-on Charges
                     gstEnabled: settingsData.gstEnabled,
                     gstRate: settingsData.gstRate,
+                    gstCalculationMode: settingsData.gstCalculationMode || (settingsData.gstIncludedInPrice === false ? 'excluded' : 'included'),
                     gstMinAmount: settingsData.gstMinAmount,
                     convenienceFeeEnabled: settingsData.convenienceFeeEnabled,
                     convenienceFeeRate: settingsData.convenienceFeeRate,
@@ -2744,6 +2850,7 @@ const OrderPageInternal = () => {
             // Add-on Charges
             gstEnabled: restaurantData.gstEnabled,
             gstRate: restaurantData.gstRate,
+            gstCalculationMode: restaurantData.gstCalculationMode || (restaurantData.gstIncludedInPrice === false ? 'excluded' : 'included'),
             gstMinAmount: restaurantData.gstMinAmount,
             convenienceFeeEnabled: restaurantData.convenienceFeeEnabled,
             convenienceFeeRate: restaurantData.convenienceFeeRate,
@@ -2890,6 +2997,11 @@ const OrderPageInternal = () => {
 
         for (const category of Object.keys(sourceMenu)) {
             let items = Array.isArray(sourceMenu[category]) ? [...sourceMenu[category]] : [];
+            // Dine-in exclusive items should be visible only in dine-in flow.
+            items = items.filter((item) => {
+                if (item?.isDineInExclusive !== true) return true;
+                return deliveryType === 'dine-in';
+            });
             if (normalizedSearchQuery) {
                 items = items.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery));
             }
@@ -2938,6 +3050,7 @@ const OrderPageInternal = () => {
         sortBy,
         filters,
         normalizedSearchQuery,
+        deliveryType,
         isStoreBusiness,
         isStoreFilterContextActive,
         hasStoreSearchContext,
@@ -3254,9 +3367,17 @@ const OrderPageInternal = () => {
     const handleCallWaiter = async () => {
         try {
             await fetch('/api/owner/service-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, tableId: tableIdFromUrl, dineInTabId: activeTabInfo.id }) });
-            setInfoDialog({ isOpen: true, title: "Request Sent!", message: "A waiter has been notified and will be with you shortly." });
+            setWaiterToast({
+                isOpen: true,
+                type: 'success',
+                message: 'Request sent. Waiter has been notified.'
+            });
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: "Could not send request. " + error.message });
+            setWaiterToast({
+                isOpen: true,
+                type: 'error',
+                message: `Could not send request${error?.message ? `: ${error.message}` : '.'}`
+            });
         }
     };
 
@@ -3569,6 +3690,25 @@ const OrderPageInternal = () => {
     return (
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
+            <AnimatePresence>
+                {waiterToast.isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                        className={cn(
+                            "fixed top-4 left-1/2 -translate-x-1/2 z-[120] px-3.5 py-2 rounded-lg border shadow-lg text-xs sm:text-sm font-medium backdrop-blur-sm",
+                            waiterToast.type === 'error'
+                                ? "bg-red-500/95 text-white border-red-400"
+                                : "bg-emerald-500/95 text-white border-emerald-400"
+                        )}
+                        role="status"
+                        aria-live="polite"
+                    >
+                        {waiterToast.message}
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {isQrScannerOpen && <QrScanner onClose={() => setIsQrScannerOpen(false)} onScanSuccess={(decodedText) => { setIsQrScannerOpen(false); window.location.href = decodedText; }} />}
 

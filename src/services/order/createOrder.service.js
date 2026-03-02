@@ -415,7 +415,8 @@ export async function createOrderV2(req, options = {}) {
             pricing = await calculateServerTotal({
                 restaurantId: business.id, // ✅ FIX: Use resolved Business ID (not slug/ownerId)
                 items,
-                businessType: business.type
+                businessType: business.type,
+                deliveryType,
             });
 
             // Validate against client subtotal
@@ -637,7 +638,8 @@ export async function createOrderV2(req, options = {}) {
             validatedDeliveryCharge = 0;
         }
 
-        const serverGrandTotal = netSubtotal + serverCgst + serverSgst +
+        const gstComponent = taxes.isIncludedInPrice ? 0 : (serverCgst + serverSgst);
+        const serverGrandTotal = netSubtotal + gstComponent +
             validatedDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0) +
             (platformFee || 0) + (convenienceFee || 0) + (serviceFee || 0);
         const ownerManualDeliveryChargeProvided =

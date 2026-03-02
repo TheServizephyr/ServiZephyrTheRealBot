@@ -350,16 +350,24 @@ const SalesOverview = ({ data, loading }) => {
     return (
         <div className="space-y-6">
             <ModalContent />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
                 <KpiCard title="Total Revenue" value={data?.kpis?.totalRevenue || 0} change={data?.kpis?.revenueChange || 0} icon={IndianRupee} isCurrency={true} modalTitle="Revenue Details" modalType="revenue" loading={loading} />
                 <KpiCard title="Total Orders" value={data?.kpis?.totalOrders || 0} change={data?.kpis?.ordersChange || 0} icon={ShoppingBasket} modalTitle="Order Details" modalType="orders" loading={loading} />
                 <KpiCard title="Average Order Value" value={data?.kpis?.avgOrderValue || 0} change={data?.kpis?.avgValueChange || 0} icon={FileBarChart} isCurrency={true} modalTitle="Order Value Details" modalType="orders" loading={loading} />
+                <KpiCard title="Dine-In Orders" value={data?.kpis?.dineInOrders || 0} icon={ChefHat} loading={loading} />
                 <KpiCard title="Online Orders" value={data?.kpis?.onlineOrders || 0} icon={TrendingUp} loading={loading} />
                 <KpiCard title="Call Orders" value={data?.kpis?.manualCallOrders || 0} icon={Phone} loading={loading} />
                 <KpiCard title="Total Rejections" value={data?.kpis?.totalRejections || 0} icon={Ban} isRejection={true} loading={loading} />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <SourceSplitCard
+                    title="Dine-In Orders"
+                    count={data?.kpis?.dineInOrders || 0}
+                    revenue={data?.kpis?.dineInRevenue || 0}
+                    icon={ChefHat}
+                    tone="yellow"
+                />
                 <SourceSplitCard
                     title="Online Orders"
                     count={data?.kpis?.onlineOrders || 0}

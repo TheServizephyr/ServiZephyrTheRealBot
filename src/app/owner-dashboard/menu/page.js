@@ -128,6 +128,11 @@ const MenuItem = ({
                         <div className="flex-grow text-left">
                             <p className="font-semibold text-foreground">{item.name}</p>
                             {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+                            {item.isDineInExclusive === true && (
+                                <span className="mt-1 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                    Dine-In Only
+                                </span>
+                            )}
                         </div>
                     </div>
                     <div className="md:col-span-2 font-medium flex justify-around items-center text-foreground">
@@ -440,6 +445,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     brand: String(editingItem.brand || '').trim(),
                     productType: String(editingItem.productType || editingItem.type || '').trim(),
                     addOnGroups: isShop ? [] : (editingItem.addOnGroups || []),
+                    isDineInExclusive: editingItem.isDineInExclusive === true,
                 });
             } else {
                 setPricingType(isShop ? 'single' : 'portions');
@@ -455,6 +461,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     brand: "",
                     productType: "",
                     addOnGroups: isShop ? [] : [],
+                    isDineInExclusive: false,
                 });
             }
         } else {
@@ -613,27 +620,37 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             let finalPortions;
             if (isShop || pricingType === 'single') {
                 const basePrice = item.portions?.[0]?.price;
-                if (!basePrice || isNaN(parseFloat(basePrice))) {
+                const parsedBasePrice = Number(basePrice);
+                if (basePrice === '' || !Number.isFinite(parsedBasePrice) || parsedBasePrice < 0) {
                     showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price." });
                     setIsSaving(false);
                     return;
                 }
-                finalPortions = [{ name: 'Full', price: parseFloat(basePrice) }];
+                finalPortions = [{ name: 'Full', price: parsedBasePrice }];
             } else {
                 finalPortions = item.portions
-                    .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
-                    .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
+                    .filter((p) => {
+                        const parsedPrice = Number(p?.price);
+                        return p?.name?.trim() && p?.price !== '' && Number.isFinite(parsedPrice) && parsedPrice >= 0;
+                    })
+                    .map((p) => ({ name: p.name.trim(), price: Number(p.price) }));
             }
 
             const finalAddOnGroups = isShop
                 ? []
                 : item.addOnGroups
-                    .filter(g => g.title.trim() && g.options.some(opt => opt.name.trim() && opt.price))
+                    .filter((g) => g.title.trim() && g.options.some((opt) => {
+                        const parsedPrice = Number(opt?.price);
+                        return opt?.name?.trim() && opt?.price !== '' && Number.isFinite(parsedPrice) && parsedPrice >= 0;
+                    }))
                     .map(g => ({
                         ...g,
                         options: g.options
-                            .filter(opt => opt.name.trim() && opt.price)
-                            .map(opt => ({ name: opt.name.trim(), price: parseFloat(opt.price) }))
+                            .filter((opt) => {
+                                const parsedPrice = Number(opt?.price);
+                                return opt?.name?.trim() && opt?.price !== '' && Number.isFinite(parsedPrice) && parsedPrice >= 0;
+                            })
+                            .map((opt) => ({ name: opt.name.trim(), price: Number(opt.price) }))
                     }));
 
             if (finalPortions.length === 0) {
@@ -652,6 +669,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
                 addOnGroups: finalAddOnGroups,
+                isDineInExclusive: !isShop && item.isDineInExclusive === true,
                 ...(isShop ? {
                     brand: normalizedBrand,
                     productType: normalizedProductType,
@@ -762,6 +780,16 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     <div className="flex items-center space-x-2">
                                         <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
                                         <Label htmlFor="is-veg">Vegetarian</Label>
+                                    </div>
+                                )}
+                                {!isShop && (
+                                    <div className="flex items-center space-x-2">
+                                        <Switch
+                                            id="is-dinein-exclusive"
+                                            checked={item.isDineInExclusive === true}
+                                            onCheckedChange={(checked) => handleChange('isDineInExclusive', checked)}
+                                        />
+                                        <Label htmlFor="is-dinein-exclusive">Dine-In Only</Label>
                                     </div>
                                 )}
                                 <div className="flex items-center space-x-2">

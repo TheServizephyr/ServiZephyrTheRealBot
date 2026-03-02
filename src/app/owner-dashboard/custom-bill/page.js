@@ -201,6 +201,7 @@ function CustomBillPage() {
                                 gstEnabled: !!settingsData.gstEnabled,
                                 gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
                                 gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
+                                gstCalculationMode: settingsData.gstCalculationMode || (settingsData.gstIncludedInPrice === false ? 'excluded' : 'included'),
                             };
                             setRestaurant(nextRestaurantPayload);
                             writeCachedPayload({
@@ -271,6 +272,7 @@ function CustomBillPage() {
                         gstEnabled: !!settingsData.gstEnabled,
                         gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
                         gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
+                        gstCalculationMode: settingsData.gstCalculationMode || (settingsData.gstIncludedInPrice === false ? 'excluded' : 'included'),
                     };
                     if (isMounted) setRestaurant(nextRestaurantPayload);
 
@@ -500,6 +502,7 @@ function CustomBillPage() {
         const gstEnabled = !!restaurant?.gstEnabled;
         const gstPercentage = Number(restaurant?.gstPercentage || 0);
         const gstMinAmount = Number(restaurant?.gstMinAmount || 0);
+        const gstCalculationMode = restaurant?.gstCalculationMode || 'included';
 
         const shouldApplyGst = gstEnabled && gstPercentage > 0 && sub >= gstMinAmount;
         if (!shouldApplyGst) {
@@ -513,9 +516,22 @@ function CustomBillPage() {
         }
 
         const halfRate = gstPercentage / 2;
-        const localCgst = Math.round((sub * halfRate) / 100);
-        const localSgst = Math.round((sub * halfRate) / 100);
-        const total = sub + localCgst + localSgst + normalizedDeliveryCharge;
+        let localCgst = 0;
+        let localSgst = 0;
+
+        if (gstCalculationMode === 'included') {
+            const baseAmount = sub / (1 + (gstPercentage / 100));
+            const gstTotal = sub - baseAmount;
+            localCgst = Math.round((gstTotal / 2) * 100) / 100;
+            localSgst = Math.round((gstTotal / 2) * 100) / 100;
+        } else {
+            localCgst = Math.round((sub * halfRate) / 100);
+            localSgst = Math.round((sub * halfRate) / 100);
+        }
+
+        const total = gstCalculationMode === 'included'
+            ? (sub + normalizedDeliveryCharge)
+            : (sub + localCgst + localSgst + normalizedDeliveryCharge);
         return {
             subtotal: sub,
             cgst: localCgst,

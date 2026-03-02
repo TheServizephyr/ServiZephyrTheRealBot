@@ -679,7 +679,8 @@ export async function processOrderV1(body, firestore) {
             pricing = await calculateServerTotal({
                 restaurantId,
                 items,
-                businessType
+                businessType,
+                deliveryType
             });
 
             // Validate against client subtotal (with small tolerance)
@@ -751,6 +752,36 @@ export async function processOrderV1(body, firestore) {
             }
         }
 
+        // --- COORDINATE EXTRACTION (Shared for Delivery & Dine-In Geo-fencing) ---
+        const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
+        const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
+        const restaurantLat = toFiniteNumber(
+            businessData.coordinates?.lat ??
+            businessData.address?.latitude ??
+            businessData.businessAddress?.latitude
+        );
+        const restaurantLng = toFiniteNumber(
+            businessData.coordinates?.lng ??
+            businessData.address?.longitude ??
+            businessData.businessAddress?.longitude
+        );
+
+        // ✅ GEO-FENCING: Verify presence for Dine-In
+        if (deliveryType === 'dine-in') {
+            if (customerLat && customerLng && restaurantLat && restaurantLng) {
+                const distance = calculateHaversineDistance(restaurantLat, restaurantLng, customerLat, customerLng);
+                if (distance > 0.3) { // 300m allowance for backend (buffer for indoors/thick walls)
+                    console.warn(`[API /order/create] 🚨 Geo-fence triggered: ${distance.toFixed(3)}km distance for Dine-In`);
+                    return NextResponse.json({
+                        message: "Verification Failed: You must be at the restaurant to place a Dine-In order."
+                    }, { status: 403 });
+                }
+            } else if (!customerLat || !customerLng) {
+                console.warn("[API /order/create] ⚠️ Dine-In order missing customer coordinates for geo-fencing");
+                // Optional: strictly enforce this, or allow if restaurant doesn't have coords.
+            }
+        }
+
         // --- RE-CALCULATE FINALS ---
         const netSubtotal = Math.max(0, pricing.serverSubtotal - finalDiscount);
 
@@ -762,19 +793,6 @@ export async function processOrderV1(body, firestore) {
         // Delivery charge/range is always re-validated on server for delivery orders.
         let finalDeliveryCharge = 0;
         if (deliveryType === 'delivery') {
-            const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
-            const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
-            const restaurantLat = toFiniteNumber(
-                businessData.coordinates?.lat ??
-                businessData.address?.latitude ??
-                businessData.businessAddress?.latitude
-            );
-            const restaurantLng = toFiniteNumber(
-                businessData.coordinates?.lng ??
-                businessData.address?.longitude ??
-                businessData.businessAddress?.longitude
-            );
-
             if (customerLat === null || customerLng === null || restaurantLat === null || restaurantLng === null) {
                 return NextResponse.json(
                     { message: 'Unable to validate delivery location for this order.' },
@@ -827,7 +845,8 @@ export async function processOrderV1(body, firestore) {
             finalDeliveryCharge = 0;
         }
 
-        const serverGrandTotal = netSubtotal + serverCgst + serverSgst + finalDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0);
+        const gstComponent = taxes.isIncludedInPrice ? 0 : (serverCgst + serverSgst);
+        const serverGrandTotal = netSubtotal + gstComponent + finalDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0);
 
         console.log(`[API /order/create] Server Finals:`);
         console.log(`  Subtotal: ₹${pricing.serverSubtotal}`);
@@ -991,7 +1010,6 @@ export async function processOrderV1(body, firestore) {
                     console.log(`[Order Create] ✅ Tab ${dineInTabId} totals recalculated`);
                 } catch (recalcErr) {
                     console.warn('[Order Create] Tab recalculation failed:', recalcErr.message);
-                    // Don't fail order creation if recalc fails
                 }
             }
 

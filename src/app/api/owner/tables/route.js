@@ -226,49 +226,100 @@ export async function POST(req) {
                 const maxCapacity = Number(tableData.max_capacity || 0);
                 const dbCurrentPax = Math.max(0, Number(tableData.current_pax || 0));
                 const requestedPax = Number(pax_count);
+                const STALE_TAB_MS = 2 * 60 * 60 * 1000; // 2 hours
 
                 if (!Number.isFinite(requestedPax) || requestedPax < 1) {
                     throw new Error('Invalid party size.');
                 }
 
-                // ✅ GROUND TRUTH: Calculate occupied pax from actual open dineInTabs (not stale table doc)
+                const nowMs = Date.now();
+                const toMillis = (value) => {
+                    if (!value) return null;
+                    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+                    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+                    if (typeof value?._seconds === 'number') return value._seconds * 1000;
+                    const parsed = new Date(value).getTime();
+                    return Number.isFinite(parsed) ? parsed : null;
+                };
+
+                // Read open tabs first
                 const openTabsSnap = await transaction.get(
                     businessRef.collection('dineInTabs')
                         .where('tableId', '==', actualTableId)
                         .where('status', 'in', ['active', 'inactive'])
                 );
-                const tabBasedPax = openTabsSnap.docs.reduce((sum, doc) => {
-                    return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
-                }, 0);
 
-                // Use tab-based pax as the primary source; fallback to dbCurrentPax only if no tabs exist
-                // and there are active orders (legacy case)
-                let effectiveOccupiedPax = tabBasedPax;
-                if (tabBasedPax === 0 && dbCurrentPax === 0) {
-                    // Also check live orders as a safety net for legacy data
-                    const activeOrdersQuery = firestore.collection('orders')
-                        .where('restaurantId', '==', businessRef.id)
-                        .where('deliveryType', '==', 'dine-in')
-                        .where('tableId', '==', actualTableId)
-                        .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'pay_at_counter']);
-                    const activeOrdersSnap = await transaction.get(activeOrdersQuery);
-                    const activePartyPaxMap = new Map();
-                    activeOrdersSnap.docs.forEach((doc) => {
-                        const orderData = doc.data() || {};
-                        const partyKey = orderData.dineInTabId || orderData.tabId || doc.id;
-                        if (!activePartyPaxMap.has(partyKey)) {
-                            activePartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
-                        }
-                    });
-                    effectiveOccupiedPax = Array.from(activePartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
+                // Active orders for this table (same as waiter UI logic)
+                const activeOrdersQuery = firestore.collection('orders')
+                    .where('restaurantId', '==', businessRef.id)
+                    .where('deliveryType', '==', 'dine-in')
+                    .where('tableId', '==', actualTableId)
+                    .where('status', 'in', ['pending', 'accepted', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'pay_at_counter']);
+                const activeOrdersSnap = await transaction.get(activeOrdersQuery);
+
+                const activePartyPaxMap = new Map();
+                const activeTabIdsFromOrders = new Set();
+                activeOrdersSnap.docs.forEach((doc) => {
+                    const orderData = doc.data() || {};
+                    const partyKey = orderData.dineInTabId || orderData.tabId || orderData.dineInToken || doc.id;
+                    if (!activePartyPaxMap.has(partyKey)) {
+                        activePartyPaxMap.set(partyKey, Number(orderData.pax_count) || 1);
+                    }
+                    if (orderData.dineInTabId) activeTabIdsFromOrders.add(String(orderData.dineInTabId));
+                    if (orderData.tabId) activeTabIdsFromOrders.add(String(orderData.tabId));
+                });
+                const occupiedByActiveOrders = Array.from(activePartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
+
+                // Count occupied pax from open tabs, but auto-ignore stale tabs with no active orders
+                let occupiedByOpenTabs = 0;
+                const staleTabRefs = [];
+                openTabsSnap.docs.forEach((doc) => {
+                    const tabData = doc.data() || {};
+                    const tabPax = Math.max(0, Number(tabData?.pax_count || 0));
+                    if (tabPax <= 0) return;
+
+                    const tabId = String(doc.id);
+                    const linkedToActiveOrder = activeTabIdsFromOrders.has(tabId);
+                    const status = String(tabData?.status || '').toLowerCase();
+                    const lastActivityMs = toMillis(tabData?.updatedAt) || toMillis(tabData?.createdAt);
+                    const isStaleNoOrderTab = !linkedToActiveOrder &&
+                        !!lastActivityMs &&
+                        (nowMs - lastActivityMs > STALE_TAB_MS);
+
+                    if (isStaleNoOrderTab) {
+                        staleTabRefs.push(doc.ref);
+                        return;
+                    }
+
+                    // Keep active and fresh inactive tabs counted.
+                    if (status === 'active' || status === 'inactive') {
+                        occupiedByOpenTabs += tabPax;
+                    }
+                });
+
+                // Align with waiter board display: prefer live order-based occupancy,
+                // but do not undercount when there are fresh open tabs without orders yet.
+                let effectiveOccupiedPax = Math.max(occupiedByActiveOrders, occupiedByOpenTabs);
+                if (effectiveOccupiedPax <= 0 && dbCurrentPax > 0) {
+                    effectiveOccupiedPax = Math.min(maxCapacity || dbCurrentPax, dbCurrentPax);
                 }
 
                 const availableCapacity = Math.max(0, maxCapacity - effectiveOccupiedPax);
-                console.log(`[API tables] create_tab capacity check ${actualTableId}: max=${maxCapacity}, dbPax=${dbCurrentPax}, tabPax=${tabBasedPax}, occupied=${effectiveOccupiedPax}, requested=${requestedPax}, available=${availableCapacity}`);
+                console.log(`[API tables] create_tab capacity check ${actualTableId}: max=${maxCapacity}, dbPax=${dbCurrentPax}, occupiedByOrders=${occupiedByActiveOrders}, occupiedByTabs=${occupiedByOpenTabs}, occupied=${effectiveOccupiedPax}, requested=${requestedPax}, staleTabsClosed=${staleTabRefs.length}, available=${availableCapacity}`);
 
                 if (requestedPax > availableCapacity) {
                     throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
                 }
+
+                // Close stale tabs that were ignored in occupancy
+                staleTabRefs.forEach((tabRef) => {
+                    transaction.set(tabRef, {
+                        status: 'closed',
+                        closedAt: FieldValue.serverTimestamp(),
+                        closedBy: 'system',
+                        closeReason: 'auto_stale_no_active_orders'
+                    }, { merge: true });
+                });
 
                 const newTabRef = businessRef.collection('dineInTabs').doc(newTabId);
                 const newTabData = {
