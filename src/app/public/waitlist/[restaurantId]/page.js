@@ -95,13 +95,13 @@ export default function PublicWaitlistPage({ params }) {
                                 <CheckCircle2 className="h-12 w-12 text-primary animate-pulse" />
                             </div>
                         </div>
-                        <CardTitle className="text-3xl font-black mb-2 tracking-tight">You're on the list!</CardTitle>
+                        <CardTitle className="text-3xl font-black mb-2 tracking-tight">You&apos;re on the list!</CardTitle>
                         <CardDescription className="text-lg mb-6 text-center">
-                            We'll call or text you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> is ready.
+                            We&apos;ll call or text you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> is ready.
                         </CardDescription>
                         <div className="bg-muted p-4 rounded-xl mb-6 text-left">
                             <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-1">Notice</p>
-                            <p className="text-sm">Please stay nearby so you don't miss your turn.</p>
+                            <p className="text-sm">Please stay nearby so you don&apos;t miss your turn.</p>
                         </div>
                         <Button className="w-full h-12 text-lg font-bold" onClick={() => window.location.reload()}>
                             Close
