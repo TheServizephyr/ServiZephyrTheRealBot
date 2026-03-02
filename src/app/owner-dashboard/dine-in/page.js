@@ -1429,162 +1429,146 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
 
 const QrCodeDisplay = ({ text, tableName, innerRef, qrType = 'table', restaurantName = '' }) => {
     const isCarSpotTheme = qrType === 'car-spot';
-    const qrStyle = { shapeRendering: 'crispEdges' };
-    const tableQrRenderStyle = {
-        ...qrStyle,
-        width: 'min(72vw, 320px)',
-        height: 'auto',
-        display: 'block',
-    };
+    const szLogo = typeof window !== 'undefined' ? `${window.location.origin}/logo.png` : '/logo.png';
+    const [isDownloading, setIsDownloading] = useState(false);
 
     const handleDownload = async () => {
         const printableNode = innerRef?.current;
-        if (!printableNode) return;
+        if (!printableNode || isDownloading) return;
+
+        setIsDownloading(true);
+        console.log('[Dine-In QR Download] Starting capture...');
 
         try {
+            // Buffer for image settling
+            await new Promise(r => setTimeout(r, 500));
+
             const pngUrl = await toPng(printableNode, {
                 cacheBust: true,
-                pixelRatio: 4,
-                backgroundColor: '#ffffff'
+                pixelRatio: 3,
+                backgroundColor: '#ffffff',
+                skipFonts: false
             });
 
             const downloadLink = document.createElement("a");
             downloadLink.href = pngUrl;
-            downloadLink.download = `${tableName}-qrcode-card.png`;
+            downloadLink.download = `${restaurantName || 'Restaurant'}_${tableName}_QR.png`;
             document.body.appendChild(downloadLink);
             downloadLink.click();
             document.body.removeChild(downloadLink);
-            return;
+            console.log('[Dine-In QR Download] Success');
         } catch (error) {
-            console.warn('[QR Download] Card image download failed, falling back to raw QR canvas.', error);
+            console.error('[Dine-In QR Download] Failed:', error);
+            alert("Download failed. Please try Printing instead.");
+        } finally {
+            setIsDownloading(false);
         }
-
-        const canvas = printableNode.querySelector('canvas');
-        if (!canvas) {
-            const svg = printableNode.querySelector('svg');
-            if (!svg) return;
-
-            // Secondary fallback: download raw SVG when PNG conversion is unavailable.
-            const serialized = new XMLSerializer().serializeToString(svg);
-            const blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
-            const objectUrl = URL.createObjectURL(blob);
-            const downloadLink = document.createElement("a");
-            downloadLink.href = objectUrl;
-            downloadLink.download = `${tableName}-qrcode.svg`;
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-            URL.revokeObjectURL(objectUrl);
-            return;
-        }
-
-        const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
-        const downloadLink = document.createElement("a");
-        downloadLink.href = pngUrl;
-        downloadLink.download = `${tableName}-qrcode.png`;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
     };
 
     const handlePrint = useReactToPrint({
         content: () => innerRef.current,
-        documentTitle: `QR_Code_${tableName}`,
+        documentTitle: `${restaurantName}_${tableName}_QR`,
     });
 
     return (
-        <div className="mt-6 flex flex-col items-center gap-4">
-            {isCarSpotTheme ? (
-                <div ref={innerRef} className="bg-white rounded-[28px] border-4 border-yellow-400 shadow-2xl overflow-hidden w-full max-w-[360px]">
-                    <div className="bg-gradient-to-br from-yellow-300 via-yellow-200 to-white px-5 py-5 text-center border-b border-yellow-200">
-                        <p className="text-[10px] font-bold tracking-[0.3em] text-yellow-900 uppercase">ServiZephyr</p>
-                        <h3 className="mt-2 text-2xl leading-tight font-black text-black uppercase break-words">
-                            {restaurantName || 'Restaurant'}
-                        </h3>
-                        <p className="mt-3 text-2xl font-extrabold text-yellow-700 tracking-wide">ORDER HERE 👇</p>
+        <div className="mt-6 flex flex-col items-center gap-4 w-full">
+            {/* The Poster Container (Visible & Printable) */}
+            <div
+                ref={innerRef}
+                className={cn(
+                    "bg-white shadow-2xl overflow-hidden w-full mx-auto",
+                    isCarSpotTheme
+                        ? "rounded-[28px] border-4 border-yellow-400 max-w-[360px]"
+                        : "rounded-[24px] border-[4px] sm:border-[6px] border-yellow-400 max-w-[420px]"
+                )}
+                style={{
+                    printColorAdjust: 'exact',
+                    WebkitPrintColorAdjust: 'exact',
+                    backgroundColor: '#ffffff'
+                }}
+            >
+                {/* Header Section */}
+                <div className="bg-gradient-to-br from-yellow-300 via-yellow-200 to-white px-4 sm:px-6 py-6 sm:py-8 text-center border-b border-yellow-200">
+                    {!isCarSpotTheme && (
+                        <>
+                            <h3 className="text-xl sm:text-3xl leading-tight font-black text-black uppercase break-words px-2">
+                                {restaurantName || 'Restaurant'}
+                            </h3>
+                            <p className="mt-1 sm:mt-2 text-[10px] sm:text-[12px] font-bold text-black uppercase tracking-[0.2em] opacity-70">Table {tableName}</p>
+                            <p className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-black text-yellow-700 tracking-tight uppercase">Order Here</p>
+                        </>
+                    )}
+                    {isCarSpotTheme && (
+                        <>
+                            <p className="text-[10px] font-bold tracking-[0.3em] text-yellow-900 uppercase">ServiZephyr</p>
+                            <h3 className="mt-2 text-2xl leading-tight font-black text-black uppercase break-words">
+                                {restaurantName || 'Restaurant'}
+                            </h3>
+                            <p className="mt-3 text-2xl font-extrabold text-yellow-700 tracking-wide uppercase">Order Here 👇</p>
+                        </>
+                    )}
+                </div>
+
+                {/* QR Section */}
+                <div className="px-4 sm:px-6 pt-6 sm:pt-8 pb-4 sm:pb-6 text-center bg-white">
+                    <div className="inline-flex items-center justify-center p-3 sm:p-4 rounded-2xl sm:rounded-3xl border-2 border-yellow-300 shadow-lg bg-white mx-auto">
+                        <QRCode
+                            value={text}
+                            size={1024}
+                            level="H"
+                            includeMargin={true}
+                            renderAs="canvas"
+                            style={{
+                                width: '100%',
+                                maxWidth: isCarSpotTheme ? '240px' : '280px',
+                                height: 'auto',
+                                aspectRatio: '1/1',
+                                display: 'block',
+                            }}
+                            imageSettings={{
+                                src: szLogo,
+                                height: 180,
+                                width: 180,
+                                excavate: true
+                            }}
+                        />
                     </div>
 
-                    <div className="px-5 pt-5 pb-4 text-center bg-white">
-                        <div className="inline-flex items-center justify-center p-3 rounded-2xl border-2 border-yellow-300 shadow-md bg-white">
-                            <QRCode
-                                value={text}
-                                size={230}
-                                level="H"
-                                includeMargin={true}
-                                renderAs="svg"
-                                style={qrStyle}
-                                imageSettings={{
-                                    src: '/logo.png',
-                                    height: 48,
-                                    width: 48,
-                                    excavate: true
-                                }}
-                            />
-                        </div>
-
-                        <p className="mt-4 text-sm font-bold text-black">
-                            {tableName}
-                        </p>
-                        <p className="mt-1 text-xs text-gray-700">
-                            Scan this QR to place your car order instantly.
-                        </p>
-                        <p className="mt-1 text-xs text-yellow-700 font-semibold">
-                            Sit tight, we will bring your order to your spot.
-                        </p>
-
-                        <div className="mt-4 pt-3 border-t border-yellow-200">
-                            <p className="text-[11px] font-bold text-black uppercase tracking-wide">
-                                Powered by ServiZephyr
+                    <div className="mt-4 sm:mt-6 px-2 sm:px-6">
+                        {isCarSpotTheme ? (
+                            <>
+                                <p className="text-sm font-bold text-black">{tableName}</p>
+                                <p className="mt-1 text-[10px] sm:text-xs text-gray-700">Scan this QR to place your car order instantly.</p>
+                                <p className="mt-1 text-[10px] sm:text-xs text-yellow-700 font-semibold leading-relaxed">Sit tight, we will bring your order to your spot.</p>
+                            </>
+                        ) : (
+                            <p className="text-[10px] sm:text-[11px] font-medium text-gray-500 leading-relaxed">
+                                Scan the above QR using Google Lens or any other supported scanner to place your order.
                             </p>
-                        </div>
+                        )}
+                    </div>
+
+                    {/* Footer Branding */}
+                    <div className="mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-yellow-100">
+                        <p className="text-[10px] sm:text-[12px] font-black text-black uppercase tracking-widest">
+                            Powered by ServiZephyr
+                        </p>
                     </div>
                 </div>
-            ) : (
-                <div
-                    ref={innerRef}
-                    className="bg-white rounded-[24px] border-4 border-yellow-400 shadow-2xl overflow-hidden w-full max-w-[420px] mx-auto"
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-sm px-4">
+                <Button onClick={handlePrint} variant="outline" className="h-12 rounded-xl font-bold border-zinc-200 text-zinc-700 hover:bg-white hover:border-yellow-400">
+                    <Printer size={18} className="mr-2" /> Print Poster
+                </Button>
+                <Button
+                    onClick={handleDownload}
+                    disabled={isDownloading}
+                    className="h-12 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black font-black uppercase tracking-tight shadow-md"
                 >
-                    <div className="bg-gradient-to-br from-yellow-300 via-yellow-200 to-white px-5 py-5 text-center border-b border-yellow-200">
-                        <h3 className="mt-2 text-2xl leading-tight font-black text-black uppercase break-words">
-                            {restaurantName || 'Restaurant'}
-                        </h3>
-                        <p className="mt-2 text-[11px] font-bold text-black uppercase tracking-[0.18em]">Table {tableName}</p>
-                        <p className="mt-2 text-2xl font-extrabold text-yellow-700 tracking-wide uppercase">Order Here</p>
-                    </div>
-
-                    <div className="px-5 pt-5 pb-4 text-center bg-white">
-                        <div className="inline-flex items-center justify-center p-3 rounded-2xl border-2 border-yellow-300 shadow-md bg-white">
-                            <QRCode
-                                value={text}
-                                size={1024}
-                                level={"H"}
-                                includeMargin={true}
-                                renderAs="svg"
-                                style={tableQrRenderStyle}
-                                imageSettings={{
-                                    src: '/logo.png',
-                                    height: 180,
-                                    width: 180,
-                                    excavate: true
-                                }}
-                            />
-                        </div>
-
-                        <p className="mt-3 text-[11px] text-gray-700">
-                            Scan the above QR using Google Lens or any other supported scanner.
-                        </p>
-
-                        <div className="mt-4 pt-3 border-t border-yellow-200">
-                            <p className="text-[11px] font-bold text-black uppercase tracking-wide">
-                                Powered by ServiZephyr
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm">
-                <Button onClick={handlePrint} variant="outline"><Printer className="mr-2 h-4 w-4" /> Print</Button>
-                <Button onClick={handleDownload} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PNG</Button>
+                    {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <><Download size={18} className="mr-2" /> Download PNG</>}
+                </Button>
             </div>
         </div>
     );
