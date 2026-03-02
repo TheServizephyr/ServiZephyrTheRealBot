@@ -48,7 +48,7 @@ const OwnerLocationPage = () => {
         try {
             const user = auth.currentUser;
             if (!user) {
-                router.push('/');
+                setLoading(false);
                 return;
             }
             const idToken = await user.getIdToken();
@@ -100,7 +100,7 @@ const OwnerLocationPage = () => {
             if (user) {
                 fetchInitialLocation();
             } else {
-                router.push('/');
+                setLoading(false);
             }
         });
         return () => unsubscribe();

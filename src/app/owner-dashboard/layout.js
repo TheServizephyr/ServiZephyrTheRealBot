@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useMemo } from "react";
 import Sidebar from "@/components/OwnerDashboard/Sidebar";
 import Navbar from "@/components/OwnerDashboard/Navbar";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
@@ -14,7 +14,7 @@ import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSqu
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/firebase";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import GoldenCoinSpinner from "@/components/GoldenCoinSpinner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -82,6 +82,15 @@ function OwnerDashboardContent({ children }) {
   const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
 
   const { user, isUserLoading } = useUser();
+  const [isRecoveringSession, setIsRecoveringSession] = useState(false);
+  const [hasAttemptedSessionRecovery, setHasAttemptedSessionRecovery] = useState(false);
+
+  const hasOwnerSessionHint = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const role = String(localStorage.getItem('role') || '').trim().toLowerCase();
+    const justLoggedIn = sessionStorage.getItem('justLoggedIn');
+    return ['owner', 'restaurant-owner', 'shop-owner'].includes(role) || !!justLoggedIn;
+  }, []);
 
   // CRITICAL: Role detection - prevent owner from being blocked
   useEffect(() => {
@@ -167,13 +176,22 @@ function OwnerDashboardContent({ children }) {
       return;
     }
 
-    // Simple check - just mark as ready, no redirect
+    const settleDelayMs = hasOwnerSessionHint ? 1600 : 500;
+
+    // Give persisted sessions a little more time to restore on resume/background wakeup.
     const timer = setTimeout(() => {
       setAuthChecked(true);
-    }, 500);
+    }, settleDelayMs);
 
     return () => clearTimeout(timer);
-  }, [isUserLoading]);
+  }, [isUserLoading, hasOwnerSessionHint]);
+
+  useEffect(() => {
+    if (user) {
+      setHasAttemptedSessionRecovery(false);
+      setIsRecoveringSession(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     console.log('[Layout] 🔄 useEffect triggered', { authChecked, hasUser: !!user, isUserLoading });
@@ -185,7 +203,60 @@ function OwnerDashboardContent({ children }) {
     }
 
     if (!isUserLoading && !user) {
+      // If Firebase has already restored a user internally, wait for provider sync.
+      if (auth.currentUser) {
+        console.log('[Layout] ⏳ Auth provider sync pending, waiting...');
+        return;
+      }
+
       const nextPath = pathname || '/owner-dashboard';
+
+      // Try one recovery cycle before redirecting to landing page.
+      if (hasOwnerSessionHint && !hasAttemptedSessionRecovery && !isRecoveringSession) {
+        let cancelled = false;
+        (async () => {
+          try {
+            setIsRecoveringSession(true);
+            setHasAttemptedSessionRecovery(true);
+
+            if (typeof auth.authStateReady === 'function') {
+              await Promise.race([
+                auth.authStateReady(),
+                new Promise((resolve) => setTimeout(resolve, 3500))
+              ]);
+            } else {
+              await new Promise((resolve) => setTimeout(resolve, 1200));
+            }
+
+            const startedAt = Date.now();
+            while (!auth.currentUser && Date.now() - startedAt < 2500) {
+              await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+
+            if (cancelled) return;
+
+            if (!auth.currentUser) {
+              console.log('[Layout] ❌ Session recovery failed, redirecting to landing page.');
+              router.replace(`/?redirect=${encodeURIComponent(nextPath)}`);
+            } else {
+              console.log('[Layout] ✅ Session recovered from persisted auth state.');
+            }
+          } catch (recoveryError) {
+            console.error('[Layout] Session recovery error:', recoveryError);
+            if (!cancelled) {
+              router.replace(`/?redirect=${encodeURIComponent(nextPath)}`);
+            }
+          } finally {
+            if (!cancelled) setIsRecoveringSession(false);
+          }
+        })();
+
+        return () => {
+          cancelled = true;
+        };
+      }
+
+      // No recovery hint / recovery already attempted -> redirect.
       router.replace(`/?redirect=${encodeURIComponent(nextPath)}`);
       return;
     }
@@ -326,9 +397,21 @@ function OwnerDashboardContent({ children }) {
       fetchUserRole();
     }
 
-  }, [user, isUserLoading, authChecked, effectiveOwnerId, router, pathname, employeeOfOwnerId, impersonatedOwnerId]);
+  }, [
+    user,
+    isUserLoading,
+    authChecked,
+    hasOwnerSessionHint,
+    hasAttemptedSessionRecovery,
+    isRecoveringSession,
+    effectiveOwnerId,
+    router,
+    pathname,
+    employeeOfOwnerId,
+    impersonatedOwnerId
+  ]);
 
-  if ((isUserLoading || !authChecked) && !user) {
+  if ((isUserLoading || !authChecked || isRecoveringSession) && !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <GoldenCoinSpinner />

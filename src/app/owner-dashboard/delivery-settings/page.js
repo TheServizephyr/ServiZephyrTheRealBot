@@ -84,7 +84,7 @@ function DeliverySettingsPageContent() {
             try {
                 const user = auth.currentUser;
                 if (!user) {
-                    router.push('/');
+                    setLoading(false);
                     return;
                 }
                 const idToken = await user.getIdToken();
@@ -145,7 +145,7 @@ function DeliverySettingsPageContent() {
         });
 
         return () => unsubscribe();
-    }, [router]);
+    }, [router, impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleSave = async () => {
         setIsSaving(true);

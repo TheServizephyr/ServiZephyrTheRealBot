@@ -772,7 +772,6 @@ export default function CustomersPage() {
                 loadCustomers();
             } else {
                 setLoading(false);
-                router.push('/');
             }
         });
         return () => unsubscribe();

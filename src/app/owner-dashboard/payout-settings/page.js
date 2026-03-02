@@ -47,7 +47,7 @@ function PayoutSettingsPageContent() {
             if (user) {
                 fetchUserData();
             } else {
-                router.push('/');
+                setLoading(false);
             }
         });
         

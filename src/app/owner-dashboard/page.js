@@ -257,14 +257,13 @@ function PageContent() {
         console.log("[Dashboard] Auth state changed, user found. Fetching data.");
         fetchInitialData();
       } else {
-        console.log("[Dashboard] Auth state changed, no user. Setting loading to false.");
+        console.log("[Dashboard] Auth state changed, no user. Waiting for layout auth guard.");
         setLoading(false);
-        router.push('/');
       }
     });
 
     return () => unsubscribe();
-  }, [activeFilter, router, impersonatedOwnerId]);
+  }, [activeFilter, router, impersonatedOwnerId, employeeOfOwnerId]);
 
   return (
     <div className="text-foreground min-h-full p-4 md:p-6">
