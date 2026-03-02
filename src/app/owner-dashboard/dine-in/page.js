@@ -2363,11 +2363,21 @@ const DineInPageContent = () => {
         });
 
         try {
-            // ✅ Using new dine-in cleanup endpoint
+            // ✅ Since Next.js API route throws 500 HTML on error, and the standalone backend
+            // has the clean-table endpoint, let's use the owner backend proxy directly if possible,
+            // or rely on the backend's `/api/dine-in/clean-table` via rewrite.
+            // In our current setup, `/api/owner/*` and others might be rewritten.
+            // The standalone backend serves `/api/dine-in/clean-table`.
+            // Let's use the NextApi route but ensure it uses the backend endpoint or we call backend directly.
+            // Actually, `handleApiCall` uses window.location.origin. So `fetch('/api/dine-in/clean-table')` hits Next.js.
+            // The Next.js API route `src/app/api/dine-in/clean-table/route.js` crashes!
+            // Let's just fix the NextAPI route to always return JSON.
+
+            // Wait, we fixed the Next.js API route `tabSnap?.exists` earlier.
+            // If it still crashes with HTML "Internal Server Error", it's an unhandled Next.js Edge Runtime error.
             const cleanupEndpoint = '/api/dine-in/clean-table';
 
             // ✅ CRITICAL: Also find the real dineInTabId from tab/group data so the API
-            // can directly locate the Firestore tab doc even if tabId is a groupKey.
             const table = allData?.tables?.find(t => t.id === tableId);
             const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
             const realDineInTabId = tabData?.dineInTabId;
@@ -2376,10 +2386,8 @@ const DineInPageContent = () => {
                 tabId,
                 tableId: isCarSlot ? null : tableId,
                 restaurantId: restaurantDetails?.id,
-                dineInTabId: realDineInTabId || null // ✅ Send the real Firestore tab doc ID
+                dineInTabId: realDineInTabId || null
             };
-
-            console.log(`[Owner Dashboard] Cleaning tab with endpoint: ${cleanupEndpoint}, realTabId: ${realDineInTabId}`);
 
             await handleApiCall('PATCH', payload, cleanupEndpoint);
             setInfoDialog({

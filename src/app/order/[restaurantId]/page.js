@@ -521,6 +521,185 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick, catalo
     );
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// QR SCANNER MODAL  —  validates ServiZephyr table QR codes via camera
+// ─────────────────────────────────────────────────────────────────────────────
+const QrScannerModal = ({ isOpen, onClose }) => {
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const streamRef = useRef(null);
+    const rafRef = useRef(null);
+    const [error, setError] = useState(null);
+    const [warning, setWarning] = useState(null);
+    const [scanning, setScanning] = useState(false);
+
+    const VALID_HOSTS = ['servizephyr.com', 'www.servizephyr.com'];
+    const isServizephyrQr = (url) => {
+        try {
+            const parsed = new URL(url);
+            const isKnownHost = VALID_HOSTS.includes(parsed.hostname) ||
+                parsed.hostname.endsWith('.vercel.app') ||
+                parsed.hostname === 'localhost' ||
+                parsed.hostname === '127.0.0.1';
+            return isKnownHost && parsed.pathname.includes('/order/') && parsed.searchParams.has('table');
+        } catch { return false; }
+    };
+
+    const stopCamera = () => {
+        if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+        if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    };
+
+    useEffect(() => {
+        if (!isOpen) { stopCamera(); setError(null); setWarning(null); setScanning(false); return; }
+        let active = true;
+        setError(null); setWarning(null);
+
+        const startCamera = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+                streamRef.current = stream;
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    videoRef.current.play();
+                    setScanning(true);
+                }
+            } catch (e) {
+                if (active) setError('Camera access denied. Please allow camera permission and try again.');
+            }
+        };
+        startCamera();
+        return () => { active = false; stopCamera(); };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!scanning) return;
+        let lastWarningTime = 0;
+
+        const tick = async () => {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            if (!video || !canvas || video.readyState < 2) { rafRef.current = requestAnimationFrame(tick); return; }
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            try {
+                const jsQR = (await import('jsqr')).default;
+                const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+                if (code?.data) {
+                    if (isServizephyrQr(code.data)) {
+                        stopCamera();
+                        onClose();
+                        window.location.href = code.data;
+                        return;
+                    } else {
+                        const now = Date.now();
+                        if (now - lastWarningTime > 3000) {
+                            lastWarningTime = now;
+                            setWarning('Yeh ServiZephyr ka QR nahi hai! 🙅 Apni table par rakha hua ServiZephyr QR scan karo.');
+                            setTimeout(() => setWarning(null), 3500);
+                        }
+                    }
+                }
+            } catch { /* jsQR load error, skip frame */ }
+
+            rafRef.current = requestAnimationFrame(tick);
+        };
+
+        rafRef.current = requestAnimationFrame(tick);
+        return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    }, [scanning]);
+
+    return (
+        <AnimatePresence>
+            {isOpen && (
+                <motion.div
+                    className="fixed inset-0 z-50 bg-black flex flex-col"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                >
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-5 pt-6 pb-3 z-10">
+                        <div>
+                            <h2 className="text-white text-xl font-bold">Scan Table QR</h2>
+                            <p className="text-white/60 text-xs mt-0.5">Point camera at the QR code on your table</p>
+                        </div>
+                        <button onClick={() => { stopCamera(); onClose(); }} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    {/* Camera View */}
+                    <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+                        <video ref={videoRef} playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+                        <canvas ref={canvasRef} className="hidden" />
+
+                        {/* Scan Frame Overlay */}
+                        {!error && (
+                            <div className="relative z-10 w-64 h-64">
+                                {/* Corner brackets */}
+                                {[['top-0 left-0', 'border-t-4 border-l-4'], ['top-0 right-0', 'border-t-4 border-r-4'], ['bottom-0 left-0', 'border-b-4 border-l-4'], ['bottom-0 right-0', 'border-b-4 border-r-4']].map(([pos, border], i) => (
+                                    <div key={i} className={`absolute w-8 h-8 ${pos} ${border} border-green-400 rounded-sm`} />
+                                ))}
+                                {/* Scanning line animation */}
+                                <motion.div
+                                    className="absolute left-2 right-2 h-0.5 bg-green-400/80"
+                                    animate={{ top: ['10%', '90%', '10%'] }}
+                                    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Error state */}
+                        {error && (
+                            <div className="z-10 text-center px-8">
+                                <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+                                    <Camera size={32} className="text-red-400" />
+                                </div>
+                                <p className="text-white font-semibold text-base">{error}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Warning Toast */}
+                    <AnimatePresence>
+                        {warning && (
+                            <motion.div
+                                initial={{ y: 40, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 40, opacity: 0 }}
+                                className="absolute bottom-24 left-4 right-4 z-20"
+                            >
+                                <div className="bg-red-600 border border-red-400 rounded-2xl px-5 py-4 flex items-start gap-3 shadow-2xl">
+                                    <div className="text-2xl mt-0.5">🙅</div>
+                                    <div>
+                                        <p className="text-white font-bold text-sm">Galat QR Code!</p>
+                                        <p className="text-white/80 text-xs mt-0.5">Sirf ServiZephyr table QR kaam karega. Koi aur QR scan mat karo! 😤</p>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Bottom hint */}
+                    <div className="px-5 py-5 flex items-center justify-center gap-2 text-white/40 text-xs">
+                        <QrCode size={14} />
+                        <span>ServiZephyr table QR only</span>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+};
+
 const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen, setInfoDialog, newTabPax, setNewTabPax, newTabName, setNewTabName, isEditing, onUpdateTab }) => {
     const [activeModal, setActiveModal] = useState('main');
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
@@ -4396,6 +4575,10 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
 
+                <QrScannerModal
+                    isOpen={isQrScannerOpen}
+                    onClose={() => setIsQrScannerOpen(false)}
+                />
                 <ConfirmationDialog
                     isOpen={isConfirmReleaseOpen}
                     onClose={() => setIsConfirmReleaseOpen(false)}

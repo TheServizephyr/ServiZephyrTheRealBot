@@ -84,14 +84,14 @@ async function handleCleanTable(req) {
         }
 
         // PRIORITY 3: Try restaurant subcollection (V2 structure) with tabId
-        if (!tabSnap.exists && businessRef && tabId) {
+        if (!tabSnap?.exists && businessRef && tabId) {
             console.log(`[Clean Table] Tab not in global collection, checking restaurant subcollection for ${restaurantId}`);
             tabRef = businessRef.collection('dineInTabs').doc(tabId);
             tabSnap = await tabRef.get();
         }
 
 
-        if (!tabSnap.exists) {
+        if (!tabSnap?.exists) {
             console.log(`[Clean Table] ❌ Tab ${tabId} not found in any location`);
 
             const sessionOrdersMap = new Map();

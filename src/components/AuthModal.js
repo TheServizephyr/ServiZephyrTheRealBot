@@ -146,7 +146,7 @@ export default function AuthModal({ isOpen, onClose }) {
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
       if (isLocalhost) {
-        console.log("[AuthModal] Localhost detected - using popup...");
+        console.log("[AuthModal] Localhost - using popup...");
         const result = await signInWithPopup(auth, googleProvider);
         const user = result.user;
         console.log("[AuthModal] Popup successful, processing...");
