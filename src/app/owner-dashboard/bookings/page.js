@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine } from 'lucide-react';
+import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -24,6 +24,7 @@ import { useReactToPrint } from 'react-to-print';
 import { toPng } from 'html-to-image';
 import { Printer } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,13 @@ const formatDateTime = (dateValue) => {
     }
     if (isNaN(date.getTime())) return 'Invalid Date';
     return format(date, "dd MMM, yyyy 'at' hh:mm a");
+};
+
+const formatCountdown = (totalSeconds) => {
+    const safeSeconds = Math.max(0, Number(totalSeconds || 0));
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
 
 const BookingCard = ({ booking, onUpdateStatus }) => {
@@ -143,14 +151,19 @@ const WaitlistQrModal = ({ isOpen, onClose, restaurant }) => {
         try {
             // Ensure images are loaded before capture
             await new Promise(r => setTimeout(r, 600));
+            const nodeWidth = posterRef.current.scrollWidth || posterRef.current.offsetWidth || 460;
+            const nodeHeight = posterRef.current.scrollHeight || posterRef.current.offsetHeight;
 
             const pngUrl = await toPng(posterRef.current, {
                 cacheBust: true,
                 pixelRatio: 4,
                 backgroundColor: '#ffffff',
                 skipFonts: false,
-                width: 460, // Lock width for capture consistency
+                width: nodeWidth,
+                height: nodeHeight,
                 style: {
+                    width: `${nodeWidth}px`,
+                    height: `${nodeHeight}px`,
                     margin: '0',
                     padding: '0',
                     transform: 'none'
@@ -354,7 +367,164 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId })
     );
 };
 
-const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId }) => {
+const CHART_COLORS = ['#FACC15', '#22C55E', '#EF4444', '#3B82F6', '#A855F7', '#14B8A6'];
+
+const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employeeOfOwnerId }) => {
+    const { toast } = useToast();
+    const [startDate, setStartDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+    const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+    const [loading, setLoading] = useState(false);
+    const [analytics, setAnalytics] = useState(null);
+
+    const fetchAnalytics = useCallback(async () => {
+        if (startDate > endDate) {
+            toast({ title: 'Invalid Range', description: 'Start date cannot be after end date.', variant: 'destructive' });
+            return;
+        }
+        setLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const url = new URL('/api/owner/waitlist/analytics', window.location.origin);
+            url.searchParams.set('startDate', startDate);
+            url.searchParams.set('endDate', endDate);
+            if (impersonatedOwnerId) url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            else if (employeeOfOwnerId) url.searchParams.set('employee_of', employeeOfOwnerId);
+
+            const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to load analytics');
+            setAnalytics(data);
+        } catch (err) {
+            toast({ title: 'Analytics Error', description: err.message, variant: 'destructive' });
+        } finally {
+            setLoading(false);
+        }
+    }, [startDate, endDate, impersonatedOwnerId, employeeOfOwnerId, toast]);
+
+    useEffect(() => {
+        if (isOpen) void fetchAnalytics();
+    }, [isOpen, fetchAnalytics]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <BarChart3 size={18} /> Waitlist Analytics
+                    </DialogTitle>
+                    <DialogDescription>
+                        Customer mix, peak hours, cancellations and no-show trends for selected range.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Label htmlFor="analyticsStartDate" className="text-sm">From</Label>
+                        <input
+                            id="analyticsStartDate"
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm"
+                        />
+                        <Label htmlFor="analyticsEndDate" className="text-sm">To</Label>
+                        <input
+                            id="analyticsEndDate"
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm"
+                        />
+                        <Button type="button" variant="outline" onClick={fetchAnalytics} disabled={loading}>
+                            {loading ? <Loader2 size={14} className="mr-2 animate-spin" /> : <RefreshCw size={14} className="mr-2" />}
+                            Refresh
+                        </Button>
+                    </div>
+
+                    {loading && !analytics ? (
+                        <div className="h-64 rounded-xl bg-muted/20 animate-pulse" />
+                    ) : analytics ? (
+                        <>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Total</p><p className="text-2xl font-bold">{analytics?.summary?.totalEntries || 0}</p></CardContent></Card>
+                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">New</p><p className="text-2xl font-bold text-green-500">{analytics?.summary?.newCustomers || 0}</p></CardContent></Card>
+                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Repeat</p><p className="text-2xl font-bold text-blue-500">{analytics?.summary?.repeatCustomers || 0}</p></CardContent></Card>
+                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Cancellations</p><p className="text-2xl font-bold text-red-500">{analytics?.summary?.cancellations || 0}</p></CardContent></Card>
+                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">No-show</p><p className="text-2xl font-bold text-amber-500">{analytics?.summary?.noShow || 0}</p></CardContent></Card>
+                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Seated</p><p className="text-2xl font-bold text-primary">{analytics?.summary?.seated || 0}</p></CardContent></Card>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-base">Peak Hours Heatmap</CardTitle>
+                                        <CardDescription>Entries by hour ({analytics?.timezone || 'IST'})</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="h-72">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={analytics?.hourly || []}>
+                                                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                                                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={2} />
+                                                <YAxis allowDecimals={false} />
+                                                <Tooltip />
+                                                <Bar dataKey="count" fill="#FACC15" radius={[6, 6, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </CardContent>
+                                </Card>
+
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-base">Customer Mix</CardTitle>
+                                        <CardDescription>New vs repeat customers</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="h-72">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie data={analytics?.customerMix || []} dataKey="count" nameKey="label" outerRadius={110} label>
+                                                    {(analytics?.customerMix || []).map((entry, index) => (
+                                                        <Cell key={`${entry.label}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
+                            <Card>
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-base">Status Breakdown</CardTitle>
+                                    <CardDescription>Pending, notified, seated, cancelled, no-show</CardDescription>
+                                </CardHeader>
+                                <CardContent className="h-72">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={analytics?.statusBreakdown || []}>
+                                            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                                            <XAxis dataKey="status" />
+                                            <YAxis allowDecimals={false} />
+                                            <Tooltip />
+                                            <Bar dataKey="count" fill="#22C55E" radius={[6, 6, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </CardContent>
+                            </Card>
+                        </>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">No analytics data available.</p>
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button type="button" variant="outline" onClick={onClose}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-background border-border">
@@ -396,7 +566,10 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                     </TabsContent>
                 </Tabs>
 
-                <DialogFooter className="mt-6">
+                <DialogFooter className="mt-6 flex gap-2">
+                    <Button onClick={onOpenAnalytics} variant="outline" className="w-full md:w-auto">
+                        <BarChart3 size={15} className="mr-2" /> Analytics
+                    </Button>
                     <Button onClick={onClose} variant="outline" className="w-full md:w-auto">Close</Button>
                 </DialogFooter>
             </DialogContent>
@@ -500,7 +673,7 @@ const WaitlistManagement = ({
     }, [restaurant, fetchData]);
 
     useEffect(() => {
-        const interval = setInterval(() => setNowTs(Date.now()), 30000);
+        const interval = setInterval(() => setNowTs(Date.now()), 1000);
         return () => clearInterval(interval);
     }, []);
 
@@ -556,7 +729,8 @@ const WaitlistManagement = ({
 
     const handleNotify = (entry) => {
         const guestCountText = `${entry.paxCount} ${Number(entry.paxCount) === 1 ? 'guest' : 'guests'}`;
-        const msg = `Hi ${entry.name}, 👋\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
+        const lapseMinutes = Number(waitlistMeta?.noShowTimeoutMinutes || 10);
+        const msg = `Hi ${entry.name},\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nYour seat may lapse after ${lapseMinutes} minutes, so please arrive soon to avoid cancellation.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
         window.open(`https://wa.me/91${entry.phone}?text=${encodeURIComponent(msg)}`, '_blank');
         handleUpdateStatus(entry.id, 'notified');
     };
@@ -688,10 +862,24 @@ const WaitlistManagement = ({
                         const fitTables = allTables.filter(t => t.state === 'available' && t.max_capacity >= entry.paxCount);
                         const isRecommended = !usesTraditionalSeating && recommendedEntries.has(entry.id);
                         const isNotified = entry.status === 'notified';
-                        const noShowDeadlineMs = entry?.noShowDeadlineAt ? new Date(entry.noShowDeadlineAt).getTime() : null;
+                        const notifiedAtMs = entry?.notifiedAt ? new Date(entry.notifiedAt).getTime() : null;
+                        const computedDeadlineMs = notifiedAtMs
+                            ? (notifiedAtMs + Math.max(1, Number(waitlistMeta?.noShowTimeoutMinutes || 10)) * 60 * 1000)
+                            : null;
+                        const noShowDeadlineMs = entry?.noShowDeadlineAt
+                            ? new Date(entry.noShowDeadlineAt).getTime()
+                            : computedDeadlineMs;
                         const remainingNoShowMinutes = (isNotified && noShowDeadlineMs)
                             ? Math.max(0, Math.ceil((noShowDeadlineMs - nowTs) / 60000))
                             : null;
+                        const totalNoShowSeconds = Math.max(60, Number(waitlistMeta?.noShowTimeoutMinutes || 10) * 60);
+                        const remainingNoShowSeconds = (isNotified && noShowDeadlineMs)
+                            ? Math.max(0, Math.ceil((noShowDeadlineMs - nowTs) / 1000))
+                            : null;
+                        const progressRatio = remainingNoShowSeconds !== null
+                            ? Math.max(0, Math.min(1, remainingNoShowSeconds / totalNoShowSeconds))
+                            : 0;
+                        const progressDeg = Math.round(progressRatio * 360);
 
                         return (
                             <Card key={entry.id} className={cn(
@@ -722,15 +910,25 @@ const WaitlistManagement = ({
                                                     )}
                                                 </h4>
                                                 <p className="text-xs text-muted-foreground">+91 {entry.phone}</p>
-                                                {isNotified && remainingNoShowMinutes !== null && (
-                                                    <p className="text-[10px] text-amber-600 mt-1">
-                                                        No-show auto close in {remainingNoShowMinutes} min
-                                                    </p>
-                                                )}
                                             </div>
                                         </div>
-                                        <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
-                                            {isNotified ? 'Notified' : isRecommended ? 'Recommended' : 'Waiting'}
+                                        <div className="flex flex-col items-end gap-1.5">
+                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
+                                                {isNotified ? 'Notified' : isRecommended ? 'Recommended' : 'Waiting'}
+                                            </div>
+                                            {isNotified && remainingNoShowMinutes !== null && (
+                                                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">
+                                                    <span
+                                                        className="h-4 w-4 rounded-full border border-amber-500/60"
+                                                        style={{
+                                                            background: `conic-gradient(#f59e0b ${progressDeg}deg, rgba(245, 158, 11, 0.15) ${progressDeg}deg 360deg)`
+                                                        }}
+                                                    />
+                                                    <span className="text-[10px] font-semibold text-amber-600">
+                                                        {formatCountdown(remainingNoShowSeconds)}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4 text-xs font-medium">
@@ -893,11 +1091,14 @@ function BookingsPageContent() {
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [waitlistSeatingMode, setWaitlistSeatingMode] = useState('table_assign');
     const [waitlistManualCapacity, setWaitlistManualCapacity] = useState(40);
+    const [waitlistNoShowTimeoutMinutes, setWaitlistNoShowTimeoutMinutes] = useState(10);
     const [waitlistConfigLoading, setWaitlistConfigLoading] = useState(false);
     const [isWaitlistQrOpen, setIsWaitlistQrOpen] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [isWaitlistAnalyticsOpen, setIsWaitlistAnalyticsOpen] = useState(false);
     const [isWaitlistSettingsOpen, setIsWaitlistSettingsOpen] = useState(false);
     const [capacityDraft, setCapacityDraft] = useState('40');
+    const [noShowTimeoutDraft, setNoShowTimeoutDraft] = useState('10');
     const { toast } = useToast();
 
     const fetchBookings = useCallback(async (isManualRefresh = false) => {
@@ -938,6 +1139,7 @@ function BookingsPageContent() {
                             bData.waitlistSeatingMode === 'manual_seat' ? 'manual_seat' : 'table_assign'
                         );
                         setWaitlistManualCapacity(Math.max(1, Number(bData.waitlistManualCapacity || 40)));
+                        setWaitlistNoShowTimeoutMinutes(Math.max(1, Number(bData.waitlistNoShowTimeoutMinutes || 10)));
                         const bRef = collection(db, coll, bData.id, 'bookings');
                         unsubscribe = onSnapshot(query(bRef), (s) => {
                             const f = [];
@@ -958,6 +1160,10 @@ function BookingsPageContent() {
     useEffect(() => {
         setCapacityDraft(String(waitlistManualCapacity || 40));
     }, [waitlistManualCapacity, isWaitlistSettingsOpen]);
+
+    useEffect(() => {
+        setNoShowTimeoutDraft(String(waitlistNoShowTimeoutMinutes || 10));
+    }, [waitlistNoShowTimeoutMinutes, isWaitlistSettingsOpen]);
 
     const handleUpdateStatus = async (bookingId, status) => {
         try {
@@ -1043,6 +1249,61 @@ function BookingsPageContent() {
             toast({ title: "Saved", description: `Manual seating capacity updated to ${parsedCapacity}.` });
         } catch (err) {
             toast({ title: "Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setWaitlistConfigLoading(false);
+        }
+    };
+
+    const handleWaitlistNoShowTimeoutSave = async (timeoutRaw) => {
+        const parsedTimeout = Number.parseInt(String(timeoutRaw), 10);
+        if (!Number.isInteger(parsedTimeout) || parsedTimeout < 1 || parsedTimeout > 120) {
+            toast({ title: "Invalid Timeout", description: "Enter timeout between 1 and 120 minutes.", variant: "destructive" });
+            return;
+        }
+
+        setWaitlistConfigLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/owner/settings', {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ waitlistNoShowTimeoutMinutes: parsedTimeout })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to update no-show timeout');
+            setWaitlistNoShowTimeoutMinutes(parsedTimeout);
+            setBusinessInfo((prev) => prev ? { ...prev, waitlistNoShowTimeoutMinutes: parsedTimeout } : prev);
+            toast({ title: "Saved", description: `No-show timeout set to ${parsedTimeout} minutes.` });
+        } catch (err) {
+            toast({ title: "Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setWaitlistConfigLoading(false);
+        }
+    };
+
+    const handleResetDailyWaitlistCounter = async () => {
+        setWaitlistConfigLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/owner/settings', {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ resetWaitlistTokenCounter: true })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to reset waitlist counter');
+            setBusinessInfo((prev) => prev ? {
+                ...prev,
+                waitlistTokenCounter: data.waitlistTokenCounter,
+                waitlistTokenCounterDate: data.waitlistTokenCounterDate,
+            } : prev);
+            toast({ title: 'Counter Reset', description: 'Waitlist token counter reset to start for today.' });
+        } catch (err) {
+            toast({ title: 'Failed', description: err.message, variant: 'destructive' });
         } finally {
             setWaitlistConfigLoading(false);
         }
@@ -1219,10 +1480,44 @@ function BookingsPageContent() {
                             <p className="text-xs text-muted-foreground">Used for manual mode soft capacity alerts.</p>
                         </div>
 
+                        <div className="space-y-2">
+                            <Label className="font-semibold">No-show Lapse (Minutes)</Label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={120}
+                                    className="w-28 bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    value={noShowTimeoutDraft}
+                                    onChange={(e) => setNoShowTimeoutDraft(e.target.value)}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={waitlistConfigLoading}
+                                    onClick={() => handleWaitlistNoShowTimeoutSave(noShowTimeoutDraft)}
+                                >
+                                    <Save size={14} className="mr-2" /> Save
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Used for auto no-show expiry after notify.</p>
+                        </div>
+
                         <div className="pt-1">
-                            <Button type="button" variant="outline" onClick={() => setIsWaitlistQrOpen(true)} disabled={!isWaitlistEnabled}>
-                                <QrCode size={15} className="mr-2" /> Get QR Code
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                                <Button type="button" variant="outline" onClick={() => setIsWaitlistQrOpen(true)} disabled={!isWaitlistEnabled}>
+                                    <QrCode size={15} className="mr-2" /> Get QR Code
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={waitlistConfigLoading}
+                                    onClick={handleResetDailyWaitlistCounter}
+                                >
+                                    {waitlistConfigLoading ? <Loader2 size={14} className="mr-2 animate-spin" /> : <RefreshCw size={14} className="mr-2" />}
+                                    Reset Daily Count
+                                </Button>
+                            </div>
                         </div>
                     </div>
 
@@ -1235,7 +1530,21 @@ function BookingsPageContent() {
             </Dialog>
 
             <WaitlistQrModal isOpen={isWaitlistQrOpen} onClose={() => setIsWaitlistQrOpen(false)} restaurant={businessInfo} />
-            <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} bookingsHistory={past} restaurant={businessInfo} impersonatedOwnerId={impersonatedOwnerId} employeeOfOwnerId={employeeOfOwnerId} />
+            <HistoryModal
+                isOpen={isHistoryOpen}
+                onClose={() => setIsHistoryOpen(false)}
+                bookingsHistory={past}
+                restaurant={businessInfo}
+                impersonatedOwnerId={impersonatedOwnerId}
+                employeeOfOwnerId={employeeOfOwnerId}
+                onOpenAnalytics={() => setIsWaitlistAnalyticsOpen(true)}
+            />
+            <WaitlistAnalyticsModal
+                isOpen={isWaitlistAnalyticsOpen}
+                onClose={() => setIsWaitlistAnalyticsOpen(false)}
+                impersonatedOwnerId={impersonatedOwnerId}
+                employeeOfOwnerId={employeeOfOwnerId}
+            />
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ ...infoDialog, isOpen: false })} title={infoDialog.title} message={infoDialog.message} />
         </motion.div>
     );
@@ -1248,3 +1557,4 @@ export default function BookingsPage() {
         </Suspense>
     );
 }
+

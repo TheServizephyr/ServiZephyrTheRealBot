@@ -4,6 +4,8 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
+const DEFAULT_WAITLIST_TOKEN_BASE = 100;
+const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
 function randomUpperAlpha(length = 2) {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -21,6 +23,15 @@ function formatWaitlistToken(numberValue) {
 
 function generateArrivalCode() {
     return crypto.randomBytes(5).toString('hex').toUpperCase();
+}
+
+function getDateKeyInTimeZone(date = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: WAITLIST_COUNTER_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(date);
 }
 
 export async function POST(req) {
@@ -64,7 +75,9 @@ export async function POST(req) {
         let entryId = null;
         let waitlistToken = null;
         let arrivalCode = null;
-        const nowIso = new Date().toISOString();
+        const now = new Date();
+        const nowIso = now.toISOString();
+        const todayCounterDateKey = getDateKeyInTimeZone(now);
 
         await firestore.runTransaction(async (transaction) => {
             const businessSnap = await transaction.get(restaurantRef);
@@ -86,7 +99,11 @@ export async function POST(req) {
                 }
             }
 
-            const currentCounter = Math.max(100, Number(businessDataTx.waitlistTokenCounter || 100));
+            const storedCounterDateKey = String(businessDataTx.waitlistTokenCounterDate || '').trim();
+            const shouldResetCounter = storedCounterDateKey !== todayCounterDateKey;
+            const currentCounter = shouldResetCounter
+                ? DEFAULT_WAITLIST_TOKEN_BASE
+                : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessDataTx.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
             const nextCounter = currentCounter + 1;
             waitlistToken = formatWaitlistToken(nextCounter);
             arrivalCode = generateArrivalCode();
@@ -113,6 +130,7 @@ export async function POST(req) {
             transaction.set(newEntryRef, newEntryData);
             transaction.set(restaurantRef, {
                 waitlistTokenCounter: nextCounter,
+                waitlistTokenCounterDate: todayCounterDateKey,
                 updatedAt: FieldValue.serverTimestamp(),
             }, { merge: true });
             transaction.set(activePhoneLockRef, {

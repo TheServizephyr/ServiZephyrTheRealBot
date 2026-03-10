@@ -9,10 +9,12 @@ export const dynamic = 'force-dynamic';
 
 const ACTIVE_STATUSES = new Set(['pending', 'notified', 'arrived']);
 const HISTORY_STATUSES = new Set(['seated', 'cancelled', 'no_show']);
-const NO_SHOW_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_NO_SHOW_TIMEOUT_MINUTES = 10;
 const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
 const DEFAULT_WAITLIST_MANUAL_CAPACITY = 40;
 const ACTIVE_SEATED_WINDOW_MS = 2 * 60 * 60 * 1000;
+const DEFAULT_WAITLIST_TOKEN_BASE = 100;
+const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
 function normalizeWaitlistSeatingMode(value) {
     const normalized = String(value || '').trim().toLowerCase();
@@ -50,14 +52,34 @@ function generateArrivalCode() {
     return crypto.randomBytes(5).toString('hex').toUpperCase();
 }
 
+function getDateKeyInTimeZone(date = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: WAITLIST_COUNTER_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(date);
+}
+
 function normalizeQueuePriority(value, fallback = 2) {
     const parsed = Number(value);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
     return fallback;
 }
 
+function normalizeNoShowTimeoutMinutes(value, fallback = DEFAULT_NO_SHOW_TIMEOUT_MINUTES) {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    return Math.min(120, Math.max(1, parsed));
+}
+
+function toNoShowTimeoutMs(value) {
+    return normalizeNoShowTimeoutMinutes(value) * 60 * 1000;
+}
+
 async function maybeBridgeLateBookings({ firestore, businessRef, businessId, businessName }) {
     const now = Date.now();
+    const todayCounterDateKey = getDateKeyInTimeZone(new Date(now));
     const bookingSnap = await businessRef.collection('bookings')
         .where('status', 'in', ['pending', 'confirmed'])
         .limit(120)
@@ -101,7 +123,12 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
 
             if (!linkedEntryId) {
                 const businessSnap = await transaction.get(businessRef);
-                const currentCounter = Math.max(100, Number(businessSnap.data()?.waitlistTokenCounter || 100));
+                const businessData = businessSnap.data() || {};
+                const storedCounterDateKey = String(businessData.waitlistTokenCounterDate || '').trim();
+                const shouldResetCounter = storedCounterDateKey !== todayCounterDateKey;
+                const currentCounter = shouldResetCounter
+                    ? DEFAULT_WAITLIST_TOKEN_BASE
+                    : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessData.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
                 const nextCounter = currentCounter + 1;
                 const waitlistRef = businessRef.collection('waitlist').doc();
                 linkedEntryId = waitlistRef.id;
@@ -128,6 +155,7 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
 
                 transaction.set(businessRef, {
                     waitlistTokenCounter: nextCounter,
+                    waitlistTokenCounterDate: todayCounterDateKey,
                     updatedAt: FieldValue.serverTimestamp(),
                 }, { merge: true });
 
@@ -163,7 +191,7 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
     return bridgedCount;
 }
 
-async function expireNoShows({ firestore, businessRef }) {
+async function expireNoShows({ firestore, businessRef, noShowTimeoutMs }) {
     const notifiedSnap = await businessRef.collection('waitlist')
         .where('status', '==', 'notified')
         .limit(120)
@@ -171,8 +199,10 @@ async function expireNoShows({ firestore, businessRef }) {
 
     const expiredEntries = notifiedSnap.docs.filter((doc) => {
         const data = doc.data() || {};
+        const deadlineMs = toMillis(data.noShowDeadlineAt) || 0;
+        if (deadlineMs > 0) return Date.now() >= deadlineMs;
         const notifiedAtMs = toMillis(data.notifiedAt) || toMillis(data.updatedAt) || 0;
-        return notifiedAtMs > 0 && (Date.now() - notifiedAtMs) >= NO_SHOW_TIMEOUT_MS;
+        return notifiedAtMs > 0 && (Date.now() - notifiedAtMs) >= noShowTimeoutMs;
     });
 
     if (expiredEntries.length === 0) return 0;
@@ -202,7 +232,7 @@ async function expireNoShows({ firestore, businessRef }) {
     return expiredEntries.length;
 }
 
-async function autoPromoteNextPending({ firestore, businessRef }) {
+async function autoPromoteNextPending({ firestore, businessRef, noShowTimeoutMs }) {
     const activeNotifiedSnap = await businessRef.collection('waitlist')
         .where('status', '==', 'notified')
         .limit(1)
@@ -232,7 +262,7 @@ async function autoPromoteNextPending({ firestore, businessRef }) {
     await nextEntry.ref.set({
         status: 'notified',
         notifiedAt: FieldValue.serverTimestamp(),
-        noShowDeadlineAt: new Date(Date.now() + NO_SHOW_TIMEOUT_MS),
+        noShowDeadlineAt: new Date(Date.now() + noShowTimeoutMs),
         autoNotified: true,
         updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
@@ -286,6 +316,8 @@ export async function GET(req) {
         const businessData = businessSnap.data() || {};
         const waitlistSeatingMode = normalizeWaitlistSeatingMode(businessData.waitlistSeatingMode);
         const waitlistManualCapacity = Math.max(1, Number(businessData.waitlistManualCapacity || DEFAULT_WAITLIST_MANUAL_CAPACITY));
+        const noShowTimeoutMinutes = normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes);
+        const noShowTimeoutMs = toNoShowTimeoutMs(noShowTimeoutMinutes);
 
         let bridgedBookingsCount = 0;
         let autoExpiredCount = 0;
@@ -298,8 +330,10 @@ export async function GET(req) {
                 businessId,
                 businessName: businessData.name,
             });
-            autoExpiredCount = await expireNoShows({ firestore, businessRef });
-            promotedEntryId = await autoPromoteNextPending({ firestore, businessRef });
+            autoExpiredCount = await expireNoShows({ firestore, businessRef, noShowTimeoutMs });
+            if (autoExpiredCount > 0) {
+                promotedEntryId = await autoPromoteNextPending({ firestore, businessRef, noShowTimeoutMs });
+            }
         }
 
         let queryRef = businessRef.collection('waitlist');
@@ -345,7 +379,7 @@ export async function GET(req) {
             meta: {
                 waitlistSeatingMode,
                 waitlistManualCapacity,
-                noShowTimeoutMinutes: Math.round(NO_SHOW_TIMEOUT_MS / 60000),
+                noShowTimeoutMinutes,
                 bridgedBookingsCount,
                 autoExpiredCount,
                 promotedEntryId,
@@ -385,6 +419,8 @@ export async function PATCH(req) {
         const businessData = businessSnap.data() || {};
         const waitlistSeatingMode = normalizeWaitlistSeatingMode(businessData.waitlistSeatingMode);
         const waitlistManualCapacity = Math.max(1, Number(businessData.waitlistManualCapacity || DEFAULT_WAITLIST_MANUAL_CAPACITY));
+        const noShowTimeoutMinutes = normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes);
+        const noShowTimeoutMs = toNoShowTimeoutMs(noShowTimeoutMinutes);
 
         const entryRef = businessRef.collection('waitlist').doc(entryId);
         const entrySnap = await entryRef.get();
@@ -399,6 +435,8 @@ export async function PATCH(req) {
             ? businessRef.collection('waitlist_active_phone').doc(normalizedPhone)
             : null;
 
+        const previousStatus = String(entryData.status || '').toLowerCase();
+
         await firestore.runTransaction(async (transaction) => {
             const lockSnap = activePhoneLockRef
                 ? await transaction.get(activePhoneLockRef)
@@ -410,7 +448,7 @@ export async function PATCH(req) {
             };
             if (status === 'notified') {
                 updatePayload.notifiedAt = FieldValue.serverTimestamp();
-                updatePayload.noShowDeadlineAt = new Date(Date.now() + NO_SHOW_TIMEOUT_MS);
+                updatePayload.noShowDeadlineAt = new Date(Date.now() + noShowTimeoutMs);
             }
             if (status === 'seated') {
                 updatePayload.seatedAt = FieldValue.serverTimestamp();
@@ -448,7 +486,10 @@ export async function PATCH(req) {
             }
         });
 
-        const promotedEntryId = await autoPromoteNextPending({ firestore, businessRef });
+        const shouldPromoteNext = previousStatus === 'notified' && ['seated', 'cancelled', 'no_show'].includes(status);
+        const promotedEntryId = shouldPromoteNext
+            ? await autoPromoteNextPending({ firestore, businessRef, noShowTimeoutMs })
+            : null;
         const capacity = await getManualCapacityMetrics({
             businessRef,
             manualCapacity: waitlistManualCapacity,

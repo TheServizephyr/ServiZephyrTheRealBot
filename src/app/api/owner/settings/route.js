@@ -11,6 +11,8 @@ import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { findBusinessById } from '@/services/business/businessService';
 
 export const dynamic = 'force-dynamic';
+const DEFAULT_WAITLIST_TOKEN_BASE = 100;
+const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
 function normalizeBusinessType(value, fallbackCollectionName = null) {
     const normalized = String(value || '').trim().toLowerCase();
@@ -95,6 +97,21 @@ function normalizeWaitlistSeatingMode(value, fallback = 'table_assign') {
     if (normalized === 'manual_seat') return 'manual_seat';
     if (normalized === 'table_assign') return 'table_assign';
     return fallback;
+}
+
+function getDateKeyInTimeZone(date = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: WAITLIST_COUNTER_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(date);
+}
+
+function normalizeNoShowTimeoutMinutes(value, fallback = 10) {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    return Math.min(120, Math.max(1, parsed));
 }
 
 export async function GET(req) {
@@ -309,6 +326,9 @@ export async function GET(req) {
             isWaitlistEnabled: businessData?.isWaitlistEnabled || false,
             waitlistSeatingMode: normalizeWaitlistSeatingMode(businessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(businessData?.waitlistManualCapacity || 40)),
+            waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData?.waitlistNoShowTimeoutMinutes, 10),
+            waitlistTokenCounter: Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessData?.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE)),
+            waitlistTokenCounterDate: String(businessData?.waitlistTokenCounterDate || ''),
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -476,6 +496,17 @@ export async function PATCH(req) {
             }
             businessUpdateData.waitlistManualCapacity = normalizedCapacity;
         }
+        if (updates.waitlistNoShowTimeoutMinutes !== undefined) {
+            const normalizedTimeout = Number.parseInt(String(updates.waitlistNoShowTimeoutMinutes), 10);
+            if (!Number.isInteger(normalizedTimeout) || normalizedTimeout < 1 || normalizedTimeout > 120) {
+                return NextResponse.json({ message: 'No-show timeout must be between 1 and 120 minutes.' }, { status: 400 });
+            }
+            businessUpdateData.waitlistNoShowTimeoutMinutes = normalizedTimeout;
+        }
+        if (updates.resetWaitlistTokenCounter === true) {
+            businessUpdateData.waitlistTokenCounter = DEFAULT_WAITLIST_TOKEN_BASE;
+            businessUpdateData.waitlistTokenCounterDate = getDateKeyInTimeZone();
+        }
 
         // Handle delivery settings update here IF provided (Legacy support or single-save screens)
         // If frontend sends delivery params to THIS endpoint, we should forward them to sub-collection
@@ -594,6 +625,9 @@ export async function PATCH(req) {
             isWaitlistEnabled: finalBusinessData?.isWaitlistEnabled || false,
             waitlistSeatingMode: normalizeWaitlistSeatingMode(finalBusinessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(finalBusinessData?.waitlistManualCapacity || 40)),
+            waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(finalBusinessData?.waitlistNoShowTimeoutMinutes, 10),
+            waitlistTokenCounter: Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(finalBusinessData?.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE)),
+            waitlistTokenCounterDate: String(finalBusinessData?.waitlistTokenCounterDate || ''),
         };
 
         return NextResponse.json(responseData, { status: 200 });
