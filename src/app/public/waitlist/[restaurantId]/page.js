@@ -3,22 +3,31 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import QRCode from 'qrcode.react';
 
 export default function PublicWaitlistPage({ params }) {
     const { restaurantId } = params;
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [paxCount, setPaxCount] = useState('2');
+    const [mode, setMode] = useState('waitlist'); // waitlist | booking
+    const [bookingDate, setBookingDate] = useState('');
+    const [bookingTime, setBookingTime] = useState('19:00');
     const [loading, setLoading] = useState(false);
     const [isFetchingStatus, setIsFetchingStatus] = useState(true);
     const [error, setError] = useState('');
+    const [statusError, setStatusError] = useState('');
     const [success, setSuccess] = useState(false);
+    const [waitlistToken, setWaitlistToken] = useState('');
+    const [arrivalCode, setArrivalCode] = useState('');
+    const [entryId, setEntryId] = useState('');
+    const [isCoinFlipped, setIsCoinFlipped] = useState(false);
     const [restaurantData, setRestaurantData] = useState(null);
 
     useEffect(() => {
@@ -28,9 +37,15 @@ export default function PublicWaitlistPage({ params }) {
                 if (res.ok) {
                     const data = await res.json();
                     setRestaurantData(data.restaurant);
+                    setStatusError('');
+                } else {
+                    setRestaurantData(null);
+                    setStatusError('Could not verify restaurant status right now. Please try again in a moment.');
                 }
             } catch (err) {
                 console.error("Failed to fetch restaurant status:", err);
+                setRestaurantData(null);
+                setStatusError('Network issue while checking restaurant status. Please retry.');
             } finally {
                 setIsFetchingStatus(false);
             }
@@ -44,23 +59,51 @@ export default function PublicWaitlistPage({ params }) {
         setError('');
 
         try {
-            const res = await fetch('/api/public/waitlist/join', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+            const isBookingMode = mode === 'booking';
+            let endpoint = '/api/public/waitlist/join';
+            let payload = {
+                restaurantId,
+                name,
+                phone,
+                paxCount: parseInt(paxCount, 10)
+            };
+
+            if (isBookingMode) {
+                if (!bookingDate || !bookingTime) {
+                    throw new Error('Please choose booking date and time.');
+                }
+                const bookingDateTime = new Date(`${bookingDate}T${bookingTime}`);
+                if (Number.isNaN(bookingDateTime.getTime())) {
+                    throw new Error('Invalid booking date/time.');
+                }
+                if (bookingDateTime.getTime() <= Date.now()) {
+                    throw new Error('Booking time must be in the future.');
+                }
+                endpoint = '/api/owner/bookings';
+                payload = {
                     restaurantId,
                     name,
                     phone,
-                    paxCount: parseInt(paxCount)
-                })
+                    guests: parseInt(paxCount, 10),
+                    bookingDateTime: bookingDateTime.toISOString(),
+                };
+            }
+
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
 
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.message || 'Failed to join waitlist');
+                throw new Error(data.message || `Failed to ${isBookingMode ? 'book table' : 'join waitlist'}`);
             }
 
+            setWaitlistToken(data?.waitlistToken || '');
+            setArrivalCode(data?.arrivalCode || '');
+            setEntryId(data?.entryId || '');
             setSuccess(true);
         } catch (err) {
             setError(err.message);
@@ -77,9 +120,17 @@ export default function PublicWaitlistPage({ params }) {
         );
     }
 
-    const isOpen = restaurantData?.isOpen !== false;
-    const isWaitlistEnabled = restaurantData?.services?.waitlist !== false;
+    const statusUnavailable = !restaurantData || Boolean(statusError);
+    const isOpen = !statusUnavailable && restaurantData?.isOpen !== false;
+    const isWaitlistEnabled = !statusUnavailable && restaurantData?.services?.waitlist === true;
     const restaurantName = restaurantData?.name || 'Restaurant';
+    const arrivalUrl = (mode !== 'booking' && entryId && arrivalCode && typeof window !== 'undefined')
+        ? `${window.location.origin}/public/waitlist-arrive?rid=${encodeURIComponent(restaurantId)}&eid=${encodeURIComponent(entryId)}&c=${encodeURIComponent(arrivalCode)}`
+        : '';
+    const tokenWithoutHash = String(waitlistToken || '').replace(/^#/, '');
+    const tokenParts = tokenWithoutHash.match(/^(\d+)([A-Z]{2})$/);
+    const tokenNumberPart = tokenParts?.[1] || tokenWithoutHash;
+    const tokenAlphaPart = tokenParts?.[2] || '';
 
     if (success) {
         return (
@@ -95,10 +146,51 @@ export default function PublicWaitlistPage({ params }) {
                                 <CheckCircle2 className="h-12 w-12 text-primary animate-pulse" />
                             </div>
                         </div>
-                        <CardTitle className="text-3xl font-black mb-2 tracking-tight">You&apos;re on the list!</CardTitle>
+                        <CardTitle className="text-3xl font-black mb-2 tracking-tight">
+                            {mode === 'booking' ? 'Booking Requested!' : "You&apos;re on the list!"}
+                        </CardTitle>
                         <CardDescription className="text-lg mb-6 text-center">
-                            We&apos;ll call or text you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> is ready.
+                            {mode === 'booking'
+                                ? <>We&apos;ve received your booking request at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> guests.</>
+                                : <>We&apos;ll call or text you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> is ready.</>}
                         </CardDescription>
+                        {mode !== 'booking' && waitlistToken && (
+                            <div className="mb-4 space-y-4">
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="scene">
+                                        <div className="anim-wrapper animate-float">
+                                            <div className={cn("coin gold-theme", isCoinFlipped && 'flipped')} onClick={() => setIsCoinFlipped((prev) => !prev)}>
+                                                <div className="coin-face coin-front">
+                                                    <div className="texture-overlay"></div>
+                                                    <div className="sheen"></div>
+                                                    <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                                        <path id="waitlistCoinCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
+                                                        <text>
+                                                            <textPath href="#waitlistCoinCurve" startOffset="50%" textAnchor="middle">
+                                                                SERVIZEPHYR LIVE WAITLIST
+                                                            </textPath>
+                                                        </text>
+                                                    </svg>
+                                                    <div className="token-label">TOKEN</div>
+                                                    <div className="token-number">
+                                                        <span className="token-number-main">#{tokenNumberPart}</span>
+                                                        <span className="token-number-sub">{tokenAlphaPart}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="coin-face coin-back">
+                                                    <div className="texture-overlay"></div>
+                                                    <div className="sheen"></div>
+                                                    <div className="qr-box">
+                                                        <QRCode value={arrivalUrl || waitlistToken} size={120} level="H" bgColor="transparent" fgColor="#3e2800" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">Tap coin to flip. Show token at counter, QR will auto mark arrived.</div>
+                                </div>
+                            </div>
+                        )}
                         <div className="bg-muted p-4 rounded-xl mb-6 text-left">
                             <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-1">Notice</p>
                             <p className="text-sm">Please stay nearby so you don&apos;t miss your turn.</p>
@@ -124,28 +216,51 @@ export default function PublicWaitlistPage({ params }) {
                 animate={{ y: 0, opacity: 1 }}
                 className="w-full max-w-md"
             >
-                <Card className={cn("border-border shadow-2xl bg-card overflow-hidden transition-all duration-500", (!isOpen || !isWaitlistEnabled) && "opacity-90 grayscale-[0.5]")}>
+                <Card className={cn("border-border shadow-2xl bg-card overflow-hidden transition-all duration-500", (statusUnavailable || !isOpen || !isWaitlistEnabled) && "opacity-90 grayscale-[0.5]")}>
                     <CardHeader className="space-y-1 bg-muted/30 border-b border-border/50">
                         <CardTitle className="text-2xl font-black uppercase tracking-tight">Guest Details</CardTitle>
                         <CardDescription className="font-medium">Secure your spot in the queue.</CardDescription>
                     </CardHeader>
                     <CardContent className="pt-6">
-                        {(!isOpen || !isWaitlistEnabled) ? (
+                        {(statusUnavailable || !isOpen || !isWaitlistEnabled) ? (
                             <div className="py-8 text-center space-y-4">
                                 <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-2">
                                     <AlertCircle size={32} />
                                 </div>
                                 <h3 className="text-xl font-bold uppercase tracking-tight">
-                                    {!isOpen ? 'Restaurant is Closed' : 'Waitlist is Full/Disabled'}
+                                    {statusUnavailable ? 'Status Unavailable' : (!isOpen ? 'Restaurant is Closed' : 'Waitlist is Full/Disabled')}
                                 </h3>
                                 <p className="text-muted-foreground text-sm px-4">
-                                    {!isOpen
+                                    {statusUnavailable
+                                        ? statusError
+                                        : !isOpen
                                         ? "Sorry, we aren't accepting waitlist entries right now because the restaurant is closed. Please check back during business hours."
                                         : "We are currently not accepting new waitlist entries. Please check with the host at the restaurant."}
                                 </p>
                             </div>
                         ) : (
                             <form id="waitlist-form" onSubmit={handleSubmit} className="space-y-5">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        type="button"
+                                        variant={mode === 'waitlist' ? 'default' : 'outline'}
+                                        className="h-10"
+                                        onClick={() => setMode('waitlist')}
+                                        disabled={loading}
+                                    >
+                                        Join Now
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant={mode === 'booking' ? 'default' : 'outline'}
+                                        className="h-10"
+                                        onClick={() => setMode('booking')}
+                                        disabled={loading}
+                                    >
+                                        Book for Later
+                                    </Button>
+                                </div>
+
                                 <div className="space-y-2">
                                     <Label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-primary">Your Name</Label>
                                     <div className="relative group">
@@ -196,6 +311,32 @@ export default function PublicWaitlistPage({ params }) {
                                     </div>
                                 </div>
 
+                                {mode === 'booking' && (
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-black uppercase tracking-widest text-primary">Booking Slot</Label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <div className="relative group">
+                                                <CalendarClock className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                                <Input
+                                                    type="date"
+                                                    className="pl-10 h-12 bg-muted/30 focus:bg-background border-border font-bold text-base"
+                                                    value={bookingDate}
+                                                    onChange={(e) => setBookingDate(e.target.value)}
+                                                    min={new Date().toISOString().slice(0, 10)}
+                                                    required={mode === 'booking'}
+                                                />
+                                            </div>
+                                            <Input
+                                                type="time"
+                                                className="h-12 bg-muted/30 focus:bg-background border-border font-bold text-base"
+                                                value={bookingTime}
+                                                onChange={(e) => setBookingTime(e.target.value)}
+                                                required={mode === 'booking'}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
                                 {error && (
                                     <motion.div
                                         initial={{ opacity: 0, x: -10 }}
@@ -214,12 +355,12 @@ export default function PublicWaitlistPage({ params }) {
                             form="waitlist-form"
                             className="w-full h-14 text-xl font-black uppercase tracking-tight shadow-lg shadow-primary/20"
                             size="lg"
-                            disabled={loading || !isOpen || !isWaitlistEnabled}
+                            disabled={loading || statusUnavailable || !isOpen || !isWaitlistEnabled}
                         >
                             {loading ? (
                                 <Loader2 className="mr-2 h-6 w-6 animate-spin" />
                             ) : (
-                                <>Join Queue <ArrowRight className="ml-2 h-6 w-6" /></>
+                                <>{mode === 'booking' ? 'Request Booking' : 'Join Queue'} <ArrowRight className="ml-2 h-6 w-6" /></>
                             )}
                         </Button>
                     </CardFooter>

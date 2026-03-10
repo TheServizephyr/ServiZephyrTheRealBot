@@ -92,6 +92,24 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Missing required booking data.' }, { status: 400 });
         }
 
+        const normalizedPhone = String(phone || '').replace(/\D/g, '').slice(-10);
+        if (!/^\d{10}$/.test(normalizedPhone)) {
+            return NextResponse.json({ message: 'Invalid phone number format.' }, { status: 400 });
+        }
+
+        const normalizedGuests = Number.parseInt(String(guests), 10);
+        if (!Number.isInteger(normalizedGuests) || normalizedGuests < 1 || normalizedGuests > 20) {
+            return NextResponse.json({ message: 'Guests must be between 1 and 20.' }, { status: 400 });
+        }
+
+        const bookingAt = new Date(bookingDateTime);
+        if (Number.isNaN(bookingAt.getTime())) {
+            return NextResponse.json({ message: 'Invalid booking date/time.' }, { status: 400 });
+        }
+        if (bookingAt.getTime() <= Date.now()) {
+            return NextResponse.json({ message: 'Booking time must be in the future.' }, { status: 400 });
+        }
+
         const businessRef = firestore.collection('restaurants').doc(restaurantId);
         const businessSnap = await businessRef.get();
         if (!businessSnap.exists) {
@@ -99,14 +117,26 @@ export async function POST(req) {
         }
         const businessData = businessSnap.data();
 
+        // Prevent duplicate active booking request for same phone and slot.
+        const duplicateSnap = await businessRef.collection('bookings')
+            .where('customerPhone', '==', normalizedPhone)
+            .where('bookingDateTime', '==', bookingAt)
+            .where('status', 'in', ['pending', 'confirmed'])
+            .limit(1)
+            .get();
+
+        if (!duplicateSnap.empty) {
+            return NextResponse.json({ message: 'You already have a booking request for this slot.' }, { status: 409 });
+        }
+
         const newBookingRef = businessRef.collection('bookings').doc();
 
         const newBookingData = {
             id: newBookingRef.id,
-            customerName: name,
-            customerPhone: phone,
-            partySize: guests,
-            bookingDateTime: new Date(bookingDateTime),
+            customerName: String(name || '').trim(),
+            customerPhone: normalizedPhone,
+            partySize: normalizedGuests,
+            bookingDateTime: bookingAt,
             status: 'pending',
             createdAt: FieldValue.serverTimestamp(),
             notes: '',

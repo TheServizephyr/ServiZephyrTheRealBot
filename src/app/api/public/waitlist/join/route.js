@@ -1,16 +1,46 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
+
+function randomUpperAlpha(length = 2) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const bytes = crypto.randomBytes(length);
+    let output = '';
+    for (let i = 0; i < length; i += 1) {
+        output += alphabet[bytes[i] % alphabet.length];
+    }
+    return output;
+}
+
+function formatWaitlistToken(numberValue) {
+    return `#${numberValue}${randomUpperAlpha(2)}`;
+}
+
+function generateArrivalCode() {
+    return crypto.randomBytes(5).toString('hex').toUpperCase();
+}
 
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
         const { restaurantId, name, phone, paxCount } = await req.json();
 
-        if (!restaurantId || !name || !phone || !paxCount) {
+        if (!restaurantId || !name || !phone || paxCount === undefined || paxCount === null) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
+        }
+
+        const normalizedPaxCount = Number.parseInt(String(paxCount), 10);
+        if (!Number.isInteger(normalizedPaxCount) || normalizedPaxCount < 1 || normalizedPaxCount > 20) {
+            return NextResponse.json({ message: 'Invalid guest count. Please enter between 1 and 20.' }, { status: 400 });
+        }
+
+        const phoneDigits = String(phone || '').replace(/\D/g, '');
+        const normalizedPhone = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits;
+        if (!/^\d{10}$/.test(normalizedPhone)) {
+            return NextResponse.json({ message: 'Invalid phone number format.' }, { status: 400 });
         }
 
         // Validate restaurant exists
@@ -27,45 +57,86 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Waitlist is currently disabled for this restaurant.' }, { status: 403 });
         }
 
-        const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
-        if (!/^\d{10}$/.test(normalizedPhone)) {
-            return NextResponse.json({ message: 'Invalid phone number format.' }, { status: 400 });
-        }
-
+        const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         const waitlistRef = firestore.collection('restaurants').doc(restaurantId).collection('waitlist');
+        const activePhoneLockRef = restaurantRef.collection('waitlist_active_phone').doc(normalizedPhone);
 
-        // Check if phone number already exists in active waitlist
-        const existingEntryQuery = await waitlistRef
-            .where('phone', '==', normalizedPhone)
-            .where('status', 'in', ['pending', 'notified'])
-            .limit(1)
-            .get();
+        let entryId = null;
+        let waitlistToken = null;
+        let arrivalCode = null;
+        const nowIso = new Date().toISOString();
 
-        if (!existingEntryQuery.empty) {
-            return NextResponse.json({ message: 'You are already on the waitlist for this restaurant.' }, { status: 409 });
-        }
+        await firestore.runTransaction(async (transaction) => {
+            const businessSnap = await transaction.get(restaurantRef);
+            const businessDataTx = businessSnap.data() || {};
 
-        const newEntryRef = waitlistRef.doc();
-        const newEntryData = {
-            id: newEntryRef.id,
-            name,
-            phone: normalizedPhone,
-            paxCount: parseInt(paxCount) || 1,
-            status: 'pending',
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-            restaurantId: restaurantId,
-            restaurantName: restaurantData.name || 'Restaurant'
-        };
+            const lockSnap = await transaction.get(activePhoneLockRef);
+            if (lockSnap.exists) {
+                const lockData = lockSnap.data() || {};
+                const existingEntryId = String(lockData.entryId || '').trim();
+                if (existingEntryId) {
+                    const existingEntryRef = waitlistRef.doc(existingEntryId);
+                    const existingEntrySnap = await transaction.get(existingEntryRef);
+                    const existingStatus = String(existingEntrySnap.data()?.status || '').toLowerCase();
+                    if (existingEntrySnap.exists && ['pending', 'notified', 'arrived'].includes(existingStatus)) {
+                        throw Object.assign(new Error('ALREADY_ON_WAITLIST'), { code: 'ALREADY_ON_WAITLIST' });
+                    }
+                } else {
+                    throw Object.assign(new Error('ALREADY_ON_WAITLIST'), { code: 'ALREADY_ON_WAITLIST' });
+                }
+            }
 
-        await newEntryRef.set(newEntryData);
+            const currentCounter = Math.max(100, Number(businessDataTx.waitlistTokenCounter || 100));
+            const nextCounter = currentCounter + 1;
+            waitlistToken = formatWaitlistToken(nextCounter);
+            arrivalCode = generateArrivalCode();
+
+            const newEntryRef = waitlistRef.doc();
+            entryId = newEntryRef.id;
+            const newEntryData = {
+                id: newEntryRef.id,
+                name: String(name || '').trim(),
+                phone: normalizedPhone,
+                paxCount: normalizedPaxCount,
+                status: 'pending',
+                queuePriority: 2,
+                queueType: 'walk_in',
+                waitlistTokenNumber: nextCounter,
+                waitlistToken,
+                arrivalCode,
+                createdAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+                restaurantId: restaurantId,
+                restaurantName: restaurantData.name || 'Restaurant'
+            };
+
+            transaction.set(newEntryRef, newEntryData);
+            transaction.set(restaurantRef, {
+                waitlistTokenCounter: nextCounter,
+                updatedAt: FieldValue.serverTimestamp(),
+            }, { merge: true });
+            transaction.set(activePhoneLockRef, {
+                phone: normalizedPhone,
+                entryId: newEntryRef.id,
+                status: 'active',
+                createdAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedAtIso: nowIso,
+            }, { merge: true });
+        });
+
 
         return NextResponse.json({
             message: 'Successfully joined the waitlist!',
-            entryId: newEntryRef.id
+            entryId,
+            waitlistToken,
+            arrivalCode,
         }, { status: 201 });
 
     } catch (error) {
+        if (error?.code === 'ALREADY_ON_WAITLIST' || String(error?.message || '').includes('ALREADY_ON_WAITLIST')) {
+            return NextResponse.json({ message: 'You are already on the waitlist for this restaurant.' }, { status: 409 });
+        }
         console.error("PUBLIC JOIN WAITLIST ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }

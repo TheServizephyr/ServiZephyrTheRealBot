@@ -90,6 +90,13 @@ function getGstCalculationModeFromBusinessData(businessData = {}) {
     return 'included';
 }
 
+function normalizeWaitlistSeatingMode(value, fallback = 'table_assign') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'manual_seat') return 'manual_seat';
+    if (normalized === 'table_assign') return 'table_assign';
+    return fallback;
+}
+
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -300,6 +307,8 @@ export async function GET(req) {
             upiId: businessData?.upiId || '',
             upiPayeeName: businessData?.upiPayeeName || businessData?.name || '',
             isWaitlistEnabled: businessData?.isWaitlistEnabled || false,
+            waitlistSeatingMode: normalizeWaitlistSeatingMode(businessData?.waitlistSeatingMode, 'table_assign'),
+            waitlistManualCapacity: Math.max(1, Number(businessData?.waitlistManualCapacity || 40)),
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -457,6 +466,16 @@ export async function PATCH(req) {
         if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
         if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
         if (updates.isWaitlistEnabled !== undefined) businessUpdateData.isWaitlistEnabled = updates.isWaitlistEnabled;
+        if (updates.waitlistSeatingMode !== undefined) {
+            businessUpdateData.waitlistSeatingMode = normalizeWaitlistSeatingMode(updates.waitlistSeatingMode, 'table_assign');
+        }
+        if (updates.waitlistManualCapacity !== undefined) {
+            const normalizedCapacity = Number.parseInt(String(updates.waitlistManualCapacity), 10);
+            if (!Number.isInteger(normalizedCapacity) || normalizedCapacity < 1 || normalizedCapacity > 500) {
+                return NextResponse.json({ message: 'Waitlist manual capacity must be between 1 and 500.' }, { status: 400 });
+            }
+            businessUpdateData.waitlistManualCapacity = normalizedCapacity;
+        }
 
         // Handle delivery settings update here IF provided (Legacy support or single-save screens)
         // If frontend sends delivery params to THIS endpoint, we should forward them to sub-collection
@@ -573,6 +592,8 @@ export async function PATCH(req) {
             upiId: finalBusinessData?.upiId || '',
             upiPayeeName: finalBusinessData?.upiPayeeName || finalBusinessData?.name || '',
             isWaitlistEnabled: finalBusinessData?.isWaitlistEnabled || false,
+            waitlistSeatingMode: normalizeWaitlistSeatingMode(finalBusinessData?.waitlistSeatingMode, 'table_assign'),
+            waitlistManualCapacity: Math.max(1, Number(finalBusinessData?.waitlistManualCapacity || 40)),
         };
 
         return NextResponse.json(responseData, { status: 200 });
