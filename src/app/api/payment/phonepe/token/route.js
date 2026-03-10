@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 // PhonePe OAuth Credentials
 // PhonePe OAuth Credentials
 const CLIENT_ID = process.env.PHONEPE_CLIENT_ID;

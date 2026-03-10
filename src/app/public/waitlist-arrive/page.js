@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
-export default function WaitlistArrivePage() {
+function WaitlistArriveContent() {
     const searchParams = useSearchParams();
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState('pending');
@@ -66,5 +66,17 @@ export default function WaitlistArrivePage() {
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+export default function WaitlistArrivePage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-background flex items-center justify-center p-4">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            </div>
+        }>
+            <WaitlistArriveContent />
+        </Suspense>
     );
 }

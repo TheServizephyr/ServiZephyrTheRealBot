@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { startOfDay, endOfDay } from 'date-fns';
 
+export const dynamic = 'force-dynamic';
+
 async function getBusinessRef(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req);
