@@ -19,6 +19,7 @@ export default function PublicWaitlistPage({ params }) {
     const [mode, setMode] = useState('waitlist'); // waitlist | booking
     const [bookingDate, setBookingDate] = useState('');
     const [bookingTime, setBookingTime] = useState('19:00');
+    const [bookingOccasion, setBookingOccasion] = useState('');
     const [loading, setLoading] = useState(false);
     const [isFetchingStatus, setIsFetchingStatus] = useState(true);
     const [error, setError] = useState('');
@@ -59,12 +60,21 @@ export default function PublicWaitlistPage({ params }) {
         setError('');
 
         try {
+            const trimmedName = String(name || '').trim();
+            const normalizedPhone = String(phone || '').replace(/\D/g, '').slice(-10);
+            if (!trimmedName) {
+                throw new Error('Please enter your name.');
+            }
+            if (!/^\d{10}$/.test(normalizedPhone)) {
+                throw new Error('Please enter a valid 10-digit phone number.');
+            }
+
             const isBookingMode = mode === 'booking';
             let endpoint = '/api/public/waitlist/join';
             let payload = {
                 restaurantId,
-                name,
-                phone,
+                name: trimmedName,
+                phone: normalizedPhone,
                 paxCount: parseInt(paxCount, 10)
             };
 
@@ -82,10 +92,11 @@ export default function PublicWaitlistPage({ params }) {
                 endpoint = '/api/owner/bookings';
                 payload = {
                     restaurantId,
-                    name,
-                    phone,
+                    name: trimmedName,
+                    phone: normalizedPhone,
                     guests: parseInt(paxCount, 10),
                     bookingDateTime: bookingDateTime.toISOString(),
+                    occasion: String(bookingOccasion || '').trim(),
                 };
             }
 
@@ -124,6 +135,7 @@ export default function PublicWaitlistPage({ params }) {
     const isOpen = !statusUnavailable && restaurantData?.isOpen !== false;
     const isWaitlistEnabled = !statusUnavailable && restaurantData?.services?.waitlist === true;
     const restaurantName = restaurantData?.name || 'Restaurant';
+    const noShowTimeoutMinutes = Math.max(1, Number(restaurantData?.waitlistNoShowTimeoutMinutes || 10));
     const arrivalUrl = (mode !== 'booking' && entryId && arrivalCode && typeof window !== 'undefined')
         ? `${window.location.origin}/public/waitlist-arrive?rid=${encodeURIComponent(restaurantId)}&eid=${encodeURIComponent(entryId)}&c=${encodeURIComponent(arrivalCode)}`
         : '';
@@ -147,12 +159,12 @@ export default function PublicWaitlistPage({ params }) {
                             </div>
                         </div>
                         <CardTitle className="text-3xl font-black mb-2 tracking-tight">
-                            {mode === 'booking' ? 'Booking Requested!' : "You&apos;re on the list!"}
+                            {mode === 'booking' ? 'Booking Requested!' : "You're on the list!"}
                         </CardTitle>
                         <CardDescription className="text-lg mb-6 text-center">
                             {mode === 'booking'
                                 ? <>We&apos;ve received your booking request at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> guests.</>
-                                : <>We&apos;ll call or text you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> is ready.</>}
+                                : <>We will call and WhatsApp you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> guests is ready.</>}
                         </CardDescription>
                         {mode !== 'booking' && waitlistToken && (
                             <div className="mb-4 space-y-4">
@@ -167,7 +179,7 @@ export default function PublicWaitlistPage({ params }) {
                                                         <path id="waitlistCoinCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
                                                         <text>
                                                             <textPath href="#waitlistCoinCurve" startOffset="50%" textAnchor="middle">
-                                                                SERVIZEPHYR LIVE WAITLIST
+                                                                {`${String(restaurantName || 'RESTAURANT').toUpperCase()} LIVE WAITLIST`}
                                                             </textPath>
                                                         </text>
                                                     </svg>
@@ -187,13 +199,13 @@ export default function PublicWaitlistPage({ params }) {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="text-xs text-muted-foreground">Tap coin to flip. Show token at counter, QR will auto mark arrived.</div>
+                                    <div className="text-xs text-muted-foreground">Tap coin to flip. Show token at counter.</div>
                                 </div>
                             </div>
                         )}
                         <div className="bg-muted p-4 rounded-xl mb-6 text-left">
                             <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-1">Notice</p>
-                            <p className="text-sm">Please stay nearby so you don&apos;t miss your turn.</p>
+                            <p className="text-sm">Please stay nearby. You will be considered late after {noShowTimeoutMinutes} minutes of notification.</p>
                         </div>
                         <Button className="w-full h-12 text-lg font-bold" onClick={() => window.location.reload()}>
                             Close
@@ -207,6 +219,10 @@ export default function PublicWaitlistPage({ params }) {
     return (
         <div className="min-h-screen bg-background flex flex-col p-4 md:justify-center md:items-center">
             <header className="mb-8 md:text-center pt-8 md:pt-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 mb-3">
+                    <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary">Live Queue</span>
+                </div>
                 <h1 className="text-4xl font-black tracking-tight mb-2 uppercase italic text-primary">{restaurantName}</h1>
                 <p className="text-muted-foreground font-medium underline underline-offset-4 decoration-primary/30">Join Our Waitlist</p>
             </header>
@@ -267,6 +283,8 @@ export default function PublicWaitlistPage({ params }) {
                                         <User className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                                         <Input
                                             id="name"
+                                            name="name"
+                                            autoComplete="name"
                                             placeholder="Ex: Rahul Kumar"
                                             className="pl-10 h-12 bg-muted/30 focus:bg-background border-border font-bold text-lg"
                                             value={name}
@@ -282,12 +300,18 @@ export default function PublicWaitlistPage({ params }) {
                                         <Phone className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                                         <Input
                                             id="phone"
+                                            name="tel"
                                             type="tel"
                                             placeholder="9876543210"
                                             className="pl-10 h-12 bg-muted/30 focus:bg-background border-border font-bold text-lg"
                                             value={phone}
-                                            onChange={(e) => setPhone(e.target.value)}
-                                            pattern="\d{10}"
+                                            inputMode="numeric"
+                                            autoComplete="tel-national"
+                                            maxLength={10}
+                                            onChange={(e) => {
+                                                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                setPhone(digits);
+                                            }}
                                             required
                                         />
                                     </div>
@@ -334,6 +358,14 @@ export default function PublicWaitlistPage({ params }) {
                                                 required={mode === 'booking'}
                                             />
                                         </div>
+                                        <Input
+                                            type="text"
+                                            placeholder="Occasion (optional): Birthday, Anniversary, etc."
+                                            className="h-12 bg-muted/30 focus:bg-background border-border font-bold text-base"
+                                            value={bookingOccasion}
+                                            onChange={(e) => setBookingOccasion(e.target.value)}
+                                            maxLength={60}
+                                        />
                                     </div>
                                 )}
 

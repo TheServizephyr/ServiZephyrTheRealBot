@@ -343,7 +343,7 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId })
                             name={entry.name}
                             phone={entry.phone}
                             pax={entry.paxCount}
-                            time={entry.createdAt}
+                            time={entry.noShowAt || entry.seatedAt || entry.cancelledAt || entry.createdAt}
                             status={entry.status}
                             type="waitlist"
                         />
@@ -420,6 +420,7 @@ const WaitlistManagement = ({
         noShowTimeoutMinutes: 10,
         capacity: null,
     });
+    const [nowTs, setNowTs] = useState(Date.now());
     const [isArrivalScannerOpen, setIsArrivalScannerOpen] = useState(false);
     const [scanSeatingEntry, setScanSeatingEntry] = useState(null);
     const [scanSelectedTableId, setScanSelectedTableId] = useState('');
@@ -498,6 +499,11 @@ const WaitlistManagement = ({
         };
     }, [restaurant, fetchData]);
 
+    useEffect(() => {
+        const interval = setInterval(() => setNowTs(Date.now()), 30000);
+        return () => clearInterval(interval);
+    }, []);
+
     const handleUpdateStatus = async (entryId, status) => {
         setActionLoading(entryId);
         try {
@@ -549,7 +555,8 @@ const WaitlistManagement = ({
     };
 
     const handleNotify = (entry) => {
-        const msg = `Hello ${entry.name}, your table for ${entry.paxCount} pax at ${restaurant?.name || 'the restaurant'} is ready! Please proceed to the entrance.`;
+        const guestCountText = `${entry.paxCount} ${Number(entry.paxCount) === 1 ? 'guest' : 'guests'}`;
+        const msg = `Hi ${entry.name}, 👋\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
         window.open(`https://wa.me/91${entry.phone}?text=${encodeURIComponent(msg)}`, '_blank');
         handleUpdateStatus(entry.id, 'notified');
     };
@@ -683,7 +690,7 @@ const WaitlistManagement = ({
                         const isNotified = entry.status === 'notified';
                         const noShowDeadlineMs = entry?.noShowDeadlineAt ? new Date(entry.noShowDeadlineAt).getTime() : null;
                         const remainingNoShowMinutes = (isNotified && noShowDeadlineMs)
-                            ? Math.max(0, Math.ceil((noShowDeadlineMs - Date.now()) / 60000))
+                            ? Math.max(0, Math.ceil((noShowDeadlineMs - nowTs) / 60000))
                             : null;
 
                         return (
@@ -771,6 +778,19 @@ const WaitlistManagement = ({
                     })}
                 </div>
             )}
+            <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="p-3 text-sm">
+                    <p className="font-semibold text-primary">No-show automation</p>
+                    <p className="text-muted-foreground mt-1">
+                        Countdown starts exactly when you press <strong>Notify</strong>. If guest is not seated within {waitlistMeta?.noShowTimeoutMinutes || 10} minutes, entry auto-moves to waitlist history as <strong>no_show</strong> and next pending guest auto-promotes.
+                    </p>
+                    {waitlistMeta?.autoExpiredCount > 0 && (
+                        <p className="text-amber-600 mt-2 font-medium">
+                            {waitlistMeta.autoExpiredCount} guest(s) auto-expired in latest refresh.
+                        </p>
+                    )}
+                </CardContent>
+            </Card>
             {waitlistSeatingMode === 'manual_seat' && waitlistMeta?.capacity?.softAlert && (
                 <Card className="border-amber-500/30 bg-amber-500/5">
                     <CardContent className="p-3 text-sm text-amber-700">
