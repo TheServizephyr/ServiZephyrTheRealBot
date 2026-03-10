@@ -9,6 +9,8 @@ let adminInstance = null;
 let dbAnalyticsPatched = false;
 const DB_ANALYTICS_PENDING = new Map();
 let dbAnalyticsFlushTimer = null;
+const AUTH_SESSION_COOKIE_NAME = 'auth_session';
+const AUTH_SESSION_MAX_AGE_MS = Math.max(60 * 60 * 1000, Number(process.env.AUTH_SESSION_MAX_AGE_MS || 5 * 24 * 60 * 60 * 1000));
 
 const DB_ANALYTICS_ENABLED = process.env.ENABLE_FIREBASE_DB_QUERY_ANALYTICS !== 'false';
 const DB_ANALYTICS_FLUSH_MS = Math.max(5000, Number(process.env.DB_ANALYTICS_FLUSH_MS || 30000));
@@ -304,6 +306,67 @@ const FieldValue = admin.firestore.FieldValue;
 const GeoPoint = admin.firestore.GeoPoint;
 const Timestamp = admin.firestore.Timestamp;
 
+function extractBearerTokenFromRequest(req) {
+  const authHeader = req?.headers?.get?.('authorization') || '';
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return '';
+  return authHeader.split('Bearer ')[1]?.trim() || '';
+}
+
+function getCookieValueFromRequest(req, cookieName) {
+  const safeName = String(cookieName || '').trim();
+  if (!safeName) return '';
+  const directCookie = req?.cookies?.get?.(safeName)?.value;
+  if (directCookie) return String(directCookie).trim();
+
+  const cookieHeader = req?.headers?.get?.('cookie') || '';
+  if (!cookieHeader) return '';
+
+  const parts = String(cookieHeader).split(';');
+  for (const part of parts) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name === safeName) {
+      return decodeURIComponent(rest.join('=') || '').trim();
+    }
+  }
+  return '';
+}
+
+const createAuthSessionCookie = async (idToken, expiresInMs = AUTH_SESSION_MAX_AGE_MS) => {
+  const auth = await getAuth();
+  const safeToken = String(idToken || '').trim();
+  if (!safeToken) {
+    throw new Error('ID token is required to create a session cookie.');
+  }
+  const safeExpiresIn = Math.max(5 * 60 * 1000, Number(expiresInMs) || AUTH_SESSION_MAX_AGE_MS);
+  return auth.createSessionCookie(safeToken, { expiresIn: safeExpiresIn });
+};
+
+const verifySessionCookie = async (sessionCookie, checkRevoked = false) => {
+  const auth = await getAuth();
+  const safeCookie = String(sessionCookie || '').trim();
+  if (!safeCookie) {
+    throw { message: 'Session cookie is missing or malformed.', status: 401, code: 'SESSION_COOKIE_MISSING' };
+  }
+  return auth.verifySessionCookie(safeCookie, checkRevoked);
+};
+
+const getDecodedAuthContext = async (req, { checkRevoked = false, allowSessionCookie = true } = {}) => {
+  const bearerToken = extractBearerTokenFromRequest(req);
+  if (bearerToken) {
+    const auth = await getAuth();
+    return auth.verifyIdToken(bearerToken, checkRevoked);
+  }
+
+  if (allowSessionCookie) {
+    const sessionCookie = getCookieValueFromRequest(req, AUTH_SESSION_COOKIE_NAME);
+    if (sessionCookie) {
+      return verifySessionCookie(sessionCookie, checkRevoked);
+    }
+  }
+
+  throw { message: 'Authorization token is missing or malformed.', status: 401, code: 'AUTH_MISSING' };
+};
+
 
 /**
  * Verifies the authorization token from a request and returns the user's UID.
@@ -314,17 +377,8 @@ const Timestamp = admin.firestore.Timestamp;
  * @throws Will throw an error with a status code if the token is missing or invalid.
  */
 const verifyAndGetUid = async (req, checkRevoked = false) => {
-  const auth = await getAuth();
-  const authHeader = req.headers.get('authorization');
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw { message: 'Authorization token is missing or malformed.', status: 401 };
-  }
-  const token = authHeader.split('Bearer ')[1];
-
   try {
-    // ✅ OPTIMIZED: checkRevoked is only done on security-critical routes if requested
-    const decodedToken = await auth.verifyIdToken(token, checkRevoked);
+    const decodedToken = await getDecodedAuthContext(req, { checkRevoked, allowSessionCookie: true });
     return decodedToken.uid;
   } catch (error) {
     console.error("[verifyAndGetUid] Error verifying token:", error.message);
@@ -366,5 +420,21 @@ const verifyIdToken = async (token, checkRevoked = false) => {
   return auth.verifyIdToken(token, checkRevoked);
 };
 
-export { getAuth, getFirestore, getDatabase, getAppCheck, FieldValue, GeoPoint, Timestamp, verifyAndGetUid, verifyIdToken };
+export {
+  AUTH_SESSION_COOKIE_NAME,
+  AUTH_SESSION_MAX_AGE_MS,
+  getAuth,
+  getFirestore,
+  getDatabase,
+  getAppCheck,
+  FieldValue,
+  GeoPoint,
+  Timestamp,
+  verifyAndGetUid,
+  verifyIdToken,
+  createAuthSessionCookie,
+  verifySessionCookie,
+  getDecodedAuthContext,
+  extractBearerTokenFromRequest,
+};
 

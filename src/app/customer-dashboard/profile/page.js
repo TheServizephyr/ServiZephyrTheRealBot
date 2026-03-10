@@ -2,7 +2,6 @@
 
 import { motion } from 'framer-motion';
 import { LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, ShieldCheck, Sparkles, BarChart3 } from 'lucide-react';
-import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
@@ -12,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
+import { logoutClientSession } from '@/lib/client-session';
 
 const ProfileOption = ({ icon, title, description, onClick }) => (
     <motion.button
@@ -74,9 +74,7 @@ export default function ProfilePage() {
     }, [authUser, isAuthLoading]);
 
     const handleLogout = async () => {
-        await auth.signOut();
-        localStorage.clear();
-        router.push('/');
+        await logoutClientSession({ redirectTo: '/' });
     };
 
     const handleSaveProfile = async () => {

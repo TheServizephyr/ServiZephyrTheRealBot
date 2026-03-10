@@ -12,6 +12,7 @@ import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
 import AppNotificationCenter from '@/components/AppNotificationCenter';
+import { logoutClientSession } from '@/lib/client-session';
 
 function RiderLayoutContent({ children }) {
     const { user, isUserLoading } = useUser();
@@ -88,9 +89,7 @@ function RiderLayoutContent({ children }) {
     }, [user, searchParams]);
 
     const handleLogout = async () => {
-        const { auth } = await import('@/lib/firebase');
-        await auth.signOut();
-        router.push('/'); // Redirect to home page after logout
+        await logoutClientSession({ redirectTo: '/' });
     };
 
     if (isUserLoading || !authChecked) {

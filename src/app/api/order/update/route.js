@@ -72,6 +72,8 @@ export async function PATCH(req) {
                             allowedTypes: ['tracking'],
                             subjectId: data.userId || data.customerId || data.customerPhone || '',
                             orderId: doc.id,
+                            req,
+                            auditContext: 'order_update',
                         });
                         if (tokenCheck.valid) return true;
                     }
@@ -100,6 +102,8 @@ export async function PATCH(req) {
                         allowedTypes: ['tracking'],
                         subjectId: orderData.userId || orderData.customerId || orderData.customerPhone || '',
                         orderId,
+                        req,
+                        auditContext: 'order_update',
                     })
                     : { valid: false };
                 const isValidToken = tokenCheck.valid === true;

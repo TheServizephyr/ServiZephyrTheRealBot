@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { getFirestore, verifyIdToken } from '@/lib/firebase-admin';
+import { getDecodedAuthContext, getFirestore } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import {
@@ -46,7 +46,13 @@ export async function POST(req) {
         const body = await req.json();
         const { phone, guestId: explicitGuestId, ref } = body || {};
         const rateKey = `customer-lookup:${getClientIp(req)}:${String(ref || explicitGuestId || phone || 'anon').slice(0, 64)}`;
-        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 30, windowSec: 60 });
+        const rate = await enforceRateLimit(firestore, {
+            key: rateKey,
+            limit: 30,
+            windowSec: 60,
+            req,
+            auditContext: 'customer_lookup',
+        });
         if (!rate.allowed) {
             return NextResponse.json({ message: 'Too many lookup attempts. Please wait and retry.' }, { status: 429 });
         }
@@ -75,18 +81,14 @@ export async function POST(req) {
 
         // CRITICAL: UID-FIRST PRIORITY (only if NO ref provided)
         // Check if user is logged in via Authorization header
-        const authHeader = req.headers.get('authorization');
         let loggedInUid = null;
 
-        if (authHeader?.startsWith('Bearer ')) {
-            try {
-                const idToken = authHeader.split('Bearer ')[1];
-                const decodedToken = await verifyIdToken(idToken);
-                loggedInUid = decodedToken.uid;
-                console.log(`[API /customer/lookup] ✅ Logged-in user detected: ${loggedInUid}`);
-            } catch (e) {
-                console.warn(`[API /customer/lookup] Invalid auth token:`, e.message);
-            }
+        try {
+            const decodedToken = await getDecodedAuthContext(req, { checkRevoked: false, allowSessionCookie: true });
+            loggedInUid = decodedToken.uid;
+            console.log(`[API /customer/lookup] ✅ Logged-in user detected: ${loggedInUid}`);
+        } catch (e) {
+            console.warn(`[API /customer/lookup] No authenticated user context:`, e.message);
         }
 
         // PRIORITY LOGIC:

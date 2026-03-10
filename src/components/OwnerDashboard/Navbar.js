@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/firebase';
 import AppNotificationCenter from '@/components/AppNotificationCenter';
+import { logoutClientSession } from '@/lib/client-session';
 
 
 const MotionDiv = motion.div;
@@ -120,16 +121,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
 
   const handleLogout = async () => {
     try {
-      // 🔒 CRITICAL: Clear ALL storage to prevent cross-account leakage
-      localStorage.clear();
-      sessionStorage.clear();
-
-      // Sign out from Firebase
-      await auth.signOut();
-
-      // 🔥 CRITICAL: Redirect to clean URL (no query params)
-      // This prevents old ?employee_of=X params from persisting
-      window.location.href = '/';
+      await logoutClientSession({ redirectTo: '/' });
     } catch (error) {
       console.error("Logout failed:", error);
       setInfoDialog({ isOpen: true, title: "Error", message: "Could not log out. Please try again." });

@@ -2,9 +2,12 @@ import crypto from 'crypto';
 import { nanoid } from 'nanoid';
 import { FieldValue, getAppCheck } from '@/lib/firebase-admin';
 import { deobfuscateGuestId } from '@/lib/guest-utils';
+import { logSecurityEvent, recordSecurityAnomaly, SECURITY_EVENT_TYPES } from '@/lib/security/security-events';
 
 export const GUEST_SESSION_COOKIE_NAME = 'auth_guest_session';
 const DEFAULT_GUEST_SCOPES = ['customer_lookup', 'active_orders', 'checkout', 'track_orders'];
+const RATE_LIMIT_MEMORY_BUCKETS = globalThis.__servizephyrRateLimitBuckets || new Map();
+globalThis.__servizephyrRateLimitBuckets = RATE_LIMIT_MEMORY_BUCKETS;
 
 function base64UrlEncode(input) {
   return Buffer.from(input, 'utf8').toString('base64url');
@@ -142,11 +145,43 @@ function scopesSatisfied(sessionScopes = [], requiredScopes = []) {
   return required.every((scope) => scopes.includes(scope));
 }
 
+function buildRateLimitMetadata(bucket, key) {
+  const parts = String(key || '').split(':');
+  return {
+    bucket: String(bucket || 'public_api_limits').trim() || 'public_api_limits',
+    scope: String(parts[0] || bucket || 'unknown').trim() || 'unknown',
+    ipAddress: String(parts[1] || '').trim(),
+    subjectKey: parts.slice(2).join(':').slice(0, 120),
+    keyHash: crypto.createHash('sha256').update(String(key || '')).digest('hex').slice(0, 24),
+  };
+}
+
 function toDate(value) {
   if (!value) return null;
   if (typeof value?.toDate === 'function') return value.toDate();
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function consumeInMemoryRateLimit(key, limit, windowSec) {
+  const safeLimit = Math.max(1, Number(limit) || 1);
+  const safeWindowSec = Math.max(1, Number(windowSec) || 1);
+  const windowStart = Math.floor(Date.now() / (safeWindowSec * 1000));
+  const bucketKey = `${String(key || '')}:${windowStart}`;
+  const current = RATE_LIMIT_MEMORY_BUCKETS.get(bucketKey) || 0;
+
+  for (const existingKey of RATE_LIMIT_MEMORY_BUCKETS.keys()) {
+    if (!existingKey.endsWith(`:${windowStart}`)) {
+      RATE_LIMIT_MEMORY_BUCKETS.delete(existingKey);
+    }
+  }
+
+  if (current >= safeLimit) {
+    return { allowed: false, retryAfterSec: safeWindowSec, windowStart, source: 'memory' };
+  }
+
+  RATE_LIMIT_MEMORY_BUCKETS.set(bucketKey, current + 1);
+  return { allowed: true, retryAfterSec: 0, windowStart, source: 'memory' };
 }
 
 export async function issueGuestAccessRef(firestore, {
@@ -234,28 +269,61 @@ export async function verifyScopedAuthToken(firestore, token, {
   requiredScopes = [],
   subjectId = '',
   orderId = '',
+  req = null,
+  auditContext = 'public_auth',
 } = {}) {
   const safeToken = String(token || '').trim();
-  if (!safeToken) return { valid: false, reason: 'missing_token' };
+  const tokenHash = safeToken
+    ? crypto.createHash('sha256').update(safeToken).digest('hex').slice(0, 16)
+    : 'missing';
+  const reject = (reason, tokenData = null) => {
+    void logSecurityEvent({
+      type: SECURITY_EVENT_TYPES.TOKEN_SCOPE_REJECTED,
+      severity: 'warning',
+      req,
+      source: auditContext,
+      metadata: {
+        reason,
+        tokenHash,
+        allowedTypes,
+        requiredScopes,
+        subjectId: String(subjectId || '').trim(),
+        orderId: String(orderId || '').trim(),
+        tokenType: tokenData?.type || '',
+      },
+    });
+    void recordSecurityAnomaly({
+      type: `token_scope_${reason}`,
+      key: `${tokenHash}:${String(subjectId || '').trim()}:${String(orderId || '').trim()}`,
+      threshold: 5,
+      windowSec: 300,
+      req,
+      source: auditContext,
+      metadata: { reason },
+    });
+    return { valid: false, reason, tokenData };
+  };
+
+  if (!safeToken) return reject('missing_token');
 
   const tokenDoc = await firestore.collection('auth_tokens').doc(safeToken).get();
-  if (!tokenDoc.exists) return { valid: false, reason: 'not_found' };
+  if (!tokenDoc.exists) return reject('not_found');
 
   const tokenData = tokenDoc.data() || {};
   const expiresAt = toDate(tokenData.expiresAt);
   if (!expiresAt || Date.now() >= expiresAt.getTime()) {
     void tokenDoc.ref.delete().catch(() => {});
-    return { valid: false, reason: 'expired' };
+    return reject('expired');
   }
 
   const type = String(tokenData.type || '').trim();
   if (allowedTypes.length > 0 && !allowedTypes.includes(type)) {
-    return { valid: false, reason: 'type_mismatch', tokenData };
+    return reject('type_mismatch', tokenData);
   }
 
   const tokenScopes = normalizeScopes(tokenData.scopes || tokenData.scope || []);
   if (requiredScopes.length > 0 && tokenScopes.length > 0 && !scopesSatisfied(tokenScopes, requiredScopes)) {
-    return { valid: false, reason: 'scope_mismatch', tokenData };
+    return reject('scope_mismatch', tokenData);
   }
 
   const safeSubjectId = String(subjectId || '').trim();
@@ -269,13 +337,28 @@ export async function verifyScopedAuthToken(firestore, token, {
     ].map((value) => String(value || '').trim()).filter(Boolean);
 
     if (!tokenSubjects.includes(safeSubjectId)) {
-      return { valid: false, reason: 'subject_mismatch', tokenData };
+      return reject('subject_mismatch', tokenData);
     }
   }
 
   const safeOrderId = String(orderId || '').trim();
   if (safeOrderId && tokenData.orderId && String(tokenData.orderId).trim() !== safeOrderId) {
-    return { valid: false, reason: 'order_mismatch', tokenData };
+    return reject('order_mismatch', tokenData);
+  }
+
+  if (tokenScopes.length === 0) {
+    void logSecurityEvent({
+      type: SECURITY_EVENT_TYPES.TOKEN_SCOPE_LEGACY_ACCEPTED,
+      severity: 'info',
+      req,
+      source: auditContext,
+      metadata: {
+        tokenHash,
+        allowedTypes,
+        subjectId: String(subjectId || '').trim(),
+        orderId: safeOrderId,
+      },
+    });
   }
 
   return {
@@ -291,38 +374,93 @@ export async function enforceRateLimit(firestore, {
   key,
   limit = 30,
   windowSec = 60,
+  req = null,
+  auditContext = 'public_api_limits',
 } = {}) {
   const safeKey = String(key || '').trim();
   if (!safeKey) return { allowed: true };
 
+  const memoryResult = consumeInMemoryRateLimit(`${bucket}:${safeKey}`, limit, windowSec);
+  if (!memoryResult.allowed) {
+    void logSecurityEvent({
+      type: SECURITY_EVENT_TYPES.RATE_LIMIT_TRIGGERED,
+      severity: 'warning',
+      req,
+      source: auditContext,
+      metadata: { bucket, limit, windowSec, layer: 'memory' },
+    });
+    void recordSecurityAnomaly({
+      type: 'rate_limit_triggered',
+      key: `${bucket}:${safeKey}`,
+      threshold: 3,
+      windowSec: Math.max(60, windowSec),
+      req,
+      source: auditContext,
+      metadata: { bucket, limit, windowSec, layer: 'memory' },
+    });
+    return memoryResult;
+  }
+
   const windowStart = Math.floor(Date.now() / (windowSec * 1000));
   const docId = `${safeKey}:${windowStart}`;
   const ref = firestore.collection(bucket).doc(docId);
+  const readable = buildRateLimitMetadata(bucket, safeKey);
 
-  return firestore.runTransaction(async (transaction) => {
-    const snap = await transaction.get(ref);
-    const currentCount = snap.exists ? Number(snap.data()?.count || 0) : 0;
+  let result = memoryResult;
+  try {
+    result = await firestore.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      const currentCount = snap.exists ? Number(snap.data()?.count || 0) : 0;
 
-    if (currentCount >= limit) {
-      return { allowed: false, retryAfterSec: windowSec };
-    }
+      if (currentCount >= limit) {
+        return { allowed: false, retryAfterSec: windowSec };
+      }
 
-    if (!snap.exists) {
-      transaction.set(ref, {
-        key: safeKey,
-        count: 1,
-        windowStart,
-        expiresAt: new Date(Date.now() + windowSec * 1000),
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    } else {
-      transaction.update(ref, {
-        count: FieldValue.increment(1),
-      });
-    }
+      if (!snap.exists) {
+        transaction.set(ref, {
+          key: safeKey,
+          ...readable,
+          count: 1,
+          windowStart,
+          expiresAt: new Date(Date.now() + windowSec * 1000),
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        transaction.update(ref, {
+          count: FieldValue.increment(1),
+          ...readable,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
 
-    return { allowed: true, retryAfterSec: 0 };
-  });
+      return { allowed: true, retryAfterSec: 0 };
+    });
+  } catch (error) {
+    console.warn('[public-auth] Rate-limit storage degraded to memory fallback:', error?.message || error);
+    result = memoryResult;
+  }
+
+  if (!result.allowed) {
+    void logSecurityEvent({
+      type: SECURITY_EVENT_TYPES.RATE_LIMIT_TRIGGERED,
+      severity: 'warning',
+      req,
+      source: auditContext,
+      metadata: { bucket, limit, windowSec },
+    });
+    void recordSecurityAnomaly({
+      type: 'rate_limit_triggered',
+      key: `${bucket}:${safeKey}`,
+      threshold: 3,
+      windowSec: Math.max(60, windowSec),
+      req,
+      source: auditContext,
+      metadata: { bucket, limit, windowSec },
+    });
+  }
+
+  return result;
 }
 
 export async function verifyAppCheckToken(req, { required = false } = {}) {
@@ -334,6 +472,23 @@ export async function verifyAppCheckToken(req, { required = false } = {}) {
 
   if (!appCheckToken) {
     if (enforce) {
+      void logSecurityEvent({
+        type: SECURITY_EVENT_TYPES.APP_CHECK_MISSING,
+        severity: 'warning',
+        req,
+        source: 'app_check',
+        metadata: { required: enforce },
+      });
+      void recordSecurityAnomaly({
+        type: 'app_check_missing',
+        key: `${req?.nextUrl?.pathname || 'unknown'}:${req?.headers?.get?.('x-forwarded-for') || 'unknown'}`,
+        threshold: 5,
+        windowSec: 300,
+        req,
+        source: 'app_check',
+      });
+    }
+    if (enforce) {
       throw { message: 'App integrity check required.', status: 401, code: 'APP_CHECK_MISSING' };
     }
     return { verified: false, skipped: true };
@@ -344,6 +499,22 @@ export async function verifyAppCheckToken(req, { required = false } = {}) {
     await appCheck.verifyToken(appCheckToken);
     return { verified: true, skipped: false };
   } catch (error) {
+    void logSecurityEvent({
+      type: SECURITY_EVENT_TYPES.APP_CHECK_REJECTED,
+      severity: 'warning',
+      req,
+      source: 'app_check',
+      metadata: { code: error?.code || 'APP_CHECK_FAILED' },
+    });
+    void recordSecurityAnomaly({
+      type: 'app_check_rejected',
+      key: `${req?.nextUrl?.pathname || 'unknown'}:${req?.headers?.get?.('x-forwarded-for') || 'unknown'}`,
+      threshold: 5,
+      windowSec: 300,
+      req,
+      source: 'app_check',
+      metadata: { code: error?.code || 'APP_CHECK_FAILED' },
+    });
     throw {
       message: 'App integrity verification failed.',
       status: 401,

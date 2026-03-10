@@ -23,7 +23,13 @@ export async function POST(req) {
         const firestore = await getFirestore();
         const { phone, token, tableId, ref } = await req.json();
         const rateKey = `verify-token:${getClientIp(req)}:${String(ref || phone || tableId || 'anon').slice(0, 64)}`;
-        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 24, windowSec: 60 });
+        const rate = await enforceRateLimit(firestore, {
+            key: rateKey,
+            limit: 24,
+            windowSec: 60,
+            req,
+            auditContext: 'auth_verify_token',
+        });
         if (!rate.allowed) {
             return NextResponse.json({ message: 'Too many verification attempts. Please try again shortly.' }, { status: 429 });
         }
@@ -35,6 +41,8 @@ export async function POST(req) {
 
         const tokenCheck = await verifyScopedAuthToken(firestore, token, {
             allowedTypes: ['dine-in', 'whatsapp', 'tracking'],
+            req,
+            auditContext: 'auth_verify_token',
         });
         if (!tokenCheck.valid) {
             console.warn('[API verify-token] Token invalid:', tokenCheck.reason);

@@ -41,6 +41,7 @@ import { useWindowSize } from 'react-use';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { logoutClientSession } from '@/lib/client-session';
 
 
 const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
@@ -118,11 +119,8 @@ function AdminLayoutContent({ children }) {
   const isCollapsed = !isSidebarOpen && !isMobile;
 
   const handleLogout = async () => {
-    const { auth } = await import('@/lib/firebase'); // Import auth here
     try {
-      await auth.signOut();
-      localStorage.clear();
-      router.push('/');
+      await logoutClientSession({ redirectTo: '/' });
     } catch (error) {
       console.error("Logout failed:", error);
       setInfoDialog({ isOpen: true, title: "Logout Failed", message: "Could not log out. Please try again." });

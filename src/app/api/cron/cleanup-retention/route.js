@@ -5,6 +5,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const DAYS_TO_KEEP = 7;
+const PUBLIC_API_LIMITS_DAYS = 1;
+const SECURITY_EVENTS_DAYS = 14;
+const SECURITY_ANOMALY_DAYS = 14;
 
 async function deleteByRefs(firestore, refs) {
     if (!refs.length) return 0;
@@ -45,6 +48,10 @@ export async function GET(req) {
         const firestore = await getFirestore();
         const cutoffMs = Date.now() - DAYS_TO_KEEP * 24 * 60 * 60 * 1000;
         const cutoffDate = new Date(cutoffMs);
+        const publicLimitCutoffMs = Date.now() - PUBLIC_API_LIMITS_DAYS * 24 * 60 * 60 * 1000;
+        const publicLimitCutoffDate = new Date(publicLimitCutoffMs);
+        const securityEventsCutoffMs = Date.now() - SECURITY_EVENTS_DAYS * 24 * 60 * 60 * 1000;
+        const securityAnomalyCutoffMs = Date.now() - SECURITY_ANOMALY_DAYS * 24 * 60 * 60 * 1000;
 
         // 1) rate_limits cleanup by createdAt
         const rateSnap = await firestore
@@ -52,6 +59,18 @@ export async function GET(req) {
             .where('createdAt', '<', cutoffDate)
             .get();
         const rateDeleted = await deleteByRefs(firestore, rateSnap.docs.map((d) => d.ref));
+
+        // 1b) public_api_limits cleanup by expiresAt (fallback createdAt)
+        const publicLimitSnap = await firestore.collection('public_api_limits').get();
+        const publicLimitRefsToDelete = [];
+        for (const doc of publicLimitSnap.docs) {
+            const data = doc.data() || {};
+            const ts = toMillis(data.expiresAt) ?? toMillis(data.updatedAt) ?? toMillis(data.createdAt);
+            if (ts && ts < publicLimitCutoffMs) {
+                publicLimitRefsToDelete.push(doc.ref);
+            }
+        }
+        const publicApiLimitsDeleted = await deleteByRefs(firestore, publicLimitRefsToDelete);
 
         // 2) idempotency_keys cleanup by completedAt/failedAt/createdAt
         const idemSnap = await firestore.collection('idempotency_keys').get();
@@ -93,12 +112,43 @@ export async function GET(req) {
         }
         const auditLogsDeleted = await deleteByRefs(firestore, auditRefsToDelete);
 
+        // 5) security_events cleanup
+        const securityEventSnap = await firestore.collection('security_events').get();
+        const securityEventRefsToDelete = [];
+        for (const doc of securityEventSnap.docs) {
+            const data = doc.data() || {};
+            const ts = toMillis(data.createdAt);
+            if (ts && ts < securityEventsCutoffMs) {
+                securityEventRefsToDelete.push(doc.ref);
+            }
+        }
+        const securityEventsDeleted = await deleteByRefs(firestore, securityEventRefsToDelete);
+
+        // 6) security_anomaly_windows cleanup
+        const securityAnomalySnap = await firestore.collection('security_anomaly_windows').get();
+        const securityAnomalyRefsToDelete = [];
+        for (const doc of securityAnomalySnap.docs) {
+            const data = doc.data() || {};
+            const ts = toMillis(data.lastSeenAt) ?? toMillis(data.flaggedAt) ?? toMillis(data.createdAt);
+            if (ts && ts < securityAnomalyCutoffMs) {
+                securityAnomalyRefsToDelete.push(doc.ref);
+            }
+        }
+        const securityAnomaliesDeleted = await deleteByRefs(firestore, securityAnomalyRefsToDelete);
+
         return NextResponse.json({
             success: true,
             retentionDays: DAYS_TO_KEEP,
+            publicApiLimitsRetentionDays: PUBLIC_API_LIMITS_DAYS,
+            securityEventsRetentionDays: SECURITY_EVENTS_DAYS,
+            securityAnomalyRetentionDays: SECURITY_ANOMALY_DAYS,
             rateLimits: {
                 scannedByQuery: rateSnap.size,
                 deleted: rateDeleted,
+            },
+            publicApiLimits: {
+                scanned: publicLimitSnap.size,
+                deleted: publicApiLimitsDeleted,
             },
             idempotencyKeys: {
                 scanned: idemSnap.size,
@@ -111,6 +161,14 @@ export async function GET(req) {
             auditLogs: {
                 scanned: auditSnap.size,
                 deleted: auditLogsDeleted,
+            },
+            securityEvents: {
+                scanned: securityEventSnap.size,
+                deleted: securityEventsDeleted,
+            },
+            securityAnomalyWindows: {
+                scanned: securityAnomalySnap.size,
+                deleted: securityAnomaliesDeleted,
             },
         });
     } catch (error) {

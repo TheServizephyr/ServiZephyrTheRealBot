@@ -3,7 +3,6 @@
 
 import { motion } from 'framer-motion';
 import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
@@ -15,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { logoutClientSession } from '@/lib/client-session';
 
 
 const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
@@ -162,9 +162,7 @@ export default function ProfilePage() {
     }, [authUser, isAuthLoading]);
 
     const handleLogout = async () => {
-        await auth.signOut();
-        localStorage.clear();
-        router.push('/');
+        await logoutClientSession({ redirectTo: '/' });
     };
 
     const handleSaveProfile = async () => {

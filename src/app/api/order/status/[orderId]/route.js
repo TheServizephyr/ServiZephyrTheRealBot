@@ -67,7 +67,13 @@ export async function GET(request, { params }) {
         const requestCache = createRequestCache();
         const firestore = await getFirestore();
         const rateKey = `order-status:${getClientIp(request)}:${String(orderId || 'unknown')}:${String(request.nextUrl.searchParams.get('token') || 'anon').slice(0, 64)}`;
-        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 120, windowSec: 60 });
+        const rate = await enforceRateLimit(firestore, {
+            key: rateKey,
+            limit: 120,
+            windowSec: 60,
+            req: request,
+            auditContext: 'order_status',
+        });
         if (!rate.allowed) {
             return respond({ message: 'Too many tracking requests. Please retry shortly.' }, 429);
         }
@@ -123,6 +129,8 @@ export async function GET(request, { params }) {
                 requiredScopes: ['track_orders'],
                 subjectId: orderData.userId || orderData.customerId || orderData.customerPhone || '',
                 orderId: orderSnap.id,
+                req: request,
+                auditContext: 'order_status',
             });
             if (tokenCheck.valid) {
                 isAuthorizedData = true;

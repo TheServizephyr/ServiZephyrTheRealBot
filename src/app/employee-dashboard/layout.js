@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PERMISSIONS } from '@/lib/permissions';
+import { logoutClientSession } from '@/lib/client-session';
 
 // Navigation items based on role/permissions
 const getNavItems = (permissions, role) => {
@@ -85,7 +86,7 @@ const getNavItems = (permissions, role) => {
 export default function EmployeeDashboardLayout({ children }) {
     const router = useRouter();
     const pathname = usePathname();
-    const { user, firestore, auth } = useFirebase();
+    const { user, firestore } = useFirebase();
 
     const [loading, setLoading] = useState(true);
     const [employeeData, setEmployeeData] = useState(null);
@@ -141,8 +142,7 @@ export default function EmployeeDashboardLayout({ children }) {
     // Handle logout
     async function handleLogout() {
         try {
-            await auth.signOut();
-            router.push('/login');
+            await logoutClientSession({ redirectTo: '/login' });
         } catch (error) {
             console.error('Logout error:', error);
         }

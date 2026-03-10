@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getFirestore, verifyIdToken } from '@/lib/firebase-admin';
+import { getDecodedAuthContext, getFirestore } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { trackEndpointRead } from '@/lib/readTelemetry';
@@ -50,7 +50,13 @@ export async function GET(req) {
 
         const firestore = await getFirestore();
         const rateKey = `order-active:${getClientIp(req)}:${String(ref || phone || tabId || 'anon').slice(0, 96)}`;
-        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 45, windowSec: 60 });
+        const rate = await enforceRateLimit(firestore, {
+            key: rateKey,
+            limit: 45,
+            windowSec: 60,
+            req,
+            auditContext: 'order_active',
+        });
         if (!rate.allowed) {
             return respond({ message: 'Too many active-order requests. Please slow down.' }, 429);
         }
@@ -63,9 +69,7 @@ export async function GET(req) {
             const cookieStore = cookies();
             const guestSession = readSignedGuestSessionCookie(cookieStore, ['active_orders']);
             const sessionUser = guestSession?.subjectId || null;
-            const authHeader = req.headers.get('authorization');
-
-            console.log(`[API /order/active] Security Check - Session: ${sessionUser}, Ref: ${ref}, AuthHeader: ${!!authHeader}`);
+            console.log(`[API /order/active] Security Check - Session: ${sessionUser}, Ref: ${ref}, AuthCookieOrHeader: ${!!req.headers.get('authorization') || !!req.cookies?.get?.('auth_session')}`);
 
             let targetCustomerId = null;
             let targetPhone = null;
@@ -97,10 +101,8 @@ export async function GET(req) {
             }
 
             // 1. Check Logged-in User (UID Priority)
-            if (authHeader?.startsWith('Bearer ')) {
-                try {
-                    const idToken = authHeader.split('Bearer ')[1];
-                    const decodedToken = await verifyIdToken(idToken);
+            try {
+                    const decodedToken = await getDecodedAuthContext(req, { checkRevoked: false, allowSessionCookie: true });
                     const loggedInUid = decodedToken.uid;
 
                     // STRICT IDENTITY CHECK: Logged-in user must match target (customer or phone)
@@ -121,9 +123,8 @@ export async function GET(req) {
                     }
 
                 } catch (e) {
-                    console.warn(`[API /order/active] Invalid Auth Token:`, e.message);
+                    console.warn(`[API /order/active] No authenticated user context:`, e.message);
                 }
-            }
 
             // 2. Check signed guest session cookie
             if (!isAuthorized && sessionUser) {
@@ -139,6 +140,8 @@ export async function GET(req) {
                         allowedTypes: ['tracking', 'whatsapp'],
                         requiredScopes: ['active_orders'],
                         subjectId: targetCustomerId || targetPhone || '',
+                        req,
+                        auditContext: 'order_active',
                     });
                     if (tokenCheck.valid) isAuthorized = true;
                 }
@@ -146,7 +149,7 @@ export async function GET(req) {
 
             if (!isAuthorized) {
                 console.warn(`[API /order/active] Unauthorized access attempt for ${phone || ref}`);
-                return respond({ message: 'Unauthorized. Please login.' }, 401);
+                return respond({ message: 'Unauthorized. Invalid or expired public session.' }, 401);
             }
 
             // --- QUERY EXECUTION ---

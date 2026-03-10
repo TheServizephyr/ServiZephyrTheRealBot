@@ -7,6 +7,7 @@ import { useFirebase } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle, XCircle, Building2, User, Shield } from 'lucide-react';
 import Image from 'next/image';
+import { clearServerSessionCookies } from '@/lib/client-session';
 
 export default function JoinPage() {
     const params = useParams();
@@ -65,6 +66,7 @@ export default function JoinPage() {
             // Wrong email logged in - sign out silently so user can choose correct account
             // Don't show error, just let them click button to choose account
             if (auth?.currentUser) {
+                void clearServerSessionCookies();
                 auth.signOut();
             }
         }
@@ -85,6 +87,7 @@ export default function JoinPage() {
             // IMPORTANT: Sign out any existing user first to force fresh Google account picker
             // This ensures user can choose any account in their browser
             if (auth.currentUser) {
+                await clearServerSessionCookies();
                 await auth.signOut();
             }
 
@@ -107,6 +110,7 @@ export default function JoinPage() {
                 setError(`Please sign in with ${inviteData.invitedEmail}. You signed in as ${result.user.email}.`);
                 setAccepting(false);
                 // Sign out the wrong account
+                await clearServerSessionCookies();
                 await auth.signOut();
                 return;
             }
