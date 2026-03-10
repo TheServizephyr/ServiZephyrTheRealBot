@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -27,6 +27,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import InfoDialog from '@/components/InfoDialog';
 import { format } from 'date-fns';
+import { OWNER_DASHBOARD_PAGES, STREET_VENDOR_DASHBOARD_PAGES } from '@/lib/permissions';
 
 const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
   const [analytics, setAnalytics] = useState(null);
@@ -179,32 +180,47 @@ const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
   );
 };
 
-const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, initialRestrictedFeatures = [] }) => {
-  const features = [
-    { id: 'dashboard', label: 'Dashboard' },
-    { id: 'live-orders', label: 'Live Order Management' },
-    { id: 'menu', label: 'Menu/Item Management' },
-    { id: 'dine-in', label: 'Dine-In Management' },
-    { id: 'employees', label: 'Team/Staff Management' },
-    { id: 'whatsapp-direct', label: 'WhatsApp Direct' },
-    { id: 'analytics', label: 'Analytics & Reports' },
-    { id: 'customers', label: 'Customer Hub' },
-    { id: 'delivery', label: 'Delivery Management' },
-    { id: 'coupons', label: 'Coupon & Offer Hub' },
-    { id: 'qr', label: 'QR Code Management' },
-    { id: 'location', label: 'Location/Address Settings' },
-    { id: 'connections', label: 'WhatsApp/Bot Connections' },
-    { id: 'settings', label: 'Store Settings' },
-  ];
+const normalizeBusinessType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street-vendor';
+  if (normalized === 'shop' || normalized === 'store') return 'store';
+  return 'restaurant';
+};
+
+const getSuspensionFeatures = (businessType) => {
+  const normalizedType = normalizeBusinessType(businessType);
+
+  if (normalizedType === 'street-vendor') {
+    const order = ['live-orders', 'menu', 'employees', 'analytics', 'qr', 'coupons', 'profile', 'payouts'];
+    return order
+      .map((id) => STREET_VENDOR_DASHBOARD_PAGES.find((page) => page.id === id))
+      .filter(Boolean)
+      .map((page) => ({ id: page.id, label: page.label }));
+  }
+
+  const order = ['dashboard', 'live-orders', 'menu', 'dine-in', 'bookings', 'employees', 'customers', 'whatsapp-direct', 'analytics', 'delivery', 'coupons', 'settings', 'location', 'connections'];
+  const allowedIds = normalizedType === 'store'
+    ? order.filter((id) => id !== 'dine-in')
+    : order;
+
+  return allowedIds
+    .map((id) => OWNER_DASHBOARD_PAGES.find((page) => page.id === id))
+    .filter(Boolean)
+    .map((page) => ({ id: page.id, label: page.label }));
+};
+
+const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, businessType, initialRestrictedFeatures = [] }) => {
+  const features = useMemo(() => getSuspensionFeatures(businessType), [businessType]);
   const [selectedFeatures, setSelectedFeatures] = useState([]);
   const [remark, setRemark] = useState("");
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedFeatures(initialRestrictedFeatures);
+      const allowedIds = new Set(features.map((feature) => feature.id));
+      setSelectedFeatures((initialRestrictedFeatures || []).filter((id) => allowedIds.has(id)));
       setRemark(""); // Reset remark every time it opens
     }
-  }, [isOpen, initialRestrictedFeatures]);
+  }, [isOpen, initialRestrictedFeatures, features]);
 
   const handleSelect = (featureId) => {
     setSelectedFeatures(prev =>
@@ -241,8 +257,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, init
             <Checkbox
               id="select-all"
               onCheckedChange={handleSelectAll}
-              checked={allSelected}
-              data-state={partiallySelected ? "indeterminate" : (allSelected ? "checked" : "unchecked")}
+              checked={partiallySelected ? 'indeterminate' : allSelected}
             />
             <Label htmlFor="select-all" className="flex-grow cursor-pointer text-sm font-bold">Select/Deselect All</Label>
           </div>
@@ -309,6 +324,7 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
         onOpenChange={setIsSuspensionModalOpen}
         onConfirm={handleSuspensionConfirm}
         restaurantName={restaurant.name}
+        businessType={restaurant.businessType}
         initialRestrictedFeatures={restaurant.restrictedFeatures || []}
       />
       <TableRow>

@@ -22,6 +22,17 @@ import EmployeeBanner from "@/components/EmployeeBanner";
 
 export const dynamic = 'force-dynamic';
 
+const resolveOwnerFeatureIdFromPath = (pathname) => {
+  const segments = String(pathname || '').split('/').filter(Boolean);
+  if (segments[0] !== 'owner-dashboard') return segments[segments.length - 1] || '';
+  if (segments.length === 1) return 'dashboard';
+
+  const section = segments[1];
+  if (section === 'settings' && segments[2] === 'connections') return 'connections';
+  if (section === 'settings' && segments[2] === 'location') return 'location';
+  return section || 'dashboard';
+};
+
 function FeatureLockScreen({ remark, featureId }) {
   const supportPhone = "919027872803";
   const supportEmail = "contact@servizephyr.com";
@@ -428,7 +439,7 @@ function OwnerDashboardContent({ children }) {
   }
 
   const renderStatusScreen = () => {
-    const featureId = pathname.split('/').pop();
+    const featureId = resolveOwnerFeatureIdFromPath(pathname);
 
     if (restaurantStatus.status === 'approved') {
       return null;

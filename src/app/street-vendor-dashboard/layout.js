@@ -21,6 +21,13 @@ import ImpersonationBanner from "@/components/ImpersonationBanner";
 
 export const dynamic = 'force-dynamic';
 
+const resolveStreetVendorFeatureIdFromPath = (pathname) => {
+  const segments = String(pathname || '').split('/').filter(Boolean);
+  if (segments[0] !== 'street-vendor-dashboard') return segments[segments.length - 1] || '';
+  if (segments.length === 1) return 'live-orders';
+  return segments[1] || 'live-orders';
+};
+
 function FeatureLockScreen({ remark, featureId }) {
   const supportPhone = "919027872803";
   const supportEmail = "contact@servizephyr.com";
@@ -274,7 +281,7 @@ function OwnerDashboardContent({ children }) {
   }
 
   const renderStatusScreen = () => {
-    const featureId = pathname.split('/').pop();
+    const featureId = resolveStreetVendorFeatureIdFromPath(pathname);
 
     if (restaurantStatus.status === 'approved') {
       return null;
