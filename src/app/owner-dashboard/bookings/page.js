@@ -421,6 +421,8 @@ const WaitlistManagement = ({
         capacity: null,
     });
     const [isArrivalScannerOpen, setIsArrivalScannerOpen] = useState(false);
+    const [scanSeatingEntry, setScanSeatingEntry] = useState(null);
+    const [scanSelectedTableId, setScanSelectedTableId] = useState('');
 
     const handleApiCall = useCallback(async (method, body, path) => {
         const user = auth.currentUser;
@@ -515,8 +517,8 @@ const WaitlistManagement = ({
         }
     };
 
-    const handleSeatCustomer = async (entry) => {
-        const tableId = selectedTables[entry.id];
+    const seatWaitlistEntry = useCallback(async (entry, overrideTableId = null, source = 'manual') => {
+        const tableId = overrideTableId || selectedTables[entry.id];
         const usesTraditionalSeating = waitlistSeatingMode === 'manual_seat';
         if (!usesTraditionalSeating && !tableId) return;
         setActionLoading(entry.id);
@@ -529,7 +531,7 @@ const WaitlistManagement = ({
                 title: "Seated",
                 description: usesTraditionalSeating
                     ? `${entry.name} marked as seated (manual seating).`
-                    : `${entry.name} seated at Table ${tableId}.`
+                    : `${entry.name} seated at Table ${tableId}.${source === 'scan' ? ' (via token scan)' : ''}`
             });
             if (result?.warning) {
                 toast({ title: "Capacity Alert", description: result.warning, variant: "destructive" });
@@ -540,6 +542,10 @@ const WaitlistManagement = ({
         } finally {
             setActionLoading(null);
         }
+    }, [selectedTables, waitlistSeatingMode, handleApiCall, fetchData, toast]);
+
+    const handleSeatCustomer = async (entry) => {
+        await seatWaitlistEntry(entry, null, 'manual');
     };
 
     const handleNotify = (entry) => {
@@ -560,23 +566,43 @@ const WaitlistManagement = ({
                 throw new Error('Invalid waitlist arrival QR.');
             }
 
-            const res = await fetch('/api/public/waitlist/arrive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ restaurantId: rid, entryId: eid, arrivalCode: c }),
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data.message || 'Could not mark arrival.');
+            if (restaurant?.id && rid !== restaurant.id) {
+                throw new Error('This token belongs to another restaurant.');
             }
 
-            toast({ title: 'Arrival Marked', description: data.message || 'Guest marked as arrived.' });
+            const entry = entries.find((item) => item.id === eid);
+            if (!entry) {
+                throw new Error('Entry not found in active waitlist.');
+            }
+
+            const scannedCode = String(c || '').trim().toUpperCase();
+            const storedCode = String(entry.arrivalCode || '').trim().toUpperCase();
+            if (!storedCode || storedCode !== scannedCode) {
+                throw new Error('Invalid token QR.');
+            }
+
+            const usesTraditionalSeating = waitlistSeatingMode === 'manual_seat';
+            if (usesTraditionalSeating) {
+                setIsArrivalScannerOpen(false);
+                await seatWaitlistEntry(entry, null, 'scan');
+                return;
+            }
+
+            const fitTables = allTables
+                .filter((t) => t.state === 'available' && t.max_capacity >= entry.paxCount)
+                .sort((a, b) => a.max_capacity - b.max_capacity);
+
+            if (fitTables.length === 0) {
+                throw new Error('No table available for this party size.');
+            }
+
+            setScanSeatingEntry(entry);
+            setScanSelectedTableId(fitTables[0].id);
             setIsArrivalScannerOpen(false);
-            await fetchData();
         } catch (err) {
             toast({ title: 'Scan Error', description: err.message || 'Invalid QR code.', variant: 'destructive' });
         }
-    }, [fetchData, toast]);
+    }, [restaurant?.id, entries, waitlistSeatingMode, allTables, seatWaitlistEntry, toast]);
 
     const recommendedEntries = useMemo(() => {
         if (!entries.length || !allTables.length) return new Set();
@@ -629,11 +655,11 @@ const WaitlistManagement = ({
                     <p className="text-sm text-muted-foreground">Manage walk-ins.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setIsArrivalScannerOpen(true)} className="h-8">
-                        <ScanLine size={14} className="mr-2" /> Scan Arrival QR
+                    <Button variant="outline" size="sm" onClick={() => setIsArrivalScannerOpen(true)} className="h-8 hidden md:inline-flex">
+                        <ScanLine size={14} className="mr-2" /> Scan Token QR
                     </Button>
                     <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="h-8">
-                        <RefreshCw size={14} className={cn("mr-2", loading && "animate-spin")} /> Refresh
+                        <RefreshCw size={14} className={cn("md:mr-2", loading && "animate-spin")} /> <span className="hidden md:inline">Refresh</span>
                     </Button>
                 </div>
             </div>
@@ -655,7 +681,6 @@ const WaitlistManagement = ({
                         const fitTables = allTables.filter(t => t.state === 'available' && t.max_capacity >= entry.paxCount);
                         const isRecommended = !usesTraditionalSeating && recommendedEntries.has(entry.id);
                         const isNotified = entry.status === 'notified';
-                        const isArrived = entry.status === 'arrived';
                         const noShowDeadlineMs = entry?.noShowDeadlineAt ? new Date(entry.noShowDeadlineAt).getTime() : null;
                         const remainingNoShowMinutes = (isNotified && noShowDeadlineMs)
                             ? Math.max(0, Math.ceil((noShowDeadlineMs - Date.now()) / 60000))
@@ -664,7 +689,7 @@ const WaitlistManagement = ({
                         return (
                             <Card key={entry.id} className={cn(
                                 "border-l-4 transition-all duration-300",
-                                isArrived ? "border-l-blue-500" : isNotified ? "border-l-amber-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
+                                isNotified ? "border-l-amber-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
                                 isRecommended && !isNotified && "animate-pulse-green border-green-500/50",
                                 isNotified && "animate-pulse-yellow border-amber-500/50"
                             )}>
@@ -697,8 +722,8 @@ const WaitlistManagement = ({
                                                 )}
                                             </div>
                                         </div>
-                                        <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isArrived ? "bg-blue-500/10 text-blue-600" : isNotified ? "bg-amber-500/10 text-amber-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
-                                            {isArrived ? 'Arrived' : isNotified ? 'Notified' : isRecommended ? 'Recommended' : 'Waiting'}
+                                        <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
+                                            {isNotified ? 'Notified' : isRecommended ? 'Recommended' : 'Waiting'}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4 text-xs font-medium">
@@ -761,12 +786,74 @@ const WaitlistManagement = ({
                     />
                 )}
             </AnimatePresence>
+            <Dialog
+                open={Boolean(scanSeatingEntry)}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setScanSeatingEntry(null);
+                        setScanSelectedTableId('');
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Seat Customer from Token Scan</DialogTitle>
+                        <DialogDescription>
+                            Select table for {scanSeatingEntry?.name || 'guest'} ({scanSeatingEntry?.paxCount || 0} pax).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto">
+                            {allTables
+                                .filter((t) => t.state === 'available' && t.max_capacity >= Number(scanSeatingEntry?.paxCount || 1))
+                                .sort((a, b) => a.max_capacity - b.max_capacity)
+                                .map((t) => (
+                                    <Button
+                                        key={t.id}
+                                        type="button"
+                                        size="sm"
+                                        variant={scanSelectedTableId === t.id ? 'default' : 'outline'}
+                                        onClick={() => setScanSelectedTableId(t.id)}
+                                    >
+                                        T{t.id} ({t.max_capacity}P)
+                                    </Button>
+                                ))}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                                setScanSeatingEntry(null);
+                                setScanSelectedTableId('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={!scanSeatingEntry || !scanSelectedTableId || actionLoading === scanSeatingEntry?.id}
+                            onClick={async () => {
+                                if (!scanSeatingEntry || !scanSelectedTableId) return;
+                                await seatWaitlistEntry(scanSeatingEntry, scanSelectedTableId, 'scan');
+                                setScanSeatingEntry(null);
+                                setScanSelectedTableId('');
+                            }}
+                        >
+                            Confirm Seat
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <Button
                 type="button"
                 onClick={() => setIsArrivalScannerOpen(true)}
-                className="md:hidden fixed bottom-6 right-4 z-40 h-14 rounded-full px-5 shadow-2xl"
+                className="md:hidden fixed bottom-6 right-4 z-40 h-14 w-14 rounded-full p-0 shadow-2xl"
+                aria-label="Scan token QR"
+                title="Scan token QR"
             >
-                <ScanLine size={18} className="mr-2" /> Scan QR
+                <ScanLine size={22} />
             </Button>
         </div>
     );
@@ -968,14 +1055,14 @@ function BookingsPageContent() {
                     <p className="text-muted-foreground mt-1">Manage your table reservations and walk-in waitlist.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button onClick={() => setIsHistoryOpen(true)} variant="outline" className="flex items-center gap-2">
-                        <History size={16} /> History
+                    <Button onClick={() => setIsHistoryOpen(true)} variant="outline" className="h-10 w-10 px-0 md:h-10 md:w-auto md:px-3 flex items-center gap-2">
+                        <History size={16} /> <span className="hidden md:inline">History</span>
                     </Button>
-                    <Button onClick={() => setIsWaitlistSettingsOpen(true)} variant="outline" className="flex items-center gap-2" disabled={!businessInfo}>
-                        <Settings size={16} /> Settings
+                    <Button onClick={() => setIsWaitlistSettingsOpen(true)} variant="outline" className="h-10 w-10 px-0 md:h-10 md:w-auto md:px-3 flex items-center gap-2" disabled={!businessInfo}>
+                        <Settings size={16} /> <span className="hidden md:inline">Settings</span>
                     </Button>
-                    <Button onClick={() => fetchBookings(true)} variant="outline" disabled={loading}>
-                        <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh
+                    <Button onClick={() => fetchBookings(true)} variant="outline" disabled={loading} className="h-10 w-10 px-0 md:h-10 md:w-auto md:px-3">
+                        <RefreshCw size={16} className={cn("md:mr-2", loading && "animate-spin")} /> <span className="hidden md:inline">Refresh</span>
                     </Button>
                 </div>
             </header>

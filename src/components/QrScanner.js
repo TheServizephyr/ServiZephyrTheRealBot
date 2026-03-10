@@ -103,6 +103,12 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
             } catch (err) {
                 console.error("Failed to initialize scanner", err);
                 const errName = String(err?.name || '').toLowerCase();
+                const errMessage = String(err?.message || '').toLowerCase();
+                if (errMessage.includes('not allowed in this document') || errMessage.includes('permissions policy')) {
+                    setIsPermissionDenied(false);
+                    setCameraError("Camera blocked by document policy. Refresh the page after restarting dev server, then retry.");
+                    return;
+                }
                 if (errName.includes('notallowed') || errName.includes('permission')) {
                     let permissionState = 'unknown';
                     try {
