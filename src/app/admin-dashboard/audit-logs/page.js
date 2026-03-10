@@ -32,13 +32,7 @@ export default function AuditLogsPage() {
         }
     }, [user, isUserLoading, router]);
 
-    useEffect(() => {
-        if (user) {
-            fetchLogs();
-        }
-    }, [user, pagination.offset]);
-
-    const fetchLogs = async () => {
+    const fetchLogs = useCallback(async () => {
         setLoading(true);
         try {
             const idToken = await user.getIdToken();
@@ -69,7 +63,13 @@ export default function AuditLogsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user, pagination.limit, pagination.offset, filters]);
+
+    useEffect(() => {
+        if (user) {
+            fetchLogs();
+        }
+    }, [user, fetchLogs]);
 
     const exportToCSV = () => {
         const headers = ['Timestamp', 'Admin Email', 'Admin ID', 'Target Owner ID', 'Action', 'IP Address', 'User Agent', 'Metadata'];

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from "framer-motion";
 import { RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle } from "lucide-react";
 import { auth } from '@/lib/firebase';
@@ -26,9 +27,9 @@ function FailedPaymentsPageContent() {
     const [retrying, setRetrying] = useState(null);
     const [filter, setFilter] = useState('pending'); // pending | dead_letter | all
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    const searchParams = useSearchParams();
+    const searchParams = useSearchParams() || new URLSearchParams();
 
-    const loadData = async (isManualRefresh = false) => {
+    const loadData = useCallback(async (isManualRefresh = false) => {
         if (!isManualRefresh) {
             setLoading(true);
         }
@@ -68,7 +69,7 @@ function FailedPaymentsPageContent() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [filter]);
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -76,7 +77,7 @@ function FailedPaymentsPageContent() {
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, [filter]);
+    }, [loadData]);
 
     const handleRetry = async (webhookId) => {
         setRetrying(webhookId);

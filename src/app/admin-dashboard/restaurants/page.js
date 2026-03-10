@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -34,13 +34,7 @@ const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (isOpen && restaurant) {
-      fetchAnalytics();
-    }
-  }, [isOpen, restaurant]);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -60,7 +54,13 @@ const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [restaurant]);
+
+  useEffect(() => {
+    if (isOpen && restaurant) {
+      fetchAnalytics();
+    }
+  }, [isOpen, restaurant, fetchAnalytics]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

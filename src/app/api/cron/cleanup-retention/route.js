@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const DAYS_TO_KEEP = 7;
 
