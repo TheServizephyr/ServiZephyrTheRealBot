@@ -3,13 +3,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock } from 'lucide-react';
+import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
+
+const getWaitlistStorageKey = (restaurantId) => `servizephyr_waitlist_token_${restaurantId}`;
 
 export default function PublicWaitlistPage({ params }) {
     const { restaurantId } = params;
@@ -28,6 +30,7 @@ export default function PublicWaitlistPage({ params }) {
     const [waitlistToken, setWaitlistToken] = useState('');
     const [arrivalCode, setArrivalCode] = useState('');
     const [entryId, setEntryId] = useState('');
+    const [queueStatus, setQueueStatus] = useState('pending');
     const [isCoinFlipped, setIsCoinFlipped] = useState(false);
     const [restaurantData, setRestaurantData] = useState(null);
 
@@ -53,6 +56,95 @@ export default function PublicWaitlistPage({ params }) {
         };
         fetchStatus();
     }, [restaurantId]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const storageKey = getWaitlistStorageKey(restaurantId);
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) return;
+
+        try {
+            const saved = JSON.parse(raw);
+            if (!saved?.entryId || !saved?.waitlistToken || !saved?.arrivalCode) return;
+            setMode('waitlist');
+            if (saved.name) setName(saved.name);
+            if (saved.phone) setPhone(saved.phone);
+            if (saved.paxCount) setPaxCount(String(saved.paxCount));
+            setWaitlistToken(saved.waitlistToken);
+            setArrivalCode(saved.arrivalCode);
+            setEntryId(saved.entryId);
+            setQueueStatus(saved.queueStatus || 'pending');
+            setSuccess(true);
+        } catch (parseErr) {
+            console.warn('[waitlist] Failed to restore saved token:', parseErr);
+        }
+    }, [restaurantId]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const storageKey = getWaitlistStorageKey(restaurantId);
+        if (!(mode === 'waitlist' && success && entryId && waitlistToken && arrivalCode)) {
+            return;
+        }
+
+        window.localStorage.setItem(storageKey, JSON.stringify({
+            restaurantId,
+            mode: 'waitlist',
+            name,
+            phone,
+            paxCount: Number.parseInt(String(paxCount || 1), 10) || 1,
+            entryId,
+            waitlistToken,
+            arrivalCode,
+            queueStatus,
+            savedAt: new Date().toISOString(),
+        }));
+    }, [restaurantId, mode, success, name, phone, paxCount, entryId, waitlistToken, arrivalCode, queueStatus]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        if (!(mode === 'waitlist' && success && entryId && arrivalCode)) return undefined;
+
+        let isCancelled = false;
+
+        const pollWaitlistStatus = async () => {
+            try {
+                const params = new URLSearchParams({
+                    restaurantId,
+                    entryId,
+                    arrivalCode,
+                });
+                const res = await fetch(`/api/public/waitlist/status?${params.toString()}`, { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok || isCancelled) return;
+
+                const nextStatus = String(data?.status || 'pending').toLowerCase();
+                setQueueStatus(nextStatus);
+
+                if (nextStatus === 'seated') {
+                    setSuccess(true);
+                    return;
+                }
+
+                if (['cancelled', 'no_show'].includes(nextStatus)) {
+                    setSuccess(false);
+                    setError(nextStatus === 'no_show'
+                        ? 'Your waitlist token expired due to late arrival. Please join again.'
+                        : 'Your waitlist entry was cancelled. Please join again if needed.');
+                    window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
+                }
+            } catch (pollErr) {
+                console.warn('[waitlist] status poll error:', pollErr);
+            }
+        };
+
+        void pollWaitlistStatus();
+        const interval = window.setInterval(pollWaitlistStatus, 8000);
+        return () => {
+            isCancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [restaurantId, mode, success, entryId, arrivalCode]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -115,6 +207,10 @@ export default function PublicWaitlistPage({ params }) {
             setWaitlistToken(data?.waitlistToken || '');
             setArrivalCode(data?.arrivalCode || '');
             setEntryId(data?.entryId || '');
+            setQueueStatus('pending');
+            if (isBookingMode && typeof window !== 'undefined') {
+                window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
+            }
             setSuccess(true);
         } catch (err) {
             setError(err.message);
@@ -143,6 +239,7 @@ export default function PublicWaitlistPage({ params }) {
     const tokenParts = tokenWithoutHash.match(/^(\d+)([A-Z]{2})$/);
     const tokenNumberPart = tokenParts?.[1] || tokenWithoutHash;
     const tokenAlphaPart = tokenParts?.[2] || '';
+    const isSeated = queueStatus === 'seated';
 
     if (success) {
         return (
@@ -152,21 +249,58 @@ export default function PublicWaitlistPage({ params }) {
                     animate={{ scale: 1, opacity: 1 }}
                     className="w-full max-w-md"
                 >
-                    <Card className="text-center p-6 border-2 border-primary/20 bg-card shadow-2xl">
+                    <Card className={cn("text-center p-6 border-2 bg-card shadow-2xl overflow-hidden relative", isSeated ? "border-green-500/30" : "border-primary/20")}>
+                        {isSeated && (
+                            <>
+                                <div className="seated-confetti confetti-a" />
+                                <div className="seated-confetti confetti-b" />
+                                <div className="seated-confetti confetti-c" />
+                                <div className="seated-confetti confetti-d" />
+                                <style jsx global>{`
+                                    @keyframes pop-burst {
+                                        0% { transform: translateY(0) scale(0.8); opacity: 0; }
+                                        20% { opacity: 1; }
+                                        100% { transform: translateY(-110px) scale(1.2); opacity: 0; }
+                                    }
+                                    .seated-confetti {
+                                        position: absolute;
+                                        width: 10px;
+                                        height: 10px;
+                                        border-radius: 9999px;
+                                        bottom: 30px;
+                                        opacity: 0;
+                                        z-index: 2;
+                                        animation: pop-burst 1.4s ease-out infinite;
+                                    }
+                                    .confetti-a { left: 18%; background: #facc15; animation-delay: 0s; }
+                                    .confetti-b { left: 36%; background: #22c55e; animation-delay: 0.2s; }
+                                    .confetti-c { right: 30%; background: #38bdf8; animation-delay: 0.4s; }
+                                    .confetti-d { right: 12%; background: #fb7185; animation-delay: 0.6s; }
+                                `}</style>
+                            </>
+                        )}
                         <div className="mb-6 flex justify-center">
-                            <div className="h-20 w-20 bg-primary/10 rounded-full flex items-center justify-center">
-                                <CheckCircle2 className="h-12 w-12 text-primary animate-pulse" />
+                            <div className={cn("h-20 w-20 rounded-full flex items-center justify-center", isSeated ? "bg-green-500/15" : "bg-primary/10")}>
+                                {isSeated ? (
+                                    <PartyPopper className="h-11 w-11 text-green-600 animate-pulse" />
+                                ) : (
+                                    <CheckCircle2 className="h-12 w-12 text-primary animate-pulse" />
+                                )}
                             </div>
                         </div>
                         <CardTitle className="text-3xl font-black mb-2 tracking-tight">
-                            {mode === 'booking' ? 'Booking Requested!' : "You're on the list!"}
+                            {isSeated
+                                ? `Welcome to ${restaurantName}!`
+                                : (mode === 'booking' ? 'Booking Requested!' : "You're on the list!")}
                         </CardTitle>
                         <CardDescription className="text-lg mb-6 text-center">
-                            {mode === 'booking'
+                            {isSeated
+                                ? <>Now you are seated. Enjoy your day and have a great time.</>
+                                : mode === 'booking'
                                 ? <>We&apos;ve received your booking request at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> guests.</>
                                 : <>We will call and WhatsApp you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> guests is ready.</>}
                         </CardDescription>
-                        {mode !== 'booking' && waitlistToken && (
+                        {!isSeated && mode !== 'booking' && waitlistToken && (
                             <div className="mb-4 space-y-4">
                                 <div className="flex flex-col items-center gap-3">
                                     <div className="scene">
@@ -203,13 +337,29 @@ export default function PublicWaitlistPage({ params }) {
                                 </div>
                             </div>
                         )}
-                        <div className="bg-muted p-4 rounded-xl mb-6 text-left">
-                            <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-1">Notice</p>
-                            <p className="text-sm">Please stay nearby. You will be considered late after {noShowTimeoutMinutes} minutes of notification.</p>
-                        </div>
-                        <Button className="w-full h-12 text-lg font-bold" onClick={() => window.location.reload()}>
-                            Close
-                        </Button>
+                        {!isSeated && (
+                            <div className="bg-muted p-4 rounded-xl mb-6 text-left">
+                                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest mb-1">Notice</p>
+                                <p className="text-sm">Please stay nearby. You will be considered late after {noShowTimeoutMinutes} minutes of notification.</p>
+                            </div>
+                        )}
+                        {isSeated ? (
+                            <Button
+                                className="w-full h-12 text-lg font-bold"
+                                onClick={() => {
+                                    if (typeof window !== 'undefined') {
+                                        window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
+                                        window.history.back();
+                                    }
+                                }}
+                            >
+                                <ArrowLeft className="h-5 w-5 mr-2" /> Back
+                            </Button>
+                        ) : (
+                            <Button className="w-full h-12 text-lg font-bold" onClick={() => window.location.reload()}>
+                                Close
+                            </Button>
+                        )}
                     </Card>
                 </motion.div>
             </div>
