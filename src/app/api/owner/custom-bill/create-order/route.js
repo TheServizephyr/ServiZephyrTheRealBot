@@ -5,7 +5,8 @@ import { getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { sendSystemMessage, sendSystemTemplateMessage, sendWhatsAppMessage } from '@/lib/whatsapp';
-import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
+import { getOrCreateGuestProfile } from '@/lib/guest-utils';
+import { issueGuestAccessRef } from '@/lib/public-auth';
 import { createOrderV2 } from '@/services/order/createOrder.service';
 
 const SHORT_LINK_COLLECTION = 'short_links';
@@ -245,7 +246,15 @@ export async function POST(req) {
 
         const firestore = await getFirestore();
         const profileResult = await getOrCreateGuestProfile(firestore, phone);
-        const guestRef = await obfuscateGuestId(profileResult.userId);
+        const { ref: guestRef } = await issueGuestAccessRef(firestore, {
+            subjectId: profileResult.userId,
+            subjectType: String(profileResult.userId || '').startsWith('g_') ? 'guest' : 'user',
+            phone,
+            businessId,
+            channel: 'manual_call',
+            scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
+            ttlMs: 7 * 24 * 60 * 60 * 1000,
+        });
 
         const createOrderPayload = {
             name: customerName,

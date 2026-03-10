@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { verifyScopedAuthToken } from '@/lib/public-auth';
 
 /**
  * PATCH /api/order/update
@@ -11,6 +12,12 @@ export async function PATCH(req) {
         const body = await req.json();
 
         const { orderId, dineInTabId, paymentStatus, paymentMethod, trackingToken } = body;
+        const requestedPaymentStatus = String(paymentStatus || '').trim().toLowerCase();
+        const requestedPaymentMethod = String(paymentMethod || '').trim().toLowerCase();
+
+        if (!['pay_at_counter', 'paid'].includes(requestedPaymentStatus)) {
+            return NextResponse.json({ message: 'Unsupported payment status update.' }, { status: 403 });
+        }
 
         if (!orderId && !dineInTabId) {
             return NextResponse.json(
@@ -56,7 +63,20 @@ export async function PATCH(req) {
 
             // Check authorization: User must own at least ONE order in the tab
             if (!ordersSnap.empty) {
-                const isValidToken = trackingToken && ordersSnap.docs.some(doc => doc.data().trackingToken === trackingToken);
+                const isValidToken = Boolean(trackingToken) && await (async () => {
+                    for (const doc of ordersSnap.docs) {
+                        const data = doc.data() || {};
+                        if (!['dine-in', 'car-order'].includes(String(data.deliveryType || '').toLowerCase())) continue;
+                        if (trackingToken !== data.trackingToken) continue;
+                        const tokenCheck = await verifyScopedAuthToken(firestore, trackingToken, {
+                            allowedTypes: ['tracking'],
+                            subjectId: data.userId || data.customerId || data.customerPhone || '',
+                            orderId: doc.id,
+                        });
+                        if (tokenCheck.valid) return true;
+                    }
+                    return false;
+                })();
                 const isValidOwner = uid && ordersSnap.docs.some(doc => {
                     const data = doc.data();
                     return uid === data.userId || uid === data.customerId || uid === data.restaurantId;
@@ -73,8 +93,16 @@ export async function PATCH(req) {
             const orderDoc = await firestore.collection('orders').doc(orderId).get();
             if (orderDoc.exists) {
                 const orderData = orderDoc.data();
+                const isDineInLike = ['dine-in', 'car-order'].includes(String(orderData?.deliveryType || '').toLowerCase());
                 // Ownership check
-                const isValidToken = trackingToken && orderData.trackingToken === trackingToken;
+                const tokenCheck = (trackingToken && isDineInLike && orderData.trackingToken === trackingToken)
+                    ? await verifyScopedAuthToken(firestore, trackingToken, {
+                        allowedTypes: ['tracking'],
+                        subjectId: orderData.userId || orderData.customerId || orderData.customerPhone || '',
+                        orderId,
+                    })
+                    : { valid: false };
+                const isValidToken = tokenCheck.valid === true;
                 const isValidOwner = uid && (uid === orderData.userId || uid === orderData.customerId || uid === orderData.restaurantId);
 
                 if (!isValidToken && !isValidOwner) {
@@ -96,10 +124,10 @@ export async function PATCH(req) {
         const updateData = {};
 
         if (paymentStatus) {
-            updateData.paymentStatus = paymentStatus;
+            updateData.paymentStatus = requestedPaymentStatus;
         }
         if (paymentMethod) {
-            updateData.paymentMethod = paymentMethod;
+            updateData.paymentMethod = requestedPaymentMethod;
         }
 
         ordersToUpdate.forEach(doc => {

@@ -24,8 +24,21 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const riderLatLng = useMemo(() => toLatLngLiteral(riderLocation), [riderLocation]);
     const customerLatLngs = useMemo(() =>
         (customerLocations || [])
-            .map(loc => ({ ...toLatLngLiteral(loc), id: loc.id }))
-            .filter(loc => typeof loc.lat === 'number' && typeof loc.lng === 'number'),
+            .map((loc, index) => {
+                const coords = toLatLngLiteral(loc);
+                if (!coords) return null;
+                return {
+                    ...coords,
+                    id: loc?.id || null,
+                    key: String(
+                        loc?.id ||
+                        loc?.customerOrderId ||
+                        loc?.orderId ||
+                        `${coords.lat}:${coords.lng}:${index}`
+                    ),
+                };
+            })
+            .filter(loc => typeof loc?.lat === 'number' && typeof loc?.lng === 'number'),
         [customerLocations]
     );
 
@@ -142,21 +155,21 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     return (
         <>
             {restaurantLatLng && (
-                <AdvancedMarker position={restaurantLatLng} title="Restaurant">
+                <AdvancedMarker key="restaurant-marker" position={restaurantLatLng} title="Restaurant">
                     <div style={markerContainerStyle}>
                         🍴
                     </div>
                 </AdvancedMarker>
             )}
             {customerLatLngs.map(loc => (
-                <AdvancedMarker key={loc.id} position={loc} title="Customer">
+                <AdvancedMarker key={loc.key} position={loc} title="Customer">
                     <div style={markerContainerStyle}>
                     🤵
                 </div>
             </AdvancedMarker>
         ))}
             {riderLatLng && (
-                <AdvancedMarker position={riderLatLng} title="Delivery Partner">
+                <AdvancedMarker key="rider-marker" position={riderLatLng} title="Delivery Partner">
                     <div style={{ fontSize: '2.5rem' }}>🛵</div>
                 </AdvancedMarker>
             )}

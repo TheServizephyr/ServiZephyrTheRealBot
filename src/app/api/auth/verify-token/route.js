@@ -3,35 +3,44 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
-import { deobfuscateGuestId } from '@/lib/guest-utils';
+import {
+    enforceRateLimit,
+    resolveGuestAccessRef,
+    setSignedGuestSessionCookie,
+    verifyAppCheckToken,
+    verifyScopedAuthToken,
+} from '@/lib/public-auth';
+
+const getClientIp = (req) => {
+    const forwardedFor = req.headers.get('x-forwarded-for') || '';
+    return forwardedFor.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
+};
 
 export async function POST(req) {
     console.log("[API verify-token] POST request received.");
     try {
+        await verifyAppCheckToken(req, { required: false });
         const firestore = await getFirestore();
         const { phone, token, tableId, ref } = await req.json();
+        const rateKey = `verify-token:${getClientIp(req)}:${String(ref || phone || tableId || 'anon').slice(0, 64)}`;
+        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 24, windowSec: 60 });
+        if (!rate.allowed) {
+            return NextResponse.json({ message: 'Too many verification attempts. Please try again shortly.' }, { status: 429 });
+        }
         console.log(`[API verify-token] Payload - Token: ${token ? 'Yes' : 'No'}, Ref: ${ref ? 'Yes' : 'No'}, Phone: ${phone ? 'Yes' : 'No'}, Table: ${tableId ? 'Yes' : 'No'}`);
 
         if (!token) {
             return NextResponse.json({ message: 'Session token is required.' }, { status: 400 });
         }
 
-        const tokenRef = firestore.collection('auth_tokens').doc(token);
-        const tokenDoc = await tokenRef.get();
-
-        if (!tokenDoc.exists) {
-            console.warn('[API verify-token] Token not found.');
+        const tokenCheck = await verifyScopedAuthToken(firestore, token, {
+            allowedTypes: ['dine-in', 'whatsapp', 'tracking'],
+        });
+        if (!tokenCheck.valid) {
+            console.warn('[API verify-token] Token invalid:', tokenCheck.reason);
             return NextResponse.json({ message: 'Invalid or expired session token.' }, { status: 403 });
         }
-
-        const tokenData = tokenDoc.data();
-        const expiresAt = tokenData.expiresAt.toDate();
-
-        if (new Date() > expiresAt) {
-            console.warn('[API verify-token] Token expired.');
-            await tokenRef.delete();
-            return NextResponse.json({ message: 'Your session has expired. Please request a new link.' }, { status: 403 });
-        }
+        const tokenData = tokenCheck.tokenData || {};
 
         // --- DINE-IN FLOW (Unchanged) ---
         if (tokenData.type === 'dine-in') {
@@ -43,35 +52,35 @@ export async function POST(req) {
 
         // --- GUEST IDENTITY FLOW (New) ---
         if (ref) {
-            const guestId = deobfuscateGuestId(ref);
-            if (!guestId) {
-                console.error("[API verify-token] Failed to deobfuscate ref.");
+            const refSession = await resolveGuestAccessRef(firestore, ref, {
+                requiredScopes: ['customer_lookup'],
+                allowLegacy: true,
+                touch: true,
+            });
+            if (!refSession?.subjectId) {
+                console.error("[API verify-token] Failed to resolve ref.");
                 return NextResponse.json({ message: 'Invalid link format.' }, { status: 400 });
             }
 
-            // Verify Token belongs to this Guest
-            // CRITICAL: Support both new userId field and legacy guestId field
             const tokenUserId = tokenData.userId || tokenData.guestId;
-            if (tokenUserId !== guestId) {
-                console.warn(`[API verify-token] Guest ID mismatch. Token: ${tokenUserId}, Ref: ${guestId}`);
+            if (tokenUserId !== refSession.subjectId) {
+                console.warn(`[API verify-token] Guest ID mismatch. Token: ${tokenUserId}, Ref: ${refSession.subjectId}`);
                 return NextResponse.json({ message: 'Invalid session link.' }, { status: 403 });
             }
 
-            // SET HTTP-ONLY COOKIE
-            cookies().set({
-                name: 'auth_guest_session',
-                value: String(guestId), // Store Guest ID (or could be a signed session JWT in future)
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                path: '/',
-                maxAge: 60 * 60 * 24 * 7 // 7 Days
+            setSignedGuestSessionCookie(cookies(), {
+                subjectId: refSession.subjectId,
+                subjectType: refSession.subjectType,
+                sessionId: refSession.sessionId || ref,
+                scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
+                maxAgeSec: 7 * 24 * 60 * 60,
             });
 
-            console.log(`[API verify-token] GUEST Session verified for ${guestId}. Cookie set.`);
+            console.log(`[API verify-token] GUEST Session verified for ${refSession.subjectId}. Cookie set.`);
             return NextResponse.json({
                 message: 'Token is valid.',
                 type: 'guest',
-                guestId: guestId // Return to frontend for non-sensitive state
+                guestId: refSession.subjectId
             }, { status: 200 });
         }
 

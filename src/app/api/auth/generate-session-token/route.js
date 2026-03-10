@@ -3,13 +3,14 @@ import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { nanoid } from 'nanoid';
 import { checkIpRateLimit } from '@/lib/rateLimiter';
-import { obfuscateGuestId } from '@/lib/guest-utils';
+import { issueGuestAccessRef, verifyAppCheckToken } from '@/lib/public-auth';
 
 export async function POST(req) {
     console.log("[API][generate-session-token] POST request received.");
     const firestore = await getFirestore();
 
     try {
+        await verifyAppCheckToken(req, { required: false });
         const { tableId, restaurantId } = await req.json();
 
         // --- DINE-IN TOKEN GENERATION ---
@@ -88,13 +89,22 @@ export async function POST(req) {
         const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
 
         const authTokenRef = firestore.collection('auth_tokens').doc(token);
-        const ref = obfuscateGuestId(uid);
+        const { ref } = await issueGuestAccessRef(firestore, {
+            subjectId: uid,
+            subjectType: 'user',
+            phone,
+            businessId: '',
+            channel: 'whatsapp',
+            scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
+            ttlMs: 2 * 60 * 60 * 1000,
+        });
         await authTokenRef.set({
             phone: phone,
             expiresAt: expiresAt,
             uid: uid, // legacy compatibility
             userId: uid, // ref-based verification support
-            type: 'whatsapp'
+            type: 'whatsapp',
+            scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders']
         });
         
         console.log(`[API][generate-session-token] Generated new WHATSAPP token for phone: ${phone}`);

@@ -71,11 +71,11 @@ export class IdempotencyRepository {
         const firestore = await getFirestore();
         const docRef = firestore.collection(this.collectionName).doc(idempotencyKey);
 
-        await docRef.update({
+        await docRef.set({
             status: 'completed',
             ...result,
             completedAt: FieldValue.serverTimestamp()
-        });
+        }, { merge: true });
 
         console.log(`[IdempotencyRepository] Key completed: ${idempotencyKey}`);
     }
@@ -87,11 +87,11 @@ export class IdempotencyRepository {
         const firestore = await getFirestore();
         const docRef = firestore.collection(this.collectionName).doc(idempotencyKey);
 
-        await docRef.update({
+        await docRef.set({
             status: 'failed',
             error: error.message,
             failedAt: FieldValue.serverTimestamp()
-        });
+        }, { merge: true });
 
         console.log(`[IdempotencyRepository] Key marked as failed: ${idempotencyKey}`);
     }

@@ -30,6 +30,17 @@ const TokenVerificationLock = ({ message }) => (
 
 const DEFAULT_MAP_CENTER = { lat: 22.9734, lng: 78.6569 }; // India center fallback
 
+const getNestedParamFromReturnUrl = (returnUrl, key) => {
+    const safeReturnUrl = String(returnUrl || '').trim();
+    if (!safeReturnUrl || !key) return '';
+    try {
+        const nestedUrl = new URL(safeReturnUrl, 'http://localhost');
+        return nestedUrl.searchParams.get(key) || '';
+    } catch {
+        return '';
+    }
+};
+
 const AddAddressPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -43,12 +54,26 @@ const AddAddressPageInternal = () => {
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const [verifiedGuestId, setVerifiedGuestId] = useState('');
-    const phone = searchParams.get('phone');
-    const token = searchParams.get('token');
-    const ref = searchParams.get('ref'); // CAPTURE REF for guest sessions
-    const activeOrderId = searchParams.get('activeOrderId');
-    const tableId = searchParams.get('table');
-    const prefilledNameFromUrl = searchParams.get('name') || '';
+    const rawReturnUrl = searchParams.get('returnUrl') || '/';
+    const phone =
+        searchParams.get('phone') ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'phone');
+    const token =
+        searchParams.get('token') ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'token');
+    const ref =
+        searchParams.get('ref') ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'ref'); // CAPTURE REF for guest sessions
+    const activeOrderId =
+        searchParams.get('activeOrderId') ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'activeOrderId');
+    const tableId =
+        searchParams.get('table') ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'table');
+    const prefilledNameFromUrl =
+        searchParams.get('name') ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'name') ||
+        '';
 
     const [mapCenter, setMapCenter] = useState(DEFAULT_MAP_CENTER);
     const [addressDetails, setAddressDetails] = useState(null);
@@ -70,7 +95,7 @@ const AddAddressPageInternal = () => {
     const [isSearchingAddress, setIsSearchingAddress] = useState(false);
     const [searchFeedback, setSearchFeedback] = useState('');
 
-    const returnUrl = searchParams.get('returnUrl') || '/';
+    const returnUrl = rawReturnUrl;
     const useCurrent =
         searchParams.get('useCurrent') === 'true' ||
         searchParams.get('currentLocation') === 'true';
@@ -380,6 +405,28 @@ const AddAddressPageInternal = () => {
                         }
                         if (phoneLookupPhone) {
                             setRecipientPhone(prev => prev || phoneLookupPhone);
+                            hasPhoneFromLookup = true;
+                        }
+                    }
+                }
+
+                // Logged-in fallback even when auth provider has no phoneNumber
+                if ((!hasPhoneFromLookup || !hasNameFromLookup) && user) {
+                    const res = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({})
+                    });
+                    if (res.ok && isMounted) {
+                        const customerData = await res.json();
+                        const authLookupName = String(customerData?.name || '').trim();
+                        const authLookupPhone = String(customerData?.phone || '').replace(/\D/g, '').slice(-10);
+                        if (authLookupName) {
+                            setRecipientName(prev => prev || authLookupName);
+                            hasNameFromLookup = true;
+                        }
+                        if (authLookupPhone) {
+                            setRecipientPhone(prev => prev || authLookupPhone);
                             hasPhoneFromLookup = true;
                         }
                     }

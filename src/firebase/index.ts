@@ -3,9 +3,20 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getDatabase } from 'firebase/database'; // ✅ RTDB for real-time tracking
+
+function getAppCheckInitAttempted() {
+  if (typeof globalThis === 'undefined') return false;
+  return Boolean(globalThis.__servizephyrAppCheckInitAttempted);
+}
+
+function setAppCheckInitAttempted(value: boolean) {
+  if (typeof globalThis === 'undefined') return;
+  globalThis.__servizephyrAppCheckInitAttempted = value;
+}
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -20,6 +31,10 @@ export function initializeFirebase() {
 
 export function getSdks(firebaseApp: FirebaseApp) {
   const auth = getAuth(firebaseApp);
+  const appCheckSiteKey =
+    typeof process !== 'undefined'
+      ? process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY
+      : undefined;
 
   // CRITICAL: Set persistence immediately (non-blocking)
   // This MUST execute for redirect flow to work
@@ -30,6 +45,20 @@ export function getSdks(firebaseApp: FirebaseApp) {
     .catch((error) => {
       console.error('[Firebase] ✗ Failed to set persistence:', error);
     });
+
+  if (!getAppCheckInitAttempted() && appCheckSiteKey) {
+    setAppCheckInitAttempted(true);
+    try {
+      initializeAppCheck(firebaseApp, {
+        provider: new ReCaptchaV3Provider(appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+      console.log('[Firebase] ✓ App Check configured');
+    } catch (error) {
+      setAppCheckInitAttempted(false);
+      console.error('[Firebase] ✗ Failed to initialize App Check:', error);
+    }
+  }
 
   return {
     firebaseApp,

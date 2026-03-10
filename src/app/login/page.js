@@ -23,6 +23,15 @@ function LoginPageContent() {
     const redirectTo = getSafeRedirectPath(searchParams.get("redirect"));
     const hasProcessedRedirect = useRef(false); // Prevent React Strict Mode double call
 
+    const shouldFallbackToRedirect = (error) => {
+        const code = String(error?.code || '');
+        return [
+            'auth/popup-closed-by-user',
+            'auth/popup-blocked',
+            'auth/cancelled-popup-request',
+        ].includes(code);
+    };
+
     // Handle redirect result when user returns from Google
     useEffect(() => {
         // CRITICAL: Prevent double execution in React Strict Mode (dev)
@@ -88,11 +97,23 @@ function LoginPageContent() {
 
             if (isLocalhost) {
                 console.log("[Login] Localhost detected - using popup...");
-                const result = await signInWithPopup(auth, googleProvider);
-                console.log("[Login] Popup successful, processing...");
-                setLoading(true);
-                setMsg("Verifying user details...");
-                await handleAuthSuccess(result.user);
+                try {
+                    const result = await signInWithPopup(auth, googleProvider);
+                    console.log("[Login] Popup successful, processing...");
+                    setLoading(true);
+                    setMsg("Verifying user details...");
+                    await handleAuthSuccess(result.user);
+                    return;
+                } catch (popupError) {
+                    console.warn("[Login] Popup auth failed, falling back to redirect...", popupError);
+                    if (!shouldFallbackToRedirect(popupError)) {
+                        throw popupError;
+                    }
+                    await setPersistence(auth, browserLocalPersistence);
+                    sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+                    await signInWithRedirect(auth, googleProvider);
+                    return;
+                }
             } else {
                 console.log("[Login] Production - using redirect...");
                 await setPersistence(auth, browserLocalPersistence);

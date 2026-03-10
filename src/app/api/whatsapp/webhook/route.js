@@ -11,8 +11,9 @@ import {
 import { sendOrderStatusUpdateToCustomer, sendNewOrderToOwner } from '@/lib/notifications';
 import axios from 'axios';
 import { nanoid } from 'nanoid';
-import { getOrCreateGuestProfile, obfuscateGuestId } from '@/lib/guest-utils';
+import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime } from '@/lib/whatsapp-realtime';
+import { issueGuestAccessRef } from '@/lib/public-auth';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -208,7 +209,15 @@ const resolveActionIdFromTemplateReply = (rawId, businessId) => {
 const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) => {
     const normalizedPhone = normalizePhone(customerPhoneWithCode);
     const { userId } = await getOrCreateGuestProfile(firestore, normalizedPhone);
-    const publicRef = obfuscateGuestId(userId);
+    const { ref: publicRef } = await issueGuestAccessRef(firestore, {
+        subjectId: userId,
+        subjectType: String(userId || '').startsWith('g_') ? 'guest' : 'user',
+        phone: normalizedPhone,
+        businessId: business.id,
+        channel: 'whatsapp',
+        scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
+        ttlMs: 7 * 24 * 60 * 60 * 1000,
+    });
     const encodedRef = encodeURIComponent(publicRef);
     const encodedBusinessId = encodeURIComponent(String(business.id || '').trim());
 
@@ -645,7 +654,15 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 }
 
                 // 2. Obfuscate User ID for URL (no token needed - ref provides security)
-                const publicRef = obfuscateGuestId(userId);
+                const { ref: publicRef } = await issueGuestAccessRef(firestore, {
+                    subjectId: userId,
+                    subjectType: String(userId || '').startsWith('g_') ? 'guest' : 'user',
+                    phone: fromPhoneNumber,
+                    businessId,
+                    channel: 'whatsapp',
+                    scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
+                    ttlMs: 7 * 24 * 60 * 60 * 1000,
+                });
                 console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
 
                 // 3. Generate Link with only ref (no token)
@@ -691,7 +708,15 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     console.log(`[Webhook WA] Found latest order ${orderId} with tracking token for userId ${userId}.`);
 
                     // Generate Obfuscated Ref for guest/user
-                    const publicRef = obfuscateGuestId(userId);
+                    const { ref: publicRef } = await issueGuestAccessRef(firestore, {
+                        subjectId: userId,
+                        subjectType: String(userId || '').startsWith('g_') ? 'guest' : 'user',
+                        phone: fromPhoneNumber,
+                        businessId: business.id,
+                        channel: 'whatsapp',
+                        scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
+                        ttlMs: 7 * 24 * 60 * 60 * 1000,
+                    });
 
                     let trackingPath = 'delivery/'; // Default to delivery
                     if (latestOrder.deliveryType === 'dine-in') {

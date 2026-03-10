@@ -1,12 +1,25 @@
 
 import { NextResponse } from 'next/server';
-import { getFirestore, verifyIdToken, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore, verifyIdToken } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
-import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
+import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
+import {
+    enforceRateLimit,
+    readSignedGuestSessionCookie,
+    resolveGuestAccessRef,
+    setSignedGuestSessionCookie,
+    verifyAppCheckToken,
+    verifyScopedAuthToken,
+} from '@/lib/public-auth';
 
 export const dynamic = 'force-dynamic';
+
+const getClientIp = (req) => {
+    const forwardedFor = req.headers.get('x-forwarded-for') || '';
+    return forwardedFor.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
+};
 
 // GET: Fetch order data by tabId, phone, or ref
 export async function GET(req) {
@@ -36,32 +49,52 @@ export async function GET(req) {
         }
 
         const firestore = await getFirestore();
+        const rateKey = `order-active:${getClientIp(req)}:${String(ref || phone || tabId || 'anon').slice(0, 96)}`;
+        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 45, windowSec: 60 });
+        if (!rate.allowed) {
+            return respond({ message: 'Too many active-order requests. Please slow down.' }, 429);
+        }
 
         // SCENARIO 1: DELIVERY/TAKEAWAY (Query by User Identity)
         if (phone || ref) {
+            await verifyAppCheckToken(req, { required: false });
 
             // --- SECURITY CHECK ---
             const cookieStore = cookies();
-            const sessionUser = cookieStore.get('auth_guest_session')?.value;
+            const guestSession = readSignedGuestSessionCookie(cookieStore, ['active_orders']);
+            const sessionUser = guestSession?.subjectId || null;
             const authHeader = req.headers.get('authorization');
 
             console.log(`[API /order/active] Security Check - Session: ${sessionUser}, Ref: ${ref}, AuthHeader: ${!!authHeader}`);
 
             let targetCustomerId = null;
             let targetPhone = null;
+            let isAuthorized = false;
 
             // Resolve Target Identity
             if (ref) {
-                targetCustomerId = deobfuscateGuestId(ref);
+                const refSession = await resolveGuestAccessRef(firestore, ref, {
+                    requiredScopes: ['active_orders'],
+                    allowLegacy: true,
+                    touch: true,
+                });
+                targetCustomerId = refSession?.subjectId || null;
                 if (!targetCustomerId) {
                     return respond({ message: 'Invalid Ref' }, 400);
+                }
+                if (refSession && refSession.legacy !== true) {
+                    isAuthorized = true;
+                    setSignedGuestSessionCookie(cookieStore, {
+                        subjectId: refSession.subjectId,
+                        subjectType: refSession.subjectType,
+                        sessionId: refSession.sessionId || ref,
+                        scopes: refSession.scopes || ['active_orders'],
+                        maxAgeSec: 7 * 24 * 60 * 60,
+                    });
                 }
             } else if (phone) {
                 targetPhone = phone.replace(/\D/g, '').slice(-10);
             }
-
-            // Verify Session Match
-            let isAuthorized = false;
 
             // 1. Check Logged-in User (UID Priority)
             if (authHeader?.startsWith('Bearer ')) {
@@ -92,32 +125,22 @@ export async function GET(req) {
                 }
             }
 
-            // 2. Check Valid Ref (Capability URL) - TRUST THE REF
-            // If the user possesses the valid Ref (obfuscated ID), allow access. 
-            // This replaces the strict token/cookie check for Guest/WhatsApp users.
-            if (!isAuthorized && ref && targetCustomerId) {
-                isAuthorized = true;
-                console.log(`[API /order/active] ✅ Authorized via Valid Ref (Capability URL)`);
-            }
-
-            // 3. Fallback: Check Cookie (Legacy)
+            // 2. Check signed guest session cookie
             if (!isAuthorized && sessionUser) {
                 if (targetCustomerId && sessionUser === targetCustomerId) isAuthorized = true;
                 if (targetPhone && sessionUser === targetPhone) isAuthorized = true;
             }
 
-            // 4. Fallback: Check Token param (Legacy)
+            // 3. Fallback: Check scoped token param
             if (!isAuthorized && !tabId) {
                 const token = searchParams.get('token');
                 if (token) {
-                    const tokenDoc = await firestore.collection('auth_tokens').doc(token).get();
-                    if (tokenDoc.exists) {
-                        const td = tokenDoc.data();
-                        if (targetCustomerId && td.userId === targetCustomerId) isAuthorized = true;
-                        if (targetPhone && td.userId === targetPhone) isAuthorized = true;
-                        if (targetCustomerId && td.guestId === targetCustomerId) isAuthorized = true;
-                        if (targetPhone && td.phone === targetPhone) isAuthorized = true;
-                    }
+                    const tokenCheck = await verifyScopedAuthToken(firestore, token, {
+                        allowedTypes: ['tracking', 'whatsapp'],
+                        requiredScopes: ['active_orders'],
+                        subjectId: targetCustomerId || targetPhone || '',
+                    });
+                    if (tokenCheck.valid) isAuthorized = true;
                 }
             }
 

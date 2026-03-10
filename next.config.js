@@ -7,8 +7,70 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config({ path: './.env.local' });
 }
 
+const buildContentSecurityPolicy = () => {
+  const directives = {
+    "default-src": ["'self'"],
+    "base-uri": ["'self'"],
+    "object-src": ["'none'"],
+    "frame-ancestors": ["'self'"],
+    "img-src": ["'self'", 'data:', 'blob:', 'https:'],
+    "font-src": ["'self'", 'data:', 'https://fonts.gstatic.com'],
+    "style-src": ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    "script-src": [
+      "'self'",
+      "'unsafe-inline'",
+      "'unsafe-eval'",
+      'https://www.googletagmanager.com',
+      'https://www.google-analytics.com',
+      'https://www.gstatic.com',
+      'https://www.gstatic.cn',
+      'https://www.google.com',
+      'https://apis.google.com',
+      'https://maps.googleapis.com',
+      'https://maps.gstatic.com',
+      'https://checkout.razorpay.com',
+      'https://va.vercel-scripts.com',
+    ],
+    "connect-src": [
+      "'self'",
+      'https://www.google-analytics.com',
+      'https://region1.google-analytics.com',
+      'https://analytics.google.com',
+      'https://www.googletagmanager.com',
+      'https://*.googleapis.com',
+      'https://securetoken.googleapis.com',
+      'https://identitytoolkit.googleapis.com',
+      'https://auth.servizephyr.com',
+      'https://firestore.googleapis.com',
+      'https://firebaseinstallations.googleapis.com',
+      'https://firebasestorage.googleapis.com',
+      'https://*.firebaseio.com',
+      'wss://*.firebaseio.com',
+      'https://*.gstatic.com',
+      'https://maps.googleapis.com',
+      'https://maps.gstatic.com',
+      'https://checkout.razorpay.com',
+      'https://api.razorpay.com',
+      'https://lumberjack.razorpay.com',
+      'https://vitals.vercel-insights.com',
+      'https://*.vercel-insights.com',
+      'https://va.vercel-scripts.com',
+    ],
+    "frame-src": ["'self'", 'https://www.google.com', 'https://checkout.razorpay.com', 'https://api.razorpay.com', 'https://auth.servizephyr.com'],
+    "worker-src": ["'self'", 'blob:'],
+    "media-src": ["'self'", 'blob:', 'data:', 'https:'],
+    "manifest-src": ["'self'"],
+    "form-action": ["'self'", 'https://api.razorpay.com', 'https://checkout.razorpay.com'],
+  };
+
+  return Object.entries(directives)
+    .map(([key, values]) => `${key} ${values.join(' ')}`)
+    .join('; ');
+};
+
 const nextConfig = {
   async headers() {
+    const contentSecurityPolicy = buildContentSecurityPolicy();
     const baseHeaders = [
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
@@ -16,6 +78,7 @@ const nextConfig = {
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
       // Required for Firebase/Google popup auth flows to avoid window.close/window.closed COOP warnings.
       { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+      { key: 'Content-Security-Policy', value: contentSecurityPolicy },
     ];
 
     if (process.env.NODE_ENV === 'production') {

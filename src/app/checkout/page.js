@@ -121,8 +121,9 @@ const CheckoutPageInternal = () => {
     const [selectedAddress, setSelectedAddress] = useState(null);
 
     const [userAddresses, setUserAddresses] = useState([]);
-    const [codEnabled, setCodEnabled] = useState(false);
-    const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(true);
+    const [codEnabled, setCodEnabled] = useState(null);
+    const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(null);
+    const [paymentOptionsLoaded, setPaymentOptionsLoaded] = useState(false);
 
     const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
@@ -686,7 +687,11 @@ const CheckoutPageInternal = () => {
                         packagingChargeEnabled: paymentData.packagingChargeEnabled || false,
                         packagingChargeAmount: paymentData.packagingChargeAmount || 0,
                     });
+                } else {
+                    setCodEnabled(false);
+                    setOnlinePaymentEnabled(false);
                 }
+                setPaymentOptionsLoaded(true);
 
                 if (deliveryType === 'delivery' && !activeOrderId) {
                     // setDetailsConfirmed(false); // FIXED: Removed to prevent resetting Step 2 -> Step 1 on re-renders
@@ -704,6 +709,19 @@ const CheckoutPageInternal = () => {
             setLoading(false);
         }
     }, [restaurantId, phoneFromUrl, token, ref, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed, activeOrderId, isTokenValid]); // Added isTokenValid to dep array for Ref flow
+
+    useEffect(() => {
+        if (!paymentOptionsLoaded) return;
+
+        if (selectedPaymentMethod === 'online' && !onlinePaymentEnabled) {
+            setSelectedPaymentMethod(codEnabled ? 'counter' : null);
+            return;
+        }
+
+        if (selectedPaymentMethod === 'counter' && !codEnabled) {
+            setSelectedPaymentMethod(onlinePaymentEnabled ? 'online' : null);
+        }
+    }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled, selectedPaymentMethod]);
 
     // 🎯 NEW: Load saved address from localStorage and pre-select it
     useEffect(() => {
@@ -2458,7 +2476,10 @@ const CheckoutPageInternal = () => {
                         {/* Left: Payment Method Trigger (Selector Only) */}
                         <div
                             className="flex-1 cursor-pointer group"
-                            onClick={() => setIsPaymentDrawerOpen(true)}
+                            onClick={() => {
+                                if (!paymentOptionsLoaded) return;
+                                setIsPaymentDrawerOpen(true);
+                            }}
                         >
                             <div className="flex flex-col gap-0.5 justify-center h-full">
                                 <div className="flex items-center gap-1">
@@ -2477,7 +2498,7 @@ const CheckoutPageInternal = () => {
                                     </div>
                                     <div className="leading-tight">
                                         <p className={`text-sm font-bold line-clamp-1 ${selectedPaymentMethod ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                            {selectedPaymentMethod === 'counter' ? 'POD' : selectedPaymentMethod === 'online' ? 'UPI' : 'Select Mode'}
+                                            {!paymentOptionsLoaded ? 'Loading...' : (selectedPaymentMethod === 'counter' ? 'POD' : selectedPaymentMethod === 'online' ? 'UPI' : 'Select Mode')}
                                         </p>
                                     </div>
                                 </div>
@@ -2489,6 +2510,10 @@ const CheckoutPageInternal = () => {
                             onClick={() => {
                                 if (isAddressStepPending) {
                                     setIsAddressSelectorOpen(true);
+                                    return;
+                                }
+
+                                if (!paymentOptionsLoaded) {
                                     return;
                                 }
 
@@ -2552,7 +2577,7 @@ const CheckoutPageInternal = () => {
                                 <h2 className="text-xl font-bold mb-6 text-center">Choose Payment Method</h2>
 
                                 {/* Cash on Delivery Option */}
-                                {codEnabled && (
+                                {paymentOptionsLoaded && codEnabled && (
                                     <div
                                         onClick={() => {
                                             setSelectedPaymentMethod('counter');
@@ -2580,7 +2605,7 @@ const CheckoutPageInternal = () => {
                                 )}
 
                                 {/* Pay Online Option */}
-                                {onlinePaymentEnabled && (
+                                {paymentOptionsLoaded && onlinePaymentEnabled && (
                                     <div
                                         onClick={() => {
                                             setSelectedPaymentMethod('online');
@@ -2608,6 +2633,12 @@ const CheckoutPageInternal = () => {
                                 )}
 
                                 {/* Convenience Fee Warning for Online Payment */}
+                                {paymentOptionsLoaded && !codEnabled && !onlinePaymentEnabled && (
+                                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 text-center">
+                                        No payment methods are available right now.
+                                    </div>
+                                )}
+
                                 {selectedPaymentMethod === 'online' && convenienceFee > 0 && (
                                     <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
                                         ⚠️ +₹{convenienceFee.toFixed(2)} payment processing fee will be added

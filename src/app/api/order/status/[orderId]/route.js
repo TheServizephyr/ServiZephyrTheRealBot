@@ -4,9 +4,14 @@ import { kv } from '@vercel/kv';
 import { createRequestCache } from '@/lib/requestCache';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
+import { enforceRateLimit, verifyScopedAuthToken } from '@/lib/public-auth';
 
 // Final states that should NOT be cached (polling already stopped on track page)
 const FINAL_STATES = ['delivered', 'cancelled', 'rejected'];
+const getClientIp = (req) => {
+    const forwardedFor = req.headers.get('x-forwarded-for') || '';
+    return forwardedFor.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
+};
 
 export async function GET(request, { params }) {
     const telemetryStartedAt = Date.now();
@@ -61,6 +66,11 @@ export async function GET(request, { params }) {
         // STEP 2: Cache MISS - Fetch from Firestore with request-scoped deduplication
         const requestCache = createRequestCache();
         const firestore = await getFirestore();
+        const rateKey = `order-status:${getClientIp(request)}:${String(orderId || 'unknown')}:${String(request.nextUrl.searchParams.get('token') || 'anon').slice(0, 64)}`;
+        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 120, windowSec: 60 });
+        if (!rate.allowed) {
+            return respond({ message: 'Too many tracking requests. Please retry shortly.' }, 429);
+        }
         console.log(`[API][Order Status] Fetching order document: ${orderId}`);
 
         let orderSnap;
@@ -104,10 +114,20 @@ export async function GET(request, { params }) {
 
         const trackingToken = request.nextUrl.searchParams.get('token');
         let isAuthorizedData = false;
+        let authMode = 'none';
 
         // Condition A: Correct Tracking Token provided
         if (trackingToken && orderData.trackingToken === trackingToken) {
-            isAuthorizedData = true;
+            const tokenCheck = await verifyScopedAuthToken(firestore, trackingToken, {
+                allowedTypes: ['tracking', 'whatsapp'],
+                requiredScopes: ['track_orders'],
+                subjectId: orderData.userId || orderData.customerId || orderData.customerPhone || '',
+                orderId: orderSnap.id,
+            });
+            if (tokenCheck.valid) {
+                isAuthorizedData = true;
+                authMode = 'token';
+            }
         }
 
         // Condition B: Authenticated User (Owner or Customer)
@@ -116,6 +136,7 @@ export async function GET(request, { params }) {
                 const uid = await verifyAndGetUid(request);
                 if (uid === orderData.userId || uid === orderData.customerId || uid === orderData.restaurantId) {
                     isAuthorizedData = true;
+                    authMode = 'user';
                 }
             } catch (e) {
                 // Not authenticated or error, ignore
@@ -129,6 +150,8 @@ export async function GET(request, { params }) {
             return respond({ message: 'Unauthorized. Tracking token required.' }, 403);
         }
 
+        const isPublicTokenAccess = authMode === 'token';
+
         // Fast path for polling/token checks: avoids extra business + rider reads and heavy aggregation.
         if (liteMode) {
             const litePayload = {
@@ -138,7 +161,7 @@ export async function GET(request, { params }) {
                     restaurantId: orderData.restaurantId || null,
                     status: orderData.status,
                     customerName: orderData.customerName || null,
-                    customerPhone: orderData.customerPhone || null,
+                    customerPhone: isPublicTokenAccess ? null : (orderData.customerPhone || null),
                     deliveryType: orderData.deliveryType || 'delivery',
                     dineInToken: orderData.dineInToken || null,
                     tableId: orderData.tableId || null,
@@ -485,10 +508,17 @@ export async function GET(request, { params }) {
             businessData.phone ||
             businessData.phoneNumber ||
             businessData.contactPhone ||
+            businessData.contact?.phone ||
+            businessData.ownerDetails?.phone ||
             businessData.mobileNumber ||
             businessData.whatsappNumber ||
             null;
         const restaurantContactPhone = normalizeDialablePhone(restaurantContactPhoneRaw);
+        const resolvedCustomerAddress =
+            orderData.customerAddress ||
+            orderData.customer?.address ||
+            orderData.address ||
+            null;
 
         const responsePayload = {
             order: {
@@ -499,8 +529,9 @@ export async function GET(request, { params }) {
                 customerLocation: orderData.customerLocation,
                 restaurantLocation: restaurantLocationForMap,
                 customerName: orderData.customerName,
-                customerAddress: orderData.customerAddress,
-                customerPhone: orderData.customerPhone,
+                customerAddress: resolvedCustomerAddress,
+                customerPhone: isPublicTokenAccess ? null : orderData.customerPhone,
+                restaurantPhone: restaurantContactPhone,
                 createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : orderData.createdAt, // Added for bundling logic
                 items: aggregatedItems, // Aggregated items (Active)
                 batches: orderData.batches || [], // NEW FIELD
@@ -519,7 +550,7 @@ export async function GET(request, { params }) {
                 carSpot: orderData.carSpot || null,
                 carDetails: orderData.carDetails || null,
 
-                trackingToken: orderData.trackingToken || null, // Make sure to send the token
+                trackingToken: orderData.trackingToken || null,
             },
             restaurant: {
                 id: businessDoc.id,
@@ -537,7 +568,7 @@ export async function GET(request, { params }) {
                 address: businessData.address,
                 photoUrl: deliveryBoyData.profilePictureUrl || deliveryBoyData.photoURL || deliveryBoyData.photoUrl || null,
                 rating: deliveryBoyData.avgRating || 4.5,
-                phone: deliveryBoyData.phone || deliveryBoyData.phoneNumber || null,
+                phone: isPublicTokenAccess ? null : (deliveryBoyData.phone || deliveryBoyData.phoneNumber || null),
                 location: deliveryBoyData.currentLocation || deliveryBoyData.location || null,
                 isOnline: deliveryBoyData.isOnline !== false
             } : null

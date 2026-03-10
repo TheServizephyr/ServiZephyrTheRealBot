@@ -4,6 +4,7 @@ import { getFirestore, FieldValue, GeoPoint, verifyAndGetUid } from '@/lib/fireb
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import { findBusinessById } from '@/services/business/businessService';
+import { readSignedGuestSessionCookie, resolveGuestAccessRef } from '@/lib/public-auth';
 
 function toFiniteNumber(value) {
     const n = Number(value);
@@ -150,16 +151,20 @@ export async function POST(req) {
     try {
         const { address, phone, ref, guestId: explicitGuestId, activeOrderId } = await req.json(); // Expect phone number from the client
 
+        const firestore = await getFirestore();
+
         // Retrieve Guest ID from Cookie
         const cookieStore = require('next/headers').cookies();
-        const sessionCookie = cookieStore.get('auth_guest_session');
-        let guestId = sessionCookie?.value || explicitGuestId;
-
-        // Also support de-obfuscation if ref is passed
-        /* 
-           Note: If we imported deobfuscateGuestId here, we could use ref directly. 
-           For now, we rely on the secure httpOnly cookie set by verify-token.
-        */
+        const guestSession = readSignedGuestSessionCookie(cookieStore, ['checkout']);
+        let guestId = guestSession?.subjectId || explicitGuestId;
+        if (!guestId && ref) {
+            const refSession = await resolveGuestAccessRef(firestore, ref, {
+                requiredScopes: ['checkout'],
+                allowLegacy: true,
+                touch: true,
+            });
+            guestId = refSession?.subjectId || '';
+        }
 
         if (!address || !address.id || !address.full || typeof address.latitude !== 'number' || typeof address.longitude !== 'number') {
             console.error("[API][user/addresses] POST validation failed: Invalid address data provided.", address);
@@ -171,7 +176,6 @@ export async function POST(req) {
         }
 
         // CRITICAL: Use UID-first priority via getOrCreateGuestProfile
-        const firestore = await getFirestore();
         const normalizedPhone = phone.slice(-10);
 
         // Get or create user profile (UID-first, then guest)

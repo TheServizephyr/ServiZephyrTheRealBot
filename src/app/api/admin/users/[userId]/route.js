@@ -66,6 +66,7 @@ export async function GET(req, { params }) {
             profile = {
                 id: guestDoc.id,
                 userType: 'guest',
+                customerId: raw.customerId || null,
                 name: raw.name || `Guest ${String(raw.phone || guestDoc.id).slice(-4)}`,
                 email: raw.email || 'Guest (No Email)',
                 phone: raw.phone || 'No Phone',
@@ -85,6 +86,7 @@ export async function GET(req, { params }) {
             profile = {
                 id: userDoc.id,
                 userType: 'user',
+                customerId: raw.customerId || null,
                 name: raw.name || 'Unnamed User',
                 email: raw.email || 'No Email',
                 phone: raw.phone || raw.phoneNumber || 'No Phone',

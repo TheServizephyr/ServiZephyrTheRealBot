@@ -295,6 +295,11 @@ const getFirestore = async () => {
   return adminSdk.firestore();
 };
 
+const getAppCheck = async () => {
+  const adminSdk = getAdminInstance();
+  return adminSdk.appCheck();
+};
+
 const FieldValue = admin.firestore.FieldValue;
 const GeoPoint = admin.firestore.GeoPoint;
 const Timestamp = admin.firestore.Timestamp;
@@ -361,5 +366,5 @@ const verifyIdToken = async (token, checkRevoked = false) => {
   return auth.verifyIdToken(token, checkRevoked);
 };
 
-export { getAuth, getFirestore, getDatabase, FieldValue, GeoPoint, Timestamp, verifyAndGetUid, verifyIdToken };
+export { getAuth, getFirestore, getDatabase, getAppCheck, FieldValue, GeoPoint, Timestamp, verifyAndGetUid, verifyIdToken };
 

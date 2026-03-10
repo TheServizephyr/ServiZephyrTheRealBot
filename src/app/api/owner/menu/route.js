@@ -16,6 +16,9 @@ import { trackApiTelemetry } from '@/lib/opsTelemetry';
 // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
 // (Logic moved inside methods below)
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
+const OWNER_LIKE_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
+const MENU_MANAGER_ROLES = new Set([...OWNER_LIKE_ROLES, 'manager']);
+const MENU_AVAILABILITY_ROLES = new Set([...MENU_MANAGER_ROLES, 'chef']);
 
 function normalizeCompactPortions(item = {}) {
     if (Array.isArray(item?.portions) && item.portions.length > 0) {
@@ -223,8 +226,8 @@ export async function POST(req) {
         const userRole = callerRole; // Use the actual role of the caller (owner/manager/etc)
         console.log(`[API LOG] POST /api/owner/menu: Owner verified for business ID: ${businessId} in collection ${collectionName}. Caller role: ${userRole}`);
 
-        // 🔐 RBAC: Only Owner and Manager can create/edit items
-        if (!['owner', 'manager'].includes(userRole)) {
+        // 🔐 RBAC: Owner-like roles and manager can create/edit items
+        if (!MENU_MANAGER_ROLES.has(userRole)) {
             return NextResponse.json({ message: 'Access Denied: Your role does not have permission to manage menu items.' }, { status: 403 });
         }
 
@@ -449,8 +452,8 @@ export async function DELETE(req) {
         const { businessId, collectionName, callerRole } = await verifyOwnerWithAudit(req, 'delete_menu_item', {}, true);
         const userRole = callerRole;
 
-        // 🔐 RBAC: Only Owner can delete menu items
-        if (userRole !== 'owner') {
+        // 🔐 RBAC: Only owner-like roles can delete menu items
+        if (!OWNER_LIKE_ROLES.has(userRole)) {
             return NextResponse.json({ message: 'Access Denied: Only owners can delete menu items.' }, { status: 403 });
         }
         const { itemId } = await req.json();
@@ -500,7 +503,7 @@ export async function PATCH(req) {
 
         // --- 0. CATEGORY IMAGE UPDATE (Store categories) ---
         if (updates && updates.categoryId && Object.prototype.hasOwnProperty.call(updates, 'imageUrl')) {
-            if (!['owner', 'manager'].includes(userRole)) {
+            if (!MENU_MANAGER_ROLES.has(userRole)) {
                 return NextResponse.json({ message: 'Access Denied: Your role cannot update category image.' }, { status: 403 });
             }
 
@@ -571,8 +574,8 @@ export async function PATCH(req) {
 
         // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
         if (updates && updates.id) {
-            // 🔐 RBAC: Owner, Manager, Chef can toggle availability
-            if (!['owner', 'manager', 'chef'].includes(userRole)) {
+            // 🔐 RBAC: Owner-like roles, manager, and chef can toggle availability
+            if (!MENU_AVAILABILITY_ROLES.has(userRole)) {
                 return NextResponse.json({ message: 'Access Denied: Your role cannot update item availability.' }, { status: 403 });
             }
 
@@ -589,13 +592,13 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Item IDs array and action are required for bulk updates.' }, { status: 400 });
         }
 
-        // 🔐 RBAC: Only Owner can bulk delete
-        if (action === 'delete' && userRole !== 'owner') {
+        // 🔐 RBAC: Only owner-like roles can bulk delete
+        if (action === 'delete' && !OWNER_LIKE_ROLES.has(userRole)) {
             return NextResponse.json({ message: 'Access Denied: Only owners can delete menu items.' }, { status: 403 });
         }
 
-        // 🔐 RBAC: Owner, Manager, Chef can mark items as out of stock
-        if (action === 'outOfStock' && !['owner', 'manager', 'chef'].includes(userRole)) {
+        // 🔐 RBAC: Owner-like roles, manager, and chef can mark items as out of stock
+        if (action === 'outOfStock' && !MENU_AVAILABILITY_ROLES.has(userRole)) {
             return NextResponse.json({ message: 'Access Denied: Your role cannot update item availability.' }, { status: 403 });
         }
 

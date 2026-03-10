@@ -41,6 +41,15 @@ export default function AuthModal({ isOpen, onClose }) {
     onClose();
   };
 
+  const shouldFallbackToRedirect = (error) => {
+    const code = String(error?.code || '');
+    return [
+      'auth/popup-closed-by-user',
+      'auth/popup-blocked',
+      'auth/cancelled-popup-request',
+    ].includes(code);
+  };
+
   const handleAuthSuccess = async (user) => {
     setMsg("Verifying user details...");
     setMsgType("info");
@@ -147,11 +156,23 @@ export default function AuthModal({ isOpen, onClose }) {
 
       if (isLocalhost) {
         console.log("[AuthModal] Localhost - using popup...");
-        const result = await signInWithPopup(auth, googleProvider);
-        const user = result.user;
-        console.log("[AuthModal] Popup successful, processing...");
-        localStorage.removeItem('isLoggingIn');
-        await handleAuthSuccess(user);
+        try {
+          const result = await signInWithPopup(auth, googleProvider);
+          const user = result.user;
+          console.log("[AuthModal] Popup successful, processing...");
+          localStorage.removeItem('isLoggingIn');
+          await handleAuthSuccess(user);
+          return;
+        } catch (popupError) {
+          console.warn("[AuthModal] Popup auth failed, falling back to redirect...", popupError);
+          if (!shouldFallbackToRedirect(popupError)) {
+            throw popupError;
+          }
+          await setPersistence(auth, browserLocalPersistence);
+          localStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        }
       } else {
         console.log("[AuthModal] Production - using redirect...");
         await setPersistence(auth, browserLocalPersistence);
@@ -160,14 +181,8 @@ export default function AuthModal({ isOpen, onClose }) {
       }
     } catch (err) {
       console.error("[AuthModal] Login error:", err);
-      // Ignore user closing popup
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setMsg(`Login Failed: ${err.message}`);
-        setMsgType("error");
-      } else {
-        setMsg("");
-        setMsgType("");
-      }
+      setMsg(`Login Failed: ${err.message}`);
+      setMsgType("error");
       setLoading(false);
       localStorage.removeItem('isLoggingIn');
     }

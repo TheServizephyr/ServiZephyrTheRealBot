@@ -18,14 +18,15 @@
 
 import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, GeoPoint, verifyIdToken } from '@/lib/firebase-admin';
 
 // V1 Fallback for online payments (not tested in V2)
 import { createOrderV1, processOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
-import { deobfuscateGuestId, getOrCreateGuestProfile } from '@/lib/guest-utils';
+import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
+import { resolveGuestAccessRef } from '@/lib/public-auth';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
@@ -146,6 +147,19 @@ const shouldGeneratePhysicalToken = ({ deliveryType, businessType, dineInModel }
         businessType === 'street-vendor'
     );
 };
+
+async function verifyBearerUid(req) {
+    const authHeader = String(req?.headers?.get?.('authorization') || req?.headers?.authorization || '');
+    if (!authHeader.startsWith('Bearer ')) return '';
+    const idToken = authHeader.slice('Bearer '.length).trim();
+    if (!idToken) return '';
+    try {
+        const decoded = await verifyIdToken(idToken);
+        return decoded?.uid || '';
+    } catch {
+        return '';
+    }
+}
 
 async function resolveDineInLikeToken({
     firestore,
@@ -671,7 +685,52 @@ export async function createOrderV2(req, options = {}) {
         let finalCustomerName = name || 'Guest';
         let finalCustomerEmail = '';
 
-        if (requestPhoneNormalized) {
+        const refSession = guestRef
+            ? await resolveGuestAccessRef(firestore, guestRef, {
+                requiredScopes: ['checkout'],
+                allowLegacy: true,
+                touch: true,
+            })
+            : null;
+        const bearerUid = await verifyBearerUid(req);
+
+        if (refSession?.subjectId) {
+            userId = refSession.subjectId;
+            isGuest = String(userId).startsWith('g_');
+
+            const [guestDoc, userDoc] = await Promise.all([
+                firestore.collection('guest_profiles').doc(userId).get(),
+                firestore.collection('users').doc(userId).get(),
+            ]);
+            const profileData = guestDoc.exists ? (guestDoc.data() || {}) : (userDoc.exists ? (userDoc.data() || {}) : {});
+            normalizedPhone = requestPhoneNormalized || (profileData.phone ? String(profileData.phone).slice(-10) : null);
+            if (profileData.email) {
+                finalCustomerEmail = String(profileData.email).trim().toLowerCase();
+            }
+
+            console.log(`[createOrderV2] ✅ User identified via guestRef: ${userId}, isGuest: ${isGuest}`);
+
+            if ((!name || name === 'Guest') && profileData.name) {
+                finalCustomerName = profileData.name;
+                console.log(`[createOrderV2] ✅ Auto-populated customer name from ref profile: ${finalCustomerName}`);
+            }
+        } else if (bearerUid) {
+            userId = bearerUid;
+            isGuest = false;
+            const userDoc = await firestore.collection('users').doc(bearerUid).get();
+            const profileData = userDoc.exists ? (userDoc.data() || {}) : {};
+            normalizedPhone = requestPhoneNormalized || (profileData.phone ? String(profileData.phone).slice(-10) : null);
+            if (profileData.email) {
+                finalCustomerEmail = String(profileData.email).trim().toLowerCase();
+            }
+
+            console.log(`[createOrderV2] ✅ User identified via bearer token: ${userId}`);
+
+            if ((!name || name === 'Guest') && profileData.name) {
+                finalCustomerName = profileData.name;
+                console.log(`[createOrderV2] ✅ Auto-populated customer name from bearer profile: ${finalCustomerName}`);
+            }
+        } else if (requestPhoneNormalized) {
             // Call getOrCreateGuestProfile - UID first, then guest ID
             const profileResult = await getOrCreateGuestProfile(firestore, requestPhoneNormalized);
             userId = profileResult.userId;  // UID or guest ID
@@ -1161,7 +1220,8 @@ async function generateSecureToken(firestore, userId) {
     const tokenData = {
         userId: userId,  // Store unified userId (UID or guest ID)
         expiresAt: expiry,
-        type: 'tracking'
+        type: 'tracking',
+        scopes: ['track_orders', 'active_orders']
     };
 
     await firestore.collection('auth_tokens').doc(token).set(tokenData);

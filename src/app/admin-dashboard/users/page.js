@@ -488,6 +488,14 @@ export default function AdminUsersPage() {
                   <p className="font-medium">{selectedUserDetail.status || 'N/A'}</p>
                 </div>
                 <div>
+                  <p className="text-xs text-muted-foreground">UID / Guest ID</p>
+                  <p className="font-medium break-all">{selectedUserDetail.id || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Customer ID</p>
+                  <p className="font-medium break-all">{selectedUserDetail.customerId || 'N/A'}</p>
+                </div>
+                <div>
                   <p className="text-xs text-muted-foreground">Total Orders</p>
                   <p className="font-medium">{selectedUserDetail.totalOrders ?? 0}</p>
                 </div>

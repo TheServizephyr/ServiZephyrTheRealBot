@@ -7,15 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, RefreshCw, Hash, Building2, User, ShoppingBag, Download, FileDown } from 'lucide-react';
+import { Search, RefreshCw, Hash, Building2, User, ShoppingBag, Download, FileDown, Save, Trash2 } from 'lucide-react';
 import InfoDialog from '@/components/InfoDialog';
 
 const TAB_CONFIG = {
   customer: {
     title: 'Customer Search',
-    hint: 'Paste Customer ID (example: CS_2602...)',
-    placeholder: 'CS_XXXXXXXXXXXX',
+    hint: 'Paste Customer ID, UID, or Guest ID',
+    placeholder: 'CS_XXXXXXXXXXXX / uid / g_xxxxx',
   },
   restaurant: {
     title: 'Restaurant Search',
@@ -481,7 +482,16 @@ function OrdersPreviewTable({ orders = [] }) {
   );
 }
 
-function SearchResultRenderer({ type, result }) {
+function SearchResultRenderer({
+  type,
+  result,
+  customerDraft,
+  onCustomerDraftChange,
+  onSaveCustomer,
+  onDeleteAddress,
+  onDeleteOrder,
+  mutationLoading,
+}) {
   if (!result) return null;
 
   if (type === 'customer') {
@@ -490,30 +500,90 @@ function SearchResultRenderer({ type, result }) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg"><User size={18} /> Customer Details</CardTitle>
+            <CardDescription>Customer profile yahan se update ho sakta hai.</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <p><span className="text-muted-foreground">Customer ID:</span> {result.customer.customerId || result.searchedId}</p>
-            <p><span className="text-muted-foreground">UID:</span> {result.customer.uid || 'N/A'}</p>
-            <p><span className="text-muted-foreground">Name:</span> {result.customer.name || 'N/A'}</p>
-            <p><span className="text-muted-foreground">Email:</span> {result.customer.email || 'N/A'}</p>
-            <p><span className="text-muted-foreground">Phone:</span> {result.customer.phone || 'N/A'}</p>
-            <p><span className="text-muted-foreground">Status:</span> {result.customer.status || 'N/A'}</p>
-            <p><span className="text-muted-foreground">Join Date:</span> {formatDateTime(result.customer.createdAt)}</p>
-            <p><span className="text-muted-foreground">Last Activity:</span> {formatDateTime(result.stats?.lastActivity)}</p>
-            <p><span className="text-muted-foreground">Total Orders:</span> {result.stats?.totalOrders ?? 0}</p>
-            <p><span className="text-muted-foreground">Total Spend:</span> {formatCurrency(result.stats?.totalSpent)}</p>
+          <CardContent className="space-y-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <p><span className="text-muted-foreground">Customer ID:</span> {result.customer.customerId || result.searchedId}</p>
+              <p><span className="text-muted-foreground">UID:</span> {result.customer.uid || 'N/A'}</p>
+              <p><span className="text-muted-foreground">User Type:</span> {result.customer.userType || 'N/A'}</p>
+              <p><span className="text-muted-foreground">Status:</span> {result.customer.status || 'N/A'}</p>
+              <p><span className="text-muted-foreground">Join Date:</span> {formatDateTime(result.customer.createdAt)}</p>
+              <p><span className="text-muted-foreground">Last Activity:</span> {formatDateTime(result.stats?.lastActivity)}</p>
+              <p><span className="text-muted-foreground">Total Orders:</span> {result.stats?.totalOrders ?? 0}</p>
+              <p><span className="text-muted-foreground">Total Spend:</span> {formatCurrency(result.stats?.totalSpent)}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Name</label>
+                <Input
+                  value={customerDraft?.name || ''}
+                  onChange={(e) => onCustomerDraftChange('name', e.target.value)}
+                  placeholder="Customer name"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Email</label>
+                <Input
+                  value={customerDraft?.email || ''}
+                  onChange={(e) => onCustomerDraftChange('email', e.target.value)}
+                  placeholder="Customer email"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Phone</label>
+                <Input
+                  value={customerDraft?.phone || ''}
+                  onChange={(e) => onCustomerDraftChange('phone', e.target.value)}
+                  placeholder="Customer phone"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Status</label>
+                <select
+                  value={customerDraft?.status || 'Active'}
+                  onChange={(e) => onCustomerDraftChange('status', e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Blocked">Blocked</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={onSaveCustomer} disabled={mutationLoading.customer}>
+                {mutationLoading.customer ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Customer Changes
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Saved Addresses</CardTitle>
+            <CardDescription>Duplicate ya wrong address yahin se remove karo.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {(result.customer.addresses || []).length > 0 ? (
               result.customer.addresses.map((addr, idx) => (
-                <div key={`${idx}-${addr.full || 'address'}`} className="p-2 rounded-md bg-muted/50 border border-border">
-                  {addr.full || 'N/A'}
+                <div key={`${idx}-${addr.full || 'address'}`} className="flex items-start justify-between gap-3 p-3 rounded-md bg-muted/50 border border-border">
+                  <div className="min-w-0">
+                    <p className="font-medium">Address #{idx + 1}</p>
+                    <p className="break-words text-muted-foreground">{addr.full || 'N/A'}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-500 border-red-500/40 hover:text-red-400"
+                    onClick={() => onDeleteAddress(idx)}
+                    disabled={mutationLoading.customer}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Remove
+                  </Button>
                 </div>
               ))
             ) : (
@@ -600,8 +670,20 @@ function SearchResultRenderer({ type, result }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg"><ShoppingBag size={18} /> Order Details</CardTitle>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg"><ShoppingBag size={18} /> Order Details</CardTitle>
+            <CardDescription>Order delete karne par dependent customer aggregates rebuild honge.</CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            className="text-red-500 border-red-500/40 hover:text-red-400"
+            onClick={onDeleteOrder}
+            disabled={mutationLoading.order}
+          >
+            {mutationLoading.order ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            Delete Order
+          </Button>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
           <p><span className="text-muted-foreground">Customer Order ID:</span> {result.order.customerOrderId || 'N/A'}</p>
@@ -697,7 +779,6 @@ function SearchResultRenderer({ type, result }) {
     </div>
   );
 }
-
 export default function AdminCheckIdsPage() {
   const [activeTab, setActiveTab] = useState('customer');
   const [inputs, setInputs] = useState({ customer: '', restaurant: '', order: '' });
@@ -705,10 +786,39 @@ export default function AdminCheckIdsPage() {
   const [responsePackets, setResponsePackets] = useState({ customer: null, restaurant: null, order: null });
   const [errors, setErrors] = useState({ customer: '', restaurant: '', order: '' });
   const [loading, setLoading] = useState({ customer: false, restaurant: false, order: false });
+  const [mutationLoading, setMutationLoading] = useState({ customer: false, order: false });
+  const [customerDraft, setCustomerDraft] = useState(null);
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   const setInput = (type, value) => {
     setInputs((prev) => ({ ...prev, [type]: value }));
+  };
+
+  const buildAuthHeaders = async () => {
+    const currentUser = auth.currentUser;
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentUser) {
+      const idToken = await currentUser.getIdToken();
+      headers.Authorization = `Bearer ${idToken}`;
+    }
+    return headers;
+  };
+
+  const hydrateCustomerDraft = (customer) => {
+    if (!customer) {
+      setCustomerDraft(null);
+      return;
+    }
+
+    setCustomerDraft({
+      uid: customer.uid || '',
+      customerId: customer.customerId || '',
+      userType: customer.userType || 'user',
+      name: customer.name || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      status: customer.status || 'Active',
+    });
   };
 
   const handleSearch = async (type) => {
@@ -722,12 +832,7 @@ export default function AdminCheckIdsPage() {
     setLoading((prev) => ({ ...prev, [type]: true }));
 
     try {
-      const currentUser = auth.currentUser;
-      const headers = { 'Content-Type': 'application/json' };
-      if (currentUser) {
-        const idToken = await currentUser.getIdToken();
-        headers.Authorization = `Bearer ${idToken}`;
-      }
+      const headers = await buildAuthHeaders();
 
       const res = await fetch('/api/admin/check-ids', {
         method: 'POST',
@@ -742,14 +847,128 @@ export default function AdminCheckIdsPage() {
 
       setResults((prev) => ({ ...prev, [type]: payload.data }));
       setResponsePackets((prev) => ({ ...prev, [type]: payload }));
+      if (type === 'customer') {
+        hydrateCustomerDraft(payload.data?.customer || null);
+      }
       setErrors((prev) => ({ ...prev, [type]: '' }));
     } catch (error) {
       setResults((prev) => ({ ...prev, [type]: null }));
       setResponsePackets((prev) => ({ ...prev, [type]: null }));
+      if (type === 'customer') {
+        hydrateCustomerDraft(null);
+      }
       setErrors((prev) => ({ ...prev, [type]: error.message }));
       setInfoDialog({ isOpen: true, title: 'Search Failed', message: error.message });
     } finally {
       setLoading((prev) => ({ ...prev, [type]: false }));
+    }
+  };
+
+  const handleCustomerDraftChange = (field, value) => {
+    setCustomerDraft((prev) => ({ ...(prev || {}), [field]: value }));
+  };
+
+  const handleSaveCustomer = async () => {
+    const currentCustomer = results.customer?.customer;
+    if (!currentCustomer || !customerDraft) return;
+
+    setMutationLoading((prev) => ({ ...prev, customer: true }));
+    try {
+      const headers = await buildAuthHeaders();
+      const res = await fetch('/api/admin/check-ids', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          type: 'customer',
+          id: currentCustomer.uid || currentCustomer.customerId || inputs.customer,
+          action: 'update_profile',
+          name: customerDraft.name,
+          email: customerDraft.email,
+          phone: customerDraft.phone,
+          status: customerDraft.status,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.message || 'Failed to update customer');
+      }
+
+      setResults((prev) => ({ ...prev, customer: payload.data }));
+      setResponsePackets((prev) => ({ ...prev, customer: payload }));
+      hydrateCustomerDraft(payload.data?.customer || null);
+      setInfoDialog({ isOpen: true, title: 'Customer Updated', message: payload.message || 'Customer updated successfully.' });
+    } catch (error) {
+      setInfoDialog({ isOpen: true, title: 'Update Failed', message: error.message });
+    } finally {
+      setMutationLoading((prev) => ({ ...prev, customer: false }));
+    }
+  };
+
+  const handleDeleteAddress = async (addressIndex) => {
+    const currentCustomer = results.customer?.customer;
+    if (!currentCustomer) return;
+    const confirmed = window.confirm(`Remove address #${addressIndex + 1} from this customer?`);
+    if (!confirmed) return;
+
+    setMutationLoading((prev) => ({ ...prev, customer: true }));
+    try {
+      const headers = await buildAuthHeaders();
+      const res = await fetch('/api/admin/check-ids', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          type: 'customer',
+          id: currentCustomer.uid || currentCustomer.customerId || inputs.customer,
+          action: 'delete_address',
+          addressIndex,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.message || 'Failed to delete address');
+      }
+
+      setResults((prev) => ({ ...prev, customer: payload.data }));
+      setResponsePackets((prev) => ({ ...prev, customer: payload }));
+      hydrateCustomerDraft(payload.data?.customer || null);
+      setInfoDialog({ isOpen: true, title: 'Address Removed', message: payload.message || 'Address removed successfully.' });
+    } catch (error) {
+      setInfoDialog({ isOpen: true, title: 'Delete Failed', message: error.message });
+    } finally {
+      setMutationLoading((prev) => ({ ...prev, customer: false }));
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    const currentOrder = results.order?.order;
+    if (!currentOrder) return;
+    const targetId = currentOrder.customerOrderId || currentOrder.firestoreOrderId;
+    const confirmed = window.confirm(`Delete order ${targetId}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setMutationLoading((prev) => ({ ...prev, order: true }));
+    try {
+      const headers = await buildAuthHeaders();
+      const res = await fetch('/api/admin/check-ids', {
+        method: 'DELETE',
+        headers,
+        body: JSON.stringify({
+          type: 'order',
+          id: currentOrder.firestoreOrderId || inputs.order,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.message || 'Failed to delete order');
+      }
+
+      setResults((prev) => ({ ...prev, order: null }));
+      setResponsePackets((prev) => ({ ...prev, order: null }));
+      setInfoDialog({ isOpen: true, title: 'Order Deleted', message: payload.message || `Order ${targetId} deleted successfully.` });
+    } catch (error) {
+      setInfoDialog({ isOpen: true, title: 'Delete Failed', message: error.message });
+    } finally {
+      setMutationLoading((prev) => ({ ...prev, order: false }));
     }
   };
 
@@ -840,6 +1059,9 @@ export default function AdminCheckIdsPage() {
                 setResults((prev) => ({ ...prev, [type]: null }));
                 setResponsePackets((prev) => ({ ...prev, [type]: null }));
                 setErrors((prev) => ({ ...prev, [type]: '' }));
+                if (type === 'customer') {
+                  hydrateCustomerDraft(null);
+                }
               }}
             >
               Clear
@@ -850,7 +1072,16 @@ export default function AdminCheckIdsPage() {
       </Card>
 
       <AuditSummaryCard audit={responsePackets[type]?.audit} />
-      <SearchResultRenderer type={type} result={results[type]} />
+      <SearchResultRenderer
+        type={type}
+        result={results[type]}
+        customerDraft={customerDraft}
+        onCustomerDraftChange={handleCustomerDraftChange}
+        onSaveCustomer={handleSaveCustomer}
+        onDeleteAddress={handleDeleteAddress}
+        onDeleteOrder={handleDeleteOrder}
+        mutationLoading={mutationLoading}
+      />
     </div>
   );
 
@@ -893,7 +1124,7 @@ export default function AdminCheckIdsPage() {
           <CardTitle className="text-base">Quick Tips</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
-          <p>1. Customer tab me `CS_...` format ID use karo.</p>
+          <p>1. Customer tab me `CS_...`, raw UID, ya guest ID teeno use kar sakte ho.</p>
           <p>2. Restaurant tab me `RS_...` format ID use karo.</p>
           <p>3. Order tab me customer order ID ya firestore order doc ID dono chalenge.</p>
         </CardContent>
@@ -901,3 +1132,4 @@ export default function AdminCheckIdsPage() {
     </motion.div>
   );
 }
+

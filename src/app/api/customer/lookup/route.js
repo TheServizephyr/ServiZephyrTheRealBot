@@ -3,7 +3,18 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyIdToken } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
-import { getOrCreateGuestProfile, deobfuscateGuestId } from '@/lib/guest-utils';
+import { getOrCreateGuestProfile } from '@/lib/guest-utils';
+import {
+    enforceRateLimit,
+    readSignedGuestSessionCookie,
+    resolveGuestAccessRef,
+    verifyAppCheckToken,
+} from '@/lib/public-auth';
+
+const getClientIp = (req) => {
+    const forwardedFor = req.headers.get('x-forwarded-for') || '';
+    return forwardedFor.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
+};
 
 const normalizePhone = (value) => {
     const digits = String(value || '').replace(/\D/g, '');
@@ -30,23 +41,35 @@ const pickPhone = (profileData = {}, fallback = '') => {
 
 export async function POST(req) {
     try {
+        await verifyAppCheckToken(req, { required: false });
         const firestore = await getFirestore();
         const body = await req.json();
         const { phone, guestId: explicitGuestId, ref } = body || {};
+        const rateKey = `customer-lookup:${getClientIp(req)}:${String(ref || explicitGuestId || phone || 'anon').slice(0, 64)}`;
+        const rate = await enforceRateLimit(firestore, { key: rateKey, limit: 30, windowSec: 60 });
+        if (!rate.allowed) {
+            return NextResponse.json({ message: 'Too many lookup attempts. Please wait and retry.' }, { status: 429 });
+        }
         const guestId = typeof explicitGuestId === 'string' ? explicitGuestId.trim() : explicitGuestId;
         const cookieStore = cookies();
-        const cookieGuestId = cookieStore.get('auth_guest_session')?.value?.trim() || null;
+        const guestSession = readSignedGuestSessionCookie(cookieStore, ['customer_lookup']);
+        const cookieGuestId = guestSession?.subjectId || null;
 
         // CRITICAL CHANGE: If ref is provided, prioritize it over logged-in UID
         // This ensures WhatsApp capability URLs work correctly even when user is logged in
         let refId = null;
         if (ref) {
-            console.log(`[API /customer/lookup] 🔓 Attempting to deobfuscate ref...`);
-            refId = deobfuscateGuestId(ref);
+            console.log(`[API /customer/lookup] Resolving guest access ref...`);
+            const refSession = await resolveGuestAccessRef(firestore, ref, {
+                requiredScopes: ['customer_lookup'],
+                allowLegacy: true,
+                touch: true,
+            });
+            refId = refSession?.subjectId || null;
             if (refId) {
-                console.log(`[API /customer/lookup] ✅ Deobfuscated ref to userId: ${refId}`);
+                console.log(`[API /customer/lookup] ✅ Resolved ref to userId: ${refId}`);
             } else {
-                console.warn(`[API /customer/lookup] ⚠️ Failed to deobfuscate ref: ${ref}`);
+                console.warn(`[API /customer/lookup] ⚠️ Failed to resolve ref: ${ref}`);
             }
         }
 
