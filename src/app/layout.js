@@ -224,20 +224,9 @@ export default function RootLayout({ children }) {
         <Script id="sw-register" strategy="afterInteractive">
           {`
             if ('serviceWorker' in navigator) {
-              const isProd = '${process.env.NODE_ENV}' === 'production';
               window.addEventListener('load', async function() {
-                if (isProd) {
-                  navigator.serviceWorker.register('/service-worker.js')
-                    .then(function(registration) {
-                      console.log('[SW] Registration successful:', registration.scope);
-                    })
-                    .catch(function(error) {
-                      console.log('[SW] Registration failed:', error);
-                    });
-                  return;
-                }
-
-                // Dev safety: stale SW often causes chunk load errors during HMR.
+                // Temporary recovery mode: unregister stale service workers and clear caches
+                // in every environment to avoid old app-shell/auth/CSP breakage.
                 try {
                   const registrations = await navigator.serviceWorker.getRegistrations();
                   await Promise.all(registrations.map(function(registration) {
@@ -249,9 +238,9 @@ export default function RootLayout({ children }) {
                       return window.caches.delete(cacheKey);
                     }));
                   }
-                  console.log('[SW] Dev mode cleanup complete (unregistered + cache cleared).');
+                  console.log('[SW] Cleanup complete (unregistered + cache cleared).');
                 } catch (cleanupError) {
-                  console.log('[SW] Dev mode cleanup failed:', cleanupError);
+                  console.log('[SW] Cleanup failed:', cleanupError);
                 }
               });
             }
