@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -17,6 +17,7 @@ import { logoutClientSession } from '@/lib/client-session';
 function RiderLayoutContent({ children }) {
     const { user, isUserLoading } = useUser();
     const router = useRouter();
+    const pathname = usePathname();
     const searchParams = useSearchParams();
     const [riderName, setRiderName] = useState('Rider');
     const [riderImage, setRiderImage] = useState('');
@@ -47,7 +48,7 @@ function RiderLayoutContent({ children }) {
 
         if (!user) {
             console.log('[Rider Layout] No user after auth check, redirecting');
-            router.push('/rider-auth');
+            router.push(`/login?redirect=${encodeURIComponent(pathname || '/rider-dashboard')}`);
             return;
         }
 
@@ -64,7 +65,7 @@ function RiderLayoutContent({ children }) {
 
         return () => unsubscribe();
 
-    }, [user, authChecked, router]);
+    }, [user, authChecked, router, pathname]);
 
     // Log impersonation when detected
     useEffect(() => {

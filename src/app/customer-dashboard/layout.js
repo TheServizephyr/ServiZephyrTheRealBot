@@ -64,6 +64,7 @@ const NavLink = ({ href, icon: Icon, label }) => {
 const CustomerDashboardContent = ({ children }) => {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, isUserLoading } = useUser();
 
@@ -84,9 +85,9 @@ const CustomerDashboardContent = ({ children }) => {
 
     if (!user) {
       console.log('[Customer Layout] No user after auth check, redirecting');
-      router.push('/');
+      router.push(`/login?redirect=${encodeURIComponent(pathname || '/customer-dashboard')}`);
     }
-  }, [user, authChecked, router]);
+  }, [user, authChecked, router, pathname]);
 
   useEffect(() => {
     const impersonateUserId = searchParams.get('impersonate_user_id');

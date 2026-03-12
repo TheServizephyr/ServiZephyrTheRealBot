@@ -22,6 +22,8 @@ import EmployeeBanner from "@/components/EmployeeBanner";
 
 export const dynamic = 'force-dynamic';
 
+const buildLoginRedirect = (path) => `/login?redirect=${encodeURIComponent(path || '/owner-dashboard')}`;
+
 const resolveOwnerFeatureIdFromPath = (pathname) => {
   const segments = String(pathname || '').split('/').filter(Boolean);
   if (segments[0] !== 'owner-dashboard') return segments[segments.length - 1] || '';
@@ -248,14 +250,14 @@ function OwnerDashboardContent({ children }) {
 
             if (!auth.currentUser) {
               console.log('[Layout] ❌ Session recovery failed, redirecting to landing page.');
-              router.replace(`/?redirect=${encodeURIComponent(nextPath)}`);
+              router.replace(buildLoginRedirect(nextPath));
             } else {
               console.log('[Layout] ✅ Session recovered from persisted auth state.');
             }
           } catch (recoveryError) {
             console.error('[Layout] Session recovery error:', recoveryError);
             if (!cancelled) {
-              router.replace(`/?redirect=${encodeURIComponent(nextPath)}`);
+              router.replace(buildLoginRedirect(nextPath));
             }
           } finally {
             if (!cancelled) setIsRecoveringSession(false);
@@ -268,7 +270,7 @@ function OwnerDashboardContent({ children }) {
       }
 
       // No recovery hint / recovery already attempted -> redirect.
-      router.replace(`/?redirect=${encodeURIComponent(nextPath)}`);
+      router.replace(buildLoginRedirect(nextPath));
       return;
     }
 

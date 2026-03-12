@@ -3,7 +3,6 @@ import "./globals.css";
 import LayoutWrapper from '@/components/LayoutWrapper';
 import PWARecoveryHandler from '@/components/PWARecoveryHandler';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
-import RedirectHandler from '@/components/RedirectHandler';
 import AppCheckRequestBridge from '@/components/AppCheckRequestBridge';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
@@ -263,7 +262,6 @@ export default function RootLayout({ children }) {
             <PWARecoveryHandler />
             <GlobalHapticHandler />
             <AppCheckRequestBridge />
-            <RedirectHandler />
             <LayoutWrapper>
               {children}
             </LayoutWrapper>

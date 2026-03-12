@@ -46,6 +46,7 @@ const LayoutWrapper = ({ children }) => {
     '/admin-dashboard',
     '/customer-dashboard',
     '/rider-dashboard',
+    '/login',
     '/complete-profile',
     '/select-role',
     '/join',

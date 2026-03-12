@@ -87,6 +87,7 @@ export default function EmployeeDashboardLayout({ children }) {
     const router = useRouter();
     const pathname = usePathname();
     const { user, firestore } = useFirebase();
+    const loginRedirect = `/login?redirect=${encodeURIComponent(pathname || '/employee-dashboard')}`;
 
     const [loading, setLoading] = useState(true);
     const [employeeData, setEmployeeData] = useState(null);
@@ -95,7 +96,7 @@ export default function EmployeeDashboardLayout({ children }) {
     // Fetch employee data on mount
     useEffect(() => {
         if (!user) {
-            router.push('/login');
+            router.push(loginRedirect);
             return;
         }
 
@@ -104,7 +105,7 @@ export default function EmployeeDashboardLayout({ children }) {
                 const userDoc = await getDoc(doc(firestore, 'users', user.uid));
 
                 if (!userDoc.exists()) {
-                    router.push('/login');
+                    router.push(loginRedirect);
                     return;
                 }
 
@@ -137,7 +138,7 @@ export default function EmployeeDashboardLayout({ children }) {
         }
 
         fetchEmployeeData();
-    }, [user, firestore, router]);
+    }, [user, firestore, router, loginRedirect]);
 
     // Handle logout
     async function handleLogout() {

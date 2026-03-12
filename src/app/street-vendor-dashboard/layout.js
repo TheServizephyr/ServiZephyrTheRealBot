@@ -21,6 +21,8 @@ import ImpersonationBanner from "@/components/ImpersonationBanner";
 
 export const dynamic = 'force-dynamic';
 
+const buildLoginRedirect = (path) => `/login?redirect=${encodeURIComponent(path || '/street-vendor-dashboard')}`;
+
 const resolveStreetVendorFeatureIdFromPath = (pathname) => {
   const segments = String(pathname || '').split('/').filter(Boolean);
   if (segments[0] !== 'street-vendor-dashboard') return segments[segments.length - 1] || '';
@@ -177,6 +179,11 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     if (!authChecked) return;
 
+    if (!user) {
+      router.replace(buildLoginRedirect(pathname || '/street-vendor-dashboard'));
+      return;
+    }
+
     // REMOVED AUTH REDIRECT - Let RedirectHandler handle all auth
     // Dashboard should always load if user reaches it
 
@@ -266,7 +273,7 @@ function OwnerDashboardContent({ children }) {
       fetchRestaurantData();
     }
 
-  }, [user, isUserLoading, impersonatedOwnerId, router]);
+  }, [user, isUserLoading, authChecked, impersonatedOwnerId, router, pathname, employeeOfOwnerId]);
 
   if (isUserLoading || !authChecked) {
     return (

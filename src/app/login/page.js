@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { auth, googleProvider } from "@/lib/firebase";
-import { signInWithPopup, signInWithRedirect, getRedirectResult, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { signInWithPopup, signInWithRedirect, getRedirectResult, setPersistence, browserLocalPersistence, onAuthStateChanged } from "firebase/auth";
 
 const getSafeRedirectPath = (value) => {
     if (!value || typeof value !== "string") return null;
@@ -32,6 +32,19 @@ function LoginPageContent() {
         ].includes(code);
     };
 
+    const readLoginFlag = () =>
+        sessionStorage.getItem('isLoggingIn') || localStorage.getItem('isLoggingIn');
+
+    const writeLoginFlag = (value) => {
+        if (value == null) {
+            sessionStorage.removeItem('isLoggingIn');
+            localStorage.removeItem('isLoggingIn');
+            return;
+        }
+        sessionStorage.setItem('isLoggingIn', value);
+        localStorage.setItem('isLoggingIn', value);
+    };
+
     // Handle redirect result when user returns from Google
     useEffect(() => {
         // CRITICAL: Prevent double execution in React Strict Mode (dev)
@@ -41,8 +54,21 @@ function LoginPageContent() {
         }
 
         const handleRedirectResult = async () => {
+            let unsubscribe = () => { };
+            let timeoutId = null;
             try {
                 console.log("[Login] Checking for redirect result...");
+                const loginFlag = readLoginFlag();
+                const isLikelyMobile =
+                    typeof navigator !== 'undefined' &&
+                    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+                const authRecoveryTimeoutMs = isLikelyMobile ? 45000 : 15000;
+
+                if (loginFlag) {
+                    setLoading(true);
+                    setMsg("Finishing login...");
+                }
+
                 const result = await getRedirectResult(auth);
 
                 if (result && result.user) {
@@ -50,31 +76,59 @@ function LoginPageContent() {
                     hasProcessedRedirect.current = true; // Mark as processed
                     setLoading(true);
                     setMsg("Verifying user details..."); // ✅ THIS MESSAGE!
-                    sessionStorage.removeItem('isLoggingIn'); // Cleanup
+                    writeLoginFlag(null); // Cleanup
                     await handleAuthSuccess(result.user);
                 } else {
                     console.log("[Login] No redirect result, checking fallback...");
-
-                    // Only process if user JUST came back from Google (isLoggingIn flag exists)
-                    const loginFlag = sessionStorage.getItem('isLoggingIn');
 
                     if (auth.currentUser && loginFlag) {
                         console.log("[Login] Fallback - User authenticated:", auth.currentUser.email);
                         hasProcessedRedirect.current = true;
                         setLoading(true);
                         setMsg("Verifying user details...");
-                        sessionStorage.removeItem('isLoggingIn');
+                        writeLoginFlag(null);
                         await handleAuthSuccess(auth.currentUser);
                     } else if (auth.currentUser) {
-                        // iOS/Safari can drop sessionStorage during redirect hops.
-                        // If user is already authenticated, continue login flow anyway.
-                        console.log("[Login] Auth user exists without login flag (likely iOS/Safari). Continuing...");
+                        console.log("[Login] Auth user already restored. Continuing...");
                         hasProcessedRedirect.current = true;
                         setLoading(true);
                         setMsg("Restoring login session...");
                         await handleAuthSuccess(auth.currentUser);
+                    } else if (loginFlag) {
+                        let flagAgeSec = 0;
+                        try {
+                            const parsed = JSON.parse(loginFlag);
+                            flagAgeSec = (Date.now() - Number(parsed?.timestamp || 0)) / 1000;
+                        } catch {
+                            flagAgeSec = 0;
+                        }
+
+                        if (flagAgeSec > 600) {
+                            console.log("[Login] Stale login flag detected, clearing.");
+                            writeLoginFlag(null);
+                            setLoading(false);
+                            return;
+                        }
+
+                        console.log("[Login] Waiting for Firebase auth state restore...");
+                        timeoutId = setTimeout(() => {
+                            writeLoginFlag(null);
+                            setLoading(false);
+                            setError("Login did not finish on this browser. Please try Google sign-in again.");
+                        }, authRecoveryTimeoutMs);
+
+                        unsubscribe = onAuthStateChanged(auth, async (user) => {
+                            if (!user || hasProcessedRedirect.current) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            hasProcessedRedirect.current = true;
+                            writeLoginFlag(null);
+                            setLoading(true);
+                            setMsg("Recovering login session...");
+                            await handleAuthSuccess(user);
+                        });
                     } else {
                         console.log("[Login] No processing needed");
+                        setLoading(false);
                     }
                 }
             } catch (err) {
@@ -82,8 +136,19 @@ function LoginPageContent() {
                 setError(err.message || "Login failed. Please try again.");
                 setLoading(false);
             }
+
+            return () => {
+                unsubscribe();
+                if (timeoutId) clearTimeout(timeoutId);
+            }
         };
-        handleRedirectResult();
+
+        const cleanupPromise = handleRedirectResult();
+        return () => {
+            Promise.resolve(cleanupPromise).then((cleanup) => {
+                if (typeof cleanup === 'function') cleanup();
+            });
+        };
     }, []);
 
     const handleGoogleLogin = async () => {
@@ -91,40 +156,31 @@ function LoginPageContent() {
         setError("");
 
         try {
-            // Use popup for localhost (redirect doesn't work well on localhost)
-            // Use redirect for production (better for mobile)
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-            if (isLocalhost) {
-                console.log("[Login] Localhost detected - using popup...");
-                try {
-                    const result = await signInWithPopup(auth, googleProvider);
-                    console.log("[Login] Popup successful, processing...");
-                    setLoading(true);
-                    setMsg("Verifying user details...");
-                    await handleAuthSuccess(result.user);
-                    return;
-                } catch (popupError) {
-                    console.warn("[Login] Popup auth failed, falling back to redirect...", popupError);
-                    if (!shouldFallbackToRedirect(popupError)) {
-                        throw popupError;
-                    }
-                    await setPersistence(auth, browserLocalPersistence);
-                    sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
-                    await signInWithRedirect(auth, googleProvider);
-                    return;
+            try {
+                console.log("[Login] Trying popup-based Google login...");
+                const result = await signInWithPopup(auth, googleProvider);
+                console.log("[Login] Popup successful, processing...");
+                writeLoginFlag(null);
+                setLoading(true);
+                setMsg("Verifying user details...");
+                await handleAuthSuccess(result.user);
+                return;
+            } catch (popupError) {
+                console.warn("[Login] Popup auth failed, evaluating redirect fallback...", popupError);
+                if (!shouldFallbackToRedirect(popupError)) {
+                    throw popupError;
                 }
-            } else {
-                console.log("[Login] Production - using redirect...");
+                console.log("[Login] Falling back to redirect-based login...");
                 await setPersistence(auth, browserLocalPersistence);
-                sessionStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+                writeLoginFlag(JSON.stringify({ timestamp: Date.now() }));
                 await signInWithRedirect(auth, googleProvider);
+                return;
             }
         } catch (err) {
             console.error("Login error:", err);
             setError(err.message || "Login failed. Please try again.");
             setLoading(false);
-            sessionStorage.removeItem('isLoggingIn');
+            writeLoginFlag(null);
         }
     };
 

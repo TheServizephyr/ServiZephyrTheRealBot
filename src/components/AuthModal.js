@@ -164,6 +164,7 @@ export default function AuthModal({ isOpen, onClose }) {
 
     try {
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const currentPath = `${window.location.pathname || '/'}${window.location.search || ''}`;
 
       if (isLocalhost) {
         console.log("[AuthModal] Localhost - using popup...");
@@ -185,10 +186,13 @@ export default function AuthModal({ isOpen, onClose }) {
           return;
         }
       } else {
-        console.log("[AuthModal] Production - using redirect...");
-        await setPersistence(auth, browserLocalPersistence);
-        writeLoginFlag(JSON.stringify({ timestamp: Date.now() }));
-        await signInWithRedirect(auth, googleProvider);
+        console.log("[AuthModal] Production - handing off to dedicated /login flow...");
+        const params = new URLSearchParams();
+        if (currentPath && currentPath !== "/") {
+          params.set("redirect", currentPath);
+        }
+        window.location.href = `/login?${params.toString()}`;
+        return;
       }
     } catch (err) {
       console.error("[AuthModal] Login error:", err);

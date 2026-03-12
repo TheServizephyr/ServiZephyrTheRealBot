@@ -80,6 +80,7 @@ function AdminLayoutContent({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   const { user, isUserLoading } = useUser();
@@ -103,9 +104,9 @@ function AdminLayoutContent({ children }) {
 
     if (!user) {
       console.log('[Admin Layout] No user after auth check, redirecting');
-      router.push('/');
+      router.push(`/login?redirect=${encodeURIComponent(pathname || '/admin-dashboard')}`);
     }
-  }, [user, authChecked, router]);
+  }, [user, authChecked, router, pathname]);
 
   useEffect(() => {
     if (!isMobile) {
