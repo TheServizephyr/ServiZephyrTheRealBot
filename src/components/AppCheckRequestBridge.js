@@ -16,7 +16,20 @@ function shouldAttachAppCheck(input) {
 
   try {
     const url = rawUrl.startsWith('http') ? new URL(rawUrl) : new URL(rawUrl, window.location.origin);
-    return url.origin === window.location.origin && url.pathname.startsWith('/api/');
+    if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')) {
+      return false;
+    }
+
+    // Auth/session endpoints must never block on App Check token generation,
+    // otherwise mobile redirect login can get stuck on "Finishing login...".
+    if (
+      url.pathname.startsWith('/api/auth/check-role') ||
+      url.pathname.startsWith('/api/auth/logout')
+    ) {
+      return false;
+    }
+
+    return true;
   } catch {
     return false;
   }
@@ -37,7 +50,10 @@ export default function AppCheckRequestBridge() {
 
       try {
         const appCheck = getAppCheck(getApp());
-        const tokenResult = await getToken(appCheck, false);
+        const tokenResult = await Promise.race([
+          getToken(appCheck, false),
+          new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
         if (tokenResult?.token) {
           const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
           if (!headers.has('x-firebase-appcheck') && !headers.has('x-firebase-app-check')) {
