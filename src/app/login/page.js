@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { auth, googleProvider } from "@/lib/firebase";
@@ -12,6 +13,17 @@ const getSafeRedirectPath = (value) => {
     if (!trimmed || trimmed === "/") return null;
     if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null;
     return trimmed;
+};
+
+const getRedirectLabel = (path) => {
+    if (!path) return "your dashboard";
+    if (path.startsWith("/owner-dashboard")) return "the owner dashboard";
+    if (path.startsWith("/admin-dashboard")) return "the admin dashboard";
+    if (path.startsWith("/street-vendor-dashboard")) return "the street-vendor dashboard";
+    if (path.startsWith("/rider-dashboard")) return "the rider dashboard";
+    if (path.startsWith("/employee-dashboard")) return "the employee dashboard";
+    if (path.startsWith("/customer-dashboard")) return "the customer dashboard";
+    return "where you left off";
 };
 
 function LoginPageContent() {
@@ -307,131 +319,136 @@ function LoginPageContent() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full max-w-md"
-            >
-                {/* Logo & Title */}
-                <div className="text-center mb-8">
+        <div className="min-h-screen overflow-hidden bg-[#fffdf6] text-slate-950">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(253,186,18,0.22),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(253,186,18,0.16),_transparent_26%)]" />
+            <div className="relative mx-auto flex min-h-screen max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
+                <div className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
                     <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: "spring", stiffness: 200 }}
-                        className="inline-block mb-4"
+                        initial={{ opacity: 0, x: -24 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="order-2 lg:order-1"
                     >
-                        <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg">
-                            S
+                        <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/80 px-4 py-2 text-sm font-semibold text-amber-900 shadow-sm">
+                            <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                            Built for restaurants, cloud kitchens, cafes and street vendors
+                        </div>
+                        <div className="mt-6 max-w-2xl">
+                            <h1 className="font-headline text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+                                One secure sign-in.
+                                <span className="block text-amber-500">Everything ready after that.</span>
+                            </h1>
+                            <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
+                                Sign in once and we will take you straight to {getRedirectLabel(redirectTo)}. No extra setup, no repeated taps, just a fast handoff into your workspace.
+                            </p>
+                        </div>
+
+                        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                            {[
+                                { title: "Fast login", text: "Popup on desktop, redirect fallback on mobile when needed." },
+                                { title: "Role-aware", text: "Owners, customers, riders and staff land in the right place." },
+                                { title: "Secure session", text: "Google sign-in with server-side role checks before redirect." },
+                            ].map((item) => (
+                                <div key={item.title} className="rounded-2xl border border-amber-100 bg-white/80 p-4 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.22)]">
+                                    <div className="text-sm font-semibold text-slate-950">{item.title}</div>
+                                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.text}</p>
+                                </div>
+                            ))}
                         </div>
                     </motion.div>
-                    <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-2">
-                        ServiZephyr
-                    </h1>
-                    <p className="text-gray-600 dark:text-gray-400">
-                        Sign in to continue
-                    </p>
-                </div>
 
-                {/* Auth Card */}
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-100 dark:border-gray-700"
-                >
-                    {/* Error Message */}
-                    {error && (
-                        <motion.div
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm"
-                        >
-                            {error}
-                        </motion.div>
-                    )}
-
-                    {/* Google Sign-In Button */}
-                    <button
-                        onClick={handleGoogleLogin}
-                        disabled={loading}
-                        className="w-full flex items-center justify-center gap-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 hover:border-purple-500 dark:hover:border-purple-500 rounded-xl px-6 py-4 font-semibold text-gray-700 dark:text-gray-200 transition-all duration-300 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed group"
+                    <motion.div
+                        initial={{ opacity: 0, y: 24 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="order-1 lg:order-2"
                     >
-                        {loading ? (
-                            <div className="w-6 h-6 border-3 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                            <>
-                                <svg className="w-6 h-6" viewBox="0 0 24 24">
-                                    <path
-                                        fill="#4285F4"
-                                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                    />
-                                    <path
-                                        fill="#34A853"
-                                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                    />
-                                    <path
-                                        fill="#FBBC05"
-                                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                                    />
-                                    <path
-                                        fill="#EA4335"
-                                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                                    />
-                                </svg>
-                                <span className="group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                                    {loading ? "Signing in..." : "Continue with Google"}
-                                </span>
-                            </>
-                        )}
-                    </button>
+                        <div className="rounded-[30px] border border-amber-200/70 bg-white/95 p-6 shadow-[0_40px_120px_-50px_rgba(15,23,42,0.28)] sm:p-8">
+                            <div className="rounded-[24px] border border-slate-100 bg-[linear-gradient(180deg,#fffef9_0%,#ffffff_68%,#fff7db_100%)] p-6 sm:p-8">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 shadow-inner shadow-amber-200/70">
+                                        <Image src="/logo.png" alt="ServiZephyr logo" width={42} height={42} className="h-10 w-10 object-contain" priority />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-amber-700">ServiZephyr Access</p>
+                                        <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">Continue with Google</h2>
+                                    </div>
+                                </div>
 
-                    {/* Loading/Success Message - Like AuthModal! */}
-                    {msg && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-purple-700 dark:text-purple-300 text-sm text-center flex items-center justify-center gap-2"
-                        >
-                            {loading && (
-                                <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                            )}
-                            {msg}
-                        </motion.div>
-                    )}
+                                <p className="mt-5 text-base leading-7 text-slate-600">
+                                    Use the same Google account you already use for your restaurant, staff, rider or customer access. We&apos;ll verify the role and continue automatically.
+                                </p>
 
-                    {/* Divider */}
-                    <div className="relative my-6">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-gray-200 dark:border-gray-700"></div>
+                                {error && (
+                                    <motion.div
+                                        initial={{ opacity: 0, x: -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                                    >
+                                        {error}
+                                    </motion.div>
+                                )}
+
+                                {msg && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="mt-5 flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+                                    >
+                                        {loading && (
+                                            <div className="h-4 w-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
+                                        )}
+                                        {msg}
+                                    </motion.div>
+                                )}
+
+                                <button
+                                    onClick={handleGoogleLogin}
+                                    disabled={loading}
+                                    className="mt-6 flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-4 text-lg font-semibold text-primary-foreground shadow-[0_20px_40px_-20px_rgba(253,186,18,0.9)] transition-transform duration-300 hover:-translate-y-0.5 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                    {loading ? (
+                                        <div className="h-6 w-6 rounded-full border-[3px] border-slate-900 border-t-transparent animate-spin" />
+                                    ) : (
+                                        <>
+                                            <svg className="h-6 w-6" viewBox="0 0 24 24">
+                                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                                            </svg>
+                                            <span>{loading ? "Signing you in..." : "Continue with Google"}</span>
+                                        </>
+                                    )}
+                                </button>
+
+                                <div className="mt-6 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4">
+                                    <div className="flex items-center justify-between text-sm text-slate-500">
+                                        <span>Authentication</span>
+                                        <span className="font-semibold text-slate-700">Google + role verification</span>
+                                    </div>
+                                    <div className="mt-3 h-px bg-slate-200" />
+                                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                                        By continuing, you agree to ServiZephyr&apos;s{" "}
+                                        <a href="/terms-and-conditions" className="font-semibold text-amber-700 hover:underline">
+                                            Terms of Service
+                                        </a>{" "}
+                                        and{" "}
+                                        <a href="/privacy" className="font-semibold text-amber-700 hover:underline">
+                                            Privacy Policy
+                                        </a>.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="relative flex justify-center text-sm">
-                            <span className="px-4 bg-white dark:bg-gray-800 text-gray-500">
-                                Secure authentication
-                            </span>
-                        </div>
-                    </div>
 
-                    {/* Info Text */}
-                    <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                        By continuing, you agree to ServiZephyr&apos;s{" "}
-                        <a href="/terms-and-conditions" className="text-purple-600 hover:underline">
-                            Terms of Service
-                        </a>{" "}
-                        and{" "}
-                        <a href="/privacy" className="text-purple-600 hover:underline">
-                            Privacy Policy
-                        </a>
-                    </p>
-                </motion.div>
-
-                {/* Footer */}
-                <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-6">
-                    Need help?{" "}
-                    <a href="/support" className="text-purple-600 dark:text-purple-400 hover:underline font-semibold">
-                        Contact Support
-                    </a>
-                </p>
-            </motion.div>
+                        <p className="mt-5 text-center text-sm text-slate-600">
+                            Need help?{" "}
+                            <a href="/support" className="font-semibold text-amber-700 hover:underline">
+                                Contact Support
+                            </a>
+                        </p>
+                    </motion.div>
+                </div>
+            </div>
         </div>
     );
 }
@@ -439,8 +456,8 @@ function LoginPageContent() {
 export default function LoginPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="min-h-screen bg-[#fffdf6] flex items-center justify-center">
+                <div className="h-8 w-8 rounded-full border-4 border-amber-500 border-t-transparent animate-spin"></div>
             </div>
         }>
             <LoginPageContent />

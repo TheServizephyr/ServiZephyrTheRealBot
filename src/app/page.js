@@ -6,6 +6,7 @@ import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, B
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
+import { useTheme } from 'next-themes'
 import {
   Accordion,
   AccordionContent,
@@ -267,6 +268,21 @@ const UniqueFeatureCard = ({ icon, title, description, custom }) => (
 
 export default function Home() {
   const [animationFinished, setAnimationFinished] = useState(true);
+  const { theme, setTheme } = useTheme();
+  const previousThemeRef = useRef(null);
+
+  useEffect(() => {
+    previousThemeRef.current = theme || 'system';
+    setTheme('light');
+
+    return () => {
+      if (previousThemeRef.current && previousThemeRef.current !== 'light') {
+        setTheme(previousThemeRef.current);
+      }
+    };
+    // Intentionally run only for the landing page lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
