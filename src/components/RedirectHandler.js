@@ -35,13 +35,46 @@ export default function RedirectHandler() {
             /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
         const authRecoveryTimeoutMs = isLikelyMobile ? 45000 : 15000;
         const staleFlagThresholdSec = isLikelyMobile ? 600 : 180;
+        const loginFlagKey = 'isLoggingIn';
+        const reloadMarkerKey = '__oauthRecoveryReloaded';
 
         let unsubscribe = () => { };
+
+        const readLoginFlag = () => {
+            if (typeof window === 'undefined') return null;
+            return localStorage.getItem(loginFlagKey) || sessionStorage.getItem(loginFlagKey);
+        };
+
+        const writeLoginFlag = (value) => {
+            if (typeof window === 'undefined') return;
+            if (value == null) {
+                localStorage.removeItem(loginFlagKey);
+                sessionStorage.removeItem(loginFlagKey);
+                return;
+            }
+            localStorage.setItem(loginFlagKey, value);
+            sessionStorage.setItem(loginFlagKey, value);
+        };
+
+        const clearRecoveryReloadMarker = () => {
+            if (typeof window === 'undefined') return;
+            sessionStorage.removeItem(reloadMarkerKey);
+        };
+
+        const tryRecoveryReload = () => {
+            if (typeof window === 'undefined') return false;
+            if (sessionStorage.getItem(reloadMarkerKey)) return false;
+            sessionStorage.setItem(reloadMarkerKey, String(Date.now()));
+            setMsg("Still finishing login... Retrying once.");
+            window.location.reload();
+            return true;
+        };
 
         const completeRecoveredLogin = async (user, message = "Recovering login session...") => {
             if (!user || isHandlingRef.current) return;
             isHandlingRef.current = true;
-            localStorage.removeItem('isLoggingIn');
+            writeLoginFlag(null);
+            clearRecoveryReloadMarker();
             setLoading(true);
             setMsg(message);
             await processLogin(user);
@@ -50,7 +83,7 @@ export default function RedirectHandler() {
         const handleRedirectResult = async () => {
             // Check if we are expecting a login immediately to show loader
             // Use localStorage instead of sessionStorage - iPhone clears sessionStorage during OAuth!
-            const initialFlag = localStorage.getItem('isLoggingIn');
+            const initialFlag = readLoginFlag();
             if (initialFlag) {
                 setLoading(true);
                 setMsg("Finishing login...");
@@ -71,7 +104,7 @@ export default function RedirectHandler() {
 
                     // CRITICAL FIX FOR iPHONE: Check auth.currentUser FIRST
                     // On iPhone, getRedirectResult often returns null but Firebase has already restored the session
-                    const loginFlagData = localStorage.getItem('isLoggingIn');
+                    const loginFlagData = readLoginFlag();
                     if (loginFlagData && auth.currentUser) {
                         console.log("[RedirectHandler] ✓ iPhone/Chrome fallback: User already authenticated:", auth.currentUser.email);
                         await completeRecoveredLogin(auth.currentUser, "Completing login...");
@@ -104,7 +137,7 @@ export default function RedirectHandler() {
                             if (loginFlagData === 'true') {
                                 // Old format - treat as stale
                                 console.log("[RedirectHandler] Old format flag detected. Clearing.");
-                                localStorage.removeItem('isLoggingIn');
+                                writeLoginFlag(null);
                                 setLoading(false);
                                 return;
                             }
@@ -116,7 +149,8 @@ export default function RedirectHandler() {
                             // Increased from 30s to 180s to account for slow Google redirects
                             if (flagAge > staleFlagThresholdSec) {
                                 console.log(`[RedirectHandler] Stale login flag (${flagAge.toFixed(0)}s old). Clearing.`);
-                                localStorage.removeItem('isLoggingIn');
+                                writeLoginFlag(null);
+                                clearRecoveryReloadMarker();
                                 setLoading(false);
                                 return;
                             }
@@ -125,7 +159,8 @@ export default function RedirectHandler() {
                         } catch (e) {
                             // Invalid format - clear it
                             console.log("[RedirectHandler] Invalid flag format. Clearing.");
-                            localStorage.removeItem('isLoggingIn');
+                            writeLoginFlag(null);
+                            clearRecoveryReloadMarker();
                             setLoading(false);
                             return;
                         }
@@ -133,7 +168,8 @@ export default function RedirectHandler() {
                         // If already logged in or on dashboard, clear flag
                         if (shouldProceed && (auth.currentUser || isDashboard)) {
                             console.log("[RedirectHandler] Already authenticated/on dashboard. Clearing flag.");
-                            localStorage.removeItem('isLoggingIn');
+                            writeLoginFlag(null);
+                            clearRecoveryReloadMarker();
                             setLoading(false);
                             return;
                         }
@@ -173,16 +209,20 @@ export default function RedirectHandler() {
                             timeoutId = setTimeout(() => {
                                 cleanupWaiters();
                                 if (isLikelyMobile) {
-                                    console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). Redirecting to /login recovery flow.`);
-                                    setMsg("Still restoring login... Redirecting to recovery.");
-                                    const currentPath = `${window.location.pathname}${window.location.search || ''}`;
-                                    window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
+                                    console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). Attempting one-time recovery reload.`);
+                                    if (tryRecoveryReload()) {
+                                        return;
+                                    }
+                                    setLoading(false);
+                                    writeLoginFlag(null);
+                                    setError("Login did not finish on this browser. Please tap Google sign-in again.");
                                     return;
                                 }
 
                                 console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). No user authenticated.`);
                                 setLoading(false);
-                                localStorage.removeItem('isLoggingIn');
+                                writeLoginFlag(null);
+                                clearRecoveryReloadMarker();
                             }, authRecoveryTimeoutMs);
 
                             pollIntervalId = setInterval(() => {
@@ -213,6 +253,8 @@ export default function RedirectHandler() {
                 console.error("[RedirectHandler] Redirect error:", error);
                 if (error.code !== 'auth/popup-closed-by-user') {
                     isHandlingRef.current = false;
+                    writeLoginFlag(null);
+                    clearRecoveryReloadMarker();
                     setError(`Login failed: ${error.message}`);
                     setMsg("An error occurred.");
                 } else {

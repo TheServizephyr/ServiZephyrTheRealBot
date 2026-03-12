@@ -225,10 +225,12 @@ export default function RootLayout({ children }) {
           {`
             if ('serviceWorker' in navigator) {
               window.addEventListener('load', async function() {
-                // Temporary recovery mode: unregister stale service workers and clear caches
-                // in every environment to avoid old app-shell/auth/CSP breakage.
+                // Recovery mode: unregister stale service workers, clear caches,
+                // and force one clean reload so the current page is no longer
+                // controlled by a stale worker during auth redirects.
                 try {
                   const registrations = await navigator.serviceWorker.getRegistrations();
+                  const hadRegistrations = registrations.length > 0;
                   await Promise.all(registrations.map(function(registration) {
                     return registration.unregister();
                   }));
@@ -239,6 +241,14 @@ export default function RootLayout({ children }) {
                     }));
                   }
                   console.log('[SW] Cleanup complete (unregistered + cache cleared).');
+                  if (hadRegistrations && window.sessionStorage && !window.sessionStorage.getItem('__swRecoveryReloaded')) {
+                    window.sessionStorage.setItem('__swRecoveryReloaded', String(Date.now()));
+                    window.location.reload();
+                    return;
+                  }
+                  if (window.sessionStorage) {
+                    window.sessionStorage.removeItem('__swRecoveryReloaded');
+                  }
                 } catch (cleanupError) {
                   console.log('[SW] Cleanup failed:', cleanupError);
                 }

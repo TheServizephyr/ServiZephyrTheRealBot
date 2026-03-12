@@ -45,6 +45,12 @@ self.addEventListener('fetch', (event) => {
     // Skip chrome extensions and other non-http requests
     if (!event.request.url.startsWith('http')) return;
 
+    // CRITICAL: Never intercept cross-origin assets. Google auth, profile
+    // photos, Maps and other third-party resources should go straight to the
+    // browser/network stack without service-worker involvement.
+    const requestUrl = new URL(event.request.url);
+    if (requestUrl.origin !== self.location.origin) return;
+
     // CRITICAL: Skip API calls - don't cache them!
     if (event.request.url.includes('/api/')) {
         event.respondWith(

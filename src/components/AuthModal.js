@@ -41,6 +41,17 @@ export default function AuthModal({ isOpen, onClose }) {
     onClose();
   };
 
+  const writeLoginFlag = (value) => {
+    if (typeof window === "undefined") return;
+    if (value == null) {
+      localStorage.removeItem('isLoggingIn');
+      sessionStorage.removeItem('isLoggingIn');
+      return;
+    }
+    localStorage.setItem('isLoggingIn', value);
+    sessionStorage.setItem('isLoggingIn', value);
+  };
+
   const shouldFallbackToRedirect = (error) => {
     const code = String(error?.code || '');
     return [
@@ -160,7 +171,7 @@ export default function AuthModal({ isOpen, onClose }) {
           const result = await signInWithPopup(auth, googleProvider);
           const user = result.user;
           console.log("[AuthModal] Popup successful, processing...");
-          localStorage.removeItem('isLoggingIn');
+          writeLoginFlag(null);
           await handleAuthSuccess(user);
           return;
         } catch (popupError) {
@@ -169,14 +180,14 @@ export default function AuthModal({ isOpen, onClose }) {
             throw popupError;
           }
           await setPersistence(auth, browserLocalPersistence);
-          localStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+          writeLoginFlag(JSON.stringify({ timestamp: Date.now() }));
           await signInWithRedirect(auth, googleProvider);
           return;
         }
       } else {
         console.log("[AuthModal] Production - using redirect...");
         await setPersistence(auth, browserLocalPersistence);
-        localStorage.setItem('isLoggingIn', JSON.stringify({ timestamp: Date.now() }));
+        writeLoginFlag(JSON.stringify({ timestamp: Date.now() }));
         await signInWithRedirect(auth, googleProvider);
       }
     } catch (err) {
@@ -184,7 +195,7 @@ export default function AuthModal({ isOpen, onClose }) {
       setMsg(`Login Failed: ${err.message}`);
       setMsgType("error");
       setLoading(false);
-      localStorage.removeItem('isLoggingIn');
+      writeLoginFlag(null);
     }
   };
 
