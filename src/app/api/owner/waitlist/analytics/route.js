@@ -105,6 +105,7 @@ export async function GET(req) {
 
         const statusCounts = {
             pending: 0,
+            ready_to_notify: 0,
             notified: 0,
             arrived: 0,
             seated: 0,

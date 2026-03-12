@@ -154,11 +154,15 @@ export default function PublicWaitlistPage({ params }) {
         try {
             const trimmedName = String(name || '').trim();
             const normalizedPhone = String(phone || '').replace(/\D/g, '').slice(-10);
+            const normalizedPaxCount = Number.parseInt(String(paxCount || ''), 10);
             if (!trimmedName) {
                 throw new Error('Please enter your name.');
             }
             if (!/^\d{10}$/.test(normalizedPhone)) {
                 throw new Error('Please enter a valid 10-digit phone number.');
+            }
+            if (!Number.isInteger(normalizedPaxCount) || normalizedPaxCount < 1 || normalizedPaxCount > 20) {
+                throw new Error('Please enter guests between 1 and 20.');
             }
 
             const isBookingMode = mode === 'booking';
@@ -167,7 +171,7 @@ export default function PublicWaitlistPage({ params }) {
                 restaurantId,
                 name: trimmedName,
                 phone: normalizedPhone,
-                paxCount: parseInt(paxCount, 10)
+                paxCount: normalizedPaxCount
             };
 
             if (isBookingMode) {
@@ -186,7 +190,7 @@ export default function PublicWaitlistPage({ params }) {
                     restaurantId,
                     name: trimmedName,
                     phone: normalizedPhone,
-                    guests: parseInt(paxCount, 10),
+                    guests: normalizedPaxCount,
                     bookingDateTime: bookingDateTime.toISOString(),
                     occasion: String(bookingOccasion || '').trim(),
                 };
@@ -471,17 +475,26 @@ export default function PublicWaitlistPage({ params }) {
                                     <Label htmlFor="paxCount" className="text-xs font-black uppercase tracking-widest text-primary">Number of Guests</Label>
                                     <div className="relative group">
                                         <Users className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                        <select
+                                        <Input
                                             id="paxCount"
-                                            className="w-full h-12 pl-10 pr-4 rounded-md border border-border bg-muted/30 focus:bg-background focus:ring-2 focus:ring-primary outline-none transition-all appearance-none font-bold text-lg cursor-pointer"
+                                            type="number"
+                                            min={1}
+                                            max={20}
+                                            inputMode="numeric"
+                                            placeholder="Enter guest count (1-20)"
+                                            className="pl-10 h-12 bg-muted/30 focus:bg-background border-border font-bold text-lg"
                                             value={paxCount}
-                                            onChange={(e) => setPaxCount(e.target.value)}
+                                            onChange={(e) => {
+                                                const next = e.target.value.replace(/[^\d]/g, '');
+                                                if (!next) {
+                                                    setPaxCount('');
+                                                    return;
+                                                }
+                                                const parsed = Number.parseInt(next, 10);
+                                                setPaxCount(String(Math.min(20, Math.max(1, parsed))));
+                                            }}
                                             required
-                                        >
-                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
-                                                <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
-                                            ))}
-                                        </select>
+                                        />
                                     </div>
                                 </div>
 

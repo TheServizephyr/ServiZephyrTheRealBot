@@ -7,7 +7,8 @@ import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
-const ACTIVE_STATUSES = new Set(['pending', 'notified', 'arrived']);
+const READY_TO_NOTIFY_STATUS = 'ready_to_notify';
+const ACTIVE_STATUSES = new Set(['pending', READY_TO_NOTIFY_STATUS, 'notified', 'arrived']);
 const HISTORY_STATUSES = new Set(['seated', 'cancelled', 'no_show']);
 const DEFAULT_NO_SHOW_TIMEOUT_MINUTES = 10;
 const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
@@ -232,9 +233,9 @@ async function expireNoShows({ firestore, businessRef, noShowTimeoutMs }) {
     return expiredEntries.length;
 }
 
-async function autoPromoteNextPending({ firestore, businessRef, noShowTimeoutMs }) {
+async function autoPromoteNextPending({ firestore, businessRef }) {
     const activeNotifiedSnap = await businessRef.collection('waitlist')
-        .where('status', '==', 'notified')
+        .where('status', 'in', ['notified', READY_TO_NOTIFY_STATUS])
         .limit(1)
         .get();
     if (!activeNotifiedSnap.empty) return null;
@@ -260,10 +261,10 @@ async function autoPromoteNextPending({ firestore, businessRef, noShowTimeoutMs 
     if (!nextEntry) return null;
 
     await nextEntry.ref.set({
-        status: 'notified',
-        notifiedAt: FieldValue.serverTimestamp(),
-        noShowDeadlineAt: new Date(Date.now() + noShowTimeoutMs),
-        autoNotified: true,
+        status: READY_TO_NOTIFY_STATUS,
+        notifiedAt: null,
+        noShowDeadlineAt: null,
+        autoPromotedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
@@ -332,7 +333,7 @@ export async function GET(req) {
             });
             autoExpiredCount = await expireNoShows({ firestore, businessRef, noShowTimeoutMs });
             if (autoExpiredCount > 0) {
-                promotedEntryId = await autoPromoteNextPending({ firestore, businessRef, noShowTimeoutMs });
+                promotedEntryId = await autoPromoteNextPending({ firestore, businessRef });
             }
         }
 
@@ -410,7 +411,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Entry ID and status are required.' }, { status: 400 });
         }
 
-        const allowedStatuses = ['pending', 'notified', 'arrived', 'seated', 'cancelled', 'no_show'];
+        const allowedStatuses = ['pending', READY_TO_NOTIFY_STATUS, 'notified', 'arrived', 'seated', 'cancelled', 'no_show'];
         if (!allowedStatuses.includes(status)) {
             return NextResponse.json({ message: 'Invalid status.' }, { status: 400 });
         }
@@ -486,9 +487,9 @@ export async function PATCH(req) {
             }
         });
 
-        const shouldPromoteNext = previousStatus === 'notified' && ['seated', 'cancelled', 'no_show'].includes(status);
+        const shouldPromoteNext = ['notified', READY_TO_NOTIFY_STATUS].includes(previousStatus) && ['seated', 'cancelled', 'no_show'].includes(status);
         const promotedEntryId = shouldPromoteNext
-            ? await autoPromoteNextPending({ firestore, businessRef, noShowTimeoutMs })
+            ? await autoPromoteNextPending({ firestore, businessRef })
             : null;
         const capacity = await getManualCapacityMetrics({
             businessRef,

@@ -651,7 +651,7 @@ const WaitlistManagement = ({
         setLoading(true);
         // Live Waitlist Listener
         const waitlistRef = collection(db, restaurant.collection, restaurant.id, 'waitlist');
-        const qWaitlist = query(waitlistRef, where('status', 'in', ['pending', 'notified', 'arrived']));
+        const qWaitlist = query(waitlistRef, where('status', 'in', ['pending', 'ready_to_notify', 'notified', 'arrived']));
 
         const unsubWaitlist = onSnapshot(qWaitlist, () => {
             void fetchData();
@@ -862,6 +862,7 @@ const WaitlistManagement = ({
                         const fitTables = allTables.filter(t => t.state === 'available' && t.max_capacity >= entry.paxCount);
                         const isRecommended = !usesTraditionalSeating && recommendedEntries.has(entry.id);
                         const isNotified = entry.status === 'notified';
+                        const isReadyToNotify = entry.status === 'ready_to_notify';
                         const notifiedAtMs = entry?.notifiedAt ? new Date(entry.notifiedAt).getTime() : null;
                         const computedDeadlineMs = notifiedAtMs
                             ? (notifiedAtMs + Math.max(1, Number(waitlistMeta?.noShowTimeoutMinutes || 10)) * 60 * 1000)
@@ -884,7 +885,7 @@ const WaitlistManagement = ({
                         return (
                             <Card key={entry.id} className={cn(
                                 "border-l-4 transition-all duration-300",
-                                isNotified ? "border-l-amber-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
+                                isNotified ? "border-l-amber-500" : isReadyToNotify ? "border-l-sky-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
                                 isRecommended && !isNotified && "animate-pulse-green border-green-500/50",
                                 isNotified && "animate-pulse-yellow border-amber-500/50"
                             )}>
@@ -893,6 +894,9 @@ const WaitlistManagement = ({
                                         <div className="flex items-start gap-2">
                                             {isRecommended && !isNotified && (
                                                 <div className="mt-1.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                                            )}
+                                            {isReadyToNotify && (
+                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
                                             )}
                                             {isNotified && (
                                                 <div className="mt-1.5 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
@@ -913,8 +917,8 @@ const WaitlistManagement = ({
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1.5">
-                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
-                                                {isNotified ? 'Notified' : isRecommended ? 'Recommended' : 'Waiting'}
+                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isReadyToNotify ? "bg-sky-500/10 text-sky-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
+                                                {isNotified ? 'Notified' : isReadyToNotify ? 'Ready to Notify' : isRecommended ? 'Recommended' : 'Waiting'}
                                             </div>
                                             {isNotified && remainingNoShowMinutes !== null && (
                                                 <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">
@@ -980,7 +984,7 @@ const WaitlistManagement = ({
                 <CardContent className="p-3 text-sm">
                     <p className="font-semibold text-primary">No-show automation</p>
                     <p className="text-muted-foreground mt-1">
-                        Countdown starts exactly when you press <strong>Notify</strong>. If guest is not seated within {waitlistMeta?.noShowTimeoutMinutes || 10} minutes, entry auto-moves to waitlist history as <strong>no_show</strong> and next pending guest auto-promotes.
+                        Countdown starts exactly when you press <strong>Notify</strong>. If guest is not seated within {waitlistMeta?.noShowTimeoutMinutes || 10} minutes, entry auto-moves to waitlist history as <strong>no_show</strong> and next pending guest shifts to <strong>Ready to Notify</strong>.
                     </p>
                     {waitlistMeta?.autoExpiredCount > 0 && (
                         <p className="text-amber-600 mt-2 font-medium">
