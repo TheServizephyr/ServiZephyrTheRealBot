@@ -36,7 +36,6 @@ export default function RedirectHandler() {
         const authRecoveryTimeoutMs = isLikelyMobile ? 45000 : 15000;
         const staleFlagThresholdSec = isLikelyMobile ? 600 : 180;
         const loginFlagKey = 'isLoggingIn';
-        const reloadMarkerKey = '__oauthRecoveryReloaded';
 
         let unsubscribe = () => { };
 
@@ -56,25 +55,10 @@ export default function RedirectHandler() {
             sessionStorage.setItem(loginFlagKey, value);
         };
 
-        const clearRecoveryReloadMarker = () => {
-            if (typeof window === 'undefined') return;
-            sessionStorage.removeItem(reloadMarkerKey);
-        };
-
-        const tryRecoveryReload = () => {
-            if (typeof window === 'undefined') return false;
-            if (sessionStorage.getItem(reloadMarkerKey)) return false;
-            sessionStorage.setItem(reloadMarkerKey, String(Date.now()));
-            setMsg("Still finishing login... Retrying once.");
-            window.location.reload();
-            return true;
-        };
-
         const completeRecoveredLogin = async (user, message = "Recovering login session...") => {
             if (!user || isHandlingRef.current) return;
             isHandlingRef.current = true;
             writeLoginFlag(null);
-            clearRecoveryReloadMarker();
             setLoading(true);
             setMsg(message);
             await processLogin(user);
@@ -150,7 +134,6 @@ export default function RedirectHandler() {
                             if (flagAge > staleFlagThresholdSec) {
                                 console.log(`[RedirectHandler] Stale login flag (${flagAge.toFixed(0)}s old). Clearing.`);
                                 writeLoginFlag(null);
-                                clearRecoveryReloadMarker();
                                 setLoading(false);
                                 return;
                             }
@@ -159,17 +142,15 @@ export default function RedirectHandler() {
                         } catch (e) {
                             // Invalid format - clear it
                             console.log("[RedirectHandler] Invalid flag format. Clearing.");
-                            writeLoginFlag(null);
-                            clearRecoveryReloadMarker();
-                            setLoading(false);
-                            return;
-                        }
+                                writeLoginFlag(null);
+                                setLoading(false);
+                                return;
+                            }
 
                         // If already logged in or on dashboard, clear flag
                         if (shouldProceed && (auth.currentUser || isDashboard)) {
                             console.log("[RedirectHandler] Already authenticated/on dashboard. Clearing flag.");
                             writeLoginFlag(null);
-                            clearRecoveryReloadMarker();
                             setLoading(false);
                             return;
                         }
@@ -209,10 +190,7 @@ export default function RedirectHandler() {
                             timeoutId = setTimeout(() => {
                                 cleanupWaiters();
                                 if (isLikelyMobile) {
-                                    console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). Attempting one-time recovery reload.`);
-                                    if (tryRecoveryReload()) {
-                                        return;
-                                    }
+                                    console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). Showing manual recovery error.`);
                                     setLoading(false);
                                     writeLoginFlag(null);
                                     setError("Login did not finish on this browser. Please tap Google sign-in again.");
@@ -222,7 +200,6 @@ export default function RedirectHandler() {
                                 console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). No user authenticated.`);
                                 setLoading(false);
                                 writeLoginFlag(null);
-                                clearRecoveryReloadMarker();
                             }, authRecoveryTimeoutMs);
 
                             pollIntervalId = setInterval(() => {
@@ -254,7 +231,6 @@ export default function RedirectHandler() {
                 if (error.code !== 'auth/popup-closed-by-user') {
                     isHandlingRef.current = false;
                     writeLoginFlag(null);
-                    clearRecoveryReloadMarker();
                     setError(`Login failed: ${error.message}`);
                     setMsg("An error occurred.");
                 } else {
