@@ -229,7 +229,7 @@ export default function OrderHistoryPage() {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <input
                                 type="text"
-                                placeholder="Order ID, customer..."
+                                placeholder="Customer Order ID, customer..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
@@ -254,7 +254,7 @@ export default function OrderHistoryPage() {
                     <table className="w-full">
                         <thead>
                             <tr className="bg-muted/30">
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Order ID</th>
+                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Customer Order ID</th>
                                 <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Customer</th>
                                 <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Amount</th>
                                 <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Date & Time</th>
@@ -285,7 +285,7 @@ export default function OrderHistoryPage() {
                                         className="hover:bg-muted/50 cursor-pointer"
                                         onClick={() => setSelectedOrder(order)}
                                     >
-                                        <td className="p-4 font-mono text-sm">{order.id.substring(0, 8)}</td>
+                                        <td className="p-4 font-mono text-sm">{order.customerOrderId || order.id.substring(0, 8)}</td>
                                         <td className="p-4 text-sm">{order.customer || order.customerName || 'Guest'}</td>
                                         <td className="p-4 text-sm font-semibold">₹{order.totalAmount?.toFixed(0) || 0}</td>
                                         <td className="p-4 text-sm text-muted-foreground">
@@ -311,7 +311,7 @@ export default function OrderHistoryPage() {
                         <DialogTitle className="flex items-center justify-between">
                             <span>Order Details</span>
                             <span className="font-mono text-sm text-muted-foreground">
-                                {selectedOrder?.id.substring(0, 10)}
+                                {selectedOrder?.customerOrderId || selectedOrder?.id.substring(0, 10)}
                             </span>
                         </DialogTitle>
                     </DialogHeader>
