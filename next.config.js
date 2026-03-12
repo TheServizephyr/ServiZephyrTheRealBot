@@ -82,7 +82,6 @@ const buildContentSecurityPolicy = () => {
 
 const nextConfig = {
   async headers() {
-    const contentSecurityPolicy = buildContentSecurityPolicy();
     const baseHeaders = [
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'X-DNS-Prefetch-Control', value: 'off' },
@@ -93,7 +92,6 @@ const nextConfig = {
       { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' },
       // Required for Firebase/Google popup auth flows to avoid window.close/window.closed COOP warnings.
       { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
-      { key: 'Content-Security-Policy', value: contentSecurityPolicy },
     ];
 
     if (process.env.NODE_ENV === 'production') {
