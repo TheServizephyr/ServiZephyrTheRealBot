@@ -358,6 +358,37 @@ function VendorProfilePageContent() {
         }
     };
 
+    if (loading) {
+        return (
+            <div className="p-6 text-center h-screen flex items-center justify-center">
+                <Loader2 className="animate-spin h-16 w-16 text-primary" />
+            </div>
+        );
+    }
+
+    if (!user || !editedUser) {
+        return (
+            <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-6 overflow-x-hidden max-w-full">
+                <InfoDialog
+                    isOpen={infoDialog.isOpen}
+                    onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                    title={infoDialog.title}
+                    message={infoDialog.message}
+                />
+                <DeleteAccountModal isOpen={isDeleteModalOpen} setIsOpen={setDeleteModalOpen} />
+                <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+                    <h1 className="text-2xl font-bold">Stall Profile & Settings</h1>
+                    <p className="text-sm text-muted-foreground">
+                        We could not load your stall settings right now. Please refresh once and try again.
+                    </p>
+                    <Button onClick={() => window.location.reload()}>
+                        Retry
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8 overflow-x-hidden max-w-full">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
