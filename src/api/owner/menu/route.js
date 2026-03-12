@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
-// Helper to verify owner and get their first business ID
+// Helper to verify owner and get their first business  ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     console.log("[API LOG] verifyOwnerAndGetBusiness: Starting verification...");
     const uid = await verifyAndGetUid(req); // Use central helper
