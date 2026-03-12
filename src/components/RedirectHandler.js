@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
@@ -11,6 +11,7 @@ export default function RedirectHandler() {
     const [msg, setMsg] = useState("");
     const [error, setError] = useState(null);
     const router = useRouter();
+    const isHandlingRef = useRef(false);
 
     useEffect(() => {
         // Skip if we're on /login page or any dashboard page - let them handle their own auth
@@ -29,7 +30,22 @@ export default function RedirectHandler() {
             }
         }
 
+        const isLikelyMobile =
+            typeof navigator !== 'undefined' &&
+            /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+        const authRecoveryTimeoutMs = isLikelyMobile ? 45000 : 15000;
+        const staleFlagThresholdSec = isLikelyMobile ? 600 : 180;
+
         let unsubscribe = () => { };
+
+        const completeRecoveredLogin = async (user, message = "Recovering login session...") => {
+            if (!user || isHandlingRef.current) return;
+            isHandlingRef.current = true;
+            localStorage.removeItem('isLoggingIn');
+            setLoading(true);
+            setMsg(message);
+            await processLogin(user);
+        };
 
         const handleRedirectResult = async () => {
             // Check if we are expecting a login immediately to show loader
@@ -49,10 +65,7 @@ export default function RedirectHandler() {
 
                 if (result && result.user) {
                     console.log("[RedirectHandler] User returned from redirect:", result.user.email);
-                    localStorage.removeItem('isLoggingIn'); // Cleanup
-                    setLoading(true);
-                    setMsg("Verifying login details...");
-                    await processLogin(result.user);
+                    await completeRecoveredLogin(result.user, "Verifying login details...");
                 } else {
                     console.log("[RedirectHandler] No redirect result found. Checking fallback...");
 
@@ -61,10 +74,7 @@ export default function RedirectHandler() {
                     const loginFlagData = localStorage.getItem('isLoggingIn');
                     if (loginFlagData && auth.currentUser) {
                         console.log("[RedirectHandler] ✓ iPhone/Chrome fallback: User already authenticated:", auth.currentUser.email);
-                        localStorage.removeItem('isLoggingIn');
-                        setLoading(true);
-                        setMsg("Completing login...");
-                        await processLogin(auth.currentUser);
+                        await completeRecoveredLogin(auth.currentUser, "Completing login...");
                         return;
                     }
 
@@ -104,7 +114,7 @@ export default function RedirectHandler() {
 
                             // If flag is older than 3 minutes, it's stale
                             // Increased from 30s to 180s to account for slow Google redirects
-                            if (flagAge > 180) {
+                            if (flagAge > staleFlagThresholdSec) {
                                 console.log(`[RedirectHandler] Stale login flag (${flagAge.toFixed(0)}s old). Clearing.`);
                                 localStorage.removeItem('isLoggingIn');
                                 setLoading(false);
@@ -132,30 +142,62 @@ export default function RedirectHandler() {
                             // Check if user is already authenticated (Firebase restored the session)
                             if (auth.currentUser) {
                                 console.log(`[RedirectHandler] ✓ User already authenticated: ${auth.currentUser.email}`);
-                                localStorage.removeItem('isLoggingIn');
-                                setLoading(true);
-                                setMsg("Completing login...");
-                                await processLogin(auth.currentUser);
+                                await completeRecoveredLogin(auth.currentUser, "Completing login...");
                                 return;
                             }
 
                             console.log(`[RedirectHandler] Fresh login flag (${flagAge.toFixed(0)}s old). Waiting for auth state...`);
 
-                            // Longer timeout for slow networks and Firebase auth restoration
-                            const timeoutId = setTimeout(() => {
-                                console.log("[RedirectHandler] Auth state timeout (15s). No user authenticated.");
+                            let timeoutId = null;
+                            let pollIntervalId = null;
+
+                            const cleanupWaiters = () => {
+                                if (timeoutId) clearTimeout(timeoutId);
+                                if (pollIntervalId) clearInterval(pollIntervalId);
+                                document.removeEventListener('visibilitychange', handleVisibilityRecovery);
+                            };
+
+                            const tryRecoverCurrentUser = async (recoveryMsg) => {
+                                if (!auth.currentUser || isHandlingRef.current) return false;
+                                cleanupWaiters();
+                                await completeRecoveredLogin(auth.currentUser, recoveryMsg);
+                                return true;
+                            };
+
+                            const handleVisibilityRecovery = () => {
+                                if (document.visibilityState === 'visible' && auth.currentUser && !isHandlingRef.current) {
+                                    void tryRecoverCurrentUser("Restoring login session...");
+                                }
+                            };
+
+                            timeoutId = setTimeout(() => {
+                                cleanupWaiters();
+                                if (isLikelyMobile) {
+                                    console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). Redirecting to /login recovery flow.`);
+                                    setMsg("Still restoring login... Redirecting to recovery.");
+                                    const currentPath = `${window.location.pathname}${window.location.search || ''}`;
+                                    window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
+                                    return;
+                                }
+
+                                console.log(`[RedirectHandler] Auth state timeout (${authRecoveryTimeoutMs / 1000}s). No user authenticated.`);
                                 setLoading(false);
                                 localStorage.removeItem('isLoggingIn');
-                            }, 15000); // 15 seconds
+                            }, authRecoveryTimeoutMs);
+
+                            pollIntervalId = setInterval(() => {
+                                if (auth.currentUser && !isHandlingRef.current) {
+                                    void tryRecoverCurrentUser("Recovering login session...");
+                                }
+                            }, 1000);
+
+                            document.addEventListener('visibilitychange', handleVisibilityRecovery);
 
                             unsubscribe = onAuthStateChanged(auth, async (user) => {
                                 if (user) {
                                     console.log("[RedirectHandler] ✓ User authenticated:", user.email);
-                                    clearTimeout(timeoutId);
-                                    localStorage.removeItem('isLoggingIn');
-                                    setLoading(true);
-                                    setMsg("Recovering login session...");
-                                    await processLogin(user);
+                                    cleanupWaiters();
+                                    await completeRecoveredLogin(user, "Recovering login session...");
                                 } else {
                                     console.log("[RedirectHandler] Auth state: null (waiting for Firebase to restore session...)");
                                 }
@@ -170,6 +212,7 @@ export default function RedirectHandler() {
             } catch (error) {
                 console.error("[RedirectHandler] Redirect error:", error);
                 if (error.code !== 'auth/popup-closed-by-user') {
+                    isHandlingRef.current = false;
                     setError(`Login failed: ${error.message}`);
                     setMsg("An error occurred.");
                 } else {

@@ -404,6 +404,8 @@ export async function GET(request, { params }) {
         let aggregatedCgst = orderData.cgst || 0;
         let aggregatedSgst = orderData.sgst || 0;
         let aggregatedDeliveryCharge = Number(orderData.deliveryCharge || 0);
+        let aggregatedServiceFee = Number(orderData.serviceFee || 0);
+        let aggregatedServiceFeeLabel = String(orderData.serviceFeeLabel || '').trim() || null;
         let aggregatedTotal = orderData.totalAmount || 0;
         let aggregatedPaymentStatus = orderData.paymentStatus || 'pending'; // Start with current order's status
 
@@ -474,6 +476,8 @@ export async function GET(request, { params }) {
                     aggregatedCgst = 0;
                     aggregatedSgst = 0;
                     aggregatedDeliveryCharge = 0;
+                    aggregatedServiceFee = 0;
+                    aggregatedServiceFeeLabel = null;
                     aggregatedTotal = 0;
                     // Reset payment status to pending before checking all docs (unless we want to prioritize 'paid')
                     // Logic: If ANY order is paid, the bill is PAID.
@@ -522,6 +526,10 @@ export async function GET(request, { params }) {
                             aggregatedCgst += tabOrder.cgst || 0;
                             aggregatedSgst += tabOrder.sgst || 0;
                             aggregatedDeliveryCharge += Number(tabOrder.deliveryCharge || 0);
+                            aggregatedServiceFee += Number(tabOrder.serviceFee || 0);
+                            if (!aggregatedServiceFeeLabel) {
+                                aggregatedServiceFeeLabel = String(tabOrder.serviceFeeLabel || '').trim() || null;
+                            }
                             aggregatedTotal += tabOrder.totalAmount || 0;
                         }
                     }
@@ -614,6 +622,8 @@ export async function GET(request, { params }) {
                 cgst: aggregatedCgst, // Aggregated cgst
                 sgst: aggregatedSgst, // Aggregated sgst
                 deliveryCharge: aggregatedDeliveryCharge,
+                serviceFee: aggregatedServiceFee,
+                serviceFeeLabel: aggregatedServiceFee > 0 ? (aggregatedServiceFeeLabel || 'Additional Charge') : null,
                 totalAmount: aggregatedTotal, // Aggregated total
                 paymentStatus: aggregatedPaymentStatus, // <--- ADDED THIS FIELD
                 paymentDetails: isPublicTokenAccess ? null : (orderData.paymentDetails || null),
