@@ -25,6 +25,8 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         subtotal: order.subtotal,
         discount: order.discount,
         deliveryCharge: order.deliveryCharge,
+        serviceFee: order.serviceFee,
+        serviceFeeLabel: order.serviceFeeLabel,
         cgst: order.cgst,
         sgst: order.sgst,
         grandTotal: order.totalAmount,
@@ -215,7 +217,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 )}
                 {finalBillDetails.serviceFee > 0 && (
                     <div className="flex justify-between">
-                        <span>Service Fee</span>
+                        <span>{String(finalBillDetails.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge'}</span>
                         <span>+ {formatCurrency(finalBillDetails.serviceFee)}</span>
                     </div>
                 )}

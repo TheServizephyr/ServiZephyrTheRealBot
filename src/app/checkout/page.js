@@ -146,7 +146,8 @@ const CheckoutPageInternal = () => {
     const [vendorCharges, setVendorCharges] = useState({
         gstEnabled: false, gstRate: 5, gstMinAmount: 0,
         convenienceFeeEnabled: false, convenienceFeeRate: 2.5, convenienceFeePaidBy: 'customer', convenienceFeeLabel: 'Payment Fee',
-        packagingChargeEnabled: false, packagingChargeAmount: 0
+        packagingChargeEnabled: false, packagingChargeAmount: 0,
+        serviceFeeEnabled: false, serviceFeeLabel: 'Additional Charge', serviceFeeType: 'fixed', serviceFeeValue: 0, serviceFeeApplyOn: 'all'
     });
 
     // const [bundlingOrderDetails, setBundlingOrderDetails] = useState(null);
@@ -686,6 +687,11 @@ const CheckoutPageInternal = () => {
                         convenienceFeeLabel: paymentData.convenienceFeeLabel || 'Payment Processing Fee',
                         packagingChargeEnabled: paymentData.packagingChargeEnabled || false,
                         packagingChargeAmount: paymentData.packagingChargeAmount || 0,
+                        serviceFeeEnabled: paymentData.serviceFeeEnabled || false,
+                        serviceFeeLabel: paymentData.serviceFeeLabel || 'Additional Charge',
+                        serviceFeeType: paymentData.serviceFeeType || 'fixed',
+                        serviceFeeValue: Number(paymentData.serviceFeeValue) || 0,
+                        serviceFeeApplyOn: paymentData.serviceFeeApplyOn || 'all',
                     });
                 } else {
                     setCodEnabled(false);
@@ -843,10 +849,10 @@ const CheckoutPageInternal = () => {
 
 
     // ... (Price calculation unchanged) ...
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, isSmartBundlingEligible, tipAmount, isDeliveryFree, deliveryReason, isEstimated, isDeliveryOutOfRange } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge, serviceFee, isSmartBundlingEligible, tipAmount, isDeliveryFree, deliveryReason, isEstimated, isDeliveryOutOfRange } = useMemo(() => {
         // ... (Same logic as before) ...
         // Re-implementing logic to ensure no regression as I replaced a huge chunk
-        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, isSmartBundlingEligible: false, tipAmount: 0, isDeliveryFree: false, deliveryReason: '', isEstimated: false, isDeliveryOutOfRange: false };
+        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0, serviceFee: 0, isSmartBundlingEligible: false, tipAmount: 0, isDeliveryFree: false, deliveryReason: '', isEstimated: false, isDeliveryOutOfRange: false };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
         const isFreeDeliveryApplied = appliedCoupons.some(c => normalizeCouponType(c?.type) === 'free_delivery' && currentSubtotal >= (Number(c?.minOrder) || 0));
@@ -967,7 +973,21 @@ const CheckoutPageInternal = () => {
             }
         }
         const internalPackagingCharge = (diningPreference === 'takeaway' && vendorCharges?.packagingChargeEnabled) ? (vendorCharges.packagingChargeAmount || 0) : 0;
-        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + tip + internalPackagingCharge + (gstCalculationMode === 'included' ? 0 : (cgstAmount + sgstAmount));
+        const normalizedServiceFeeApplyOn = vendorCharges?.serviceFeeApplyOn || 'all';
+        const effectiveServiceFeeContext = deliveryType === 'street-vendor-pre-order' ? 'pickup' : deliveryType;
+        const shouldApplyServiceFee = Boolean(vendorCharges?.serviceFeeEnabled) && (
+            normalizedServiceFeeApplyOn === 'all' || normalizedServiceFeeApplyOn === effectiveServiceFeeContext
+        );
+        let calculatedServiceFee = 0;
+        if (shouldApplyServiceFee) {
+            const configuredServiceFeeValue = Number(vendorCharges?.serviceFeeValue) || 0;
+            if ((vendorCharges?.serviceFeeType || 'fixed') === 'percentage') {
+                calculatedServiceFee = parseFloat((Math.max(0, taxableAmount) * (configuredServiceFeeValue / 100)).toFixed(2));
+            } else {
+                calculatedServiceFee = configuredServiceFeeValue;
+            }
+        }
+        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + tip + internalPackagingCharge + calculatedServiceFee + (gstCalculationMode === 'included' ? 0 : (cgstAmount + sgstAmount));
 
         let calculatedConvenienceFee = 0;
         if (selectedPaymentMethod === 'online' && vendorCharges?.convenienceFeeEnabled) {
@@ -987,6 +1007,7 @@ const CheckoutPageInternal = () => {
             convenienceFee: calculatedConvenienceFee,
             grandTotal: finalGrandTotal,
             packagingCharge: internalPackagingCharge,
+            serviceFee: calculatedServiceFee,
             isSmartBundlingEligible: isSmartBundlingEligibleValue,
             tipAmount: tip,
             isDeliveryFree: isDeliveryFree,
@@ -1254,6 +1275,11 @@ const CheckoutPageInternal = () => {
             existingOrderId: activeOrderId || undefined,
             diningPreference: diningPreference,
             packagingCharge: packagingCharge,
+            serviceFee: serviceFee,
+            serviceFeeLabel: vendorCharges?.serviceFeeLabel || 'Additional Charge',
+            serviceFeeType: vendorCharges?.serviceFeeType || 'fixed',
+            serviceFeeValue: Number(vendorCharges?.serviceFeeValue) || 0,
+            serviceFeeApplyOn: vendorCharges?.serviceFeeApplyOn || 'all',
             // ✅ Car Order fields
             ...(deliveryType === 'car-order' && {
                 carSpot: cartData.carSpot || null,
@@ -1409,7 +1435,7 @@ const CheckoutPageInternal = () => {
                     // Update delivery charge from validation
                     if (validationData.charge !== undefined) {
                         orderData.deliveryCharge = validationData.charge;
-                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (convenienceFee || 0) + (tipAmount || 0);
+                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
 
                     console.log('[Checkout] ✅ Delivery validated:', validationData);
@@ -1499,7 +1525,7 @@ const CheckoutPageInternal = () => {
 
                     if (validationData.charge !== undefined) {
                         orderData.deliveryCharge = validationData.charge;
-                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (convenienceFee || 0) + (tipAmount || 0);
+                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
                 } catch (validationErr) {
                     console.error('[Checkout] Delivery validation error:', validationErr);
@@ -2429,10 +2455,21 @@ const CheckoutPageInternal = () => {
                                             <span>₹{packagingCharge.toFixed(2)}</span>
                                         </div>
                                     )}
+                                    {serviceFee > 0 && (
+                                        <div className="flex justify-between text-sm text-primary">
+                                            <span>
+                                                {vendorCharges?.serviceFeeLabel || 'Additional Charge'}
+                                                {(vendorCharges?.serviceFeeType || 'fixed') === 'percentage'
+                                                    ? ` (${Number(vendorCharges?.serviceFeeValue || 0)}%)`
+                                                    : ''}
+                                            </span>
+                                            <span>₹{serviceFee.toFixed(2)}</span>
+                                        </div>
+                                    )}
                                     <div className="border-t border-dashed pt-2 mt-2" />
                                     <div className="flex justify-between text-sm">
                                         <span>Order Total</span>
-                                        <span className="font-semibold">₹{(Math.max(0, subtotal - Number(totalDiscount || 0)) + finalDeliveryCharge + cgst + sgst + packagingCharge + tipAmount).toFixed(2)}</span>
+                                        <span className="font-semibold">₹{(Math.max(0, subtotal - Number(totalDiscount || 0)) + finalDeliveryCharge + cgst + sgst + packagingCharge + serviceFee + tipAmount).toFixed(2)}</span>
                                     </div>
                                     {convenienceFee > 0 && (
                                         <>

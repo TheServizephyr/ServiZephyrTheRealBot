@@ -61,7 +61,7 @@ function normalizeItem(item, index) {
     };
 }
 
-function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal, deliveryCharge = 0 }) {
+function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal, deliveryCharge = 0, serviceFee = 0 }) {
     const minuteBucket = Math.floor(Date.now() / 60000);
     const normalizedItems = (items || [])
         .map((item) => {
@@ -73,7 +73,7 @@ function buildManualOrderIdempotencyKey({ businessId, phone, items, subtotal, de
         .sort()
         .join('|');
 
-    const signature = `${businessId}|${phone}|${normalizedItems}|${Number(subtotal || 0).toFixed(2)}|${Number(deliveryCharge || 0).toFixed(2)}|${minuteBucket}`;
+    const signature = `${businessId}|${phone}|${normalizedItems}|${Number(subtotal || 0).toFixed(2)}|${Number(deliveryCharge || 0).toFixed(2)}|${Number(serviceFee || 0).toFixed(2)}|${minuteBucket}`;
     const digest = createHash('sha256').update(signature).digest('hex').slice(0, 24);
     return `manual_call_${digest}`;
 }
@@ -236,8 +236,10 @@ export async function POST(req) {
         const items = rawItems.map(normalizeItem);
         const subtotal = items.reduce((sum, item) => sum + toPositiveNumber(item.totalPrice, 0), 0);
         const deliveryCharge = toPositiveNumber(body?.deliveryCharge, 0);
+        const serviceFee = toPositiveNumber(body?.serviceFee, 0);
+        const serviceFeeLabel = String(body?.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge';
         const hasOwnerDeliveryChargeOverride = deliveryCharge > 0;
-        const grandTotal = subtotal + deliveryCharge;
+        const grandTotal = subtotal + deliveryCharge + serviceFee;
 
         const hasProvidedAddress = !!addressText;
         // Owner-entered address is treated as bill-only placeholder.
@@ -271,6 +273,8 @@ export async function POST(req) {
             sgst: 0,
             grandTotal,
             deliveryCharge,
+            serviceFee,
+            serviceFeeLabel,
             skipAddressValidation: true,
             initialStatus: 'confirmed',
             idempotencyKey: buildManualOrderIdempotencyKey({
@@ -278,7 +282,8 @@ export async function POST(req) {
                 phone,
                 items,
                 subtotal,
-                deliveryCharge
+                deliveryCharge,
+                serviceFee,
             }),
             guestRef,
         };

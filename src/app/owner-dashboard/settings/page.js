@@ -321,6 +321,11 @@ function SettingsPageContent() {
                     address: data.address && typeof data.address === 'object' ? data.address : defaultAddress,
                     dineInModel: data.dineInModel || 'post-paid', // Default to Post-Paid
                     gstCalculationMode: data.gstCalculationMode || (data.gstIncludedInPrice === false ? 'excluded' : 'included'),
+                    serviceFeeEnabled: data.serviceFeeEnabled || false,
+                    serviceFeeLabel: data.serviceFeeLabel || 'Additional Charge',
+                    serviceFeeType: data.serviceFeeType || 'fixed',
+                    serviceFeeValue: data.serviceFeeValue ?? 0,
+                    serviceFeeApplyOn: data.serviceFeeApplyOn || 'all',
                 };
                 setUser(userData);
                 setEditedUser(userData);
@@ -500,6 +505,11 @@ function SettingsPageContent() {
                 gstEnabled: editedUser.gstEnabled,
                 gstPercentage: editedUser.gstPercentage,
                 gstCalculationMode: editedUser.gstCalculationMode || 'included',
+                serviceFeeEnabled: editedUser.serviceFeeEnabled,
+                serviceFeeLabel: editedUser.serviceFeeLabel || 'Additional Charge',
+                serviceFeeType: editedUser.serviceFeeType || 'fixed',
+                serviceFeeValue: Number(editedUser.serviceFeeValue) || 0,
+                serviceFeeApplyOn: editedUser.serviceFeeApplyOn || 'all',
             }
         }
 
@@ -531,6 +541,11 @@ function SettingsPageContent() {
                 address: updatedUser.address && typeof updatedUser.address === 'object' ? updatedUser.address : defaultAddress,
                 dineInModel: updatedUser.dineInModel || 'post-paid',
                 gstCalculationMode: updatedUser.gstCalculationMode || (updatedUser.gstIncludedInPrice === false ? 'excluded' : 'included'),
+                serviceFeeEnabled: updatedUser.serviceFeeEnabled || false,
+                serviceFeeLabel: updatedUser.serviceFeeLabel || 'Additional Charge',
+                serviceFeeType: updatedUser.serviceFeeType || 'fixed',
+                serviceFeeValue: updatedUser.serviceFeeValue ?? 0,
+                serviceFeeApplyOn: updatedUser.serviceFeeApplyOn || 'all',
             };
             setUser(finalUser);
             setEditedUser(finalUser);
@@ -947,17 +962,17 @@ function SettingsPageContent() {
                         </div>
                     </SectionCard>
                     <SectionCard
-                        title="GST & Tax Settings"
-                        description="Configure GST for your orders."
+                        title="GST & Extra Charges"
+                        description="Configure GST and any extra charge you want to add on checkout."
                         footer={
                             <div className="flex justify-end gap-3">
                                 {isEditingGst ? (
                                     <>
                                         <Button variant="secondary" onClick={() => handleEditToggle('gst')}><XCircle className="mr-2 h-4 w-4" /> Cancel</Button>
-                                        <Button onClick={() => handleSave('gst')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4" /> Save GST Settings</Button>
+                                        <Button onClick={() => handleSave('gst')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4" /> Save Tax & Charge Settings</Button>
                                     </>
                                 ) : (
-                                    <Button onClick={() => handleEditToggle('gst')}><Edit className="mr-2 h-4 w-4" /> Edit GST Settings</Button>
+                                    <Button onClick={() => handleEditToggle('gst')}><Edit className="mr-2 h-4 w-4" /> Edit Tax & Charge Settings</Button>
                                 )}
                             </div>
                         }
@@ -1024,6 +1039,114 @@ function SettingsPageContent() {
                                     </div>
                                 </div>
                             )}
+
+                            <div className="border-t border-border pt-6 space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                    <div className="flex-1">
+                                        <Label htmlFor="serviceFeeEnabled" className="font-semibold flex items-center gap-2">
+                                            <ShoppingBag size={16} /> Custom Extra Charge
+                                        </Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Add a named surcharge to delivery, pickup, dine-in, or all orders.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="serviceFeeEnabled"
+                                        checked={editedUser.serviceFeeEnabled || false}
+                                        onCheckedChange={(checked) => setEditedUser({ ...editedUser, serviceFeeEnabled: checked })}
+                                        disabled={!isEditingGst}
+                                    />
+                                </div>
+
+                                {editedUser.serviceFeeEnabled && (
+                                    <div className="p-4 border border-dashed border-border rounded-lg space-y-4">
+                                        <div>
+                                            <Label htmlFor="serviceFeeLabel" className="font-semibold">Charge Name</Label>
+                                            <p className="text-xs text-muted-foreground mb-3">This text will be shown to customers on checkout and order bills.</p>
+                                            <input
+                                                id="serviceFeeLabel"
+                                                type="text"
+                                                value={editedUser.serviceFeeLabel || 'Additional Charge'}
+                                                onChange={(e) => setEditedUser({ ...editedUser, serviceFeeLabel: e.target.value })}
+                                                disabled={!isEditingGst}
+                                                className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed"
+                                                placeholder="e.g., Inflation Charge"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <Label className="font-semibold">Charge Type</Label>
+                                            <p className="text-xs text-muted-foreground mb-3">Choose a fixed rupee charge or a percentage on the discounted item total.</p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant={(editedUser.serviceFeeType || 'fixed') === 'fixed' ? 'default' : 'outline'}
+                                                    onClick={() => setEditedUser({ ...editedUser, serviceFeeType: 'fixed' })}
+                                                    disabled={!isEditingGst}
+                                                >
+                                                    Fixed Amount
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant={(editedUser.serviceFeeType || 'fixed') === 'percentage' ? 'default' : 'outline'}
+                                                    onClick={() => setEditedUser({ ...editedUser, serviceFeeType: 'percentage' })}
+                                                    disabled={!isEditingGst}
+                                                >
+                                                    Percentage
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <Label className="font-semibold">Apply Charge On</Label>
+                                            <p className="text-xs text-muted-foreground mb-3">Choose which kind of orders should include this charge.</p>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                {[
+                                                    { value: 'all', label: 'All Orders' },
+                                                    { value: 'delivery', label: 'Delivery' },
+                                                    { value: 'pickup', label: 'Pickup' },
+                                                    { value: 'dine-in', label: 'Dine-In' },
+                                                ].map((option) => (
+                                                    <Button
+                                                        key={option.value}
+                                                        type="button"
+                                                        variant={(editedUser.serviceFeeApplyOn || 'all') === option.value ? 'default' : 'outline'}
+                                                        onClick={() => setEditedUser({ ...editedUser, serviceFeeApplyOn: option.value })}
+                                                        disabled={!isEditingGst}
+                                                    >
+                                                        {option.label}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="serviceFeeValue" className="font-semibold">
+                                                {(editedUser.serviceFeeType || 'fixed') === 'percentage' ? 'Charge Percentage (%)' : 'Charge Amount (₹)'}
+                                            </Label>
+                                            <p className="text-xs text-muted-foreground mb-3">
+                                                {(editedUser.serviceFeeType || 'fixed') === 'percentage'
+                                                    ? 'This percentage will be applied on the discounted item total before delivery charges.'
+                                                    : 'This fixed amount will be added as a separate line item.'}
+                                            </p>
+                                            <input
+                                                id="serviceFeeValue"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={editedUser.serviceFeeValue ?? 0}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    setEditedUser({ ...editedUser, serviceFeeValue: value === '' ? '' : parseFloat(value) || 0 });
+                                                }}
+                                                disabled={!isEditingGst}
+                                                className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed"
+                                                placeholder={(editedUser.serviceFeeType || 'fixed') === 'percentage' ? 'e.g., 3' : 'e.g., 10'}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </SectionCard>
                     <SectionCard

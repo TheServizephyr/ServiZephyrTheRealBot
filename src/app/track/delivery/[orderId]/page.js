@@ -952,10 +952,12 @@ function OrderTrackingContent() {
                                         const tax = (Number(orderData.order.cgst) || 0) + (Number(orderData.order.sgst) || 0);
                                         const packing = Number(orderData.order.packagingCharge) || 0;
                                         const platform = Number(orderData.order.convenienceFee) || 0;
+                                        const service = Number(orderData.order.serviceFee) || 0;
+                                        const serviceLabel = String(orderData.order.serviceFeeLabel || '').trim() || 'Additional Charge';
                                         const discount = Number(orderData.order.discount) || 0;
 
                                         // Improved breakdown logic: Calculate residual as delivery if not accounted for
-                                        const accounted = subtotal + tax + packing + platform - discount;
+                                        const accounted = subtotal + tax + packing + platform + service - discount;
                                         const residual = total - accounted;
 
                                         if (delivery === 0 && residual > 0) {
@@ -990,6 +992,12 @@ function OrderTrackingContent() {
                                                     <div className="flex justify-between text-xs text-gray-500">
                                                         <span>Platform Fee</span>
                                                         <span>₹{platform}</span>
+                                                    </div>
+                                                )}
+                                                {service > 0 && (
+                                                    <div className="flex justify-between text-xs text-gray-500">
+                                                        <span>{serviceLabel}</span>
+                                                        <span>₹{service}</span>
                                                     </div>
                                                 )}
                                                 {discount > 0 && (

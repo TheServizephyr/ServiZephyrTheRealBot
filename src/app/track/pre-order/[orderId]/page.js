@@ -790,6 +790,13 @@ function PreOrderTrackingContent() {
                                         </div>
                                     )}
 
+                                    {(order.serviceFee > 0) && (
+                                        <div className="flex justify-between text-muted-foreground">
+                                            <span>{order.serviceFeeLabel || 'Additional Charge'}</span>
+                                            <span>{formatCurrency(order.serviceFee)}</span>
+                                        </div>
+                                    )}
+
                                     {(order.tipAmount > 0) && (
                                         <div className="flex justify-between text-muted-foreground">
                                             <span>Tip</span>

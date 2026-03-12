@@ -183,6 +183,11 @@ export async function GET(req) {
                 convenienceFeeLabel: businessData.convenienceFeeLabel || 'Payment Processing Fee',
                 packagingChargeEnabled: businessData.packagingChargeEnabled || false,
                 packagingChargeAmount: businessData.packagingChargeAmount || 0,
+                serviceFeeEnabled: businessData.serviceFeeEnabled || false,
+                serviceFeeLabel: businessData.serviceFeeLabel || 'Additional Charge',
+                serviceFeeType: businessData.serviceFeeType || 'fixed',
+                serviceFeeValue: businessData.serviceFeeValue ?? 0,
+                serviceFeeApplyOn: businessData.serviceFeeApplyOn || 'all',
                 // Include delivery fees for public menu (often needed for cart calc)
                 deliveryFeeType: fallback('deliveryFeeType', 'fixed'),
                 // FIXED: Calculate deliveryCharge for frontend compatibility
@@ -316,6 +321,11 @@ export async function GET(req) {
             convenienceFeeLabel: businessData?.convenienceFeeLabel || 'Payment Processing Fee',
             packagingChargeEnabled: businessData?.packagingChargeEnabled || false,
             packagingChargeAmount: businessData?.packagingChargeAmount || 0,
+            serviceFeeEnabled: businessData?.serviceFeeEnabled || false,
+            serviceFeeLabel: businessData?.serviceFeeLabel || 'Additional Charge',
+            serviceFeeType: businessData?.serviceFeeType || 'fixed',
+            serviceFeeValue: businessData?.serviceFeeValue ?? 0,
+            serviceFeeApplyOn: businessData?.serviceFeeApplyOn || 'all',
             gstPercentage: businessData?.gstPercentage || businessData?.gstRate || 0,
             businessId: businessId,
             merchantId: businessData?.merchantId || '',
@@ -472,6 +482,15 @@ export async function PATCH(req) {
         if (updates.convenienceFeeLabel !== undefined) businessUpdateData.convenienceFeeLabel = updates.convenienceFeeLabel;
         if (updates.packagingChargeEnabled !== undefined) businessUpdateData.packagingChargeEnabled = updates.packagingChargeEnabled;
         if (updates.packagingChargeAmount !== undefined) businessUpdateData.packagingChargeAmount = updates.packagingChargeAmount;
+        if (updates.serviceFeeEnabled !== undefined) businessUpdateData.serviceFeeEnabled = updates.serviceFeeEnabled;
+        if (updates.serviceFeeLabel !== undefined) businessUpdateData.serviceFeeLabel = String(updates.serviceFeeLabel || '').trim() || 'Additional Charge';
+        if (updates.serviceFeeType !== undefined) businessUpdateData.serviceFeeType = updates.serviceFeeType === 'percentage' ? 'percentage' : 'fixed';
+        if (updates.serviceFeeValue !== undefined) businessUpdateData.serviceFeeValue = Number(updates.serviceFeeValue) || 0;
+        if (updates.serviceFeeApplyOn !== undefined) {
+            const allowedApplyTargets = new Set(['all', 'delivery', 'pickup', 'dine-in']);
+            const normalizedApplyTarget = String(updates.serviceFeeApplyOn || '').trim();
+            businessUpdateData.serviceFeeApplyOn = allowedApplyTargets.has(normalizedApplyTarget) ? normalizedApplyTarget : 'all';
+        }
 
         // Dine-In Settings (Not moved to delivery-settings yet)
         if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
@@ -615,6 +634,11 @@ export async function PATCH(req) {
             convenienceFeeLabel: finalBusinessData?.convenienceFeeLabel || 'Payment Processing Fee',
             packagingChargeEnabled: finalBusinessData?.packagingChargeEnabled || false,
             packagingChargeAmount: finalBusinessData?.packagingChargeAmount || 0,
+            serviceFeeEnabled: finalBusinessData?.serviceFeeEnabled || false,
+            serviceFeeLabel: finalBusinessData?.serviceFeeLabel || 'Additional Charge',
+            serviceFeeType: finalBusinessData?.serviceFeeType || 'fixed',
+            serviceFeeValue: finalBusinessData?.serviceFeeValue ?? 0,
+            serviceFeeApplyOn: finalBusinessData?.serviceFeeApplyOn || 'all',
             businessId: finalBusinessId,
             merchantId: finalBusinessData?.merchantId || '',
             customerId: finalUserData?.customerId || '',

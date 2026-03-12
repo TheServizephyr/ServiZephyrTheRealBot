@@ -58,6 +58,8 @@ function CustomBillPage() {
         address: ''
     });
     const [deliveryChargeInput, setDeliveryChargeInput] = useState('0');
+    const [additionalChargeNameInput, setAdditionalChargeNameInput] = useState('');
+    const [additionalChargeInput, setAdditionalChargeInput] = useState('0');
 
     // State to control modal visibility
     const [isBillModalOpen, setIsBillModalOpen] = useState(false);
@@ -496,9 +498,11 @@ function CustomBillPage() {
         });
     };
 
-    const { subtotal, cgst, sgst, deliveryCharge, grandTotal } = useMemo(() => {
+    const { subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
         const normalizedDeliveryCharge = Math.max(0, Number(deliveryChargeInput) || 0);
+        const normalizedAdditionalCharge = Math.max(0, Number(additionalChargeInput) || 0);
+        const normalizedAdditionalChargeLabel = String(additionalChargeNameInput || 'Additional Charge').trim() || 'Additional Charge';
         const gstEnabled = !!restaurant?.gstEnabled;
         const gstPercentage = Number(restaurant?.gstPercentage || 0);
         const gstMinAmount = Number(restaurant?.gstMinAmount || 0);
@@ -511,7 +515,9 @@ function CustomBillPage() {
                 cgst: 0,
                 sgst: 0,
                 deliveryCharge: normalizedDeliveryCharge,
-                grandTotal: sub + normalizedDeliveryCharge
+                additionalCharge: normalizedAdditionalCharge,
+                additionalChargeLabel: normalizedAdditionalChargeLabel,
+                grandTotal: sub + normalizedDeliveryCharge + normalizedAdditionalCharge
             };
         }
 
@@ -530,16 +536,18 @@ function CustomBillPage() {
         }
 
         const total = gstCalculationMode === 'included'
-            ? (sub + normalizedDeliveryCharge)
-            : (sub + localCgst + localSgst + normalizedDeliveryCharge);
+            ? (sub + normalizedDeliveryCharge + normalizedAdditionalCharge)
+            : (sub + localCgst + localSgst + normalizedDeliveryCharge + normalizedAdditionalCharge);
         return {
             subtotal: sub,
             cgst: localCgst,
             sgst: localSgst,
             deliveryCharge: normalizedDeliveryCharge,
+            additionalCharge: normalizedAdditionalCharge,
+            additionalChargeLabel: normalizedAdditionalChargeLabel,
             grandTotal: total
         };
-    }, [cart, restaurant, deliveryChargeInput]);
+    }, [cart, restaurant, deliveryChargeInput, additionalChargeInput, additionalChargeNameInput]);
 
     const printReceiptToUsb = async ({
         items,
@@ -588,7 +596,9 @@ function CustomBillPage() {
         const safeCgst = Number(billDetails?.cgst || 0);
         const safeSgst = Number(billDetails?.sgst || 0);
         const safeDeliveryCharge = Number(billDetails?.deliveryCharge || 0);
-        const safeGrandTotal = Number(billDetails?.grandTotal || safeSubtotal + safeCgst + safeSgst + safeDeliveryCharge);
+        const safeServiceFee = Number(billDetails?.serviceFee || 0);
+        const safeServiceFeeLabel = String(billDetails?.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge';
+        const safeGrandTotal = Number(billDetails?.grandTotal || safeSubtotal + safeCgst + safeSgst + safeDeliveryCharge + safeServiceFee);
 
         // Totals
         encoder.text('--------------------------------').newline()
@@ -598,6 +608,7 @@ function CustomBillPage() {
         if (safeCgst > 0) encoder.text(`CGST: ${safeCgst.toFixed(0)}`).newline();
         if (safeSgst > 0) encoder.text(`SGST: ${safeSgst.toFixed(0)}`).newline();
         if (safeDeliveryCharge > 0) encoder.text(`Delivery: ${safeDeliveryCharge.toFixed(0)}`).newline();
+        if (safeServiceFee > 0) encoder.text(`${safeServiceFeeLabel}: ${safeServiceFee.toFixed(0)}`).newline();
 
         encoder.bold(true).size('large')
             .text(`TOTAL: ${safeGrandTotal.toFixed(0)}`).newline()
@@ -703,6 +714,8 @@ function CustomBillPage() {
                     cgst,
                     sgst,
                     deliveryCharge,
+                    serviceFee: additionalCharge,
+                    serviceFeeLabel: additionalChargeLabel,
                     grandTotal,
                 },
             }),
@@ -750,6 +763,8 @@ function CustomBillPage() {
                     customerDetails,
                     items: orderItems,
                     deliveryCharge,
+                    serviceFee: additionalCharge,
+                    serviceFeeLabel: additionalChargeLabel,
                     notes: '',
                 }),
             });
@@ -830,7 +845,7 @@ function CustomBillPage() {
             const printResult = await printReceiptToUsb({
                 items: cart,
                 customer: customerDetails,
-                billDetails: { subtotal, cgst, sgst, deliveryCharge, grandTotal },
+                billDetails: { subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal },
                 orderDate: new Date(),
                 closeBillModalOnSuccess: true,
                 notifyUser: false,
@@ -907,7 +922,7 @@ function CustomBillPage() {
                         <BillToPrint
                             order={{ orderDate: new Date() }}
                             restaurant={restaurant}
-                            billDetails={{ subtotal, cgst, sgst, deliveryCharge, grandTotal, discount: 0 }}
+                            billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
                             items={cart}
                             customerDetails={customerDetails}
                         />
@@ -1220,6 +1235,29 @@ function CustomBillPage() {
                                     placeholder="Enter delivery charge"
                                 />
                             </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="flex items-center gap-2">Additional Charge Name (Optional)</Label>
+                                <input
+                                    type="text"
+                                    value={additionalChargeNameInput}
+                                    onChange={(e) => setAdditionalChargeNameInput(e.target.value)}
+                                    className="w-full p-2 border rounded-md bg-input border-border"
+                                    placeholder="e.g. Inflation Charge, Convenience Fee"
+                                />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="flex items-center gap-2">Additional Charge Amount (Optional)</Label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={additionalChargeInput}
+                                    onChange={(e) => setAdditionalChargeInput(e.target.value)}
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                    className="w-full p-2 border rounded-md bg-input border-border"
+                                    placeholder="Enter additional charge amount"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -1229,7 +1267,7 @@ function CustomBillPage() {
                                 <BillToPrint
                                     order={{ orderDate: new Date() }}
                                     restaurant={restaurant}
-                                    billDetails={{ subtotal, cgst, sgst, deliveryCharge, grandTotal, discount: 0 }}
+                                    billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
                                     items={cart}
                                     customerDetails={customerDetails}
                                 />

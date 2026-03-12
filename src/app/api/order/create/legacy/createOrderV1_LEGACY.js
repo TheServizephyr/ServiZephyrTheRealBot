@@ -119,6 +119,8 @@ export async function processOrderV1(body, firestore) {
             dineInTabId,
             diningPreference = null,
             packagingCharge = 0,
+            serviceFee = 0,
+            serviceFeeLabel = null,
             existingOrderId, // <-- NEW: For adding items to an existing order
             ordered_by = 'customer', // 'customer' | 'waiter_<name>' - who placed the order
             ordered_by_name = null, // Waiter's name if applicable
@@ -846,7 +848,7 @@ export async function processOrderV1(body, firestore) {
         }
 
         const gstComponent = taxes.isIncludedInPrice ? 0 : (serverCgst + serverSgst);
-        const serverGrandTotal = netSubtotal + gstComponent + finalDeliveryCharge + (packagingCharge || 0) + (tipAmount || 0);
+        const serverGrandTotal = netSubtotal + gstComponent + finalDeliveryCharge + (packagingCharge || 0) + (serviceFee || 0) + (tipAmount || 0);
 
         console.log(`[API /order/create] Server Finals:`);
         console.log(`  Subtotal: ₹${pricing.serverSubtotal}`);
@@ -972,6 +974,8 @@ export async function processOrderV1(body, firestore) {
                 dineInTabId: dineInTabId || null,
                 diningPreference: diningPreference || null,
                 packagingCharge: packagingCharge || 0,
+                serviceFee: serviceFee || 0,
+                serviceFeeLabel: serviceFee ? (String(serviceFeeLabel || '').trim() || 'Additional Charge') : null,
                 ordered_by: ordered_by || 'customer',
                 ordered_by_name: ordered_by_name || null,
                 dineInToken: dineInToken,
@@ -1035,7 +1039,7 @@ export async function processOrderV1(body, firestore) {
                 business_type: businessType,
                 customer_details: JSON.stringify({ name: tab_name, address: { full: `Table ${tableId}` }, phone: `dine-in-${tableId}` }),
                 items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount: 0, pickupTime: '', cgst, sgst, deliveryCharge: 0, tableId, dineInTabId, pax_count, tab_name }),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount: 0, pickupTime: '', cgst, sgst, deliveryCharge: 0, tableId, dineInTabId, pax_count, tab_name, serviceFee, serviceFeeLabel }),
                 notes: notes || null
             };
             console.log("[API /order/create] Generated servizephyr_payload for dine-in:", JSON.stringify(servizephyrOrderPayload, null, 2));
@@ -1249,6 +1253,8 @@ export async function processOrderV1(body, firestore) {
                 deliveryCharge: deliveryCharge || 0,
                 diningPreference: diningPreference || null,
                 packagingCharge: packagingCharge || 0,
+                serviceFee: serviceFee || 0,
+                serviceFeeLabel: serviceFee ? (String(serviceFeeLabel || '').trim() || 'Additional Charge') : null,
                 totalAmount: grandTotal,
                 status: 'awaiting_payment', // Hidden from dashboard until payment completes
                 orderDate: FieldValue.serverTimestamp(),
@@ -1323,6 +1329,8 @@ export async function processOrderV1(body, firestore) {
                 deliveryCharge: deliveryCharge || 0,
                 diningPreference: diningPreference || null,
                 packagingCharge: packagingCharge || 0,
+                serviceFee: serviceFee || 0,
+                serviceFeeLabel: serviceFee ? (String(serviceFeeLabel || '').trim() || 'Additional Charge') : null,
                 totalAmount: grandTotal,
                 status: 'awaiting_payment',
                 orderDate: FieldValue.serverTimestamp(),
@@ -1534,6 +1542,8 @@ export async function processOrderV1(body, firestore) {
             deliveryCharge: deliveryCharge || 0,
             diningPreference: diningPreference || null,
             packagingCharge: packagingCharge || 0,
+            serviceFee: serviceFee || 0,
+            serviceFeeLabel: serviceFee ? (String(serviceFeeLabel || '').trim() || 'Additional Charge') : null,
             totalAmount: grandTotal,
             status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),

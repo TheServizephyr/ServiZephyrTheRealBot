@@ -130,8 +130,9 @@ const getOrderGrandTotal = (order = {}) => {
     const cgst = toAmount(order?.cgst, toAmount(billDetails?.cgst, 0));
     const sgst = toAmount(order?.sgst, toAmount(billDetails?.sgst, 0));
     const deliveryCharge = toAmount(order?.deliveryCharge, toAmount(billDetails?.deliveryCharge, 0));
+    const serviceFee = toAmount(order?.serviceFee, toAmount(billDetails?.serviceFee, 0));
     const discount = toAmount(order?.discount, toAmount(billDetails?.discount, 0));
-    const fallbackTotal = subtotal + cgst + sgst + deliveryCharge - discount;
+    const fallbackTotal = subtotal + cgst + sgst + deliveryCharge + serviceFee - discount;
     return Math.max(0, fallbackTotal);
 };
 
@@ -891,6 +892,12 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
                                 {order.discount > 0 && <p className="text-green-500"><strong>Discount:</strong> - ₹{order.discount?.toFixed(2)}</p>}
                                 <p><strong>GST:</strong> ₹{(order.cgst + order.sgst).toFixed(2)}</p>
                                 <p><strong>Delivery Charge:</strong> ₹{toAmount(order.deliveryCharge, toAmount(order.billDetails?.deliveryCharge, 0)).toFixed(2)}</p>
+                                {toAmount(order.serviceFee, toAmount(order.billDetails?.serviceFee, 0)) > 0 && (
+                                    <p>
+                                        <strong>{String(order.serviceFeeLabel || order.billDetails?.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge'}:</strong>{' '}
+                                        ₹{toAmount(order.serviceFee, toAmount(order.billDetails?.serviceFee, 0)).toFixed(2)}
+                                    </p>
+                                )}
                                 <p className="font-bold text-lg border-t border-dashed mt-2 pt-2"><strong>Grand Total:</strong> ₹{getOrderGrandTotal(order).toFixed(2)}</p>
                             </div>
                         ) : (
