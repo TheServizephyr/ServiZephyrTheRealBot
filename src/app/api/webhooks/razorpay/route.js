@@ -21,7 +21,7 @@ function timingSafeEqualHex(a, b) {
 const generateSecureToken = async (firestore, customerPhone) => {
     console.log(`[Webhook RZP] generateSecureToken for identifier (Redacted)`);
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
+    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
@@ -454,7 +454,7 @@ export async function POST(req) {
                 const tokenRef = firestore.collection('auth_tokens').doc(trackingToken);
                 batch.set(tokenRef, {
                     phone: customerDetails.phone,
-                    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                    expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
                     type: 'tracking',
                     orderId: orderRef.id
                 }, { merge: true });

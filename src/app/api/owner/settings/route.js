@@ -242,7 +242,7 @@ export async function GET(req) {
             req,
             'view_settings',
             {},
-            false,
+            true,
             PERMISSIONS.VIEW_SETTINGS
         );
         const { uid, userData, businessSnap, businessId } = context;
@@ -346,7 +346,7 @@ export async function PATCH(req) {
             req,
             'update_settings',
             {},
-            false,
+            true,
             [PERMISSIONS.MANAGE_SETTINGS, PERMISSIONS.MANAGE_OUTLET_SETTINGS]
         );
         const { uid, userData, businessSnap, businessId } = context;

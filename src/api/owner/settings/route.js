@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 async function verifyUserAndGetData(req) {
     const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req); // Use central helper
+    const uid = await verifyAndGetUid(req, true); // Enforce revoked-session rejection on protected owner data
     
     // Admin impersonation logic
     const url = new URL(req.url, `http://${req.headers.host}`);

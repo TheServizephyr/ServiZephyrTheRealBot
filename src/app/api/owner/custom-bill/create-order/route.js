@@ -12,7 +12,7 @@ import { createOrderV2 } from '@/services/order/createOrder.service';
 const SHORT_LINK_COLLECTION = 'short_links';
 const SHORT_LINK_LENGTH = 8;
 const SHORT_LINK_MAX_ATTEMPTS = 5;
-const SHORT_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SHORT_LINK_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const ADD_ADDRESS_TEMPLATE_NAME = (process.env.WHATSAPP_ADD_ADDRESS_TEMPLATE_NAME || '').trim();
 const ADD_ADDRESS_TEMPLATE_LANGUAGE = (process.env.WHATSAPP_ADD_ADDRESS_TEMPLATE_LANGUAGE || 'en').trim();
@@ -253,7 +253,7 @@ export async function POST(req) {
             businessId,
             channel: 'manual_call',
             scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-            ttlMs: 7 * 24 * 60 * 60 * 1000,
+            ttlMs: 24 * 60 * 60 * 1000,
         });
 
         const createOrderPayload = {

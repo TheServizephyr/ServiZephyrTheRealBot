@@ -10,7 +10,8 @@ let dbAnalyticsPatched = false;
 const DB_ANALYTICS_PENDING = new Map();
 let dbAnalyticsFlushTimer = null;
 const AUTH_SESSION_COOKIE_NAME = 'auth_session';
-const AUTH_SESSION_MAX_AGE_MS = Math.max(60 * 60 * 1000, Number(process.env.AUTH_SESSION_MAX_AGE_MS || 5 * 24 * 60 * 60 * 1000));
+const AUTH_SESSION_MAX_AGE_MS = Math.max(60 * 60 * 1000, Number(process.env.AUTH_SESSION_MAX_AGE_MS || 24 * 60 * 60 * 1000));
+const AUTH_LOGOUT_STATE_COLLECTION = 'auth_session_state';
 
 const DB_ANALYTICS_ENABLED = process.env.ENABLE_FIREBASE_DB_QUERY_ANALYTICS !== 'false';
 const DB_ANALYTICS_FLUSH_MS = Math.max(5000, Number(process.env.DB_ANALYTICS_FLUSH_MS || 30000));
@@ -341,13 +342,56 @@ const createAuthSessionCookie = async (idToken, expiresInMs = AUTH_SESSION_MAX_A
   return auth.createSessionCookie(safeToken, { expiresIn: safeExpiresIn });
 };
 
+const assertDecodedTokenNotRevoked = async (auth, decodedToken) => {
+  const uid = String(decodedToken?.uid || '').trim();
+  if (!uid) return decodedToken;
+
+  const userRecord = await auth.getUser(uid);
+  const validAfterMs = userRecord?.tokensValidAfterTime
+    ? new Date(userRecord.tokensValidAfterTime).getTime()
+    : 0;
+  const issuedAtSec = Number(decodedToken?.auth_time || decodedToken?.iat || 0);
+
+  if (validAfterMs > 0 && issuedAtSec > 0 && (issuedAtSec * 1000) < validAfterMs) {
+    const error = new Error('Session token revoked.');
+    error.code = 'auth/id-token-revoked';
+    throw error;
+  }
+
+  return decodedToken;
+};
+
+const assertDecodedTokenNotLoggedOut = async (decodedToken) => {
+  const uid = String(decodedToken?.uid || '').trim();
+  const issuedAtSec = Number(decodedToken?.auth_time || decodedToken?.iat || 0);
+  if (!uid || issuedAtSec <= 0) return decodedToken;
+
+  const firestore = await getFirestore();
+  const logoutStateDoc = await firestore.collection(AUTH_LOGOUT_STATE_COLLECTION).doc(uid).get();
+  if (!logoutStateDoc.exists) return decodedToken;
+
+  const logoutAfterEpochSec = Number(logoutStateDoc.data()?.logoutAfterEpochSec || 0);
+  if (logoutAfterEpochSec > 0 && issuedAtSec <= logoutAfterEpochSec) {
+    const error = new Error('Session token revoked.');
+    error.code = 'auth/id-token-revoked';
+    throw error;
+  }
+
+  return decodedToken;
+};
+
 const verifySessionCookie = async (sessionCookie, checkRevoked = false) => {
   const auth = await getAuth();
   const safeCookie = String(sessionCookie || '').trim();
   if (!safeCookie) {
     throw { message: 'Session cookie is missing or malformed.', status: 401, code: 'SESSION_COOKIE_MISSING' };
   }
-  return auth.verifySessionCookie(safeCookie, checkRevoked);
+  const decodedToken = await auth.verifySessionCookie(safeCookie, false);
+  if (checkRevoked) {
+    await assertDecodedTokenNotRevoked(auth, decodedToken);
+    return assertDecodedTokenNotLoggedOut(decodedToken);
+  }
+  return decodedToken;
 };
 
 const getDecodedAuthContext = async (req, { checkRevoked = false, allowSessionCookie = true } = {}) => {
@@ -367,6 +411,25 @@ const getDecodedAuthContext = async (req, { checkRevoked = false, allowSessionCo
   throw { message: 'Authorization token is missing or malformed.', status: 401, code: 'AUTH_MISSING' };
 };
 
+const revokeAuthSessionsForRequest = async (req) => {
+  try {
+    const decodedToken = await getDecodedAuthContext(req, { checkRevoked: false, allowSessionCookie: true });
+    const uid = String(decodedToken?.uid || '').trim();
+    if (!uid) return false;
+
+    const auth = await getAuth();
+    await auth.revokeRefreshTokens(uid);
+    const firestore = await getFirestore();
+    await firestore.collection(AUTH_LOGOUT_STATE_COLLECTION).doc(uid).set({
+      logoutAfterEpochSec: Math.floor(Date.now() / 1000),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 
 /**
  * Verifies the authorization token from a request and returns the user's UID.
@@ -376,7 +439,7 @@ const getDecodedAuthContext = async (req, { checkRevoked = false, allowSessionCo
  * @returns {Promise<string>} The user's UID.
  * @throws Will throw an error with a status code if the token is missing or invalid.
  */
-const verifyAndGetUid = async (req, checkRevoked = false) => {
+const verifyAndGetUid = async (req, checkRevoked = true) => {
   try {
     const decodedToken = await getDecodedAuthContext(req, { checkRevoked, allowSessionCookie: true });
     return decodedToken.uid;
@@ -417,7 +480,12 @@ const getDatabase = async () => {
 
 const verifyIdToken = async (token, checkRevoked = false) => {
   const auth = await getAuth();
-  return auth.verifyIdToken(token, checkRevoked);
+  const decodedToken = await auth.verifyIdToken(token, false);
+  if (checkRevoked) {
+    await assertDecodedTokenNotRevoked(auth, decodedToken);
+    return assertDecodedTokenNotLoggedOut(decodedToken);
+  }
+  return decodedToken;
 };
 
 export {
@@ -435,6 +503,7 @@ export {
   createAuthSessionCookie,
   verifySessionCookie,
   getDecodedAuthContext,
+  revokeAuthSessionsForRequest,
   extractBearerTokenFromRequest,
 };
 

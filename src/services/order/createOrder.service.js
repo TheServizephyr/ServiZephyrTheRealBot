@@ -1215,7 +1215,7 @@ export async function createOrderV2(req, options = {}) {
  */
 async function generateSecureToken(firestore, userId) {
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h validity
+    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6h validity
 
     const tokenData = {
         userId: userId,  // Store unified userId (UID or guest ID)

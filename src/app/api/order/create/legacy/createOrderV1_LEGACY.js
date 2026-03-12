@@ -15,7 +15,7 @@ import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 const generateSecureToken = async (firestore, identifier) => {
     console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
+    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
 
     // Determine if identifier is GuestID or Phone

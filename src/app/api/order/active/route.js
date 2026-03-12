@@ -13,6 +13,7 @@ import {
     verifyAppCheckToken,
     verifyScopedAuthToken,
 } from '@/lib/public-auth';
+import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,8 +28,25 @@ export async function GET(req) {
     let telemetryStatus = 200;
     let telemetryError = null;
     let telemetryContext = null;
-    const respond = (payload, status = 200) => {
+    let auditActorUid = null;
+    const urlForAudit = new URL(req.url);
+    const auditTokenId = hashAuditValue(
+        urlForAudit.searchParams.get('ref')
+        || urlForAudit.searchParams.get('phone')
+        || urlForAudit.searchParams.get('tabId')
+        || urlForAudit.searchParams.get('token')
+        || ''
+    );
+    const respond = (payload, status = 200, metadata = {}) => {
         telemetryStatus = status;
+        logRequestAudit({
+            req,
+            statusCode: status,
+            source: 'order_active',
+            actorUid: auditActorUid,
+            tokenId: auditTokenId,
+            metadata,
+        });
         return NextResponse.json(payload, { status });
     };
 
@@ -45,7 +63,9 @@ export async function GET(req) {
         };
 
         if (!tabId && !phone && !ref) {
-            return respond({ message: 'TabId, Phone, or Ref is required' }, 400);
+            return respond({ message: 'TabId, Phone, or Ref is required' }, 400, {
+                outcome: 'missing_identifier',
+            });
         }
 
         const firestore = await getFirestore();
@@ -58,7 +78,12 @@ export async function GET(req) {
             auditContext: 'order_active',
         });
         if (!rate.allowed) {
-            return respond({ message: 'Too many active-order requests. Please slow down.' }, 429);
+            return respond({ message: 'Too many active-order requests. Please slow down.' }, 429, {
+                outcome: 'rate_limited',
+                hasTabId: !!tabId,
+                hasPhone: !!phone,
+                hasRef: !!ref,
+            });
         }
 
         // SCENARIO 1: DELIVERY/TAKEAWAY (Query by User Identity)
@@ -84,10 +109,13 @@ export async function GET(req) {
                 });
                 targetCustomerId = refSession?.subjectId || null;
                 if (!targetCustomerId) {
-                    return respond({ message: 'Invalid Ref' }, 400);
+                    return respond({ message: 'Invalid Ref' }, 400, {
+                        outcome: 'invalid_ref',
+                    });
                 }
                 if (refSession && refSession.legacy !== true) {
                     isAuthorized = true;
+                    auditActorUid = refSession.subjectId;
                     setSignedGuestSessionCookie(cookieStore, {
                         subjectId: refSession.subjectId,
                         subjectType: refSession.subjectType,
@@ -149,7 +177,11 @@ export async function GET(req) {
 
             if (!isAuthorized) {
                 console.warn(`[API /order/active] Unauthorized access attempt for ${phone || ref}`);
-                return respond({ message: 'Unauthorized. Invalid or expired public session.' }, 401);
+                return respond({ message: 'Unauthorized. Invalid or expired public session.' }, 401, {
+                    outcome: 'unauthorized',
+                    hasRef: !!ref,
+                    hasPhone: !!phone,
+                });
             }
 
             // --- QUERY EXECUTION ---
@@ -173,8 +205,11 @@ export async function GET(req) {
             }
 
             if (!userId) {
-                return respond({ message: 'Could not resolve user identity' }, 400);
+                return respond({ message: 'Could not resolve user identity' }, 400, {
+                    outcome: 'identity_resolution_failed',
+                });
             }
+            auditActorUid = userId;
 
             // Query primarily by userId. Add phone-based fallbacks to support
             // mixed identity histories (guest -> logged-in migration, legacy docs, etc.).
@@ -253,7 +288,11 @@ export async function GET(req) {
             });
 
             console.log(`[API /order/active] Returning ${finalActiveOrders.length} active orders.`);
-            return respond({ activeOrders: finalActiveOrders }, 200);
+            return respond({ activeOrders: finalActiveOrders }, 200, {
+                outcome: 'resolved',
+                mode: 'customer',
+                orderCount: finalActiveOrders.length,
+            });
         }
 
         // SCENARIO 2: DINE-IN (Query by TabId)
@@ -316,7 +355,10 @@ export async function GET(req) {
 
         if (uniqueDocs.size === 0) {
             console.log('[API /order/active] No documents found. Returning 404.');
-            return respond({ message: 'No orders found for this tab' }, 404);
+            return respond({ message: 'No orders found for this tab' }, 404, {
+                outcome: 'not_found',
+                mode: 'tab',
+            });
         }
 
         // Aggregate all items and calculate totals
@@ -359,13 +401,20 @@ export async function GET(req) {
             grandTotal: subtotal,
             tab_name,
             customerName
-        }, 200);
+        }, 200, {
+            outcome: 'resolved',
+            mode: 'tab',
+            itemCount: allItems.length,
+        });
 
     } catch (error) {
         telemetryStatus = error?.status || 500;
         telemetryError = error?.message || 'Failed to load active order';
         console.error("GET /api/order/active error:", error);
-        return respond({ message: 'Internal Server Error' }, telemetryStatus);
+        return respond({ message: 'Internal Server Error' }, telemetryStatus, {
+            outcome: 'error',
+            error: error?.message || 'unknown_error',
+        });
     } finally {
         void trackApiTelemetry({
             endpoint: 'api.order.active',
@@ -379,11 +428,26 @@ export async function GET(req) {
 
 
 export async function POST(req) {
+    const previewBody = await req.clone().json().catch(() => ({}));
+    const auditTokenId = hashAuditValue(previewBody?.phone || previewBody?.token || previewBody?.restaurantId || '');
+    const respond = (payload, status = 200, metadata = {}) => {
+        logRequestAudit({
+            req,
+            statusCode: status,
+            source: 'order_active_legacy_post',
+            actorUid: null,
+            tokenId: auditTokenId,
+            metadata,
+        });
+        return NextResponse.json(payload, { status });
+    };
     try {
         const { phone, token, restaurantId } = await req.json();
 
         if (!phone || !token || !restaurantId) {
-            return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+            return respond({ message: 'Missing required fields' }, 400, {
+                outcome: 'missing_fields',
+            });
         }
 
         const firestore = await getFirestore();
@@ -391,15 +455,21 @@ export async function POST(req) {
         // 1. Verify Session Token
         const tokenDoc = await firestore.collection('auth_tokens').doc(token).get();
         if (!tokenDoc.exists) {
-            return NextResponse.json({ message: 'Invalid session token' }, { status: 401 });
+            return respond({ message: 'Invalid session token' }, 401, {
+                outcome: 'invalid_token',
+            });
         }
 
         const tokenData = tokenDoc.data();
         if (tokenData.phone !== phone) {
-            return NextResponse.json({ message: 'Token mismatch' }, { status: 403 });
+            return respond({ message: 'Token mismatch' }, 403, {
+                outcome: 'token_mismatch',
+            });
         }
         if (tokenData.expiresAt.toDate() < new Date()) {
-            return NextResponse.json({ message: 'Session expired' }, { status: 401 });
+            return respond({ message: 'Session expired' }, 401, {
+                outcome: 'expired',
+            });
         }
 
         // 2. Query for Active Order
@@ -416,7 +486,10 @@ export async function POST(req) {
             .get();
 
         if (activeOrderQuery.empty) {
-            return NextResponse.json({ activeOrder: null }, { status: 200 });
+            return respond({ activeOrder: null }, 200, {
+                outcome: 'resolved',
+                orderFound: false,
+            });
         }
 
         const orderDoc = activeOrderQuery.docs[0];
@@ -424,17 +497,23 @@ export async function POST(req) {
 
 
 
-        return NextResponse.json({
+        return respond({
             activeOrder: {
                 orderId: orderDoc.id,
                 status: orderData.status,
                 trackingToken: orderData.trackingToken || token, // Use existing or current token
                 restaurantId: orderData.restaurantId
             }
-        }, { status: 200 });
+        }, 200, {
+            outcome: 'resolved',
+            orderFound: true,
+        });
 
     } catch (error) {
         console.error("API Error /api/order/active:", error);
-        return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+        return respond({ message: 'Internal Server Error' }, 500, {
+            outcome: 'error',
+            error: error?.message || 'unknown_error',
+        });
     }
 }

@@ -11,6 +11,7 @@ import {
     verifyAndGetUid,
 } from '@/lib/firebase-admin';
 import { logSecurityEvent, SECURITY_EVENT_TYPES } from '@/lib/security/security-events';
+import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 const OWNER_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
 
@@ -54,13 +55,14 @@ async function resolveBusinessType(firestore, uid, role, currentBusinessType) {
 
 export async function POST(req) {
     console.log("[DEBUG] /api/auth/check-role: Received a request.");
+    const auditTokenId = hashAuditValue(extractBearerTokenFromRequest(req) || req.cookies?.get?.(AUTH_SESSION_COOKIE_NAME)?.value || '');
     try {
         const idToken = extractBearerTokenFromRequest(req);
         const uid = await verifyAndGetUid(req); // Use the new helper
         const firestore = await getFirestore();
         console.log(`[DEBUG] /api/auth/check-role: Token verified for UID: ${uid}`);
         const sessionCookie = idToken ? await createAuthSessionCookie(idToken, AUTH_SESSION_MAX_AGE_MS) : '';
-        const finalize = (payload, status = 200) => {
+        const finalize = (payload, status = 200, metadata = {}) => {
             const response = NextResponse.json(payload, { status });
             response.headers.set('Cache-Control', 'no-store');
             if (sessionCookie) {
@@ -82,6 +84,14 @@ export async function POST(req) {
                     metadata: { status },
                 });
             }
+            logRequestAudit({
+                req,
+                statusCode: status,
+                source: 'auth_check_role',
+                actorUid: uid,
+                tokenId: auditTokenId,
+                metadata,
+            });
             return response;
         };
 
@@ -121,7 +131,7 @@ export async function POST(req) {
                         collectionName: o.collectionName,
                         ownerId: o.ownerId, // Include ownerId for employee_of redirect
                     })),
-                }, 200);
+                }, 200, { outcome: 'resolved', role, hasMultipleRoles: true });
             }
 
             // If user is ONLY an employee (no owner role)
@@ -142,7 +152,7 @@ export async function POST(req) {
                         businessType: null,
                         redirectTo,
                         outletName: outlet.outletName,
-                    }, 200);
+                    }, 200, { outcome: 'resolved', role: 'employee', redirectTo });
                 }
             }
 
@@ -160,7 +170,7 @@ export async function POST(req) {
 
             if (role) {
                 console.log(`[DEBUG] /api/auth/check-role: Role found in 'users': '${role}'. Returning 200.`);
-                return finalize({ role, businessType }, 200);
+                return finalize({ role, businessType }, 200, { outcome: 'resolved', role });
             }
         }
 
@@ -171,21 +181,45 @@ export async function POST(req) {
 
         if (driverDoc.exists) {
             console.log(`[DEBUG] /api/auth/check-role: Role found in 'drivers': 'rider'. Returning 200.`);
-            return finalize({ role: 'rider', businessType: null }, 200);
+            return finalize({ role: 'rider', businessType: null }, 200, { outcome: 'resolved', role: 'rider' });
         }
 
         console.log(`[DEBUG] /api/auth/check-role: User not found in any collection for UID: ${uid}. Returning 404.`);
-        return finalize({ message: 'User profile not found.' }, 404);
+        return finalize({ message: 'User profile not found.' }, 404, { outcome: 'not_found' });
 
     } catch (error) {
         console.error('[DEBUG] /api/auth/check-role: CRITICAL ERROR:', error);
         if (error.code === 'auth/id-token-expired') {
+            logRequestAudit({
+                req,
+                statusCode: 401,
+                source: 'auth_check_role',
+                actorUid: null,
+                tokenId: auditTokenId,
+                metadata: { outcome: 'expired_token' },
+            });
             return NextResponse.json({ message: 'Login token has expired. Please log in again.' }, { status: 401 });
         }
         // Handle custom errors from our helper
         if (error.status) {
+            logRequestAudit({
+                req,
+                statusCode: error.status,
+                source: 'auth_check_role',
+                actorUid: null,
+                tokenId: auditTokenId,
+                metadata: { outcome: 'auth_error', error: error.message },
+            });
             return NextResponse.json({ message: error.message }, { status: error.status });
         }
+        logRequestAudit({
+            req,
+            statusCode: 500,
+            source: 'auth_check_role',
+            actorUid: null,
+            tokenId: auditTokenId,
+            metadata: { outcome: 'error', error: error?.message || 'unknown_error' },
+        });
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }

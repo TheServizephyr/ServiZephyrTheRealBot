@@ -1,0 +1,61 @@
+name: Security Automation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 4 * * 1'
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: main-app
+            path: .
+          - name: backend-standalone
+            path: backend-standalone
+          - name: backend-standalone-frontend
+            path: backend-standalone/frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.path }}
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: ${{ matrix.path }}
+        run: npm audit --omit=dev --audit-level=high
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Secret pattern scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if rg -n --hidden --glob '!**/.git/**' --glob '!**/.next/**' --glob '!**/node_modules/**' \
+            'BEGIN (RSA|EC|OPENSSH|DSA) PRIVATE KEY|AIza[0-9A-Za-z\\-_]{35}|sk_live_[0-9A-Za-z]+|rk_live_[0-9A-Za-z]+|RAZORPAY_SECRET|FIREBASE_SERVICE_ACCOUNT|private_key' .; then
+            echo "Potential secret material found."
+            exit 1
+          fi
+

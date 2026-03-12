@@ -6,6 +6,8 @@ import { logSecurityEvent, recordSecurityAnomaly, SECURITY_EVENT_TYPES } from '@
 
 export const GUEST_SESSION_COOKIE_NAME = 'auth_guest_session';
 const DEFAULT_GUEST_SCOPES = ['customer_lookup', 'active_orders', 'checkout', 'track_orders'];
+const DEFAULT_GUEST_SESSION_MAX_AGE_SEC = 24 * 60 * 60;
+const DEFAULT_GUEST_SESSION_TTL_MS = DEFAULT_GUEST_SESSION_MAX_AGE_SEC * 1000;
 const RATE_LIMIT_MEMORY_BUCKETS = globalThis.__servizephyrRateLimitBuckets || new Map();
 globalThis.__servizephyrRateLimitBuckets = RATE_LIMIT_MEMORY_BUCKETS;
 
@@ -74,7 +76,7 @@ export function setSignedGuestSessionCookie(cookieStore, {
   subjectType = 'guest',
   sessionId = '',
   scopes = DEFAULT_GUEST_SCOPES,
-  maxAgeSec = 7 * 24 * 60 * 60,
+  maxAgeSec = DEFAULT_GUEST_SESSION_MAX_AGE_SEC,
 } = {}) {
   const safeSubjectId = String(subjectId || '').trim();
   if (!safeSubjectId) {
@@ -189,7 +191,7 @@ export async function issueGuestAccessRef(firestore, {
   subjectType = 'guest',
   phone = '',
   scopes = DEFAULT_GUEST_SCOPES,
-  ttlMs = 7 * 24 * 60 * 60 * 1000,
+  ttlMs = DEFAULT_GUEST_SESSION_TTL_MS,
   businessId = '',
   channel = 'whatsapp',
   metadata = {},
@@ -464,7 +466,14 @@ export async function enforceRateLimit(firestore, {
 }
 
 export async function verifyAppCheckToken(req, { required = false } = {}) {
-  const enforce = required || process.env.ENFORCE_FIREBASE_APP_CHECK === 'true';
+  const explicit = process.env.ENFORCE_FIREBASE_APP_CHECK;
+  const hasAppCheckConfig = Boolean(
+    process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY ||
+    process.env.FIREBASE_APPCHECK_SITE_KEY
+  );
+  const enforce = required
+    || explicit === 'true'
+    || (process.env.NODE_ENV === 'production' && explicit !== 'false' && hasAppCheckConfig);
   const appCheckToken =
     req.headers.get('x-firebase-appcheck') ||
     req.headers.get('x-firebase-app-check') ||

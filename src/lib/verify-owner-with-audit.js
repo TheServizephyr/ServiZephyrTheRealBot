@@ -70,7 +70,7 @@ function getPreferredCollections(userRole, userBusinessType) {
  * @param {string|string[]|null} requiredPermissions - Required RBAC permission(s). Any one is enough.
  * @returns {Object} - { uid, businessId, businessSnap, collectionName, isAdmin, isImpersonating }
  */
-export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevoked = false, requiredPermissions = null) {
+export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevoked = true, requiredPermissions = null) {
     // 1. REQUEST-LEVEL CACHING: Reuse context if already resolved in this request
     // We attach it to the 'req' object as it persists through the life of the API call.
     if (!req._ownerContextPromise) {

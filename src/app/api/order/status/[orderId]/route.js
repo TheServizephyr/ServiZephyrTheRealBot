@@ -4,7 +4,9 @@ import { kv } from '@vercel/kv';
 import { createRequestCache } from '@/lib/requestCache';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
-import { enforceRateLimit, verifyScopedAuthToken } from '@/lib/public-auth';
+import { enforceRateLimit, readSignedGuestSessionCookie, verifyScopedAuthToken } from '@/lib/public-auth';
+import { recordSecurityAnomaly } from '@/lib/security/security-events';
+import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 // Final states that should NOT be cached (polling already stopped on track page)
 const FINAL_STATES = ['delivered', 'cancelled', 'rejected'];
@@ -19,8 +21,21 @@ export async function GET(request, { params }) {
     let telemetryError = null;
     let telemetryEndpoint = 'api.order.status.full';
     let telemetryContext = null;
-    const respond = (payload, status = 200, headers = undefined) => {
+    let auditActorUid = null;
+    const auditTokenId = hashAuditValue(request.nextUrl.searchParams.get('token') || params?.orderId || '');
+    const respond = (payload, status = 200, headers = undefined, metadata = {}) => {
         telemetryStatus = status;
+        logRequestAudit({
+            req: request,
+            statusCode: status,
+            source: 'order_status',
+            actorUid: auditActorUid,
+            tokenId: auditTokenId,
+            metadata: {
+                endpoint: telemetryEndpoint,
+                ...metadata,
+            },
+        });
         return NextResponse.json(payload, {
             status,
             ...(headers ? { headers } : {}),
@@ -39,34 +54,18 @@ export async function GET(request, { params }) {
 
         if (!orderId) {
             console.log("[API][Order Status] Error: Order ID is missing from params.");
-            return respond({ message: 'Order ID is missing.' }, 400);
+            return respond({ message: 'Order ID is missing.' }, 400, undefined, {
+                outcome: 'missing_order_id',
+            });
         }
 
-        // STEP 1: Check cache FIRST (server-side Redis)
-        const cacheKey = `order_status:${orderId}:${liteMode ? 'lite' : 'full'}`;
+        // Cache lookup happens only after auth mode is known so public and private payloads never mix.
         const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
-
-        if (isKvAvailable) {
-            try {
-                const cachedData = await kv.get(cacheKey);
-                if (cachedData) {
-                    console.log(`[Order Status API] ✅ Cache HIT for ${cacheKey}`);
-                    return respond(cachedData, 200, {
-                        'X-Cache': 'HIT',
-                        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                    });
-                }
-                console.log(`[Order Status API] ❌ Cache MISS for ${cacheKey} - Fetching from Firestore`);
-            } catch (cacheError) {
-                console.warn('[Order Status API] Cache check failed:', cacheError);
-                // Continue to Firestore fetch
-            }
-        }
 
         // STEP 2: Cache MISS - Fetch from Firestore with request-scoped deduplication
         const requestCache = createRequestCache();
         const firestore = await getFirestore();
-        const rateKey = `order-status:${getClientIp(request)}:${String(orderId || 'unknown')}:${String(request.nextUrl.searchParams.get('token') || 'anon').slice(0, 64)}`;
+        const rateKey = `order-status:${getClientIp(request)}:${String(orderId || 'unknown')}`;
         const rate = await enforceRateLimit(firestore, {
             key: rateKey,
             limit: 120,
@@ -75,7 +74,10 @@ export async function GET(request, { params }) {
             auditContext: 'order_status',
         });
         if (!rate.allowed) {
-            return respond({ message: 'Too many tracking requests. Please retry shortly.' }, 429);
+            return respond({ message: 'Too many tracking requests. Please retry shortly.' }, 429, undefined, {
+                outcome: 'rate_limited',
+                orderId,
+            });
         }
         console.log(`[API][Order Status] Fetching order document: ${orderId}`);
 
@@ -94,7 +96,11 @@ export async function GET(request, { params }) {
 
             if (tabOrdersQuery.empty) {
                 console.log(`[API][Order Status] Error: No orders found for tab ${orderId}.`);
-                return respond({ message: 'No orders found for this tab.' }, 404);
+                return respond({ message: 'No orders found for this tab.' }, 404, undefined, {
+                    outcome: 'not_found',
+                    mode: 'tab',
+                    orderId,
+                });
             }
 
             orderSnap = tabOrdersQuery.docs[0];
@@ -107,11 +113,16 @@ export async function GET(request, { params }) {
 
             if (!orderSnap.exists) {
                 console.log(`[API][Order Status] Error: Order document ${orderId} not found.`);
-                return respond({ message: 'Order not found.' }, 404);
+                return respond({ message: 'Order not found.' }, 404, undefined, {
+                    outcome: 'not_found',
+                    mode: 'order',
+                    orderId,
+                });
             }
         }
 
         const orderData = orderSnap.data();
+        auditActorUid = String(orderData.userId || orderData.customerId || '').trim() || null;
 
         // 🔐 IDENTITY GATING (P1): Verify requester has permission to view this status
         // Allow if:
@@ -151,14 +162,70 @@ export async function GET(request, { params }) {
             }
         }
 
-        // If not authorized by token or UID, require at least the tracking token for "public" access 
-        // to prevent order enumeration via sequential IDs
-        if (!isAuthorizedData && !trackingToken) {
+        // Reject both missing-token and invalid-token public access. Merely passing any token value
+        // must never authorize a public tracking response.
+        if (!isAuthorizedData) {
             console.warn(`[API][Order Status] Access denied for order ${orderId}. No valid token or identity.`);
-            return respond({ message: 'Unauthorized. Tracking token required.' }, 403);
+            void recordSecurityAnomaly({
+                type: 'order_status_probe',
+                key: `${getClientIp(request)}:${orderId}`,
+                threshold: 10,
+                windowSec: 300,
+                req: request,
+                source: 'order_status',
+                metadata: { hasToken: !!trackingToken },
+            });
+            return respond(
+                {
+                    message: trackingToken
+                        ? 'Unauthorized. Invalid or expired tracking token.'
+                        : 'Unauthorized. Tracking token required.',
+                },
+                403,
+                undefined,
+                {
+                    outcome: trackingToken ? 'invalid_token' : 'missing_token',
+                    orderId,
+                    authMode,
+                }
+            );
         }
 
         const isPublicTokenAccess = authMode === 'token';
+        const guestSession = isPublicTokenAccess
+            ? readSignedGuestSessionCookie(request.cookies, ['track_orders'])
+            : null;
+        const canRevealCustomerAddress = !isPublicTokenAccess || (
+            guestSession
+            && [orderData.userId, orderData.customerId]
+                .map((value) => String(value || '').trim())
+                .filter(Boolean)
+                .includes(String(guestSession.subjectId || '').trim())
+        );
+        const cacheVisibility = isPublicTokenAccess ? 'public' : 'private';
+        const addressVisibility = canRevealCustomerAddress ? 'address' : 'masked';
+        const cacheKey = `order_status:${orderId}:${liteMode ? 'lite' : 'full'}:${cacheVisibility}:${addressVisibility}`;
+
+        if (isKvAvailable) {
+            try {
+                const cachedData = await kv.get(cacheKey);
+                if (cachedData) {
+                    console.log(`[Order Status API] ✅ Cache HIT for ${cacheKey}`);
+                    return respond(cachedData, 200, {
+                        'X-Cache': 'HIT',
+                        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    }, {
+                        outcome: 'resolved',
+                        cache: 'hit',
+                        mode: cacheVisibility,
+                        addressVisibility,
+                    });
+                }
+                console.log(`[Order Status API] ❌ Cache MISS for ${cacheKey} - Fetching from Firestore`);
+            } catch (cacheError) {
+                console.warn('[Order Status API] Cache check failed:', cacheError);
+            }
+        }
 
         // Fast path for polling/token checks: avoids extra business + rider reads and heavy aggregation.
         if (liteMode) {
@@ -177,7 +244,7 @@ export async function GET(request, { params }) {
                     isCarOrder: orderData.isCarOrder || orderData.deliveryType === 'car-order',
                     carSpot: orderData.carSpot || null,
                     carDetails: orderData.carDetails || null,
-                    trackingToken: orderData.trackingToken || null,
+                    trackingToken: isPublicTokenAccess ? null : (orderData.trackingToken || null),
                     createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : orderData.createdAt,
                 }
             };
@@ -534,10 +601,10 @@ export async function GET(request, { params }) {
                 customerOrderId: orderData.customerOrderId, // 10-digit customer-facing ID
                 restaurantId: orderData.restaurantId || null,
                 status: orderData.status,
-                customerLocation: orderData.customerLocation,
+                customerLocation: canRevealCustomerAddress ? (orderData.customerLocation || null) : null,
                 restaurantLocation: restaurantLocationForMap,
                 customerName: orderData.customerName,
-                customerAddress: resolvedCustomerAddress,
+                customerAddress: canRevealCustomerAddress ? resolvedCustomerAddress : null,
                 customerPhone: isPublicTokenAccess ? null : orderData.customerPhone,
                 restaurantPhone: restaurantContactPhone,
                 createdAt: orderData.createdAt?.toDate ? orderData.createdAt.toDate() : orderData.createdAt, // Added for bundling logic
@@ -549,7 +616,7 @@ export async function GET(request, { params }) {
                 deliveryCharge: aggregatedDeliveryCharge,
                 totalAmount: aggregatedTotal, // Aggregated total
                 paymentStatus: aggregatedPaymentStatus, // <--- ADDED THIS FIELD
-                paymentDetails: orderData.paymentDetails,
+                paymentDetails: isPublicTokenAccess ? null : (orderData.paymentDetails || null),
                 deliveryType: orderData.deliveryType,
                 dineInToken: orderData.dineInToken,
                 tableId: orderData.tableId,
@@ -558,7 +625,7 @@ export async function GET(request, { params }) {
                 carSpot: orderData.carSpot || null,
                 carDetails: orderData.carDetails || null,
 
-                trackingToken: orderData.trackingToken || null,
+                trackingToken: isPublicTokenAccess ? null : (orderData.trackingToken || null),
             },
             restaurant: {
                 id: businessDoc.id,
@@ -592,6 +659,11 @@ export async function GET(request, { params }) {
             return respond(responsePayload, 200, {
                 'X-Cache': 'SKIP',
                 'X-Final-State': 'true',
+            }, {
+                outcome: 'resolved',
+                cache: 'skip',
+                mode: cacheVisibility,
+                finalState: orderData.status,
             });
         }
 
@@ -612,13 +684,21 @@ export async function GET(request, { params }) {
         return respond(responsePayload, 200, {
             'X-Cache': 'MISS',
             'X-Request-Cache-Size': requestCache.size().toString(),
+        }, {
+            outcome: 'resolved',
+            cache: 'miss',
+            mode: cacheVisibility,
+            addressVisibility,
         });
 
     } catch (error) {
         telemetryStatus = error?.status || 500;
         telemetryError = error?.message || 'Failed to fetch order status';
         console.error("[API][Order Status] CRITICAL ERROR:", error);
-        return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus);
+        return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus, undefined, {
+            outcome: 'error',
+            error: error?.message || 'unknown_error',
+        });
     } finally {
         void trackApiTelemetry({
             endpoint: telemetryEndpoint,

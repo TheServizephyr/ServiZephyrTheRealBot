@@ -136,7 +136,7 @@ async function getBusiness(firestore, botPhoneNumberId) {
 const generateSecureToken = async (firestore, userId) => {
     console.log(`[Webhook WA] generateSecureToken: Generating for userId: ${userId}`);
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity
+    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         userId: userId, // Store User ID (UID or Guest ID)
@@ -216,7 +216,7 @@ const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) 
         businessId: business.id,
         channel: 'whatsapp',
         scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-        ttlMs: 7 * 24 * 60 * 60 * 1000,
+        ttlMs: 24 * 60 * 60 * 1000,
     });
     const encodedRef = encodeURIComponent(publicRef);
     const encodedBusinessId = encodeURIComponent(String(business.id || '').trim());
@@ -661,7 +661,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     businessId,
                     channel: 'whatsapp',
                     scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-                    ttlMs: 7 * 24 * 60 * 60 * 1000,
+                    ttlMs: 24 * 60 * 60 * 1000,
                 });
                 console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
 
@@ -715,7 +715,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                         businessId: business.id,
                         channel: 'whatsapp',
                         scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-                        ttlMs: 7 * 24 * 60 * 60 * 1000,
+                        ttlMs: 24 * 60 * 60 * 1000,
                     });
 
                     let trackingPath = 'delivery/'; // Default to delivery

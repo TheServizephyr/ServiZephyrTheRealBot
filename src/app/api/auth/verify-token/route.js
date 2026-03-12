@@ -10,6 +10,7 @@ import {
     verifyAppCheckToken,
     verifyScopedAuthToken,
 } from '@/lib/public-auth';
+import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 const getClientIp = (req) => {
     const forwardedFor = req.headers.get('x-forwarded-for') || '';
@@ -17,7 +18,19 @@ const getClientIp = (req) => {
 };
 
 export async function POST(req) {
-    console.log("[API verify-token] POST request received.");
+    let auditActorUid = null;
+    const auditTokenId = hashAuditValue((await req.clone().json().catch(() => ({})))?.token || '');
+    const respond = (payload, status = 200, metadata = {}) => {
+        logRequestAudit({
+            req,
+            statusCode: status,
+            source: 'auth_verify_token',
+            actorUid: auditActorUid,
+            tokenId: auditTokenId,
+            metadata,
+        });
+        return NextResponse.json(payload, { status });
+    };
     try {
         await verifyAppCheckToken(req, { required: false });
         const firestore = await getFirestore();
@@ -31,12 +44,21 @@ export async function POST(req) {
             auditContext: 'auth_verify_token',
         });
         if (!rate.allowed) {
-            return NextResponse.json({ message: 'Too many verification attempts. Please try again shortly.' }, { status: 429 });
+            return respond({ message: 'Too many verification attempts. Please try again shortly.' }, 429, {
+                outcome: 'rate_limited',
+                hasPhone: !!phone,
+                hasRef: !!ref,
+                hasTableId: !!tableId,
+            });
         }
-        console.log(`[API verify-token] Payload - Token: ${token ? 'Yes' : 'No'}, Ref: ${ref ? 'Yes' : 'No'}, Phone: ${phone ? 'Yes' : 'No'}, Table: ${tableId ? 'Yes' : 'No'}`);
 
         if (!token) {
-            return NextResponse.json({ message: 'Session token is required.' }, { status: 400 });
+            return respond({ message: 'Session token is required.' }, 400, {
+                outcome: 'missing_token',
+                hasPhone: !!phone,
+                hasRef: !!ref,
+                hasTableId: !!tableId,
+            });
         }
 
         const tokenCheck = await verifyScopedAuthToken(firestore, token, {
@@ -46,16 +68,27 @@ export async function POST(req) {
         });
         if (!tokenCheck.valid) {
             console.warn('[API verify-token] Token invalid:', tokenCheck.reason);
-            return NextResponse.json({ message: 'Invalid or expired session token.' }, { status: 403 });
+            return respond({ message: 'Invalid or expired session token.' }, 403, {
+                outcome: 'invalid_token',
+                reason: tokenCheck.reason,
+                hasRef: !!ref,
+            });
         }
         const tokenData = tokenCheck.tokenData || {};
+        auditActorUid = String(tokenData.userId || tokenData.guestId || tokenData.uid || '').trim() || null;
 
         // --- DINE-IN FLOW (Unchanged) ---
         if (tokenData.type === 'dine-in') {
             if (!tableId || tokenData.tableId !== tableId) {
-                return NextResponse.json({ message: 'Invalid table for this session.' }, { status: 403 });
+                return respond({ message: 'Invalid table for this session.' }, 403, {
+                    outcome: 'table_mismatch',
+                    tokenType: tokenData.type,
+                });
             }
-            return NextResponse.json({ message: 'Token is valid.', type: 'dine-in' }, { status: 200 });
+            return respond({ message: 'Token is valid.', type: 'dine-in' }, 200, {
+                outcome: 'verified',
+                tokenType: tokenData.type,
+            });
         }
 
         // --- GUEST IDENTITY FLOW (New) ---
@@ -67,13 +100,19 @@ export async function POST(req) {
             });
             if (!refSession?.subjectId) {
                 console.error("[API verify-token] Failed to resolve ref.");
-                return NextResponse.json({ message: 'Invalid link format.' }, { status: 400 });
+                return respond({ message: 'Invalid link format.' }, 400, {
+                    outcome: 'invalid_ref',
+                    tokenType: tokenData.type,
+                });
             }
 
             const tokenUserId = tokenData.userId || tokenData.guestId;
             if (tokenUserId !== refSession.subjectId) {
                 console.warn(`[API verify-token] Guest ID mismatch. Token: ${tokenUserId}, Ref: ${refSession.subjectId}`);
-                return NextResponse.json({ message: 'Invalid session link.' }, { status: 403 });
+                return respond({ message: 'Invalid session link.' }, 403, {
+                    outcome: 'ref_subject_mismatch',
+                    tokenType: tokenData.type,
+                });
             }
 
             setSignedGuestSessionCookie(cookies(), {
@@ -84,12 +123,16 @@ export async function POST(req) {
                 maxAgeSec: 7 * 24 * 60 * 60,
             });
 
-            console.log(`[API verify-token] GUEST Session verified for ${refSession.subjectId}. Cookie set.`);
-            return NextResponse.json({
+            auditActorUid = refSession.subjectId;
+            return respond({
                 message: 'Token is valid.',
                 type: 'guest',
                 guestId: refSession.subjectId
-            }, { status: 200 });
+            }, 200, {
+                outcome: 'verified',
+                tokenType: tokenData.type,
+                sessionType: 'guest',
+            });
         }
 
         // --- LEGACY PHONE FLOW & NEW USERID FLOW (Backward Compatibility) ---
@@ -99,19 +142,28 @@ export async function POST(req) {
 
             if (tokenPhone && (!phone || tokenPhone !== phone)) {
                 console.warn(`[API verify-token] Phone mismatch for legacy token.`);
-                return NextResponse.json({ message: 'Invalid session.' }, { status: 403 });
+                return respond({ message: 'Invalid session.' }, 403, {
+                    outcome: 'phone_mismatch',
+                    tokenType: tokenData.type,
+                });
             }
-            // Even for legacy, let's try to upgrade them to a cookie if possible
-            // But we don't have a guestId here easily without migration. 
-            // We just allow them to proceed as before.
-            console.log(`[API verify-token] LEGACY Phone session verified.`);
-            return NextResponse.json({ message: 'Token is valid.', type: 'legacy_phone' }, { status: 200 });
+            return respond({ message: 'Token is valid.', type: 'legacy_phone' }, 200, {
+                outcome: 'verified',
+                tokenType: tokenData.type,
+                sessionType: 'legacy_phone',
+            });
         }
 
-        return NextResponse.json({ message: 'Unknown token type.' }, { status: 400 });
+        return respond({ message: 'Unknown token type.' }, 400, {
+            outcome: 'unknown_token_type',
+            tokenType: tokenData.type || '',
+        });
 
     } catch (error) {
         console.error('[API verify-token] Error:', error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        return respond({ message: `Backend Error: ${error.message}` }, 500, {
+            outcome: 'error',
+            error: error?.message || 'unknown_error',
+        });
     }
 }

@@ -1,6 +1,6 @@
 
-// Applying user's changes.
 /** @type {import('next').NextConfig} */
+const { withSentryConfig } = require('@sentry/nextjs');
 
 // Load environment variables from .env.local for local development
 if (process.env.NODE_ENV !== 'production') {
@@ -8,29 +8,32 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const buildContentSecurityPolicy = () => {
+  const scriptSrc = [
+    "'self'",
+    "'unsafe-inline'",
+    'https://www.googletagmanager.com',
+    'https://www.google-analytics.com',
+    'https://www.gstatic.com',
+    'https://www.gstatic.cn',
+    'https://www.google.com',
+    'https://apis.google.com',
+    'https://maps.googleapis.com',
+    'https://maps.gstatic.com',
+    'https://checkout.razorpay.com',
+    'https://va.vercel-scripts.com',
+  ];
+  if (process.env.NODE_ENV !== 'production') {
+    scriptSrc.splice(2, 0, "'unsafe-eval'");
+  }
   const directives = {
     "default-src": ["'self'"],
-    "base-uri": ["'self'"],
+    "base-uri": ["'none'"],
     "object-src": ["'none'"],
     "frame-ancestors": ["'self'"],
     "img-src": ["'self'", 'data:', 'blob:', 'https:'],
     "font-src": ["'self'", 'data:', 'https://fonts.gstatic.com'],
     "style-src": ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-    "script-src": [
-      "'self'",
-      "'unsafe-inline'",
-      "'unsafe-eval'",
-      'https://www.googletagmanager.com',
-      'https://www.google-analytics.com',
-      'https://www.gstatic.com',
-      'https://www.gstatic.cn',
-      'https://www.google.com',
-      'https://apis.google.com',
-      'https://maps.googleapis.com',
-      'https://maps.gstatic.com',
-      'https://checkout.razorpay.com',
-      'https://va.vercel-scripts.com',
-    ],
+    "script-src": scriptSrc,
     "connect-src": [
       "'self'",
       'https://www.google-analytics.com',
@@ -73,7 +76,10 @@ const nextConfig = {
     const contentSecurityPolicy = buildContentSecurityPolicy();
     const baseHeaders = [
       { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'X-DNS-Prefetch-Control', value: 'off' },
+      { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
       { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+      { key: 'Origin-Agent-Cluster', value: '?1' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' },
       // Required for Firebase/Google popup auth flows to avoid window.close/window.closed COOP warnings.
@@ -153,4 +159,13 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig
+module.exports = withSentryConfig(nextConfig, {
+  silent: true,
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
+  org: process.env.SENTRY_ORG || undefined,
+  project: process.env.SENTRY_PROJECT || undefined,
+})

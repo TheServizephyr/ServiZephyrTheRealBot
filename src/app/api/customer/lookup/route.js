@@ -10,6 +10,7 @@ import {
     resolveGuestAccessRef,
     verifyAppCheckToken,
 } from '@/lib/public-auth';
+import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 const getClientIp = (req) => {
     const forwardedFor = req.headers.get('x-forwarded-for') || '';
@@ -40,6 +41,20 @@ const pickPhone = (profileData = {}, fallback = '') => {
 };
 
 export async function POST(req) {
+    let auditActorUid = null;
+    const previewBody = await req.clone().json().catch(() => ({}));
+    const auditTokenId = hashAuditValue(previewBody?.ref || previewBody?.guestId || previewBody?.phone || '');
+    const respond = (payload, status = 200, metadata = {}) => {
+        logRequestAudit({
+            req,
+            statusCode: status,
+            source: 'customer_lookup',
+            actorUid: auditActorUid,
+            tokenId: auditTokenId,
+            metadata,
+        });
+        return NextResponse.json(payload, { status });
+    };
     try {
         await verifyAppCheckToken(req, { required: false });
         const firestore = await getFirestore();
@@ -54,7 +69,12 @@ export async function POST(req) {
             auditContext: 'customer_lookup',
         });
         if (!rate.allowed) {
-            return NextResponse.json({ message: 'Too many lookup attempts. Please wait and retry.' }, { status: 429 });
+            return respond({ message: 'Too many lookup attempts. Please wait and retry.' }, 429, {
+                outcome: 'rate_limited',
+                hasRef: !!ref,
+                hasPhone: !!phone,
+                hasGuestId: !!explicitGuestId,
+            });
         }
         const guestId = typeof explicitGuestId === 'string' ? explicitGuestId.trim() : explicitGuestId;
         const cookieStore = cookies();
@@ -74,6 +94,7 @@ export async function POST(req) {
             refId = refSession?.subjectId || null;
             if (refId) {
                 console.log(`[API /customer/lookup] ✅ Resolved ref to userId: ${refId}`);
+                auditActorUid = refId;
             } else {
                 console.warn(`[API /customer/lookup] ⚠️ Failed to resolve ref: ${ref}`);
             }
@@ -107,13 +128,18 @@ export async function POST(req) {
             if (guestDoc.exists) {
                 const guestData = guestDoc.data();
                 console.log(`[API /customer/lookup] ✅ Guest profile found with ${guestData.addresses?.length || 0} addresses`);
-                return NextResponse.json({
+                auditActorUid = targetUserId;
+                return respond({
                     name: guestData.name || 'Guest',
                     phone: pickPhone(guestData),
                     addresses: guestData.addresses || [],
                     isVerified: false,
                     isGuest: true
-                }, { status: 200 });
+                }, 200, {
+                    outcome: 'resolved',
+                    source: source,
+                    profileType: 'guest',
+                });
             }
 
             // Fallback to users collection
@@ -121,17 +147,25 @@ export async function POST(req) {
             if (userDoc.exists) {
                 const userData = userDoc.data();
                 console.log(`[API /customer/lookup] ✅ User found. Addresses: ${userData.addresses?.length || 0}`);
-                return NextResponse.json({
+                auditActorUid = targetUserId;
+                return respond({
                     name: userData.name || 'User',
                     phone: pickPhone(userData),
                     addresses: userData.addresses || [],
                     isVerified: true,
                     isGuest: false
-                }, { status: 200 });
+                }, 200, {
+                    outcome: 'resolved',
+                    source: source,
+                    profileType: 'user',
+                });
             }
 
             console.warn(`[API /customer/lookup] ❌ Profile not found: ${targetUserId}`);
-            return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+            return respond({ message: 'User not found.' }, 404, {
+                outcome: 'not_found',
+                source,
+            });
         }
 
         console.log(`[API /customer/lookup] 📊 State: GuestID=${guestId ? 'Yes' : 'No'}, Phone=${phone ? 'Yes' : 'No'}, Ref=${ref ? 'Yes' : 'No'}`);
@@ -145,13 +179,18 @@ export async function POST(req) {
             if (guestDoc.exists) {
                 const guestData = guestDoc.data();
                 console.log(`[API /customer/lookup] ✅ Guest profile found with ${guestData.addresses?.length || 0} addresses`);
-                return NextResponse.json({
+                auditActorUid = guestId;
+                return respond({
                     name: guestData.name || 'Guest',
                     phone: pickPhone(guestData),
                     addresses: guestData.addresses || [],
                     isVerified: false,
                     isGuest: true
-                }, { status: 200 });
+                }, 200, {
+                    outcome: 'resolved',
+                    source: 'payload_guestId',
+                    profileType: 'guest',
+                });
             } else {
                 console.warn(`[API /customer/lookup] ⚠️ Guest Profile not found: ${guestId}. Checking 'users' collection (Migration Fallback)...`);
 
@@ -160,24 +199,34 @@ export async function POST(req) {
                 if (userDoc.exists) {
                     const userData = userDoc.data();
                     console.log(`[API /customer/lookup] ✅ Found migrated user profile via ref: ${guestId} with ${userData.addresses?.length || 0} addresses`);
-                    return NextResponse.json({
+                    auditActorUid = guestId;
+                    return respond({
                         name: userData.name || 'User',
                         phone: pickPhone(userData),
                         addresses: userData.addresses || [],
                         isVerified: true,
                         isGuest: false
-                    }, { status: 200 });
+                    }, 200, {
+                        outcome: 'resolved',
+                        source: 'payload_guestId',
+                        profileType: 'user',
+                    });
                 }
 
                 console.error(`[API /customer/lookup] ❌ Profile not found in guest_profiles OR users with ID: ${guestId}`);
-                return NextResponse.json({ message: 'Guest profile not found.' }, { status: 404 });
+                return respond({ message: 'Guest profile not found.' }, 404, {
+                    outcome: 'not_found',
+                    source: 'payload_guestId',
+                });
             }
         }
 
         // --- LEGACY PHONE LOOKUP ---
         if (!phone) {
             console.error(`[API /customer/lookup] ❌ No user identifier provided (no guestId and no phone)`);
-            return NextResponse.json({ message: 'User identifier required.' }, { status: 400 });
+            return respond({ message: 'User identifier required.' }, 400, {
+                outcome: 'missing_identifier',
+            });
         }
 
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
@@ -193,33 +242,49 @@ export async function POST(req) {
             const guestDoc = await firestore.collection('guest_profiles').doc(userId).get();
             if (guestDoc.exists) {
                 userData = guestDoc.data();
-                return NextResponse.json({
+                auditActorUid = userId;
+                return respond({
                     name: userData.name || 'Guest',
                     phone: pickPhone(userData, normalizedPhone),
                     addresses: userData.addresses || [],
                     isVerified: false,
                     isGuest: true
-                }, { status: 200 });
+                }, 200, {
+                    outcome: 'resolved',
+                    source: 'phone_lookup',
+                    profileType: 'guest',
+                });
             }
         } else {
             // Logged-in user (UID)
             const userDoc = await firestore.collection('users').doc(userId).get();
             if (userDoc.exists) {
                 userData = userDoc.data();
-                return NextResponse.json({
+                auditActorUid = userId;
+                return respond({
                     name: userData.name,
                     phone: pickPhone(userData, normalizedPhone),
                     addresses: userData.addresses || [],
                     isVerified: true,
                     isGuest: false
-                }, { status: 200 });
+                }, 200, {
+                    outcome: 'resolved',
+                    source: 'phone_lookup',
+                    profileType: 'user',
+                });
             }
         }
 
-        return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+        return respond({ message: 'User not found.' }, 404, {
+            outcome: 'not_found',
+            source: 'phone_lookup',
+        });
 
     } catch (error) {
         console.error('CUSTOMER LOOKUP API ERROR:', error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        return respond({ message: `Backend Error: ${error.message}` }, 500, {
+            outcome: 'error',
+            error: error?.message || 'unknown_error',
+        });
     }
 }
