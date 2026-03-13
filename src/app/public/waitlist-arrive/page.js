@@ -9,7 +9,7 @@ function WaitlistArriveContent() {
     const searchParams = useSearchParams();
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState('pending');
-    const [message, setMessage] = useState('Marking your arrival...');
+    const [message, setMessage] = useState('Verifying your token...');
 
     useEffect(() => {
         const markArrival = async () => {
@@ -32,13 +32,13 @@ function WaitlistArriveContent() {
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    throw new Error(data.message || 'Could not mark arrival.');
+                    throw new Error(data.message || 'Could not verify token.');
                 }
                 setStatus('success');
-                setMessage(data.message || 'Arrival marked successfully.');
+                setMessage(data.message || 'Token verified.');
             } catch (error) {
                 setStatus('error');
-                setMessage(error.message || 'Could not mark arrival.');
+                setMessage(error.message || 'Could not verify token.');
             } finally {
                 setLoading(false);
             }

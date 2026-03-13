@@ -100,12 +100,16 @@ function normalizeWaitlistSeatingMode(value, fallback = 'table_assign') {
 }
 
 function getDateKeyInTimeZone(date = new Date()) {
-    return new Intl.DateTimeFormat('en-CA', {
+    const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: WAITLIST_COUNTER_TIMEZONE,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
-    }).format(date);
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value || '0000';
+    const month = parts.find((part) => part.type === 'month')?.value || '00';
+    const day = parts.find((part) => part.type === 'day')?.value || '00';
+    return `${year}-${month}-${day}`;
 }
 
 function normalizeNoShowTimeoutMinutes(value, fallback = 10) {

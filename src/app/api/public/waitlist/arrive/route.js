@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,22 +38,23 @@ export async function POST(req) {
             return NextResponse.json({ message: `This queue is ${currentStatus.replace('_', ' ')}.` }, { status: 409 });
         }
 
-        if (['arrived', 'seated'].includes(currentStatus)) {
+        if (currentStatus === 'seated') {
             return NextResponse.json({
-                message: currentStatus === 'seated' ? 'You are already seated.' : 'Arrival already marked.',
-                status: currentStatus,
+                message: 'You are already seated.',
+                status: 'seated',
             }, { status: 200 });
         }
 
-        await entryRef.set({
-            status: 'arrived',
-            arrivedAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        if (currentStatus === 'arrived') {
+            return NextResponse.json({
+                message: 'Arrival already marked by staff.',
+                status: 'arrived',
+            }, { status: 200 });
+        }
 
         return NextResponse.json({
-            message: 'Arrival marked successfully.',
-            status: 'arrived',
+            message: 'Token verified. Please show this token to restaurant staff for seating.',
+            status: currentStatus || 'pending',
         }, { status: 200 });
     } catch (error) {
         console.error('[public/waitlist/arrive] ERROR:', error);
