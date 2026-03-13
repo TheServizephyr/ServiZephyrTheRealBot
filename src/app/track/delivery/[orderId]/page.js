@@ -403,9 +403,11 @@ function OrderTrackingContent() {
     // FETCH DELIVERY SETTINGS (One time)
     useEffect(() => {
         if (orderData?.restaurant?.id) {
-            fetch(`/api/owner/settings?restaurantId=${orderData.restaurant.id}`)
+            fetch(`/api/public/settings/${orderData.restaurant.id}`)
                 .then(res => res.json())
-                .then(data => setDeliverySettings(data))
+                .then(data => {
+                    setRestaurantSettings(data);
+                })
                 .catch(err => console.error("Failed to fetch settings:", err));
         }
     }, [orderData?.restaurant?.id]);

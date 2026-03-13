@@ -1,0 +1,5 @@
+bcde6ff6 login: fix contact support link to contact page
+2a819999 theme: default app to dark while keeping landing page light
+42c75f13 waitlist: add notified-only arrived action and keep cancel inline
+413d3884 waitlist: start tokens at 00 and add notified countdown on customer page
+ca9e43d6 Optimize bookings mobile layout and waitlist token search in history

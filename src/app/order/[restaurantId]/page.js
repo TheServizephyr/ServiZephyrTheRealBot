@@ -2287,12 +2287,16 @@ const OrderPageInternal = () => {
                 query.set('src', 'order_page');
                 if (phone) query.set('phone', phone);
                 const url = `/api/public/menu/${encodePathSegment(restaurantId)}?${query.toString()}`;
-                const menuRes = await fetch(url, { signal: abortController.signal });
+
+                const [menuRes, settingsRes] = await Promise.all([
+                    fetch(url, { signal: abortController.signal }),
+                    fetch(`/api/public/settings/${encodePathSegment(restaurantId)}`, { signal: abortController.signal })
+                ]);
+
                 const menuData = await menuRes.json();
 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
 
-                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${encodeRestaurantIdParam(restaurantId)}`, { signal: abortController.signal });
                 const settingsData = settingsRes.ok ? await settingsRes.json() : {};
 
                 // Map specific payment settings (fallback to true if undefined)

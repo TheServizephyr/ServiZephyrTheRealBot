@@ -1,14 +1,7 @@
-/**
- * CREATE DINE-IN TAB API
- * 
- * Creates a new dine-in tab with transaction-based atomicity
- * Prevents concurrent tab creation for same table
- * Supports group sizes > 1
- */
-
 import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { checkRateLimit } from '@/lib/rateLimiter';
 
 export async function POST(req) {
     try {
@@ -36,7 +29,19 @@ export async function POST(req) {
             );
         }
 
+        // ✅ SECURITY: Rate limiting — 20 tab creations per minute per table
+        const rateLimitKey = `${restaurantId}:${tableId}`;
+        const rateCheck = await checkRateLimit(rateLimitKey, 20);
+        if (!rateCheck.allowed) {
+            console.warn(`[Create Tab] Rate limit exceeded for table ${tableId} at restaurant ${restaurantId}`);
+            return NextResponse.json(
+                { error: 'Too many requests for this table. Please try again shortly.' },
+                { status: 429, headers: { 'Retry-After': '60' } }
+            );
+        }
+
         const firestore = await getFirestore();
+
 
         // Transaction for atomicity
         const result = await firestore.runTransaction(async (transaction) => {

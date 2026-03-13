@@ -484,12 +484,9 @@ const CheckoutPageInternal = () => {
                 dineInTabId: tabId || savedCart.dineInTabId || null,
                 deliveryType
             };
-            const paymentSettingsPromise = fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
+            const paymentSettingsPromise = fetch(`/api/public/settings/${restaurantId}`);
             const menuPromise = fetch(`/api/public/menu/${restaurantId}?src=checkout_page`);
 
-            // ... (Dine-in fetch logic lines 299-324 assume unchanged) ...
-
-            // FETCH EXISTING ORDER DATA for dine-in payment (when coming from track page)
             if (tabId && deliveryType === 'dine-in') {
                 console.log('[Checkout] Fetching existing dine-in order data for tabId:', tabId);
                 try {
@@ -648,6 +645,7 @@ const CheckoutPageInternal = () => {
                             deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance,
                             deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee,
                             minOrderValue: menuData.minOrderValue,
+                            collectionName: menuData.collectionName,
                             latitude: menuData.latitude,
                             longitude: menuData.longitude,
                             roadDistanceFactor: menuData.roadDistanceFactor || 1.3
@@ -1257,6 +1255,7 @@ const CheckoutPageInternal = () => {
             name: orderName || selectedAddress?.name || '',
             phone: orderPhone || selectedAddress?.phone || '',
             restaurantId,
+            collectionName: cartData?.collectionName,
             items: cart,
             notes: cartData.notes,
             coupon: appliedCoupons.find(c => !c.customerId) || null,
@@ -1419,7 +1418,7 @@ const CheckoutPageInternal = () => {
                         })
                     });
                     const validationData = await validationRes.json();
-
+    
                     if (!validationRes.ok || !validationData.allowed) {
                         const errorMsg = validationData.message || 'Your address is beyond our delivery range.';
                         console.error('[Checkout] Delivery validation failed:', errorMsg);
@@ -1431,13 +1430,13 @@ const CheckoutPageInternal = () => {
                         setIsProcessingPayment(false);
                         return; // Block order
                     }
-
+    
                     // Update delivery charge from validation
                     if (validationData.charge !== undefined) {
                         orderData.deliveryCharge = validationData.charge;
                         orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
-
+    
                     console.log('[Checkout] ✅ Delivery validated:', validationData);
                 } catch (validationErr) {
                     console.error('[Checkout] Delivery validation error:', validationErr);

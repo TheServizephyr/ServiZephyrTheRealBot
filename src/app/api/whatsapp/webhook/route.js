@@ -913,7 +913,40 @@ const maybeFallbackWelcomeMenuOnTemplateFailure = async ({
 export async function POST(request) {
     console.log("[Webhook WA] POST request received.");
     try {
-        const body = await request.json();
+        // ✅ SECURITY: Verify Meta X-Hub-Signature-256 HMAC before any processing
+        const signature = request.headers.get('x-hub-signature-256');
+        const appSecret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
+
+        if (appSecret) {
+            if (!signature) {
+                console.error('[Webhook WA] ❌ SECURITY: Missing X-Hub-Signature-256 header. Rejecting request.');
+                return new NextResponse('Unauthorized: Missing signature', { status: 403 });
+            }
+
+            // Must read raw body as text to compute the HMAC correctly
+            const rawBodyText = await request.text();
+            const crypto = await import('crypto');
+            const expectedSig = 'sha256=' + crypto
+                .createHmac('sha256', appSecret)
+                .update(rawBodyText, 'utf8')
+                .digest('hex');
+
+            const sigBuffer = Buffer.from(signature);
+            const expectedBuffer = Buffer.from(expectedSig);
+            const signaturesMatch =
+                sigBuffer.length === expectedBuffer.length &&
+                crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+
+            if (!signaturesMatch) {
+                console.error('[Webhook WA] ❌ SECURITY: X-Hub-Signature-256 mismatch. Rejecting request.');
+                return new NextResponse('Forbidden: Invalid signature', { status: 403 });
+            }
+            console.log('[Webhook WA] ✅ Meta signature verified.');
+            var body = JSON.parse(rawBodyText);
+        } else {
+            console.warn('[Webhook WA] ⚠️  META_APP_SECRET not set — skipping signature verification (set it in production!)');
+            var body = await request.json();
+        }
 
         console.log("[Webhook WA] Request Body Received:", JSON.stringify(body, null, 2));
 

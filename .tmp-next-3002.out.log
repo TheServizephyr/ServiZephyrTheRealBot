@@ -1,0 +1,38 @@
+
+> servizephyr-main-app@0.1.0 dev
+> next dev
+
+  ▲ Next.js 14.2.33
+  - Local:        http://localhost:3002
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · instrumentationHook
+
+ ✓ Starting...
+[@sentry/nextjs] It seems like you don't have a global error handler set up. It is recommended that you add a 'global-error.js' file with Sentry instrumentation so that React rendering errors are reported to Sentry. Read more: https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/#react-render-errors-in-app-router (you can suppress this warning by setting SENTRY_SUPPRESS_GLOBAL_ERROR_HANDLER_FILE_WARNING=1 as environment variable)
+ ✓ Ready in 7.3s
+ ○ Compiling /api/owner/settings ...
+ ✓ Compiled /api/owner/settings in 9.9s (1128 modules)
+[API /settings] Verifying owner...
+[firebase-admin] Found FIREBASE_SERVICE_ACCOUNT_JSON env var.
+[firebase-admin] Successfully parsed FIREBASE_SERVICE_ACCOUNT_JSON.
+[firebase-admin] Firebase Admin SDK initialized successfully.
+[API /settings] Owner verified: aBHRBalEIUPpCwUzYartgOAx5X22 for business ashwani's-restaurant
+ GET /api/owner/settings 200 in 17306ms
+ ○ Compiling /api/auth/logout ...
+ ✓ Compiled /api/auth/logout in 9.4s (1136 modules)
+ POST /api/auth/logout 200 in 10920ms
+[API /settings] Verifying owner...
+[API /settings] Owner verified: aBHRBalEIUPpCwUzYartgOAx5X22 for business ashwani's-restaurant
+ GET /api/owner/settings 200 in 2138ms
+ ✓ Compiled in 154ms
+ ○ Compiling /api/owner/settings ...
+ ✓ Compiled /api/owner/settings in 3.9s (1128 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 15.2s (2280 modules)
+ GET /api/owner/settings 500 in 20652ms
+ ○ Compiling /api/auth/logout ...
+ ✓ Compiled /api/auth/logout in 1079ms (1176 modules)
+ POST /api/auth/logout 500 in 1291ms
+ GET /api/owner/settings 500 in 143ms
+[?25h

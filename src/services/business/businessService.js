@@ -47,8 +47,11 @@ export function getBusinessCollection(businessType) {
  * @param {string} businessId - Business document ID
  * @returns {Promise<Object|null>} Business data with metadata
  */
-export async function findBusinessById(firestore, businessId) {
-    const collections = ['restaurants', 'shops', 'street_vendors'];
+export async function findBusinessById(firestore, businessId, collectionNameHint = null) {
+    let collections = ['restaurants', 'shops', 'street_vendors'];
+    if (collectionNameHint && collections.includes(collectionNameHint)) {
+        collections = [collectionNameHint, ...collections.filter(c => c !== collectionNameHint)];
+    }
 
     const cleanBusinessId = businessId?.trim();
     if (!cleanBusinessId) return null;

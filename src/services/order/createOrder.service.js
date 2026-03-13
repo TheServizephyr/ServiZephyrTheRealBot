@@ -282,6 +282,7 @@ export async function createOrderV2(req, options = {}) {
             paymentMethod,
             businessType,      // ✅ Support all: 'restaurant', 'store', 'street-vendor'
             deliveryType,      // ✅ Support all: 'dine-in', 'delivery', 'pickup', 'street-vendor-pre-order'
+            collectionName,
             subtotal,
             cgst,
             sgst,
@@ -366,9 +367,9 @@ export async function createOrderV2(req, options = {}) {
         // ========================================
         // STEP 2: BUSINESS LOOKUP
         // ========================================
-        console.log(`[createOrderV2] Looking up business: ${restaurantId}`);
+        console.log(`[createOrderV2] Looking up business: ${restaurantId} (hint: ${collectionName || 'none'})`);
 
-        const business = await findBusinessById(firestore, restaurantId);
+        const business = await findBusinessById(firestore, restaurantId, collectionName);
 
         if (!business) {
             return buildErrorResponse({

@@ -210,7 +210,7 @@ function DineInTrackingContent() {
     // Fetch Payment Settings
     useEffect(() => {
         if (orderData?.restaurant?.id) {
-            fetch(`/api/owner/settings?restaurantId=${orderData.restaurant.id}`)
+            fetch(`/api/public/settings/${orderData.restaurant.id}`)
                 .then(res => res.json())
                 .then(data => {
                     setPaymentSettings({

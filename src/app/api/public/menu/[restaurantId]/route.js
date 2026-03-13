@@ -485,6 +485,7 @@ export async function GET(req, { params }) {
             dineInEnabled: businessData.dineInEnabled,
             businessAddress: businessData.address,
             businessType: businessType,
+            collectionName: collectionName,
             dineInModel: businessData.dineInModel,
             isOpen: effectiveIsOpen,
         };
