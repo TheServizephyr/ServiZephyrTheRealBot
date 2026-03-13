@@ -11,7 +11,7 @@ import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { findBusinessById } from '@/services/business/businessService';
 
 export const dynamic = 'force-dynamic';
-const DEFAULT_WAITLIST_TOKEN_BASE = 100;
+const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
 function normalizeBusinessType(value, fallbackCollectionName = null) {

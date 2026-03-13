@@ -4,7 +4,7 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
-const DEFAULT_WAITLIST_TOKEN_BASE = 100;
+const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
 function randomUpperAlpha(length = 2) {
@@ -18,7 +18,7 @@ function randomUpperAlpha(length = 2) {
 }
 
 function formatWaitlistToken(numberValue) {
-    return `#${numberValue}${randomUpperAlpha(2)}`;
+    return `#${String(Math.max(0, Number(numberValue) || 0)).padStart(2, '0')}${randomUpperAlpha(2)}`;
 }
 
 function generateArrivalCode() {
@@ -109,7 +109,8 @@ export async function POST(req) {
                 ? DEFAULT_WAITLIST_TOKEN_BASE
                 : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessDataTx.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
             const nextCounter = currentCounter + 1;
-            waitlistToken = formatWaitlistToken(nextCounter);
+            const tokenNumber = currentCounter;
+            waitlistToken = formatWaitlistToken(tokenNumber);
             arrivalCode = generateArrivalCode();
 
             const newEntryRef = waitlistRef.doc();
@@ -122,7 +123,7 @@ export async function POST(req) {
                 status: 'pending',
                 queuePriority: 2,
                 queueType: 'walk_in',
-                waitlistTokenNumber: nextCounter,
+                waitlistTokenNumber: tokenNumber,
                 waitlistToken,
                 arrivalCode,
                 createdAt: FieldValue.serverTimestamp(),

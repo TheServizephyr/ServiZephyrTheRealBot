@@ -30,6 +30,11 @@ const toFiniteNumber = (value, fallback = null) => {
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const normalizeNoShowTimeoutMinutes = (value, fallback = 10) => {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    return Math.min(120, Math.max(1, parsed));
+};
 
 const toDate = (value) => {
     if (!value) return null;
@@ -253,6 +258,7 @@ export async function GET(_req, { params }) {
                     dineIn: businessData.dineInEnabled !== false,
                     waitlist: businessData.isWaitlistEnabled === true,
                 },
+                waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes, 10),
                 coordinates: getCoordinates(businessData),
                 rating: {
                     value: Number(ratingValue.toFixed(1)),

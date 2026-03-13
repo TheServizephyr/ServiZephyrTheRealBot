@@ -14,7 +14,7 @@ const DEFAULT_NO_SHOW_TIMEOUT_MINUTES = 10;
 const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
 const DEFAULT_WAITLIST_MANUAL_CAPACITY = 40;
 const ACTIVE_SEATED_WINDOW_MS = 2 * 60 * 60 * 1000;
-const DEFAULT_WAITLIST_TOKEN_BASE = 100;
+const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
 function normalizeWaitlistSeatingMode(value) {
@@ -46,7 +46,7 @@ function formatWaitlistToken(numberValue) {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const bytes = crypto.randomBytes(2);
     const suffix = `${alphabet[bytes[0] % alphabet.length]}${alphabet[bytes[1] % alphabet.length]}`;
-    return `#${numberValue}${suffix}`;
+    return `#${String(Math.max(0, Number(numberValue) || 0)).padStart(2, '0')}${suffix}`;
 }
 
 function generateArrivalCode() {
@@ -135,6 +135,7 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
                     ? DEFAULT_WAITLIST_TOKEN_BASE
                     : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessData.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
                 const nextCounter = currentCounter + 1;
+                const tokenNumber = currentCounter;
                 const waitlistRef = businessRef.collection('waitlist').doc();
                 linkedEntryId = waitlistRef.id;
 
@@ -149,8 +150,8 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
                     source: 'booking_late',
                     sourceBookingId: bookingDoc.id,
                     bookingDateTime: freshBookingData.bookingDateTime || null,
-                    waitlistTokenNumber: nextCounter,
-                    waitlistToken: formatWaitlistToken(nextCounter),
+                    waitlistTokenNumber: tokenNumber,
+                    waitlistToken: formatWaitlistToken(tokenNumber),
                     arrivalCode: generateArrivalCode(),
                     createdAt: FieldValue.serverTimestamp(),
                     updatedAt: FieldValue.serverTimestamp(),
