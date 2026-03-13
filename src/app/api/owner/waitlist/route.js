@@ -461,6 +461,8 @@ export async function PATCH(req) {
             }
             if (status === 'arrived') {
                 updatePayload.arrivedAt = FieldValue.serverTimestamp();
+                // Arrived means guest is physically present, so stop no-show countdown.
+                updatePayload.noShowDeadlineAt = null;
             }
             if (status === 'cancelled') {
                 updatePayload.cancelledAt = FieldValue.serverTimestamp();
