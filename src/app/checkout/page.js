@@ -1451,7 +1451,8 @@ const CheckoutPageInternal = () => {
             }
             */
 
-            // Final delivery validation before order create
+            // ⚡ OPTIMIZED: Use cached delivery validation only (server validates in /api/order/create)
+            // This eliminates a redundant ~2-3 second network call before order creation
             if (deliveryType === 'delivery' && selectedAddress) {
                 if (isValidatingDelivery) {
                     setInfoDialog({
@@ -1462,57 +1463,28 @@ const CheckoutPageInternal = () => {
                     setIsProcessingPayment(false);
                     return;
                 }
-                try {
-                    const addressAtValidationStart = selectedAddressRef.current;
-                    const validationPayload = buildDeliveryValidationPayload(addressAtValidationStart, subtotal);
 
-                    if (!validationPayload) {
-                        setInfoDialog({
-                            isOpen: true,
-                            title: 'Address Error',
-                            message: 'Selected address is invalid. Please reselect your delivery address.'
-                        });
-                        setIsProcessingPayment(false);
-                        return;
-                    }
+                const addressAtValidationStart = selectedAddressRef.current;
+                const validationPayload = buildDeliveryValidationPayload(addressAtValidationStart, subtotal);
 
-                    const validationKey = buildDeliveryValidationKey(validationPayload);
-                    let validationData = getCachedDeliveryValidation(validationKey);
-                    let validationResponseOk = !!validationData;
+                if (!validationPayload) {
+                    setInfoDialog({
+                        isOpen: true,
+                        title: 'Address Error',
+                        message: 'Selected address is invalid. Please reselect your delivery address.'
+                    });
+                    setIsProcessingPayment(false);
+                    return;
+                }
 
-                    if (!validationData) {
-                        const validationRes = await fetch('/api/delivery/calculate-charge', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(validationPayload)
-                        });
-                        validationData = await validationRes.json();
-                        validationResponseOk = validationRes.ok;
+                // ⚡ Only use CACHED result — no new network call
+                // Server-side validation in /api/order/create is the source of truth
+                const validationKey = buildDeliveryValidationKey(validationPayload);
+                const cachedValidation = getCachedDeliveryValidation(validationKey);
 
-                        if (validationResponseOk) {
-                            setCachedDeliveryValidation(validationKey, validationData);
-                        }
-                    }
-                    if (validationData) {
-                        setDeliveryValidation(validationData);
-                    }
-
-                    const addressAfterValidation = selectedAddressRef.current;
-                    const endLat = addressAfterValidation?.lat ?? addressAfterValidation?.latitude;
-                    const endLng = addressAfterValidation?.lng ?? addressAfterValidation?.longitude;
-                    const addressChangedDuringValidation = Number(validationPayload.addressLat) !== Number(endLat) || Number(validationPayload.addressLng) !== Number(endLng);
-                    if (addressChangedDuringValidation) {
-                        setInfoDialog({
-                            isOpen: true,
-                            title: 'Address Updated',
-                            message: 'Address changed during validation. Please place order again after review.'
-                        });
-                        setIsProcessingPayment(false);
-                        return;
-                    }
-
-                    if (!validationResponseOk || !validationData?.allowed) {
-                        const errorMsg = validationData.message || 'Your address is beyond our delivery range.';
+                if (cachedValidation) {
+                    if (!cachedValidation.allowed) {
+                        const errorMsg = cachedValidation.message || 'Your address is beyond our delivery range.';
                         setInfoDialog({
                             isOpen: true,
                             title: '🚫 Delivery Not Available',
@@ -1521,25 +1493,26 @@ const CheckoutPageInternal = () => {
                         setIsProcessingPayment(false);
                         return;
                     }
-
-                    if (validationData.charge !== undefined) {
-                        orderData.deliveryCharge = validationData.charge;
-                        orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
+                    if (cachedValidation.charge !== undefined) {
+                        orderData.deliveryCharge = cachedValidation.charge;
+                        orderData.grandTotal = subtotal + cgst + sgst + cachedValidation.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
-                } catch (validationErr) {
-                    console.error('[Checkout] Delivery validation error:', validationErr);
-                    setInfoDialog({
-                        isOpen: true,
-                        title: 'Validation Error',
-                        message: 'Could not verify delivery availability. Please try again.'
-                    });
-                    setIsProcessingPayment(false);
-                    return;
                 }
+                // If no cache, let the server handle it — don't block the order
             }
 
             // NEW ORDER CREATION (original flow)
             console.log(`[Checkout Page] Sending order to /api/order/create. PaymentMethod: ${paymentMethod}, ExistingOrderId: ${orderData.existingOrderId}`);
+
+            // ⚡ PREFETCH: Preload tracking page WHILE API is in flight
+            // This makes the redirect feel instant after order is created
+            const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
+            if (deliveryType === 'dine-in' || deliveryType === 'car-order') {
+                router.prefetch(`/track/dine-in/placeholder`);
+            } else {
+                router.prefetch(`/track/${trackingPath}/placeholder`);
+            }
+
             const res = await fetch('/api/order/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
             const data = await res.json();
             console.log("[Checkout Page] Order API response received:", data);
@@ -1724,11 +1697,7 @@ const CheckoutPageInternal = () => {
                 const finalOrderId = data.order_id || data.firestore_order_id;
 
                 if (finalOrderId) {
-                    localStorage.removeItem(`cart_${restaurantId}`);
-                    localStorage.removeItem('current_order_key');
-                    console.log(`[Idempotency] Key cleared after successful order creation`);
-
-                    // ✅ Route to NEW order (not old activeOrderId!)
+                    // ⚡ OPTIMIZED: Build redirect URL first, then do cleanup in background
                     const dineInLikeTabId = data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null;
                     const dineInLikeTabParam = dineInLikeTabId ? `&tabId=${encodeURIComponent(dineInLikeTabId)}` : '';
                     const redirectUrl =
@@ -1736,40 +1705,42 @@ const CheckoutPageInternal = () => {
                             ? `/track/dine-in/${finalOrderId}?token=${data.token}${dineInLikeTabParam}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`
                             : `/track/${cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery'}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`;
 
-                    // SAVE ACTIVE ORDER FOR TRACKING BUTTON (ARRAY SUPPORT)
-                    if (typeof window !== 'undefined') {
-                        const storageKey = `liveOrder_${restaurantId}`;
-                        let existingData = [];
+                    // ⚡ REDIRECT IMMEDIATELY — don't wait for localStorage
+                    console.log(`[Checkout] ⚡ Fast redirect to: ${finalOrderId}`);
+                    router.replace(redirectUrl);
+
+                    // ⚡ Cleanup in background (non-blocking)
+                    queueMicrotask(() => {
                         try {
-                            const raw = localStorage.getItem(storageKey);
-                            if (raw) {
-                                const parsed = JSON.parse(raw);
-                                existingData = Array.isArray(parsed) ? parsed : [parsed];
-                            }
+                            localStorage.removeItem(`cart_${restaurantId}`);
+                            localStorage.removeItem('current_order_key');
+
+                            const storageKey = `liveOrder_${restaurantId}`;
+                            let existingData = [];
+                            try {
+                                const raw = localStorage.getItem(storageKey);
+                                if (raw) {
+                                    const parsed = JSON.parse(raw);
+                                    existingData = Array.isArray(parsed) ? parsed : [parsed];
+                                }
+                            } catch (e) { existingData = []; }
+
+                            const newOrder = {
+                                orderId: finalOrderId,
+                                trackingToken: data.token,
+                                restaurantId: restaurantId,
+                                deliveryType: deliveryType,
+                                dineInTabId: dineInLikeTabId,
+                                dineInToken: data.dineInToken || cartData?.dineInToken || null,
+                                status: 'placed',
+                                timestamp: Date.now()
+                            };
+                            const updatedOrders = [...existingData.filter(o => o.orderId !== newOrder.orderId), newOrder];
+                            localStorage.setItem(storageKey, JSON.stringify(updatedOrders));
                         } catch (e) {
-                            console.error("Error parsing live orders", e);
-                            existingData = [];
+                            console.warn('[Checkout] Background cleanup error:', e);
                         }
-
-                        const newOrder = {
-                            orderId: finalOrderId,
-                            trackingToken: data.token,
-                            restaurantId: restaurantId,
-                            deliveryType: deliveryType,
-                            dineInTabId: data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null,
-                            dineInToken: data.dineInToken || cartData?.dineInToken || null,
-                            status: 'placed',
-                            timestamp: Date.now()
-                        };
-
-                        // Add new order and ensure uniqueness
-                        const updatedOrders = [...existingData.filter(o => o.orderId !== newOrder.orderId), newOrder];
-                        localStorage.setItem(storageKey, JSON.stringify(updatedOrders));
-                        console.log(`[Checkout] Saved liveOrder to storage (Array):`, updatedOrders);
-                    }
-
-                    console.log(`[Checkout] Redirecting to NEW order: ${finalOrderId}`);
-                    router.replace(redirectUrl); // CHANGED: Replaced push with replace to skip checkout on back
+                    });
                     return;
                 }
 

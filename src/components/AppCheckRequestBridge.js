@@ -2,7 +2,26 @@
 
 import { useEffect } from 'react';
 import { getApp } from 'firebase/app';
-import { getAppCheck, getToken } from 'firebase/app-check';
+import { initializeAppCheck, getToken, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
+
+// Lazy singleton — initialize once, reuse everywhere
+let _appCheckInstance = null;
+function getAppCheckInstance() {
+    if (_appCheckInstance) return _appCheckInstance;
+    const siteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY;
+    if (!siteKey) return null;
+    try {
+        _appCheckInstance = initializeAppCheck(getApp(), {
+            provider: new ReCaptchaEnterpriseProvider(siteKey),
+            isTokenAutoRefreshEnabled: true
+        });
+        return _appCheckInstance;
+    } catch (err) {
+        // Already initialized (e.g. HMR in dev) — silently return null
+        console.warn('[AppCheckRequestBridge] Init skipped:', err?.message);
+        return null;
+    }
+}
 
 function shouldAttachAppCheck(input) {
   if (typeof window === 'undefined') return false;
@@ -20,8 +39,7 @@ function shouldAttachAppCheck(input) {
       return false;
     }
 
-    // Auth/session endpoints must never block on App Check token generation,
-    // otherwise mobile redirect login can get stuck on "Finishing login...".
+    // Auth/session endpoints must never block on App Check token generation
     if (
       url.pathname.startsWith('/api/auth/check-role') ||
       url.pathname.startsWith('/api/auth/logout')
@@ -49,7 +67,9 @@ export default function AppCheckRequestBridge() {
       }
 
       try {
-        const appCheck = getAppCheck(getApp());
+        const appCheck = getAppCheckInstance();
+        if (!appCheck) return originalFetch(input, init);
+
         const tokenResult = await Promise.race([
           getToken(appCheck, false),
           new Promise((resolve) => setTimeout(() => resolve(null), 1500)),

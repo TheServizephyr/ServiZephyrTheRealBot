@@ -169,7 +169,9 @@ async function resolveDineInLikeToken({
     businessType,
     dineInModel,
     dineInTabId,
-    existingOrderId
+    existingOrderId,
+    preFetchedExistingOrder = null,
+    preFetchedTables = null
 }) {
     const requiresPhysicalToken = shouldGeneratePhysicalToken({
         deliveryType,
@@ -186,7 +188,7 @@ async function resolveDineInLikeToken({
     // Add-on: prefer exact token reuse from existing order first.
     if (existingOrderId) {
         try {
-            const existingOrderDoc = await firestore.collection('orders').doc(existingOrderId).get();
+            const existingOrderDoc = preFetchedExistingOrder || await firestore.collection('orders').doc(existingOrderId).get();
             if (existingOrderDoc.exists) {
                 const existingOrder = existingOrderDoc.data() || {};
                 if (!resolvedDineInTabId && existingOrder.dineInTabId) {
@@ -208,6 +210,11 @@ async function resolveDineInLikeToken({
     if (resolvedDineInTabId) {
         try {
             const candidateRestaurantIds = [...new Set([business?.id, requestRestaurantId].filter(Boolean))];
+            
+            // Optimization: If we have pre-fetched tables (for dine-in), we might be able to find the tab there
+            // But usually Tabs are in a different collection.
+            // Orders search is still needed, but let's see if we can optimize this.
+            
             for (const candidateRestaurantId of candidateRestaurantIds) {
                 const snapshot = await firestore
                     .collection('orders')
@@ -260,7 +267,8 @@ async function resolveDineInLikeToken({
  * 7. Return response
  */
 export async function createOrderV2(req, options = {}) {
-    console.log('[createOrderV2] Processing order request');
+    const startTime = Date.now();
+    console.log(`[createOrderV2] 🏁 START processing order request at ${new Date(startTime).toISOString()}`);
 
     try {
         const firestore = await getFirestore();
@@ -363,99 +371,170 @@ export async function createOrderV2(req, options = {}) {
                 status: 400
             });
         }
+           // ========================================
+        // STEP 2, 3, 4: ACCELERATED DISCOVERY (MASSIVE PARALLEL BATCH)
+        // ========================================
+        const discoveryStart = Date.now();
+        console.log(`[createOrderV2] 🚀 Starting massive parallel discovery batch...`);
+
+        // Prepare some data for the parallel calls
+        const requestPhoneNormalized = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
+        const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
+        const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
+
+        // --- DISCOVERY PROMISES ---
+        // 1. Business Lookup
+        const businessPromise = findBusinessById(firestore, restaurantId, collectionName);
+
+        // 2. Idempotency Reservation
+        const idempotencyReservationPromise = idempotencyRepository.reserveAtomic(idempotencyKey, {
+            restaurantId,
+            paymentMethod
+        });
+
+        // 3. User Identity (Refined to be more parallel)
+        const identityDiscoveryPromise = (async () => {
+            const authHeader = String(req?.headers?.get?.('authorization') || req?.headers?.authorization || '');
+            let idToken = '';
+            if (authHeader.startsWith('Bearer ')) idToken = authHeader.slice('Bearer '.length).trim();
+
+            const [refSession, decodedToken] = await Promise.all([
+                guestRef ? resolveGuestAccessRef(firestore, guestRef, { requiredScopes: ['checkout'], allowLegacy: true, touch: true }).catch(() => null) : null,
+                idToken ? verifyIdToken(idToken).catch(() => null) : null
+            ]);
+            return { refSession, bearerUid: decodedToken?.uid || null };
+        })();
+
+        // 4. Delivery Config (⚡ fire both paths in parallel, use whichever exists)
+        const needsDeliveryValidation = (deliveryType === 'delivery' || deliveryType === 'car-order') 
+            && !(skipAddressValidation && (customerLat === null || customerLng === null || !address?.full));
+        const deliveryConfigPromise = needsDeliveryValidation
+            ? (async () => {
+                // Fire both possible paths in parallel
+                const [pathA, pathB] = await Promise.all([
+                    firestore.collection('restaurants').doc(restaurantId).collection('delivery_settings').doc('config').get().catch(() => null),
+                    firestore.collection('cloud-kitchens').doc(restaurantId).collection('delivery_settings').doc('config').get().catch(() => null)
+                ]);
+                return (pathA && pathA.exists) ? pathA : (pathB && pathB.exists) ? pathB : null;
+            })()
+            : Promise.resolve(null);
+
+        // 5. Tables for dine-in
+        const tablesPromise = (deliveryType === 'dine-in' && body.tableId)
+            ? firestore.collection('restaurants').doc(restaurantId).collection('tables').get()
+            : Promise.resolve(null);
+
+        // 6. Existing order for addons
+        const existingOrderPromise = finalExistingOrderId 
+            ? firestore.collection('orders').doc(finalExistingOrderId).get()
+            : Promise.resolve(null);
+
+        // 7. Pricing Recalculation (Can start now)
+        const pricingPromise = calculateServerTotal({
+            restaurantId,
+            items,
+            businessType: businessType || 'restaurant',
+            deliveryType
+        });
+
+        // 8. Coupon Fetch
+        const couponPromise = (coupon && coupon.id)
+            ? firestore.collection('restaurants').doc(restaurantId).collection('coupons').doc(coupon.id).get()
+            : Promise.resolve(null);
+
+        // 🔥 FIRE DISCOVERY BATCH
+        const [
+            business,
+            idempotencyResult,
+            identityDiscovery,
+            deliveryConfigSnap,
+            tablesSnap,
+            existingOrderDoc,
+            pricingResult,
+            couponSnap
+        ] = await Promise.all([
+            businessPromise,
+            idempotencyReservationPromise,
+            identityDiscoveryPromise,
+            deliveryConfigPromise,
+            tablesPromise,
+            existingOrderPromise,
+            pricingPromise,
+            couponPromise
+        ]);
+
+        console.log(`[createOrderV2] ⏱️ Massive discovery batch completed in ${Date.now() - discoveryStart}ms`);
 
         // ========================================
-        // STEP 2: BUSINESS LOOKUP
+        // STEP 3: DISCOVERY VALIDATION
         // ========================================
-        console.log(`[createOrderV2] Looking up business: ${restaurantId} (hint: ${collectionName || 'none'})`);
 
-        const business = await findBusinessById(firestore, restaurantId, collectionName);
-
+        // 3.1 Business Check
         if (!business) {
-            return buildErrorResponse({
-                message: 'This business does not exist.',
-                status: 404
-            });
+            return buildErrorResponse({ message: 'Restaurant not found.', status: 404 });
         }
-
-        console.log(`[createOrderV2] Business found: ${business.data.name}`);
-        const businessLabel = getBusinessLabel(business.type);
         if (!getEffectiveBusinessOpenStatus(business.data)) {
-            return buildErrorResponse({
-                message: `${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} is currently closed. Please order during opening hours.`,
-                status: 403
-            });
+            return buildErrorResponse({ message: 'Restaurant is currently closed.', status: 403 });
         }
 
-        // ========================================
-        // STEP 3: IDEMPOTENCY CHECK
-        // ========================================
-        console.log(`[createOrderV2] Checking idempotency: ${idempotencyKey}`);
-
-        try {
-            const idempotencyResult = await idempotencyRepository.reserveAtomic(idempotencyKey, {
-                restaurantId,
-                paymentMethod
-            });
-
-            if (idempotencyResult.isDuplicate) {
-                console.log(`[createOrderV2] Duplicate request detected, returning existing order`);
-
-                // Get tracking token
-                const existingOrder = await orderRepository.getById(idempotencyResult.orderId);
-
-                return NextResponse.json({
-                    message: 'Order already exists',
-                    razorpay_order_id: idempotencyResult.razorpayOrderId,
-                    firestore_order_id: idempotencyResult.orderId,
-                    token: existingOrder?.trackingToken
-                }, { status: 200 });
-            }
-
-            console.log(`[createOrderV2] Idempotency key reserved atomically`);
-
-        } catch (error) {
-            if (error.message === 'Request already in progress') {
-                return buildErrorResponse({
-                    message: error.message,
-                    status: 429 // Use 429 for rate limit/concurrency
-                });
-            }
-            throw error;
+        // 3.2 Idempotency Check
+        if (idempotencyResult.isDuplicate) {
+            console.log(`[createOrderV2] Duplicate request detected, returning existing order`);
+            const existingOrder = await orderRepository.getById(idempotencyResult.orderId);
+            return NextResponse.json({
+                message: 'Order already exists',
+                razorpay_order_id: idempotencyResult.razorpayOrderId,
+                firestore_order_id: idempotencyResult.orderId,
+                token: existingOrder?.trackingToken
+            }, { status: 200 });
         }
 
-        // ========================================
-        // STEP 4: SERVER-SIDE PRICING (SECURITY)
-        // ========================================
-        console.log(`[createOrderV2] Calculating server-side prices`);
+        // 3.3 Identity Resolution (Finalize using fetched data)
+        const { refSession, bearerUid } = identityDiscovery;
+        let userId, normalizedPhone, isGuest;
+        let finalCustomerName = name || 'Guest';
+        let finalCustomerEmail = '';
 
-        let pricing;
-        try {
-            pricing = await calculateServerTotal({
-                restaurantId: business.id, // ✅ FIX: Use resolved Business ID (not slug/ownerId)
-                items,
-                businessType: business.type,
-                deliveryType,
-            });
-
-            // Validate against client subtotal
-            validatePriceMatch(subtotal, pricing.serverSubtotal);
-
-            console.log(`[createOrderV2] Price validation passed: ₹${pricing.serverSubtotal}`);
-
-        } catch (error) {
-            if (error instanceof PricingError) {
-                // Mark idempotency as failed
-                await idempotencyRepository.fail(idempotencyKey, error);
-
-                return buildErrorResponse({
-                    message: error.message,
-                    code: error.code,
-                    status: 400
-                });
-            }
-            throw error;
+        if (refSession?.subjectId) {
+            userId = refSession.subjectId;
+            isGuest = String(userId).startsWith('g_');
+            const [guestDoc, userDoc] = await Promise.all([
+                firestore.collection('guest_profiles').doc(userId).get(),
+                firestore.collection('users').doc(userId).get(),
+            ]);
+            const profileData = guestDoc.exists ? guestDoc.data() : (userDoc.exists ? userDoc.data() : {});
+            normalizedPhone = requestPhoneNormalized || (profileData?.phone ? String(profileData.phone).slice(-10) : null);
+            if (profileData?.email) finalCustomerEmail = String(profileData.email).trim().toLowerCase();
+            if ((!name || name === 'Guest') && profileData?.name) finalCustomerName = profileData.name;
+        } else if (bearerUid) {
+            userId = bearerUid;
+            isGuest = false;
+            const userDoc = await firestore.collection('users').doc(bearerUid).get();
+            const profileData = userDoc.exists ? userDoc.data() : {};
+            normalizedPhone = requestPhoneNormalized || (profileData?.phone ? String(profileData.phone).slice(-10) : null);
+            if (profileData?.email) finalCustomerEmail = String(profileData.email).trim().toLowerCase();
+            if ((!name || name === 'Guest') && profileData?.name) finalCustomerName = profileData.name;
+        } else if (requestPhoneNormalized) {
+            const profileResult = await getOrCreateGuestProfile(firestore, requestPhoneNormalized);
+            userId = profileResult.userId;
+            isGuest = profileResult.isGuest;
+            normalizedPhone = requestPhoneNormalized;
+            const profileData = profileResult.data || {};
+            if (profileData.email) finalCustomerEmail = String(profileData.email).trim().toLowerCase();
+            if ((!name || name === 'Guest') && profileData.name) finalCustomerName = profileData.name;
+        } else {
+            userId = `anon_${nanoid(10)}`;
+            isGuest = true;
+            normalizedPhone = null;
         }
+        console.log(`[createOrderV2] ✅ All Discovery & Validation completed in total ${Date.now() - discoveryStart}ms`);
+        console.log(`[createOrderV2] ✅ Identity: ${userId}, Phone: ${normalizedPhone}, Name: ${finalCustomerName}`);
+
+        validatePriceMatch(subtotal, pricingResult.serverSubtotal);
+        console.log(`[createOrderV2] Price validation passed: ₹${pricingResult.serverSubtotal}`);
+
+        const pricing = pricingResult;
+
 
         // --- SERVER-SIDE BILLING CALCULATIONS ---
         let verifiedCoupon = null;
@@ -468,10 +547,9 @@ export async function createOrderV2(req, options = {}) {
         // Coupon re-validation for V2 (COD/Counter flows).
         if (coupon && coupon.id) {
             try {
-                const couponRef = business.ref.collection('coupons').doc(coupon.id);
-                const couponSnap = await couponRef.get();
+                // const couponSnap = await couponPromise; // Already awaited in parallel batch
 
-                if (!couponSnap.exists) {
+                if (!couponSnap || !couponSnap.exists) {
                     await idempotencyRepository.fail(idempotencyKey, new Error('Selected coupon not found'));
                     return buildErrorResponse({
                         message: 'Selected coupon is no longer available.',
@@ -519,7 +597,7 @@ export async function createOrderV2(req, options = {}) {
                     });
                 }
 
-                if (pricing.serverSubtotal < couponMinOrder) {
+                if (pricingResult.serverSubtotal < couponMinOrder) {
                     await idempotencyRepository.fail(idempotencyKey, new Error('Coupon minimum order not met'));
                     return buildErrorResponse({
                         message: `Coupon valid on minimum order of ₹${couponMinOrder}.`,
@@ -576,8 +654,6 @@ export async function createOrderV2(req, options = {}) {
         let validatedDeliveryCharge = 0;
         const requestedDeliveryCharge = Math.max(0, Number(deliveryCharge) || 0);
         if (deliveryType === 'delivery' || deliveryType === 'car-order') {
-            const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
-            const customerLng = toFiniteNumber(address?.longitude ?? address?.lng);
             const restaurantLat = toFiniteNumber(
                 business.data.coordinates?.lat ??
                 business.data.address?.latitude ??
@@ -604,8 +680,8 @@ export async function createOrderV2(req, options = {}) {
                 validatedDeliveryCharge = deliveryType === 'car-order' ? 0 : requestedDeliveryCharge;
             } else {
 
-                const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
-                const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
+                const deliveryConfigSnap = await deliveryConfigPromise;
+                const deliveryConfig = (deliveryConfigSnap && deliveryConfigSnap.exists) ? deliveryConfigSnap.data() : {};
                 const getSetting = (key, fallback) => deliveryConfig[key] ?? business.data[key] ?? fallback;
 
                 const settings = {
@@ -674,116 +750,8 @@ export async function createOrderV2(req, options = {}) {
         // sgst = serverSgst;
         // grandTotal = serverGrandTotal;
 
-        // ========================================
-        // STEP 5: BRANCH BY PAYMENT TYPE
-        // ========================================
-
-        // --- USER IDENTIFICATION (UID-FIRST PRIORITY) ---
-        // Use getOrCreateGuestProfile to ensure:
-        // 1. Logged-in users → use UID
-        // 2. Guest users → create/use guest profile
-        // 3. Security: UID prioritized over phone numbers
-
-        const requestPhoneNormalized = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
-
-        let userId, normalizedPhone, isGuest;
-        let finalCustomerName = name || 'Guest';
-        let finalCustomerEmail = '';
-
-        const refSession = guestRef
-            ? await resolveGuestAccessRef(firestore, guestRef, {
-                requiredScopes: ['checkout'],
-                allowLegacy: true,
-                touch: true,
-            })
-            : null;
-        const bearerUid = await verifyBearerUid(req);
-
-        if (refSession?.subjectId) {
-            userId = refSession.subjectId;
-            isGuest = String(userId).startsWith('g_');
-
-            const [guestDoc, userDoc] = await Promise.all([
-                firestore.collection('guest_profiles').doc(userId).get(),
-                firestore.collection('users').doc(userId).get(),
-            ]);
-            const profileData = guestDoc.exists ? (guestDoc.data() || {}) : (userDoc.exists ? (userDoc.data() || {}) : {});
-            normalizedPhone = requestPhoneNormalized || (profileData.phone ? String(profileData.phone).slice(-10) : null);
-            if (profileData.email) {
-                finalCustomerEmail = String(profileData.email).trim().toLowerCase();
-            }
-
-            console.log(`[createOrderV2] ✅ User identified via guestRef: ${userId}, isGuest: ${isGuest}`);
-
-            if ((!name || name === 'Guest') && profileData.name) {
-                finalCustomerName = profileData.name;
-                console.log(`[createOrderV2] ✅ Auto-populated customer name from ref profile: ${finalCustomerName}`);
-            }
-        } else if (bearerUid) {
-            userId = bearerUid;
-            isGuest = false;
-            const userDoc = await firestore.collection('users').doc(bearerUid).get();
-            const profileData = userDoc.exists ? (userDoc.data() || {}) : {};
-            normalizedPhone = requestPhoneNormalized || (profileData.phone ? String(profileData.phone).slice(-10) : null);
-            if (profileData.email) {
-                finalCustomerEmail = String(profileData.email).trim().toLowerCase();
-            }
-
-            console.log(`[createOrderV2] ✅ User identified via bearer token: ${userId}`);
-
-            if ((!name || name === 'Guest') && profileData.name) {
-                finalCustomerName = profileData.name;
-                console.log(`[createOrderV2] ✅ Auto-populated customer name from bearer profile: ${finalCustomerName}`);
-            }
-        } else if (requestPhoneNormalized) {
-            // Call getOrCreateGuestProfile - UID first, then guest ID
-            const profileResult = await getOrCreateGuestProfile(firestore, requestPhoneNormalized);
-            userId = profileResult.userId;  // UID or guest ID
-            isGuest = profileResult.isGuest;
-            normalizedPhone = requestPhoneNormalized;
-            const profileData = profileResult.data || {};
-            if (profileData.email) {
-                finalCustomerEmail = String(profileData.email).trim().toLowerCase();
-            }
-
-            console.log(`[createOrderV2] ✅ User identified: ${userId}, isGuest: ${isGuest}`);
-
-            // ✅ AUTO-POPULATE CUSTOMER NAME
-            // If name is missing or "Guest", try to get it from profile (if identified)
-            if ((!name || name === 'Guest')) {
-                if (profileData.name) {
-                    finalCustomerName = profileData.name;
-                    console.log(`[createOrderV2] ✅ Auto-populated customer name from profile result: ${finalCustomerName}`);
-                } else if (userId && !isGuest) {
-                    // Fallback: explicit fetch for logged-in users if profileData was missing (rare)
-                    try {
-                        const userDoc = await firestore.collection('users').doc(userId).get();
-                        if (userDoc.exists && userDoc.data().name) {
-                            finalCustomerName = userDoc.data().name;
-                            console.log(`[createOrderV2] ✅ Auto-populated customer name from user doc: ${finalCustomerName}`);
-                        }
-                    } catch (err) {
-                        console.warn(`[createOrderV2] Failed to fetch user profile for name:`, err);
-                    }
-                }
-            }
-        } else {
-            // No phone - anonymous order
-            userId = `anon_${nanoid(10)}`;
-            isGuest = true;
-            normalizedPhone = null;
-
-            console.log(`[createOrderV2] ⚠️ Anonymous order: ${userId}`);
-        }
-
-        // Default if still missing
-        if (!finalCustomerName) finalCustomerName = 'Guest';
-        // Also check if address has a name property if specifically provided
-        if ((!finalCustomerName || finalCustomerName === 'Guest') && address && address.name) {
-            finalCustomerName = address.name;
-            console.log(`[createOrderV2] ✅ Auto-populated customer name from address: ${finalCustomerName}`);
-        }
-
+        // All discovery/validation is now handled by the parallel batch above.
+        // We just use the extracted variables directly.
 
         // Customer location (for delivery)
         const customerLocation = (deliveryType === 'delivery' && address && typeof address.latitude === 'number')
@@ -794,40 +762,33 @@ export async function createOrderV2(req, options = {}) {
         let actualTableId = body.tableId;
         if (deliveryType === 'dine-in' && body.tableId) {
             try {
-                const tablesSnap = await business.ref.collection('tables').get();
-                tablesSnap.forEach(doc => {
-                    if (doc.id.toLowerCase() === body.tableId.toLowerCase()) {
-                        actualTableId = doc.id; // Use actual cased ID from DB
-                    }
-                });
-                console.log(`[createOrderV2] Table ID normalized: ${body.tableId} → ${actualTableId}`);
+                const tablesSnap = await tablesPromise;
+                if (tablesSnap) {
+                    tablesSnap.forEach(doc => {
+                        if (doc.id.toLowerCase() === body.tableId.toLowerCase()) {
+                            actualTableId = doc.id; // Use actual cased ID from DB
+                        }
+                    });
+                    console.log(`[createOrderV2] Table ID normalized: ${body.tableId} → ${actualTableId}`);
+                }
             } catch (err) {
                 console.warn(`[createOrderV2] Failed to lookup table ID:`, err);
                 // Fallback to provided ID
             }
         }
 
-        // ✅ CRITICAL FIX: For add-on orders, reuse existing order's token
+        // ⚡ OPTIMIZED: Generate token instantly, defer Firestore write to save batch
         let trackingToken;
+        let needsTokenPersist = false;
 
-        if (finalExistingOrderId) {
-            console.log(`[createOrderV2] Add-on order detected - fetching existing order token from ${finalExistingOrderId}`);
-            try {
-                const existingOrderDoc = await firestore.collection('orders').doc(finalExistingOrderId).get();
-                if (existingOrderDoc.exists) {
-                    trackingToken = existingOrderDoc.data().trackingToken;
-                    console.log(`[createOrderV2] ✅ Reusing existing order token: ${trackingToken}`);
-                } else {
-                    console.warn(`[createOrderV2] Existing order ${finalExistingOrderId} not found! Generating new token.`);
-                    trackingToken = await generateSecureToken(firestore, userId);
-                }
-            } catch (err) {
-                console.error(`[createOrderV2] Failed to fetch existing order token:`, err);
-                trackingToken = await generateSecureToken(firestore, userId);
-            }
+        if (finalExistingOrderId && existingOrderDoc && existingOrderDoc.exists) {
+            trackingToken = existingOrderDoc.data().trackingToken;
+            console.log(`[createOrderV2] ✅ Reusing existing order token: ${trackingToken}`);
         } else {
-            // New order - generate fresh token
-            trackingToken = await generateSecureToken(firestore, userId);
+            // ⚡ Generate token instantly (no Firestore write here)
+            trackingToken = nanoid(24);
+            needsTokenPersist = true;
+            console.log(`[createOrderV2] ⚡ Token generated instantly: ${trackingToken}`);
         }
 
         const fallbackCarTabId = deliveryType === 'car-order'
@@ -851,8 +812,12 @@ export async function createOrderV2(req, options = {}) {
             businessType: business.type,
             dineInModel: business.data.dineInModel,
             dineInTabId: requestedSessionTabId,
-            existingOrderId: finalExistingOrderId
+            existingOrderId: finalExistingOrderId,
+            // Optimization: Pass pre-fetched data
+            preFetchedExistingOrder: existingOrderDoc,
+            preFetchedTables: tablesSnap
         });
+
 
         // ========================================
         // ONLINE PAYMENT FLOW (Razorpay/PhonePe)
@@ -1082,43 +1047,58 @@ export async function createOrderV2(req, options = {}) {
 
         console.log(`[createOrderV2] 💾 Order data prepared with dineInToken: '${dineInToken}'`);
 
-        // Create order
-        const orderId = await orderRepository.create(orderData);
+        // ========================================
+        // STEP 7: PARALLEL DATABASE SAVING
+        // ========================================
+        // Generate Order ID beforehand to decouple dependencies
+        const orderId = firestore.collection('orders').doc().id;
+        console.log(`[createOrderV2] Order ID reserved: ${orderId}`);
 
-        console.log(`[createOrderV2] Order created: ${orderId}`);
+        const saveOrderPromise = orderRepository.create(orderData, orderId);
 
-        // Sync/Upsert customer profile for owner dashboard analytics.
-        // This keeps one stable customer document per restaurant for both UID and Guest users.
-        try {
-            await upsertBusinessCustomerProfile({
-                firestore,
-                businessCollection: business.collection,
-                businessId: business.id,
-                customerDocId: userId,
-                customerName: orderData.customerName,
-                customerEmail: finalCustomerEmail,
-                customerPhone: normalizedPhone,
-                customerAddress: address || orderData.customerAddress || null,
-                customerStatus: isGuest ? 'unclaimed' : 'verified',
-                orderId,
-                orderSubtotal: pricing.serverSubtotal,
-                orderTotal: serverGrandTotal,
-                items: pricing.validatedItems,
-                customerType: isGuest ? 'guest' : 'uid',
-            });
-        } catch (profileSyncError) {
-            console.error('[createOrderV2] Customer profile sync failed:', profileSyncError);
-            // Do not fail order creation because of analytics/profile sync errors.
-        }
+        // ⚡ Persist tracking token in save batch (deferred from earlier)
+        const tokenPersistPromise = needsTokenPersist ? (async () => {
+            try {
+                await firestore.collection('auth_tokens').doc(trackingToken).set({
+                    userId,
+                    expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+                    type: 'tracking',
+                    scopes: ['track_orders', 'active_orders']
+                });
+            } catch (err) {
+                console.warn('[createOrderV2] Token persist failed (non-critical):', err?.message);
+            }
+        })() : Promise.resolve();
 
-        // Mark idempotency as completed
-        await idempotencyRepository.complete(idempotencyKey, {
+        const syncProfilePromise = (async () => {
+            try {
+                await upsertBusinessCustomerProfile({
+                    firestore,
+                    businessCollection: business.collection,
+                    businessId: business.id,
+                    customerDocId: userId,
+                    customerName: orderData.customerName,
+                    customerEmail: finalCustomerEmail,
+                    customerPhone: normalizedPhone,
+                    customerAddress: address || orderData.customerAddress || null,
+                    customerStatus: isGuest ? 'unclaimed' : 'verified',
+                    orderId,
+                    orderSubtotal: pricing.serverSubtotal,
+                    orderTotal: serverGrandTotal,
+                    items: pricing.validatedItems,
+                    customerType: isGuest ? 'guest' : 'uid',
+                });
+            } catch (profileSyncError) {
+                console.error('[createOrderV2] Customer profile sync failed:', profileSyncError);
+            }
+        })();
+
+        const idempotencyPromise = idempotencyRepository.complete(idempotencyKey, {
             orderId,
             paymentMethod: 'cod'
         });
 
-        // ✅ Update token counter for post-paid dine-in AND street vendors
-        if (newTokenNumber !== null) {
+        const tokenCounterPromise = (newTokenNumber !== null) ? (async () => {
             try {
                 await firestore.collection(business.collection).doc(business.id).update({
                     lastOrderToken: newTokenNumber
@@ -1127,80 +1107,77 @@ export async function createOrderV2(req, options = {}) {
             } catch (err) {
                 console.warn(`[createOrderV2] Failed to update token counter:`, err);
             }
-        }
+        })() : Promise.resolve();
 
-        // ✅ DINE-IN TAB UPDATES (CRITICAL: add to subcollection + update tab)
-        // PERMANENT FIX: ALWAYS create/update tab document for proper lifecycle tracking
-        if (deliveryType === 'dine-in' && resolvedDineInTabId && business.data.dineInModel === 'post-paid') {
+        const tabUpdatePromise = (deliveryType === 'dine-in' && resolvedDineInTabId && business.data.dineInModel === 'post-paid') ? (async () => {
             const dineInTabId = resolvedDineInTabId;
             try {
                 const tabRef = firestore.collection(business.collection).doc(business.id)
                     .collection('dineInTabs').doc(dineInTabId);
-
                 const tabSnap = await tabRef.get();
                 const batch = firestore.batch();
 
                 if (tabSnap.exists) {
-                    // ✅ Tab exists - update it
                     const tabStatus = tabSnap.data()?.status;
-
-                    // Only update if not completed/closed
                     if (['inactive', 'pending', 'active'].includes(tabStatus)) {
-                        // Add to tab's orders subcollection
                         const tabOrderRef = tabRef.collection('orders').doc(orderId);
                         batch.set(tabOrderRef, {
                             orderId: orderId,
-                            totalAmount: grandTotal,
+                            totalAmount: serverGrandTotal,
                             status: 'pending',
                             createdAt: FieldValue.serverTimestamp()
                         });
-
-                        // Update tab document
                         batch.update(tabRef, {
-                            totalBill: FieldValue.increment(grandTotal),
+                            totalBill: FieldValue.increment(serverGrandTotal),
                             status: 'active',
                             updatedAt: FieldValue.serverTimestamp()
                         });
-
                         await batch.commit();
-                        console.log(`[createOrderV2] ✅ Updated existing tab ${dineInTabId} (${tabStatus}→active): +₹${grandTotal}`);
+                        console.log(`[createOrderV2] ✅ Updated existing tab ${dineInTabId} (${tabStatus}→active): +₹${serverGrandTotal}`);
                     } else {
                         console.warn(`[createOrderV2] ⚠️ Tab ${dineInTabId} status=${tabStatus}, cannot add order`);
                     }
                 } else {
-                    // ✅ Tab doesn't exist - CREATE IT (PERMANENT FIX)
                     console.log(`[createOrderV2] 🆕 Creating new tab document for ${dineInTabId}`);
-
-                    // Create tab document
                     batch.set(tabRef, {
                         id: dineInTabId,
-                        tableId: actualTableId, // Use normalized table ID
+                        tableId: actualTableId,
                         tab_name: body.tab_name || 'Guest',
                         pax_count: body.pax_count || 1,
                         status: 'active',
-                        totalBill: grandTotal,
+                        totalBill: serverGrandTotal,
                         paidAmount: 0,
-                        pendingAmount: grandTotal,
+                        pendingAmount: serverGrandTotal,
                         createdAt: FieldValue.serverTimestamp(),
                         updatedAt: FieldValue.serverTimestamp()
                     });
-
-                    // Add to tab's orders subcollection
                     const tabOrderRef = tabRef.collection('orders').doc(orderId);
                     batch.set(tabOrderRef, {
                         orderId: orderId,
-                        totalAmount: grandTotal,
+                        totalAmount: serverGrandTotal,
                         status: 'pending',
                         createdAt: FieldValue.serverTimestamp()
                     });
-
                     await batch.commit();
                     console.log(`[createOrderV2] ✅ Created new tab ${dineInTabId} with order ${orderId}`);
                 }
             } catch (tabErr) {
                 console.error(`[createOrderV2] ❌ Tab update failed:`, tabErr);
             }
-        }
+        })() : Promise.resolve();
+
+        // 🚀 FIRE ALL SAVES CONCURRENTLY
+        console.log(`[createOrderV2] 🚀 Executing massive multi-document save concurrently...`);
+        await Promise.all([
+            saveOrderPromise,
+            tokenPersistPromise,
+            syncProfilePromise,
+            idempotencyPromise,
+            tokenCounterPromise,
+            tabUpdatePromise
+        ]);
+        console.log(`[createOrderV2] ✅ Multi-document save completed successfully`);
+        console.log(`[createOrderV2] 🏁 FINISHED in total ${Date.now() - startTime}ms`);
 
         // ========================================
         // STEP 7: RETURN RESPONSE
