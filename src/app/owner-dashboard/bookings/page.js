@@ -282,7 +282,7 @@ const WaitlistQrModal = ({ isOpen, onClose, restaurant }) => {
     );
 };
 
-const HistoryCard = ({ name, phone, pax, time, status, type }) => {
+const HistoryCard = ({ name, phone, pax, time, status, type, token }) => {
     const statusColors = {
         seated: "bg-green-500/10 text-green-500",
         cancelled: "bg-red-500/10 text-red-500",
@@ -297,6 +297,9 @@ const HistoryCard = ({ name, phone, pax, time, status, type }) => {
                     <div>
                         <h4 className="font-bold text-sm">{name}</h4>
                         <p className="text-[10px] text-muted-foreground">{phone || 'No phone'}</p>
+                        {token && (
+                            <p className="text-[10px] text-yellow-500 font-semibold mt-1">{token}</p>
+                        )}
                     </div>
                     <span className={cn("px-2 py-0.5 rounded-full text-[9px] uppercase font-bold", statusColors[status] || "bg-muted text-muted-foreground")}>
                         {status}
@@ -311,7 +314,7 @@ const HistoryCard = ({ name, phone, pax, time, status, type }) => {
     );
 };
 
-const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId }) => {
+const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, searchQuery = '' }) => {
     const { toast } = useToast();
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -340,17 +343,28 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId })
 
     useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
+    const filteredEntries = useMemo(() => {
+        const q = String(searchQuery || '').trim().toLowerCase();
+        if (!q) return entries;
+        return entries.filter((entry) => {
+            const name = String(entry?.name || '').toLowerCase();
+            const phone = String(entry?.phone || '');
+            const token = String(entry?.waitlistToken || '').toLowerCase();
+            return name.includes(q) || phone.includes(q) || token.includes(q);
+        });
+    }, [entries, searchQuery]);
+
     return (
         <div className="space-y-4 py-4">
             {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-muted/20 animate-pulse rounded-xl" />)}
                 </div>
-            ) : entries.length === 0 ? (
+            ) : filteredEntries.length === 0 ? (
                 <p className="text-center text-muted-foreground py-10">No waitlist history found.</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {entries.map(entry => (
+                    {filteredEntries.map(entry => (
                         <HistoryCard
                             key={entry.id}
                             name={entry.name}
@@ -359,6 +373,7 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId })
                             time={entry.noShowAt || entry.seatedAt || entry.cancelledAt || entry.createdAt}
                             status={entry.status}
                             type="waitlist"
+                            token={entry.waitlistToken}
                         />
                     ))}
                 </div>
@@ -525,6 +540,18 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
 };
 
 const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics }) => {
+    const [historySearchQuery, setHistorySearchQuery] = useState('');
+    const filteredBookingsHistory = useMemo(() => {
+        const q = String(historySearchQuery || '').trim().toLowerCase();
+        if (!q) return bookingsHistory;
+        return bookingsHistory.filter((b) => {
+            const name = String(b?.customerName || '').toLowerCase();
+            const phone = String(b?.customerPhone || '');
+            const token = String(b?.waitlistToken || '').toLowerCase();
+            return name.includes(q) || phone.includes(q) || token.includes(q);
+        });
+    }, [bookingsHistory, historySearchQuery]);
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-background border-border">
@@ -535,6 +562,17 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                     <DialogDescription>Review completed and cancelled services.</DialogDescription>
                 </DialogHeader>
 
+                <div className="relative mt-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                    <input
+                        type="text"
+                        placeholder="Search history by name, number, token..."
+                        className="w-full bg-muted/30 border border-border rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        value={historySearchQuery}
+                        onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    />
+                </div>
+
                 <Tabs defaultValue="waitlist" className="mt-4">
                     <TabsList className="grid w-full grid-cols-2 bg-muted/50 p-1">
                         <TabsTrigger value="waitlist">Waitlist</TabsTrigger>
@@ -542,15 +580,20 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                     </TabsList>
 
                     <TabsContent value="waitlist">
-                        <WaitlistHistory restaurant={restaurant} impersonatedOwnerId={impersonatedOwnerId} employeeOfOwnerId={employeeOfOwnerId} />
+                        <WaitlistHistory
+                            restaurant={restaurant}
+                            impersonatedOwnerId={impersonatedOwnerId}
+                            employeeOfOwnerId={employeeOfOwnerId}
+                            searchQuery={historySearchQuery}
+                        />
                     </TabsContent>
 
                     <TabsContent value="bookings" className="space-y-4 py-4">
-                        {bookingsHistory.length === 0 ? (
+                        {filteredBookingsHistory.length === 0 ? (
                             <p className="text-center text-muted-foreground py-10">No booking history found.</p>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {bookingsHistory.map(b => (
+                                {filteredBookingsHistory.map(b => (
                                     <HistoryCard
                                         key={b.id}
                                         name={b.customerName}
@@ -559,6 +602,7 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                                         time={b.bookingDateTime}
                                         status={b.status}
                                         type="booking"
+                                        token={b.waitlistToken}
                                     />
                                 ))}
                             </div>
@@ -582,6 +626,7 @@ const WaitlistManagement = ({
     impersonatedOwnerId,
     employeeOfOwnerId,
     waitlistSeatingMode,
+    onWaitlistUpdate,
 }) => {
     const { toast } = useToast();
     const [entries, setEntries] = useState([]);
@@ -624,8 +669,13 @@ const WaitlistManagement = ({
         return data;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
+    const listenerRefreshTimerRef = useRef(null);
+    const fetchData = useCallback(async (silent = false) => {
+        if (listenerRefreshTimerRef.current) {
+            clearTimeout(listenerRefreshTimerRef.current);
+            listenerRefreshTimerRef.current = null;
+        }
+        if (!silent) setLoading(true);
         try {
             const [waitlistData, tablesData] = await Promise.all([
                 handleApiCall('GET', null, '/api/owner/waitlist'),
@@ -638,9 +688,16 @@ const WaitlistManagement = ({
             console.error("Waitlist fetch error:", err);
             toast({ title: "Fetch Error", description: err.message, variant: "destructive" });
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [handleApiCall, toast]);
+
+    useEffect(() => {
+        if (typeof onWaitlistUpdate === 'function') {
+            onWaitlistUpdate(entries);
+        }
+    }, [entries, onWaitlistUpdate]);
+
 
     useEffect(() => {
         if (!restaurant?.id || !restaurant?.collection) {
@@ -827,7 +884,7 @@ const WaitlistManagement = ({
                 .animate-pulse-green { animation: pulse-green 2s infinite; }
                 .animate-pulse-yellow { animation: pulse-yellow 2s infinite; }
             `}</style>
-            <div className="flex justify-between items-center bg-muted/30 p-4 rounded-xl border border-border">
+            <div className="hidden md:flex justify-between items-center bg-muted/30 p-4 rounded-xl border border-border">
                 <div>
                     <h3 className="text-lg font-bold flex items-center gap-2">
                         <ListOrdered className="text-primary" size={20} />
@@ -863,6 +920,7 @@ const WaitlistManagement = ({
                         const isRecommended = !usesTraditionalSeating && recommendedEntries.has(entry.id);
                         const isNotified = entry.status === 'notified';
                         const isReadyToNotify = entry.status === 'ready_to_notify';
+                        const isArrived = entry.status === 'arrived';
                         const notifiedAtMs = entry?.notifiedAt ? new Date(entry.notifiedAt).getTime() : null;
                         const computedDeadlineMs = notifiedAtMs
                             ? (notifiedAtMs + Math.max(1, Number(waitlistMeta?.noShowTimeoutMinutes || 10)) * 60 * 1000)
@@ -885,7 +943,7 @@ const WaitlistManagement = ({
                         return (
                             <Card key={entry.id} className={cn(
                                 "border-l-4 transition-all duration-300",
-                                isNotified ? "border-l-amber-500" : isReadyToNotify ? "border-l-sky-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
+                                isNotified ? "border-l-amber-500" : isReadyToNotify ? "border-l-sky-500" : isArrived ? "border-l-purple-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
                                 isRecommended && !isNotified && "animate-pulse-green border-green-500/50",
                                 isNotified && "animate-pulse-yellow border-amber-500/50"
                             )}>
@@ -900,6 +958,9 @@ const WaitlistManagement = ({
                                             )}
                                             {isNotified && (
                                                 <div className="mt-1.5 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                                            )}
+                                            {isArrived && (
+                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
                                             )}
                                             <div>
                                                 <h4 className="font-bold flex items-center gap-2">
@@ -917,8 +978,8 @@ const WaitlistManagement = ({
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1.5">
-                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isReadyToNotify ? "bg-sky-500/10 text-sky-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
-                                                {isNotified ? 'Notified' : isReadyToNotify ? 'Ready to Notify' : isRecommended ? 'Recommended' : 'Waiting'}
+                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isReadyToNotify ? "bg-sky-500/10 text-sky-500" : isArrived ? "bg-purple-500/10 text-purple-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
+                                                {isNotified ? 'Notified' : isReadyToNotify ? 'Ready to Notify' : isArrived ? 'Arrived' : isRecommended ? 'Recommended' : 'Waiting'}
                                             </div>
                                             {isNotified && remainingNoShowMinutes !== null && (
                                                 <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">
@@ -963,8 +1024,18 @@ const WaitlistManagement = ({
                                         </Button>
                                     </div>
                                     <div className="flex gap-2">
+                                        {isNotified && (
+                                            <Button
+                                                variant="outline"
+                                                className="h-10 font-bold flex-1"
+                                                disabled={actionLoading === entry.id}
+                                                onClick={() => handleUpdateStatus(entry.id, 'arrived')}
+                                            >
+                                                {actionLoading === entry.id ? <Loader2 className="animate-spin" size={16} /> : 'Mark Arrived'}
+                                            </Button>
+                                        )}
                                         <Button
-                                            className="flex-1 h-10 font-bold"
+                                            className="h-10 font-bold flex-1"
                                             disabled={((!tableId && !usesTraditionalSeating) || actionLoading === entry.id)}
                                             onClick={() => handleSeatCustomer(entry)}
                                         >
@@ -980,19 +1051,7 @@ const WaitlistManagement = ({
                     })}
                 </div>
             )}
-            <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="p-3 text-sm">
-                    <p className="font-semibold text-primary">No-show automation</p>
-                    <p className="text-muted-foreground mt-1">
-                        Countdown starts exactly when you press <strong>Notify</strong>. If guest is not seated within {waitlistMeta?.noShowTimeoutMinutes || 10} minutes, entry auto-moves to waitlist history as <strong>no_show</strong> and next pending guest shifts to <strong>Ready to Notify</strong>.
-                    </p>
-                    {waitlistMeta?.autoExpiredCount > 0 && (
-                        <p className="text-amber-600 mt-2 font-medium">
-                            {waitlistMeta.autoExpiredCount} guest(s) auto-expired in latest refresh.
-                        </p>
-                    )}
-                </CardContent>
-            </Card>
+
             {waitlistSeatingMode === 'manual_seat' && waitlistMeta?.capacity?.softAlert && (
                 <Card className="border-amber-500/30 bg-amber-500/5">
                     <CardContent className="p-3 text-sm text-amber-700">
@@ -1083,6 +1142,7 @@ const WaitlistManagement = ({
 
 function BookingsPageContent() {
     const [bookings, setBookings] = useState([]);
+    const [waitlistCount, setWaitlistCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [businessInfo, setBusinessInfo] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -1169,6 +1229,13 @@ function BookingsPageContent() {
         setNoShowTimeoutDraft(String(waitlistNoShowTimeoutMinutes || 10));
     }, [waitlistNoShowTimeoutMinutes, isWaitlistSettingsOpen]);
 
+    const getSettingsApiUrl = () => {
+        const url = new URL('/api/owner/settings', window.location.origin);
+        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
+        return url.toString();
+    };
+
     const handleUpdateStatus = async (bookingId, status) => {
         try {
             const user = auth.currentUser;
@@ -1192,7 +1259,7 @@ function BookingsPageContent() {
             const user = auth.currentUser;
             if (!user) return;
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/settings', {
+            const res = await fetch(getSettingsApiUrl(), {
                 method: 'PATCH',
                 headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ isWaitlistEnabled: enabled })
@@ -1212,7 +1279,7 @@ function BookingsPageContent() {
             const user = auth.currentUser;
             if (!user) return;
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/settings', {
+            const res = await fetch(getSettingsApiUrl(), {
                 method: 'PATCH',
                 headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ waitlistSeatingMode: nextMode })
@@ -1241,7 +1308,7 @@ function BookingsPageContent() {
             const user = auth.currentUser;
             if (!user) return;
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/settings', {
+            const res = await fetch(getSettingsApiUrl(), {
                 method: 'PATCH',
                 headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ waitlistManualCapacity: parsedCapacity })
@@ -1270,7 +1337,7 @@ function BookingsPageContent() {
             const user = auth.currentUser;
             if (!user) return;
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/settings', {
+            const res = await fetch(getSettingsApiUrl(), {
                 method: 'PATCH',
                 headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ waitlistNoShowTimeoutMinutes: parsedTimeout })
@@ -1293,7 +1360,7 @@ function BookingsPageContent() {
             const user = auth.currentUser;
             if (!user) return;
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/settings', {
+            const res = await fetch(getSettingsApiUrl(), {
                 method: 'PATCH',
                 headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ resetWaitlistTokenCounter: true })
@@ -1305,6 +1372,7 @@ function BookingsPageContent() {
                 waitlistTokenCounter: data.waitlistTokenCounter,
                 waitlistTokenCounterDate: data.waitlistTokenCounterDate,
             } : prev);
+            await fetchBookings(true);
             toast({ title: 'Counter Reset', description: 'Waitlist token counter reset to start for today.' });
         } catch (err) {
             toast({ title: 'Failed', description: err.message, variant: 'destructive' });
@@ -1333,21 +1401,21 @@ function BookingsPageContent() {
     }), [filtered]);
 
     return (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 md:p-6 space-y-6">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 md:p-6 space-y-3 md:space-y-6">
+            <header className="flex flex-row justify-between items-center gap-2">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Bookings & Waitlist</h1>
-                    <p className="text-muted-foreground mt-1">Manage your table reservations and walk-in waitlist.</p>
+                    <h1 className="text-xl md:text-3xl font-bold tracking-tight leading-tight">Bookings & Waitlist</h1>
+                    <p className="hidden md:block text-muted-foreground mt-1 text-sm md:text-base">Manage your table reservations and walk-in waitlist.</p>
                 </div>
-                <div className="flex gap-2">
-                    <Button onClick={() => setIsHistoryOpen(true)} variant="outline" className="h-10 w-10 px-0 md:h-10 md:w-auto md:px-3 flex items-center gap-2">
+                <div className="flex gap-1.5 md:gap-2">
+                    <Button onClick={() => setIsHistoryOpen(true)} variant="outline" className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center md:gap-2">
                         <History size={16} /> <span className="hidden md:inline">History</span>
                     </Button>
-                    <Button onClick={() => setIsWaitlistSettingsOpen(true)} variant="outline" className="h-10 w-10 px-0 md:h-10 md:w-auto md:px-3 flex items-center gap-2" disabled={!businessInfo}>
+                    <Button onClick={() => setIsWaitlistSettingsOpen(true)} variant="outline" className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center md:gap-2" disabled={!businessInfo}>
                         <Settings size={16} /> <span className="hidden md:inline">Settings</span>
                     </Button>
-                    <Button onClick={() => fetchBookings(true)} variant="outline" disabled={loading} className="h-10 w-10 px-0 md:h-10 md:w-auto md:px-3">
-                        <RefreshCw size={16} className={cn("md:mr-2", loading && "animate-spin")} /> <span className="hidden md:inline">Refresh</span>
+                    <Button onClick={() => fetchBookings(true)} variant="outline" disabled={loading} className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center">
+                        <RefreshCw size={16} className={loading ? "animate-spin" : "md:mr-2"} /> <span className="hidden md:inline">Refresh</span>
                     </Button>
                 </div>
             </header>
@@ -1367,14 +1435,14 @@ function BookingsPageContent() {
             )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                    <TabsList className="bg-muted/50 p-1 self-start">
-                        <TabsTrigger value="waitlist" className="flex items-center gap-2 font-bold"><ListOrdered size={16} /> Live Waitlist</TabsTrigger>
-                        <TabsTrigger value="upcoming" className="flex items-center gap-2 font-bold"><CalendarClock size={16} /> Upcoming Bookings</TabsTrigger>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 mb-3 md:mb-6">
+                    <TabsList className="bg-muted/50 p-1 self-start w-full md:w-auto grid grid-cols-2 md:inline-flex h-10 md:h-11">
+                        <TabsTrigger value="waitlist" className="flex items-center gap-2 font-bold text-xs md:text-sm"><ListOrdered size={16} className="hidden md:block" /> Live Waitlist ({waitlistCount})</TabsTrigger>
+                        <TabsTrigger value="upcoming" className="flex items-center gap-2 font-bold text-xs md:text-sm"><CalendarClock size={16} className="hidden md:block" /> {upcoming ? `Upcoming (${upcoming.length})` : 'Upcoming'}</TabsTrigger>
                     </TabsList>
                     <div className="relative w-full max-w-sm">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                        <input type="text" placeholder="Search by name or phone..." className="w-full bg-muted/30 border border-border rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
+                        <input type="text" placeholder="Search by name or phone..." className="w-full bg-muted/30 border border-border rounded-xl pl-9 md:pl-10 pr-4 py-1.5 md:py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all h-9 md:h-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                     </div>
                 </div>
 
@@ -1384,21 +1452,12 @@ function BookingsPageContent() {
                         impersonatedOwnerId={impersonatedOwnerId}
                         employeeOfOwnerId={employeeOfOwnerId}
                         waitlistSeatingMode={waitlistSeatingMode}
+                        onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
                     />
                 </TabsContent>
 
                 <TabsContent value="upcoming">
-                    <div className="space-y-6">
-                        <div className="flex justify-between items-center bg-muted/30 p-4 rounded-xl border border-border">
-                            <div>
-                                <h3 className="text-lg font-bold flex items-center gap-2">
-                                    <CalendarClock className="text-primary" size={20} />
-                                    Active Reservations ({upcoming.length})
-                                </h3>
-                                <p className="text-sm text-muted-foreground">Manage upcoming table bookings.</p>
-                            </div>
-                        </div>
-
+                    <div className="space-y-3 md:space-y-6">
                         {loading && upcoming.length === 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-40 bg-muted animate-pulse rounded-xl" />)}

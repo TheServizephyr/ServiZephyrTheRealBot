@@ -1,6 +1,11 @@
 
 /** @type {import('next').NextConfig} */
-const { withSentryConfig } = require('@sentry/nextjs');
+let withSentryConfig = (config) => config;
+try {
+  ({ withSentryConfig } = require('@sentry/nextjs'));
+} catch (error) {
+  console.warn('[next.config] @sentry/nextjs not found, continuing without Sentry integration.');
+}
 
 // Load environment variables from .env.local for local development
 if (process.env.NODE_ENV !== 'production') {

@@ -11,6 +11,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
     const scannerRef = useRef(null);
     const html5QrRef = useRef(null);
     const permissionProbeStreamRef = useRef(null);
+    const isActiveRef = useRef(false);
     const [cameraError, setCameraError] = useState(null);
     const [isPermissionDenied, setIsPermissionDenied] = useState(false);
     const [retryNonce, setRetryNonce] = useState(0);
@@ -35,16 +36,30 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
         } catch {
             // Scanner UI may already be cleared.
         }
+
+        // Hard cleanup for any attached media stream (safety net)
+        if (scannerRef.current?.srcObject?.getTracks) {
+            scannerRef.current.srcObject.getTracks().forEach((track) => track.stop());
+            scannerRef.current.srcObject = null;
+        }
+
+        const nestedVideo = scannerRef.current?.querySelector?.('video');
+        if (nestedVideo?.srcObject?.getTracks) {
+            nestedVideo.srcObject.getTracks().forEach((track) => track.stop());
+            nestedVideo.srcObject = null;
+        }
     }, []);
 
     useEffect(() => {
         if (!scannerRef.current) return;
+        isActiveRef.current = true;
 
         const html5QrCode = new Html5Qrcode(scannerRef.current.id);
         html5QrRef.current = html5QrCode;
         let currentCameraId;
 
         const startScanner = (cameras) => {
+            if (!isActiveRef.current) return;
             if (cameras && cameras.length > 0) {
                 const camera = cameras.find(c => c.label.toLowerCase().includes('back')) || cameras[0];
                 currentCameraId = camera.id;
@@ -82,6 +97,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
             try {
                 setCameraError(null);
                 setIsPermissionDenied(false);
+                if (!isActiveRef.current) return;
 
                 if (!navigator?.mediaDevices?.getUserMedia) {
                     setCameraError("Camera API not available in this browser.");
@@ -93,15 +109,22 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                     video: { facingMode: { ideal: 'environment' } }
                 });
                 permissionProbeStreamRef.current = permissionProbeStream;
+                if (!isActiveRef.current) {
+                    permissionProbeStream.getTracks().forEach((track) => track.stop());
+                    permissionProbeStreamRef.current = null;
+                    return;
+                }
 
                 // Only probing permission; scanner will start its own stream.
                 permissionProbeStream.getTracks().forEach((track) => track.stop());
                 permissionProbeStreamRef.current = null;
 
                 const cameras = await Html5Qrcode.getCameras();
+                if (!isActiveRef.current) return;
                 startScanner(cameras);
             } catch (err) {
                 console.error("Failed to initialize scanner", err);
+                if (!isActiveRef.current) return;
                 const errName = String(err?.name || '').toLowerCase();
                 const errMessage = String(err?.message || '').toLowerCase();
                 if (errMessage.includes('not allowed in this document') || errMessage.includes('permissions policy')) {
@@ -142,6 +165,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
         void initScanner();
 
         return () => {
+            isActiveRef.current = false;
             void stopScanner();
             if (html5QrRef.current === html5QrCode) {
                 html5QrRef.current = null;

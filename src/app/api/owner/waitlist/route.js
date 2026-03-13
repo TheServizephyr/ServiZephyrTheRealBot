@@ -14,7 +14,7 @@ const DEFAULT_NO_SHOW_TIMEOUT_MINUTES = 10;
 const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
 const DEFAULT_WAITLIST_MANUAL_CAPACITY = 40;
 const ACTIVE_SEATED_WINDOW_MS = 2 * 60 * 60 * 1000;
-const DEFAULT_WAITLIST_TOKEN_BASE = 100;
+const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
 function normalizeWaitlistSeatingMode(value) {
@@ -46,7 +46,7 @@ function formatWaitlistToken(numberValue) {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const bytes = crypto.randomBytes(2);
     const suffix = `${alphabet[bytes[0] % alphabet.length]}${alphabet[bytes[1] % alphabet.length]}`;
-    return `#${numberValue}${suffix}`;
+    return `#${String(Math.max(0, Number(numberValue) || 0)).padStart(2, '0')}${suffix}`;
 }
 
 function generateArrivalCode() {
@@ -54,12 +54,16 @@ function generateArrivalCode() {
 }
 
 function getDateKeyInTimeZone(date = new Date()) {
-    return new Intl.DateTimeFormat('en-CA', {
+    const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: WAITLIST_COUNTER_TIMEZONE,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
-    }).format(date);
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value || '0000';
+    const month = parts.find((part) => part.type === 'month')?.value || '00';
+    const day = parts.find((part) => part.type === 'day')?.value || '00';
+    return `${year}-${month}-${day}`;
 }
 
 function normalizeQueuePriority(value, fallback = 2) {
@@ -131,6 +135,7 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
                     ? DEFAULT_WAITLIST_TOKEN_BASE
                     : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessData.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
                 const nextCounter = currentCounter + 1;
+                const tokenNumber = currentCounter;
                 const waitlistRef = businessRef.collection('waitlist').doc();
                 linkedEntryId = waitlistRef.id;
 
@@ -145,8 +150,8 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
                     source: 'booking_late',
                     sourceBookingId: bookingDoc.id,
                     bookingDateTime: freshBookingData.bookingDateTime || null,
-                    waitlistTokenNumber: nextCounter,
-                    waitlistToken: formatWaitlistToken(nextCounter),
+                    waitlistTokenNumber: tokenNumber,
+                    waitlistToken: formatWaitlistToken(tokenNumber),
                     arrivalCode: generateArrivalCode(),
                     createdAt: FieldValue.serverTimestamp(),
                     updatedAt: FieldValue.serverTimestamp(),
@@ -456,6 +461,8 @@ export async function PATCH(req) {
             }
             if (status === 'arrived') {
                 updatePayload.arrivedAt = FieldValue.serverTimestamp();
+                // Arrived means guest is physically present, so stop no-show countdown.
+                updatePayload.noShowDeadlineAt = null;
             }
             if (status === 'cancelled') {
                 updatePayload.cancelledAt = FieldValue.serverTimestamp();

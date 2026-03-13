@@ -31,7 +31,10 @@ export default function PublicWaitlistPage({ params }) {
     const [arrivalCode, setArrivalCode] = useState('');
     const [entryId, setEntryId] = useState('');
     const [queueStatus, setQueueStatus] = useState('pending');
+    const [notifiedAt, setNotifiedAt] = useState('');
+    const [noShowDeadlineAt, setNoShowDeadlineAt] = useState('');
     const [isCoinFlipped, setIsCoinFlipped] = useState(false);
+    const [timerNowMs, setTimerNowMs] = useState(Date.now());
     const [restaurantData, setRestaurantData] = useState(null);
 
     useEffect(() => {
@@ -74,6 +77,8 @@ export default function PublicWaitlistPage({ params }) {
             setArrivalCode(saved.arrivalCode);
             setEntryId(saved.entryId);
             setQueueStatus(saved.queueStatus || 'pending');
+            setNotifiedAt(saved.notifiedAt || '');
+            setNoShowDeadlineAt(saved.noShowDeadlineAt || '');
             setSuccess(true);
         } catch (parseErr) {
             console.warn('[waitlist] Failed to restore saved token:', parseErr);
@@ -97,9 +102,11 @@ export default function PublicWaitlistPage({ params }) {
             waitlistToken,
             arrivalCode,
             queueStatus,
+            notifiedAt,
+            noShowDeadlineAt,
             savedAt: new Date().toISOString(),
         }));
-    }, [restaurantId, mode, success, name, phone, paxCount, entryId, waitlistToken, arrivalCode, queueStatus]);
+    }, [restaurantId, mode, success, name, phone, paxCount, entryId, waitlistToken, arrivalCode, queueStatus, notifiedAt, noShowDeadlineAt]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -114,12 +121,15 @@ export default function PublicWaitlistPage({ params }) {
                     entryId,
                     arrivalCode,
                 });
+                if (document.visibilityState === 'hidden') return;
                 const res = await fetch(`/api/public/waitlist/status?${params.toString()}`, { cache: 'no-store' });
                 const data = await res.json();
                 if (!res.ok || isCancelled) return;
 
                 const nextStatus = String(data?.status || 'pending').toLowerCase();
                 setQueueStatus(nextStatus);
+                setNotifiedAt(String(data?.notifiedAt || ''));
+                setNoShowDeadlineAt(String(data?.noShowDeadlineAt || ''));
 
                 if (nextStatus === 'seated') {
                     setSuccess(true);
@@ -138,13 +148,27 @@ export default function PublicWaitlistPage({ params }) {
             }
         };
 
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void pollWaitlistStatus();
+            }
+        };
+
         void pollWaitlistStatus();
-        const interval = window.setInterval(pollWaitlistStatus, 8000);
+        const interval = window.setInterval(pollWaitlistStatus, 12000);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => {
             isCancelled = true;
             window.clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [restaurantId, mode, success, entryId, arrivalCode]);
+
+    useEffect(() => {
+        if (!(mode === 'waitlist' && success)) return undefined;
+        const timer = window.setInterval(() => setTimerNowMs(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, [mode, success]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -212,6 +236,8 @@ export default function PublicWaitlistPage({ params }) {
             setArrivalCode(data?.arrivalCode || '');
             setEntryId(data?.entryId || '');
             setQueueStatus('pending');
+            setNotifiedAt('');
+            setNoShowDeadlineAt('');
             if (isBookingMode && typeof window !== 'undefined') {
                 window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
             }
@@ -243,7 +269,37 @@ export default function PublicWaitlistPage({ params }) {
     const tokenParts = tokenWithoutHash.match(/^(\d+)([A-Z]{2})$/);
     const tokenNumberPart = tokenParts?.[1] || tokenWithoutHash;
     const tokenAlphaPart = tokenParts?.[2] || '';
+    const coinTokenNumberPart = String(tokenNumberPart || '');
+    const notifiedAtMs = notifiedAt ? new Date(notifiedAt).getTime() : null;
+    const noShowDeadlineMs = noShowDeadlineAt
+        ? new Date(noShowDeadlineAt).getTime()
+        : (notifiedAtMs ? (notifiedAtMs + noShowTimeoutMinutes * 60 * 1000) : null);
+    const noShowRemainingSeconds = (queueStatus === 'notified' && noShowDeadlineMs)
+        ? Math.max(0, Math.floor((noShowDeadlineMs - timerNowMs) / 1000))
+        : null;
+    const noShowCountdownLabel = noShowRemainingSeconds === null
+        ? null
+        : `${String(Math.floor(noShowRemainingSeconds / 60)).padStart(2, '0')}:${String(noShowRemainingSeconds % 60).padStart(2, '0')}`;
     const isSeated = queueStatus === 'seated';
+    const queueStatusLabelMap = {
+        pending: 'Waiting',
+        ready_to_notify: 'Ready to Notify',
+        notified: 'Notified',
+        arrived: 'Arrived',
+        seated: 'Seated',
+        cancelled: 'Cancelled',
+        no_show: 'No Show',
+    };
+    const queueStatusChipClassMap = {
+        pending: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30',
+        ready_to_notify: 'bg-blue-500/10 text-blue-600 border-blue-500/30',
+        notified: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+        arrived: 'bg-purple-500/10 text-purple-600 border-purple-500/30',
+        seated: 'bg-green-500/10 text-green-600 border-green-500/30',
+        cancelled: 'bg-red-500/10 text-red-600 border-red-500/30',
+        no_show: 'bg-orange-500/10 text-orange-600 border-orange-500/30',
+    };
+    const queueStatusLabel = queueStatusLabelMap[queueStatus] || 'Waiting';
 
     if (success) {
         return (
@@ -304,6 +360,21 @@ export default function PublicWaitlistPage({ params }) {
                                 ? <>We&apos;ve received your booking request at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> guests.</>
                                 : <>We will call and WhatsApp you as soon as your table at <strong className="text-primary">{restaurantName}</strong> for <strong>{paxCount}</strong> guests is ready.</>}
                         </CardDescription>
+                        {mode !== 'booking' && (
+                            <div className="mb-4 flex justify-center items-center gap-2">
+                                <span className={cn(
+                                    "inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide",
+                                    queueStatusChipClassMap[queueStatus] || 'bg-muted text-muted-foreground border-border'
+                                )}>
+                                    Status: {queueStatusLabel}
+                                </span>
+                                {queueStatus === 'notified' && noShowCountdownLabel && (
+                                    <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-600">
+                                        {noShowCountdownLabel}
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         {!isSeated && mode !== 'booking' && waitlistToken && (
                             <div className="mb-4 space-y-4">
                                 <div className="flex flex-col items-center gap-3">
@@ -323,7 +394,7 @@ export default function PublicWaitlistPage({ params }) {
                                                     </svg>
                                                     <div className="token-label">TOKEN</div>
                                                     <div className="token-number">
-                                                        <span className="token-number-main">#{tokenNumberPart}</span>
+                                                        <span className="token-number-main">{coinTokenNumberPart}</span>
                                                         <span className="token-number-sub">{tokenAlphaPart}</span>
                                                     </div>
                                                 </div>
