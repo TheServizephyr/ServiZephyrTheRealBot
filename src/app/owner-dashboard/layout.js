@@ -553,7 +553,7 @@ export default function OwnerDashboardRootLayout({ children }) {
   return (
     <ThemeProvider
       attribute="class"
-      defaultTheme="light"
+      defaultTheme="dark"
       enableSystem
       disableTransitionOnChange
     >
