@@ -148,32 +148,45 @@ const toTemplateButtonSuffix = (pathWithQuery = '') => {
 const buildWelcomeCtaTemplatePayload = ({
     restaurantName,
     customerName,
-    orderPath
+    orderPath,
+    trackPath
 }) => {
     if (!WELCOME_CTA_TEMPLATE_NAME) return null;
 
     const safeRestaurant = String(restaurantName || 'ServiZephyr').slice(0, 60);
     const safeCustomer = String(customerName || 'Customer').slice(0, 40);
 
+    const components = [
+        {
+            type: 'header',
+            parameters: [{ type: 'text', text: safeRestaurant }],
+        },
+        {
+            type: 'body',
+            parameters: [{ type: 'text', text: safeCustomer }],
+        },
+        {
+            type: 'button',
+            sub_type: 'url',
+            index: '0',
+            parameters: [{ type: 'text', text: toTemplateButtonSuffix(orderPath) }],
+        },
+    ];
+
+    // If the template has a second URL button (e.g., Track Order), add its parameter
+    if (trackPath) {
+        components.push({
+            type: 'button',
+            sub_type: 'url',
+            index: '1',
+            parameters: [{ type: 'text', text: toTemplateButtonSuffix(trackPath) }],
+        });
+    }
+
     return {
         name: WELCOME_CTA_TEMPLATE_NAME,
         language: { code: WELCOME_CTA_TEMPLATE_LANGUAGE || 'en' },
-        components: [
-            {
-                type: 'header',
-                parameters: [{ type: 'text', text: safeRestaurant }],
-            },
-            {
-                type: 'body',
-                parameters: [{ type: 'text', text: safeCustomer }],
-            },
-            {
-                type: 'button',
-                sub_type: 'url',
-                index: '0',
-                parameters: [{ type: 'text', text: toTemplateButtonSuffix(orderPath) }],
-            },
-        ],
+        components,
     };
 };
 
@@ -420,11 +433,12 @@ const sendWelcomeMessageWithOptions = async (
     if (WELCOME_CTA_TEMPLATE_NAME && !forceInteractive) {
         try {
             const customerName = options?.customerName || 'Customer';
-            const { orderPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
+            const { orderPath, trackPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
             const templatePayload = buildWelcomeCtaTemplatePayload({
                 restaurantName: business.data.name,
                 customerName,
-                orderPath
+                orderPath,
+                trackPath
             });
 
             if (templatePayload) {
