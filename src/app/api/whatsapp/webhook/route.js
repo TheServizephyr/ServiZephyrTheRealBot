@@ -63,6 +63,28 @@ export async function POST(request) {
             return NextResponse.json({ message: 'Not a WhatsApp event' }, { status: 200 });
         }
 
+        // 🛑 OPTIMIZATION: Only queue actual incoming customer messages. 
+        // Bypass QStash for status updates (sent, delivered, read) to save free tier limits.
+        const change = body?.entry?.[0]?.changes?.[0];
+        const value = change?.value || {};
+        const hasMessages = Array.isArray(value.messages) && value.messages.length > 0;
+        
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://www.servizephyr.com';
+        const processUrl = `${baseUrl.replace(/\/+$/, '')}/api/whatsapp/webhook/process`;
+
+        if (!hasMessages) {
+            console.log('[Webhook WA Receiver] ⚡ Bypassing QStash for non-message event (e.g., status update). Saving quota.');
+            const syncResponse = await fetch(processUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-internal-fallback-bypass': appSecret || 'fallback-secret'
+                },
+                body: JSON.stringify(body)
+            });
+            return NextResponse.json({ message: 'Processed synchronously to save quota' }, { status: syncResponse.status });
+        }
+
         // Publish to QStash
         const qstashToken = process.env.QSTASH_TOKEN || process.env.KV_REST_API_TOKEN;
         if (!qstashToken) {
@@ -71,8 +93,6 @@ export async function POST(request) {
         }
 
         const qstashClient = new Client({ token: qstashToken });
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://www.servizephyr.com';
-        const processUrl = `${baseUrl.replace(/\/+$/, '')}/api/whatsapp/webhook/process`;
 
         try {
             await qstashClient.publishJSON({
