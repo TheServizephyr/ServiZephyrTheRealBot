@@ -12,20 +12,22 @@ export async function GET(req, { params }) {
         }
 
         const firestore = await getFirestore();
-        let settingsRef = firestore.collection('settings').doc(restaurantId);
-        let settingsDoc = await settingsRef.get();
-        // If no settings found, check if it's a store/street_vendor
-        if (!settingsDoc.exists) {
-            settingsRef = firestore.collection('store_settings').doc(restaurantId);
-            settingsDoc = await settingsRef.get();
-            if (!settingsDoc.exists) {
-                settingsRef = firestore.collection('vendor_settings').doc(restaurantId);
-                settingsDoc = await settingsRef.get();
+
+        // Search in the correct collections where owner settings are actually stored
+        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        let businessDoc = null;
+
+        for (const collection of collectionsToTry) {
+            const docRef = firestore.collection(collection).doc(restaurantId);
+            const snap = await docRef.get();
+            if (snap.exists) {
+                businessDoc = snap;
+                break;
             }
         }
 
-        if (!settingsDoc.exists) {
-            // Return default settings if none exist
+        if (!businessDoc) {
+            // Return safe defaults if business not found
             return NextResponse.json({
                 deliveryEnabled: true,
                 pickupEnabled: true,
@@ -38,33 +40,44 @@ export async function GET(req, { params }) {
                 dineInPayAtCounterEnabled: true,
             }, {
                 status: 200,
-                headers: {
-                    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
-                }
+                headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' }
             });
         }
 
-        const data = settingsDoc.data() || {};
+        const businessData = businessDoc.data() || {};
 
-        // Return only safe, non-sensitive settings to public
+        // Also fetch delivery_settings sub-collection (single source of truth for delivery settings)
+        let deliveryConfig = {};
+        try {
+            const deliveryConfigSnap = await businessDoc.ref.collection('delivery_settings').doc('config').get();
+            if (deliveryConfigSnap.exists) {
+                deliveryConfig = deliveryConfigSnap.data() || {};
+            }
+        } catch (err) {
+            console.warn('[public/settings] Failed to fetch delivery_settings sub-collection:', err);
+        }
+
+        // Fallback: sub-collection value > parent doc value > hardcoded default
+        const fallback = (key, defaultVal) => deliveryConfig[key] ?? businessData[key] ?? defaultVal;
+
         const publicSettings = {
-            deliveryEnabled: data.deliveryEnabled !== false,
-            pickupEnabled: data.pickupEnabled !== false,
-            dineInEnabled: data.dineInEnabled !== false,
-            deliveryCodEnabled: data.deliveryCodEnabled !== false,
-            deliveryOnlinePaymentEnabled: data.deliveryOnlinePaymentEnabled !== false,
-            pickupOnlinePaymentEnabled: data.pickupOnlinePaymentEnabled !== false,
-            pickupPodEnabled: data.pickupPodEnabled !== false,
-            dineInOnlinePaymentEnabled: data.dineInOnlinePaymentEnabled !== false,
-            dineInPayAtCounterEnabled: data.dineInPayAtCounterEnabled !== false,
-            deliveryCharge: data.deliveryCharge || 0,
-            deliveryFreeThreshold: data.deliveryFreeThreshold || null,
+            deliveryEnabled: fallback('deliveryEnabled', true),
+            pickupEnabled: fallback('pickupEnabled', true),
+            dineInEnabled: fallback('dineInEnabled', true),
+            deliveryCodEnabled: fallback('deliveryCodEnabled', true),
+            deliveryOnlinePaymentEnabled: fallback('deliveryOnlinePaymentEnabled', true),
+            pickupOnlinePaymentEnabled: fallback('pickupOnlinePaymentEnabled', true),
+            pickupPodEnabled: fallback('pickupPodEnabled', true),
+            dineInOnlinePaymentEnabled: fallback('dineInOnlinePaymentEnabled', true),
+            dineInPayAtCounterEnabled: fallback('dineInPayAtCounterEnabled', true),
+            deliveryCharge: fallback('deliveryFeeType', 'fixed') === 'fixed' ? fallback('deliveryFixedFee', 30) : 0,
+            deliveryFreeThreshold: fallback('deliveryFreeThreshold', null),
         };
 
         return NextResponse.json(publicSettings, {
             status: 200,
             headers: {
-                'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' // CDN Cache: 1 minute
+                'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
             }
         });
 
