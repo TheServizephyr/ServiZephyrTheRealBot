@@ -55,6 +55,7 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
 
     const firestore = await getFirestore();
     const collectionName = getBusinessCollection(businessType);
+    console.log(`[OrderPricing] Using collection: ${collectionName} (type: ${businessType})`);
     const menuRef = firestore.collection(collectionName).doc(restaurantId).collection('menu');
 
     let serverSubtotal = 0;
@@ -78,7 +79,10 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
     const menuItemMap = new Map();
 
     itemDocs.forEach((docSnap) => {
-        if (!docSnap.exists) return;
+        if (!docSnap.exists) {
+            console.log(`[OrderPricing] Item NOT found in ${collectionName}: ${docSnap.id}`);
+            return;
+        }
         menuItemMap.set(docSnap.id, {
             ...docSnap.data(),
             id: docSnap.id
@@ -103,7 +107,7 @@ export async function calculateServerTotal({ restaurantId, items, businessType =
             console.log(`[OrderPricing] Item ${item.id}: ₹${itemPrice} x ${itemQuantity} = ₹${itemTotal} (Client expected price: ₹${item.price || item.totalPrice / itemQuantity || 'unknown'})`);
 
         } catch (error) {
-            console.error(`[OrderPricing] Validation failed for item ${item.id}:`, error.message);
+            console.error(`[OrderPricing] Validation failed for item ${item.id} in ${collectionName}:`, error.message);
             throw new PricingError(
                 `Item "${item.name || item.id}" validation failed: ${error.message}`
             );

@@ -429,41 +429,23 @@ export async function createOrderV2(req, options = {}) {
             ? firestore.collection('orders').doc(finalExistingOrderId).get()
             : Promise.resolve(null);
 
-        // 7. Pricing Recalculation (Can start now)
-        const pricingPromise = calculateServerTotal({
-            restaurantId,
-            items,
-            businessType: businessType || 'restaurant',
-            deliveryType
-        });
-
         // 8. Coupon Fetch
         const couponPromise = (coupon && coupon.id)
             ? firestore.collection('restaurants').doc(restaurantId).collection('coupons').doc(coupon.id).get()
             : Promise.resolve(null);
 
-        // 🔥 FIRE DISCOVERY BATCH
+        // 🔥 FIRE DISCOVERY BATCH (PHASE 1: Business & Identity)
         const [
             business,
             idempotencyResult,
             identityDiscovery,
-            deliveryConfigSnap,
-            tablesSnap,
-            existingOrderDoc,
-            pricingResult,
-            couponSnap
         ] = await Promise.all([
             businessPromise,
             idempotencyReservationPromise,
             identityDiscoveryPromise,
-            deliveryConfigPromise,
-            tablesPromise,
-            existingOrderPromise,
-            pricingPromise,
-            couponPromise
         ]);
 
-        console.log(`[createOrderV2] ⏱️ Massive discovery batch completed in ${Date.now() - discoveryStart}ms`);
+        console.log(`[createOrderV2] ⏱️ Discovery Phase 1 completed in ${Date.now() - discoveryStart}ms`);
 
         // ========================================
         // STEP 3: DISCOVERY VALIDATION
@@ -476,6 +458,31 @@ export async function createOrderV2(req, options = {}) {
         if (!getEffectiveBusinessOpenStatus(business.data)) {
             return buildErrorResponse({ message: 'Restaurant is currently closed.', status: 403 });
         }
+
+        // --- DISCOVERY PROMISES (PHASE 2: Business-Dependent Data) ---
+        // Now that we have the business, we can accurately calculate pricing
+        const pricingPromise = calculateServerTotal({
+            restaurantId: business.id,
+            items,
+            businessType: business.type, 
+            deliveryType
+        });
+
+        const [
+            deliveryConfigSnap,
+            tablesSnap,
+            existingOrderDoc,
+            pricingResult,
+            couponSnap
+        ] = await Promise.all([
+            deliveryConfigPromise,
+            tablesPromise,
+            existingOrderPromise,
+            pricingPromise,
+            couponPromise
+        ]);
+
+        console.log(`[createOrderV2] ⏱️ Discovery Phase 2 completed in ${Date.now() - discoveryStart}ms`);
 
         // 3.2 Idempotency Check
         if (idempotencyResult.isDuplicate) {
