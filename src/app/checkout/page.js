@@ -56,6 +56,55 @@ const normalizeCoupon = (coupon) => {
     };
 };
 
+const applyCheckoutPaymentSettings = (paymentData, deliveryType, setters) => {
+    const {
+        setCodEnabled,
+        setOnlinePaymentEnabled,
+        setVendorCharges,
+        setPaymentOptionsLoaded
+    } = setters;
+
+    if (paymentData) {
+        if (deliveryType === 'delivery') {
+            setCodEnabled(paymentData.deliveryCodEnabled);
+            setOnlinePaymentEnabled(paymentData.deliveryOnlinePaymentEnabled);
+        } else if (deliveryType === 'pickup') {
+            setCodEnabled(paymentData.pickupPodEnabled);
+            setOnlinePaymentEnabled(paymentData.pickupOnlinePaymentEnabled);
+        } else if (
+            deliveryType === 'dine-in' ||
+            deliveryType === 'street-vendor-pre-order' ||
+            deliveryType === 'car-order'
+        ) {
+            setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+            setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
+        }
+
+        setVendorCharges({
+            gstEnabled: paymentData.gstEnabled || false,
+            gstRate: paymentData.gstPercentage || paymentData.gstRate || 0,
+            gstMinAmount: paymentData.gstMinAmount || 0,
+            gstCalculationMode: paymentData.gstCalculationMode || (paymentData.gstIncludedInPrice === false ? 'excluded' : 'included'),
+            convenienceFeeEnabled: paymentData.convenienceFeeEnabled || false,
+            convenienceFeeRate: paymentData.convenienceFeeRate || 2.5,
+            convenienceFeePaidBy: paymentData.convenienceFeePaidBy || 'customer',
+            convenienceFeeLabel: paymentData.convenienceFeeLabel || 'Payment Processing Fee',
+            packagingChargeEnabled: paymentData.packagingChargeEnabled || false,
+            packagingChargeAmount: paymentData.packagingChargeAmount || 0,
+            serviceFeeEnabled: paymentData.serviceFeeEnabled || false,
+            serviceFeeLabel: paymentData.serviceFeeLabel || 'Additional Charge',
+            serviceFeeType: paymentData.serviceFeeType || 'fixed',
+            serviceFeeValue: Number(paymentData.serviceFeeValue) || 0,
+            serviceFeeApplyOn: paymentData.serviceFeeApplyOn || 'all',
+        });
+    } else {
+        setCodEnabled(false);
+        setOnlinePaymentEnabled(false);
+    }
+
+    setPaymentOptionsLoaded(true);
+};
+
 const TokenVerificationLock = ({ message }) => (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
         <Lock size={48} className="text-destructive mb-4" />
@@ -208,6 +257,7 @@ const CheckoutPageInternal = () => {
     const [deliveryValidation, setDeliveryValidation] = useState(null);
     const [isValidatingDelivery, setIsValidatingDelivery] = useState(false);
     const validationRequestSeqRef = useRef(0);
+    const checkoutLoadSeqRef = useRef(0);
     const selectedAddressRef = useRef(null);
     const outOfRangeNoticeKeyRef = useRef(null);
     const deliveryValidationCacheRef = useRef({ key: '', result: null, updatedAt: 0 });
@@ -418,6 +468,10 @@ const CheckoutPageInternal = () => {
 
     useEffect(() => {
         console.log("[Checkout Page] Component mounting. isUserLoading:", isUserLoading);
+        const requestSeq = ++checkoutLoadSeqRef.current;
+        let isActive = true;
+        const isStaleRequest = () => !isActive || checkoutLoadSeqRef.current !== requestSeq;
+
         const verifyAndFetch = async () => {
             // OPTIMISTIC LOADING: If we already have some cart data, don't show full spinner
             const potentialCachedCart = localStorage.getItem(`cart_${restaurantId}`);
@@ -487,223 +541,204 @@ const CheckoutPageInternal = () => {
             const paymentSettingsPromise = fetch(`/api/public/settings/${restaurantId}`);
             const menuPromise = fetch(`/api/public/menu/${restaurantId}?src=checkout_page`);
 
-            if (tabId && deliveryType === 'dine-in') {
-                console.log('[Checkout] Fetching existing dine-in order data for tabId:', tabId);
-                try {
-                    const orderRes = await fetch(`/api/order/active?tabId=${tabId}`);
-                    if (orderRes.ok) {
-                        const orderData = await orderRes.json();
-                        console.log('[Checkout] Fetched dine-in order:', orderData);
-                        const cartItems = orderData.items || [];
-                        const totalAmount = orderData.totalAmount || orderData.grandTotal || 0;
-                        updatedData = {
-                            ...updatedData,
-                            cart: cartItems,
-                            tab_name: orderData.tab_name || orderData.customerName,
-                            subtotal: orderData.subtotal || totalAmount,
-                            grandTotal: totalAmount
-                        };
-                    }
-                } catch (err) {
-                    console.error('[Checkout] Failed to fetch dine-in order:', err);
-                }
-            }
-
-            // ✅ Car-order add-more/session restore: pull token + tab context from active order
-            if (deliveryType === 'car-order' && activeOrderId) {
-                try {
-                    const statusToken = token || updatedData.token || '';
-                    const statusUrl = statusToken
-                        ? `/api/order/status/${activeOrderId}?token=${encodeURIComponent(statusToken)}&lite=1`
-                        : `/api/order/status/${activeOrderId}?lite=1`;
-                    const statusRes = await fetch(statusUrl, { cache: 'no-store' });
-                    if (statusRes.ok) {
-                        const statusPayload = await statusRes.json();
-                        const activeOrder = statusPayload?.order || {};
-                        updatedData = {
-                            ...updatedData,
-                            dineInTabId: activeOrder.dineInTabId || updatedData.dineInTabId || null,
-                            dineInToken: activeOrder.dineInToken || updatedData.dineInToken || null,
-                            carSpot: activeOrder.carSpot || updatedData.carSpot || null,
-                            carDetails: activeOrder.carDetails || updatedData.carDetails || null
-                        };
-                        if (activeOrder.dineInToken) {
-                            setCarTokenPreview(activeOrder.dineInToken);
-                        }
-                    }
-                } catch (err) {
-                    console.warn('[Checkout] Could not fetch car-order session token:', err?.message || err);
-                }
-            }
-
-
-            console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
-            setCart(updatedData.cart || []);
-            setAppliedCoupons((updatedData.appliedCoupons || []).map(normalizeCoupon).filter(Boolean));
-            setCartData(updatedData);
-            if (deliveryType === 'car-order') {
-                safeWriteCart(restaurantId, updatedData);
-                setCarOrderDetails({
-                    carSpot: updatedData.carSpot || null,
-                    carDetails: updatedData.carDetails || null,
-                    phone: updatedData.phone || ''
-                });
-                if (updatedData.dineInToken) {
-                    setCarTokenPreview(updatedData.dineInToken);
-                }
-            }
-
-
             try {
+                const paymentSettingsRes = await paymentSettingsPromise;
+                const paymentData = paymentSettingsRes.ok ? await paymentSettingsRes.json() : null;
+                if (isStaleRequest()) return;
+                applyCheckoutPaymentSettings(paymentData, deliveryType, {
+                    setCodEnabled,
+                    setOnlinePaymentEnabled,
+                    setVendorCharges,
+                    setPaymentOptionsLoaded
+                });
+
+                console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
+                setCart(updatedData.cart || []);
+                setAppliedCoupons((updatedData.appliedCoupons || []).map(normalizeCoupon).filter(Boolean));
+                setCartData(updatedData);
+                if (deliveryType === 'car-order') {
+                    safeWriteCart(restaurantId, updatedData);
+                    setCarOrderDetails({
+                        carSpot: updatedData.carSpot || null,
+                        carDetails: updatedData.carDetails || null,
+                        phone: updatedData.phone || ''
+                    });
+                    if (updatedData.dineInToken) {
+                        setCarTokenPreview(updatedData.dineInToken);
+                    }
+                }
+
                 const customerNameFromStorage = localStorage.getItem('customerName');
                 setOrderName(customerNameFromStorage || user?.displayName || savedCart.tab_name || '');
 
-                // LOOKUP USER DETAILS (Supports Cookie-based lookup for GuestID)
-                // LOOKUP USER DETAILS (Uid-first via API)
-                if (phoneToLookup || ref || user) {
-                    const lookupPayload = {};
-                    if (phoneToLookup) lookupPayload.phone = phoneToLookup;
-                    if (ref) lookupPayload.ref = ref;
+                const deferredTasks = [
+                    menuPromise
+                        .then(async (menuRes) => {
+                            if (!menuRes.ok) return;
+                            const menuData = await menuRes.json();
+                            if (isStaleRequest()) return;
+                            console.log('[Checkout] Fetched fresh menu data:', menuData.coupons?.length, 'coupons');
+                            setCartData(prev => ({
+                                ...prev,
+                                availableCoupons: (menuData.coupons || []).map(normalizeCoupon).filter(Boolean),
+                                deliveryCharge: menuData.deliveryCharge,
+                                deliveryFeeType: menuData.deliveryFeeType,
+                                deliveryFixedFee: menuData.deliveryFixedFee,
+                                deliveryBaseDistance: menuData.deliveryBaseDistance,
+                                deliveryPerKmFee: menuData.deliveryPerKmFee,
+                                deliveryRadius: menuData.deliveryRadius,
+                                deliveryFreeThreshold: menuData.deliveryFreeThreshold,
+                                freeDeliveryRadius: menuData.freeDeliveryRadius,
+                                freeDeliveryMinOrder: menuData.freeDeliveryMinOrder,
+                                deliveryTiers: menuData.deliveryTiers,
+                                deliveryOrderSlabRules: menuData.deliveryOrderSlabRules,
+                                deliveryOrderSlabAboveFee: menuData.deliveryOrderSlabAboveFee,
+                                deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance,
+                                deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee,
+                                minOrderValue: menuData.minOrderValue,
+                                collectionName: menuData.collectionName,
+                                latitude: menuData.latitude,
+                                longitude: menuData.longitude,
+                                roadDistanceFactor: menuData.roadDistanceFactor || 1.3
+                            }));
+                        })
+                        .catch((menuErr) => {
+                            console.warn('[Checkout] Non-blocking menu enrichment failed:', menuErr?.message || menuErr);
+                        })
+                ];
 
-                    const headers = { 'Content-Type': 'application/json' };
-                    // Add Auth header if user is logged in
-                    if (user) {
+                if (tabId && deliveryType === 'dine-in') {
+                    deferredTasks.push((async () => {
+                        console.log('[Checkout] Fetching existing dine-in order data for tabId:', tabId);
                         try {
-                            const idToken = await user.getIdToken();
-                            headers['Authorization'] = `Bearer ${idToken}`;
-                        } catch (e) {
-                            console.warn("Failed to get ID token for lookup:", e);
+                            const orderRes = await fetch(`/api/order/active?tabId=${tabId}`);
+                            if (!orderRes.ok) return;
+
+                            const orderData = await orderRes.json();
+                            if (isStaleRequest()) return;
+                            console.log('[Checkout] Fetched dine-in order:', orderData);
+                            const cartItems = orderData.items || [];
+                            const totalAmount = orderData.totalAmount || orderData.grandTotal || 0;
+
+                            setCart(cartItems);
+                            setCartData(prev => ({
+                                ...(prev || {}),
+                                cart: cartItems,
+                                tab_name: orderData.tab_name || orderData.customerName,
+                                subtotal: orderData.subtotal || totalAmount,
+                                grandTotal: totalAmount
+                            }));
+                        } catch (err) {
+                            console.error('[Checkout] Failed to fetch dine-in order:', err);
                         }
-                    }
+                    })());
+                }
 
-                    const lookupRes = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: headers,
-                        body: JSON.stringify(lookupPayload)
-                    });
+                if (deliveryType === 'car-order' && activeOrderId) {
+                    deferredTasks.push((async () => {
+                        try {
+                            const statusToken = token || updatedData.token || '';
+                            const statusUrl = statusToken
+                                ? `/api/order/status/${activeOrderId}?token=${encodeURIComponent(statusToken)}&lite=1`
+                                : `/api/order/status/${activeOrderId}?lite=1`;
+                            const statusRes = await fetch(statusUrl, { cache: 'no-store' });
+                            if (!statusRes.ok) return;
 
-                    if (lookupRes.ok) {
-                        const data = await lookupRes.json();
-                        setOrderName(prev => prev || data.name || ''); // Fill name from profile if not set
-                        if (deliveryType === 'delivery') {
-                            setUserAddresses(data.addresses || []);
+                            const statusPayload = await statusRes.json();
+                            if (isStaleRequest()) return;
+                            const activeOrder = statusPayload?.order || {};
+                            const sessionData = {
+                                dineInTabId: activeOrder.dineInTabId || updatedData.dineInTabId || null,
+                                dineInToken: activeOrder.dineInToken || updatedData.dineInToken || null,
+                                carSpot: activeOrder.carSpot || updatedData.carSpot || null,
+                                carDetails: activeOrder.carDetails || updatedData.carDetails || null
+                            };
 
-                            // 🎯 PRIORITY: Check localStorage for saved address first
-                            const savedLocation = localStorage.getItem('customerLocation');
-                            if (savedLocation && data.addresses?.length > 0 && !selectedAddress) {
-                                try {
-                                    const parsedLocation = JSON.parse(savedLocation);
-                                    console.log('[Checkout] 📍 Checking saved address:', parsedLocation.label);
+                            setCartData(prev => ({ ...(prev || {}), ...sessionData }));
+                            safeWriteCart(restaurantId, {
+                                ...(safeReadCart(restaurantId) || {}),
+                                ...sessionData
+                            });
+                            setCarOrderDetails(prev => ({
+                                ...(prev || {}),
+                                carSpot: sessionData.carSpot,
+                                carDetails: sessionData.carDetails,
+                                phone: updatedData.phone || prev?.phone || ''
+                            }));
+                            if (sessionData.dineInToken) {
+                                setCarTokenPreview(sessionData.dineInToken);
+                            }
+                        } catch (err) {
+                            console.warn('[Checkout] Could not fetch car-order session token:', err?.message || err);
+                        }
+                    })());
+                }
 
-                                    // Find matching address by ID
-                                    const matchingAddress = data.addresses.find(addr => addr.id === parsedLocation.id);
-                                    if (matchingAddress) {
-                                        console.log('[Checkout] ✅ Found & selecting saved address:', matchingAddress.label);
-                                        setSelectedAddress(matchingAddress);
-                                    } else {
-                                        console.warn('[Checkout] ⚠️ Saved address not found, selecting first');
-                                        setSelectedAddress(data.addresses[0]);
-                                    }
-                                } catch (e) {
-                                    console.error('[Checkout] Failed to parse saved address, selecting first');
-                                    setSelectedAddress(data.addresses[0]);
-                                }
-                            } else if (data.addresses?.length > 0 && !selectedAddress) {
-                                // No saved address, select first
-                                console.log('[Checkout] No saved address, selecting first');
-                                setSelectedAddress(data.addresses[0]);
+                if (phoneToLookup || ref || user) {
+                    deferredTasks.push((async () => {
+                        const lookupPayload = {};
+                        if (phoneToLookup) lookupPayload.phone = phoneToLookup;
+                        if (ref) lookupPayload.ref = ref;
+
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (user) {
+                            try {
+                                const idToken = await user.getIdToken();
+                                headers.Authorization = `Bearer ${idToken}`;
+                            } catch (e) {
+                                console.warn('Failed to get ID token for lookup:', e);
                             }
                         }
-                    } else if (lookupRes.status === 404) {
-                        console.log("Customer profile not found (might be new).");
-                    }
+
+                        const lookupRes = await fetch('/api/customer/lookup', {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify(lookupPayload)
+                        });
+
+                        if (lookupRes.ok) {
+                            const data = await lookupRes.json();
+                            if (isStaleRequest()) return;
+                            setOrderName(prev => prev || data.name || '');
+                            if (deliveryType === 'delivery') {
+                                setUserAddresses(data.addresses || []);
+
+                                const savedLocation = localStorage.getItem('customerLocation');
+                                if (savedLocation && data.addresses?.length > 0 && !selectedAddressRef.current) {
+                                    try {
+                                        const parsedLocation = JSON.parse(savedLocation);
+                                        console.log('[Checkout] Checking saved address:', parsedLocation.label);
+                                        const matchingAddress = data.addresses.find(addr => addr.id === parsedLocation.id);
+                                        setSelectedAddress(matchingAddress || data.addresses[0]);
+                                    } catch (e) {
+                                        console.error('[Checkout] Failed to parse saved address, selecting first');
+                                        setSelectedAddress(data.addresses[0]);
+                                    }
+                                } else if (data.addresses?.length > 0 && !selectedAddressRef.current) {
+                                    console.log('[Checkout] No saved address, selecting first');
+                                    setSelectedAddress(data.addresses[0]);
+                                }
+                            }
+                        } else if (lookupRes.status === 404) {
+                            console.log('Customer profile not found (might be new).');
+                        }
+                    })().catch((lookupErr) => {
+                        console.warn('[Checkout] Customer lookup failed:', lookupErr?.message || lookupErr);
+                    }));
                 }
 
-                // Prioritize payment settings for actionable checkout UI.
-                // Menu/coupon enrichment is applied asynchronously to avoid blocking initial render.
-                const paymentSettingsRes = await paymentSettingsPromise;
-                menuPromise
-                    .then(async (menuRes) => {
-                        if (!menuRes.ok) return;
-                        const menuData = await menuRes.json();
-                        console.log('[Checkout] 🎟️ Fetched fresh menu data:', menuData.coupons?.length, 'coupons');
-                        setCartData(prev => ({
-                            ...prev,
-                            availableCoupons: (menuData.coupons || []).map(normalizeCoupon).filter(Boolean),
-                            deliveryCharge: menuData.deliveryCharge,
-                            deliveryFeeType: menuData.deliveryFeeType,
-                            deliveryFixedFee: menuData.deliveryFixedFee,
-                            deliveryBaseDistance: menuData.deliveryBaseDistance,
-                            deliveryPerKmFee: menuData.deliveryPerKmFee,
-                            deliveryRadius: menuData.deliveryRadius,
-                            deliveryFreeThreshold: menuData.deliveryFreeThreshold,
-                            freeDeliveryRadius: menuData.freeDeliveryRadius,
-                            freeDeliveryMinOrder: menuData.freeDeliveryMinOrder,
-                            deliveryTiers: menuData.deliveryTiers,
-                            deliveryOrderSlabRules: menuData.deliveryOrderSlabRules,
-                            deliveryOrderSlabAboveFee: menuData.deliveryOrderSlabAboveFee,
-                            deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance,
-                            deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee,
-                            minOrderValue: menuData.minOrderValue,
-                            collectionName: menuData.collectionName,
-                            latitude: menuData.latitude,
-                            longitude: menuData.longitude,
-                            roadDistanceFactor: menuData.roadDistanceFactor || 1.3
-                        }));
-                    })
-                    .catch((menuErr) => {
-                        console.warn('[Checkout] Non-blocking menu enrichment failed:', menuErr?.message || menuErr);
-                    });
-
-                if (paymentSettingsRes.ok) {
-                    const paymentData = await paymentSettingsRes.json();
-                    if (deliveryType === 'delivery') {
-                        setCodEnabled(paymentData.deliveryCodEnabled);
-                        setOnlinePaymentEnabled(paymentData.deliveryOnlinePaymentEnabled);
-                    } else if (deliveryType === 'pickup') {
-                        setCodEnabled(paymentData.pickupPodEnabled);
-                        setOnlinePaymentEnabled(paymentData.pickupOnlinePaymentEnabled);
-                    } else if (deliveryType === 'dine-in') {
-                        setCodEnabled(paymentData.dineInPayAtCounterEnabled);
-                        setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
-                    } else if (deliveryType === 'street-vendor-pre-order') {
-                        setCodEnabled(paymentData.dineInPayAtCounterEnabled);
-                        setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
-                    } else if (deliveryType === 'car-order') {
-                        // Car orders use dine-in payment settings (no delivery charge)
-                        setCodEnabled(paymentData.dineInPayAtCounterEnabled);
-                        setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
-                    }
-                    setVendorCharges({
-                        gstEnabled: paymentData.gstEnabled || false,
-                        gstRate: paymentData.gstPercentage || paymentData.gstRate || 0,
-                        gstMinAmount: paymentData.gstMinAmount || 0,
-                        gstCalculationMode: paymentData.gstCalculationMode || (paymentData.gstIncludedInPrice === false ? 'excluded' : 'included'),
-                        convenienceFeeEnabled: paymentData.convenienceFeeEnabled || false,
-                        convenienceFeeRate: paymentData.convenienceFeeRate || 2.5,
-                        convenienceFeePaidBy: paymentData.convenienceFeePaidBy || 'customer',
-                        convenienceFeeLabel: paymentData.convenienceFeeLabel || 'Payment Processing Fee',
-                        packagingChargeEnabled: paymentData.packagingChargeEnabled || false,
-                        packagingChargeAmount: paymentData.packagingChargeAmount || 0,
-                        serviceFeeEnabled: paymentData.serviceFeeEnabled || false,
-                        serviceFeeLabel: paymentData.serviceFeeLabel || 'Additional Charge',
-                        serviceFeeType: paymentData.serviceFeeType || 'fixed',
-                        serviceFeeValue: Number(paymentData.serviceFeeValue) || 0,
-                        serviceFeeApplyOn: paymentData.serviceFeeApplyOn || 'all',
-                    });
-                } else {
-                    setCodEnabled(false);
-                    setOnlinePaymentEnabled(false);
-                }
-                setPaymentOptionsLoaded(true);
+                void Promise.allSettled(deferredTasks);
 
                 if (deliveryType === 'delivery' && !activeOrderId) {
                     // setDetailsConfirmed(false); // FIXED: Removed to prevent resetting Step 2 -> Step 1 on re-renders
                 }
             } catch (err) {
+                if (isStaleRequest()) return;
                 setError('Failed to load checkout details. Please try again.');
             } finally {
-                setLoading(false);
+                if (!isStaleRequest()) {
+                    setLoading(false);
+                }
             }
         };
 
@@ -712,6 +747,10 @@ const CheckoutPageInternal = () => {
         } else if (isPaymentConfirmed) {
             setLoading(false);
         }
+
+        return () => {
+            isActive = false;
+        };
     }, [restaurantId, phoneFromUrl, token, ref, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed, activeOrderId, isTokenValid]); // Added isTokenValid to dep array for Ref flow
 
     useEffect(() => {

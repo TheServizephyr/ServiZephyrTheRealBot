@@ -1056,7 +1056,7 @@ export async function createOrderV2(req, options = {}) {
 
         const saveOrderPromise = orderRepository.create(orderData, orderId);
 
-        // ⚡ Persist tracking token in save batch (deferred from earlier)
+        // Keep tracking-token persistence on the critical path so redirects can track immediately.
         const tokenPersistPromise = needsTokenPersist ? (async () => {
             try {
                 await firestore.collection('auth_tokens').doc(trackingToken).set({
@@ -1069,6 +1069,11 @@ export async function createOrderV2(req, options = {}) {
                 console.warn('[createOrderV2] Token persist failed (non-critical):', err?.message);
             }
         })() : Promise.resolve();
+
+        const idempotencyPromise = idempotencyRepository.complete(idempotencyKey, {
+            orderId,
+            paymentMethod: 'cod'
+        });
 
         const syncProfilePromise = (async () => {
             try {
@@ -1093,19 +1098,14 @@ export async function createOrderV2(req, options = {}) {
             }
         })();
 
-        const idempotencyPromise = idempotencyRepository.complete(idempotencyKey, {
-            orderId,
-            paymentMethod: 'cod'
-        });
-
         const tokenCounterPromise = (newTokenNumber !== null) ? (async () => {
             try {
                 await firestore.collection(business.collection).doc(business.id).update({
                     lastOrderToken: newTokenNumber
                 });
-                console.log(`[createOrderV2] 🔢 Updated lastOrderToken to ${newTokenNumber} for ${business.type}`);
+                console.log(`[createOrderV2] Updated lastOrderToken to ${newTokenNumber} for ${business.type}`);
             } catch (err) {
-                console.warn(`[createOrderV2] Failed to update token counter:`, err);
+                console.warn('[createOrderV2] Failed to update token counter:', err);
             }
         })() : Promise.resolve();
 
@@ -1133,12 +1133,12 @@ export async function createOrderV2(req, options = {}) {
                             updatedAt: FieldValue.serverTimestamp()
                         });
                         await batch.commit();
-                        console.log(`[createOrderV2] ✅ Updated existing tab ${dineInTabId} (${tabStatus}→active): +₹${serverGrandTotal}`);
+                        console.log(`[createOrderV2] Updated existing tab ${dineInTabId} (${tabStatus}->active): +Rs${serverGrandTotal}`);
                     } else {
-                        console.warn(`[createOrderV2] ⚠️ Tab ${dineInTabId} status=${tabStatus}, cannot add order`);
+                        console.warn(`[createOrderV2] Tab ${dineInTabId} status=${tabStatus}, cannot add order`);
                     }
                 } else {
-                    console.log(`[createOrderV2] 🆕 Creating new tab document for ${dineInTabId}`);
+                    console.log(`[createOrderV2] Creating new tab document for ${dineInTabId}`);
                     batch.set(tabRef, {
                         id: dineInTabId,
                         tableId: actualTableId,
@@ -1159,15 +1159,14 @@ export async function createOrderV2(req, options = {}) {
                         createdAt: FieldValue.serverTimestamp()
                     });
                     await batch.commit();
-                    console.log(`[createOrderV2] ✅ Created new tab ${dineInTabId} with order ${orderId}`);
+                    console.log(`[createOrderV2] Created new tab ${dineInTabId} with order ${orderId}`);
                 }
             } catch (tabErr) {
-                console.error(`[createOrderV2] ❌ Tab update failed:`, tabErr);
+                console.error('[createOrderV2] Tab update failed:', tabErr);
             }
         })() : Promise.resolve();
 
-        // 🚀 FIRE ALL SAVES CONCURRENTLY
-        console.log(`[createOrderV2] 🚀 Executing massive multi-document save concurrently...`);
+        console.log('[createOrderV2] Executing critical order writes...');
         await Promise.all([
             saveOrderPromise,
             tokenPersistPromise,
@@ -1176,7 +1175,7 @@ export async function createOrderV2(req, options = {}) {
             tokenCounterPromise,
             tabUpdatePromise
         ]);
-        console.log(`[createOrderV2] ✅ Multi-document save completed successfully`);
+        console.log('[createOrderV2] Critical order writes completed successfully');
         console.log(`[createOrderV2] 🏁 FINISHED in total ${Date.now() - startTime}ms`);
 
         // ========================================
