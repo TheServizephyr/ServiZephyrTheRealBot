@@ -804,14 +804,36 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         setIsSaving(true);
         try {
             if (!isEditing) {
-                // Get current position
-                const position = await new Promise((resolve, reject) => {
+                // ⚡ OPTIMIZED: Use cached position first (prevents repeated permission prompts)
+                const getPosition = () => new Promise((resolve, reject) => {
                     navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true,
-                        timeout: 5000,
-                        maximumAge: 0
+                        enableHighAccuracy: false,
+                        timeout: 8000,
+                        maximumAge: 60000 // Accept cached position up to 1 minute old
                     });
                 });
+
+                let position;
+                try {
+                    position = await getPosition();
+                } catch (geoErr) {
+                    // If cached fails, try with high accuracy as fallback
+                    if (geoErr.code === 3 /* TIMEOUT */) {
+                        try {
+                            position = await new Promise((resolve, reject) => {
+                                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                                    enableHighAccuracy: true,
+                                    timeout: 10000,
+                                    maximumAge: 30000
+                                });
+                            });
+                        } catch (retryErr) {
+                            throw retryErr;
+                        }
+                    } else {
+                        throw geoErr;
+                    }
+                }
 
                 const { latitude, longitude } = position.coords;
                 const restaurantLat = Number(tableStatus?.restaurantCoordinates?.lat || tableStatus?.restaurantCoordinates?.latitude);
@@ -2512,6 +2534,8 @@ const OrderPageInternal = () => {
                     console.log('💾 [DEBUG] Table status set, now checking table state:', state);
                     if (state === 'full') {
                         setDineInState('full');
+                        setIsDineInModalOpen(true); // ⚡ FIX: Show "Table Full" dialog immediately
+                        setLoading(false);
                     } else if (state === 'needs_cleaning') {
                         setError('This table is being cleaned right now. Please wait for restaurant staff to mark it clean.');
                         setLoading(false);

@@ -108,17 +108,14 @@ export async function GET(req) {
             ? Math.min(maxCapacity || dbCurrentPax, dbCurrentPax)
             : Math.min(maxCapacity || liveCurrentPax, dbCurrentPax > 0 ? dbCurrentPax : liveCurrentPax);
 
-        let validActiveTabs = [];
-        if (activeTabIdsFromOrders.size > 0) {
-            validActiveTabs = joinableTabsRaw.filter(tab => activeTabIdsFromOrders.has(String(tab.id)));
-            // If order records are legacy/inconsistent, still show joinable tabs when table has occupants.
-            if (validActiveTabs.length === 0 && current_pax > 0) {
-                validActiveTabs = joinableTabsRaw;
-            }
-        } else if (current_pax > 0) {
-            // No active order-tab mapping found, but seats are occupied - show joinable tabs from tab docs.
-            validActiveTabs = joinableTabsRaw;
-        }
+        // ⚡ FIX: Show ALL open tabs as joinable (not just those with active orders)
+        // This ensures the tab list matches the pax count shown to the customer
+        // Previously tabs without active orders (e.g., all orders delivered but tab still open)
+        // were hidden, causing confusion when pax showed 2/4 but only 1 tab appeared
+        let validActiveTabs = joinableTabsRaw.filter(tab => {
+            const tabPax = Number(tab.pax_count || 0);
+            return tabPax > 0; // Only show tabs that are actually taking up seats
+        });
 
         // NEW: Check for uncleaned orders (delivered but not cleaned)
         const uncleanedOrdersQuery = await firestore.collection('orders')
