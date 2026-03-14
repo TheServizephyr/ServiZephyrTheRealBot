@@ -83,24 +83,32 @@ async function flushDbMetrics(adminSdk) {
     return;
   }
 
+  const ServerValue = admin.database.ServerValue;
+
+  // Use .update() with ServerValue.increment() instead of .transaction()
+  // Transactions require persistent connections that fail in serverless (Vercel)
   await Promise.all(metrics.map(async (metric) => {
     const ref = db.ref(`${DB_ANALYTICS_PATH}/${metric.day}/${metric.dbType}/${metric.op}`);
-    await ref.transaction((current) => {
-      const base = current || {};
-      return {
-        count: (Number(base.count) || 0) + metric.count,
-        totalMs: (Number(base.totalMs) || 0) + metric.totalMs,
-        maxMs: Math.max(Number(base.maxMs) || 0, metric.maxMs),
-        slowCount: (Number(base.slowCount) || 0) + metric.slowCount,
-        errorCount: (Number(base.errorCount) || 0) + metric.errorCount,
+    try {
+      await ref.update({
+        count: ServerValue.increment(metric.count),
+        totalMs: ServerValue.increment(metric.totalMs),
+        slowCount: ServerValue.increment(metric.slowCount),
+        errorCount: ServerValue.increment(metric.errorCount),
         lastMs: metric.lastMs,
         lastAt: metric.lastAt,
         lastTarget: metric.lastTarget,
-      };
-    });
-  })).catch((error) => {
-    console.warn('[db-analytics] Metric flush failed:', error?.message || error);
-  });
+      });
+      // maxMs needs a separate read-then-write since increment can't do max()
+      const snap = await ref.child('maxMs').once('value');
+      const currentMax = Number(snap.val()) || 0;
+      if (metric.maxMs > currentMax) {
+        await ref.child('maxMs').set(metric.maxMs);
+      }
+    } catch (err) {
+      // Silently ignore — analytics should never block the main flow
+    }
+  })).catch(() => {});
 }
 
 function wrapAsyncMethod(proto, methodName, dbType, getTarget) {
