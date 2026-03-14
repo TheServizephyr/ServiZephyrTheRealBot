@@ -1,6 +1,23 @@
 import { NextResponse } from 'next/server';
 import { Client } from "@upstash/qstash";
 import crypto from 'crypto';
+import { getFirestore } from '@/lib/firebase-admin';
+
+async function getBusinessBrief(firestore, botPhoneNumberId) {
+    const rSnap = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    if (!rSnap.empty) return { id: rSnap.docs[0].id, collection: 'restaurants' };
+    const sSnap = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    if (!sSnap.empty) return { id: sSnap.docs[0].id, collection: 'shops' };
+    const vSnap = await firestore.collection('street_vendors').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    if (!vSnap.empty) return { id: vSnap.docs[0].id, collection: 'street_vendors' };
+    return null;
+}
+
+const normalizePhone = (phone) => {
+    if (!phone) return '';
+    const cleaned = phone.replace(/^\+?91/, '').replace(/\D/g, '');
+    return cleaned.length > 10 ? cleaned.slice(-10) : cleaned;
+};
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
@@ -72,8 +89,53 @@ export async function POST(request) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://www.servizephyr.com';
         const processUrl = `${baseUrl.replace(/\/+$/, '')}/api/whatsapp/webhook/process`;
 
-        if (!hasMessages) {
-            console.log('[Webhook WA Receiver] ⚡ Bypassing QStash for non-message event (e.g., status update). Saving quota.');
+        // Default to bypass if it's not a message event (like status)
+        let shouldBypassQStash = !hasMessages;
+        let bypassReason = !hasMessages ? 'non-message event (status update)' : '';
+
+        // If it is a message, intelligently bypass based on state & type
+        if (hasMessages) {
+            const message = value.messages[0];
+            if (message.type === 'interactive' || message.type === 'button') {
+                shouldBypassQStash = true;
+                bypassReason = 'interactive button push';
+            } else if (['text', 'image', 'audio', 'video', 'document'].includes(message.type)) {
+                try {
+                    // FAST FIRESTORE CHECK
+                    const firestore = await getFirestore();
+                    const botId = value.metadata?.phone_number_id;
+                    const business = await getBusinessBrief(firestore, botId);
+                    
+                    if (business) {
+                        const customerPhone = normalizePhone(message.from);
+                        const convRef = firestore.collection(business.collection).doc(business.id).collection('conversations').doc(customerPhone);
+                        const convSnap = await convRef.get();
+                        const state = convSnap.exists ? convSnap.data().state : 'menu';
+                        
+                        if (state === 'direct_chat' || state === 'browsing_order') {
+                            shouldBypassQStash = true;
+                            bypassReason = `active conversation state (${state})`;
+                        } else {
+                            // Let's specifically check if it's exactly the tracking greeting/help so we can queue it
+                            const text = (message.text?.body || '').trim().toLowerCase();
+                            const isNeedHelp = text.match(/^["']?\s*need\s*help\??\s*["']?$/i) || text.match(/^["']?\s*help\s*["']?$/i);
+                            const isEndChat = text.match(/^["]?\s*end\s*chat\s*["]?$/i);
+                            
+                            // If it's a lightweight sync command, process it synchronously
+                            if (isNeedHelp || isEndChat) {
+                                shouldBypassQStash = true;
+                                bypassReason = 'lightweight text command';
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('[Webhook WA Receiver] ⚠️ Error during fast state check, will fallback to queue', e);
+                }
+            }
+        }
+
+        if (shouldBypassQStash) {
+            console.log(`[Webhook WA Receiver] ⚡ Bypassing QStash for ${bypassReason}. Saving quota.`);
             const syncResponse = await fetch(processUrl, {
                 method: 'POST',
                 headers: {
