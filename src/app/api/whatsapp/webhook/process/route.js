@@ -430,40 +430,8 @@ const sendWelcomeMessageWithOptions = async (
         }
     }
 
-    if (WELCOME_CTA_TEMPLATE_NAME && !forceInteractive) {
-        try {
-            const customerName = options?.customerName || 'Customer';
-            const { orderPath, trackPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
-            const templatePayload = buildWelcomeCtaTemplatePayload({
-                restaurantName: business.data.name,
-                customerName,
-                orderPath,
-                trackPath
-            });
-
-            if (templatePayload) {
-                await sendSystemTemplateMessage(
-                    customerPhoneWithCode,
-                    templatePayload,
-                    welcomeBody,
-                    botPhoneNumberId,
-                    business.id,
-                    business.data.name || 'ServiZephyr',
-                    collectionName,
-                    {
-                        conversationPreview: welcomeBody,
-                        customerName
-                    }
-                );
-
-                await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
-                console.log(`[Webhook WA] Welcome CTA template sent to ${customerPhoneWithCode}`);
-                return;
-            }
-        } catch (templateError) {
-            console.warn(`[Webhook WA] Welcome CTA template failed. Falling back to interactive buttons.`, templateError?.message || templateError);
-        }
-    }
+    // Skip template-first approach — use interactive CTA directly (single Order Now button).
+    // The Meta template has 2 URL buttons but only 1 is needed.
 
     console.log(`[Webhook WA] Sending interactive welcome CTA message to ${customerPhoneWithCode}`);
 
