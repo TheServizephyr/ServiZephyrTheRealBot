@@ -47,7 +47,7 @@ export async function POST(request) {
     try {
         // ✅ SECURITY: Verify Meta X-Hub-Signature-256 HMAC before Queueing
         const signature = request.headers.get('x-hub-signature-256');
-        const appSecret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
+        const appSecret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
         const rawBodyText = await request.text();
 
         if (appSecret) {
