@@ -26,17 +26,17 @@ export async function GET(req, { params }) {
 
         // ⚡ Read from the BUSINESS document (restaurants/shops/street_vendors)
         // This is where all settings (GST, charges, payment modes) are actually stored
+        // ⚡ Parallel collection lookup (all 3 at once instead of sequential)
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
         let businessDoc = null;
 
-        for (const collection of collectionsToTry) {
-            const docRef = firestore.collection(collection).doc(restaurantId);
-            const snap = await docRef.get();
-            if (snap.exists) {
-                businessDoc = snap;
-                break;
-            }
-        }
+        const results = await Promise.all(
+            collectionsToTry.map(async (collection) => {
+                const snap = await firestore.collection(collection).doc(restaurantId).get();
+                return snap.exists ? snap : null;
+            })
+        );
+        businessDoc = results.find(snap => snap !== null) || null;
 
         // Fallback: try findBusinessById for URL-encoded or case-mismatched IDs
         if (!businessDoc?.exists) {

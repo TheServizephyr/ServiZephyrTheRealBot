@@ -17,6 +17,9 @@ import { createOrderV2 } from '@/services/orderService';
 import { normalizeFlow, trackApiTelemetry, trackFunnelEvent } from '@/lib/opsTelemetry';
 import { trackEndpointRead, trackEndpointWrite } from '@/lib/readTelemetry';
 
+// Allow up to 30s for order creation (8+ Firestore ops + payment gateway)
+export const maxDuration = 30;
+
 export async function POST(req) {
     const startedAt = Date.now();
     let flow = 'other';

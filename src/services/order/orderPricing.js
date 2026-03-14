@@ -306,8 +306,9 @@ export function calculateTaxes(subtotal, businessData) {
     }
 
     const halfRate = gstRate / 2;
-    const cgst = Math.round((subtotal * halfRate) / 100) / 100;
-    const sgst = Math.round((subtotal * halfRate) / 100) / 100;
+    const cgstAmount = (subtotal * halfRate) / 100;
+    const cgst = Math.round(cgstAmount * 100) / 100;
+    const sgst = Math.round(cgstAmount * 100) / 100;
 
     return {
         cgst,

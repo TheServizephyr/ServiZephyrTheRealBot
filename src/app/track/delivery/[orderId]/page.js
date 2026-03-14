@@ -467,7 +467,26 @@ function OrderTrackingContent() {
     };
 
     if (loading && !orderData) return <div className="h-screen flex items-center justify-center bg-gray-50"><GoldenCoinSpinner /></div>;
-    if (error) return <div className="h-screen flex items-center justify-center text-red-500">{error}</div>;
+    
+    if (error) {
+        return (
+            <div className="h-screen flex items-center justify-center bg-gray-50 p-4 font-sans">
+                <div className="bg-white rounded-2xl p-8 shadow-xl max-w-sm w-full text-center border border-gray-100">
+                    <div className="mx-auto w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-6">
+                        <XCircle size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-3">Access Denied</h2>
+                    <p className="text-gray-600 mb-8 text-sm leading-relaxed">{error}</p>
+                    <Button 
+                        onClick={() => router.back()} 
+                        className="w-full bg-gray-900 hover:bg-black text-white h-12 rounded-xl font-semibold shadow-md transition-all active:scale-[0.98]"
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
+                    </Button>
+                </div>
+            </div>
+        );
+    }
     if (!orderData) return null;
 
     const normalizeDialablePhone = (value) => {

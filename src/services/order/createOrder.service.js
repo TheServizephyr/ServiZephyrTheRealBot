@@ -240,8 +240,17 @@ async function resolveDineInLikeToken({
         }
     }
 
-    const lastToken = business?.data?.lastOrderToken || 0;
-    const newTokenNumber = lastToken + 1;
+    // ✅ ATOMIC TOKEN GENERATION: Use Firestore transaction to prevent race conditions
+    // Two concurrent orders can't get the same token number anymore
+    const businessRef = firestore.collection(business.collection).doc(business.id);
+    const newTokenNumber = await firestore.runTransaction(async (transaction) => {
+        const bizSnap = await transaction.get(businessRef);
+        const currentToken = bizSnap.exists ? (bizSnap.data()?.lastOrderToken || 0) : 0;
+        const nextToken = currentToken + 1;
+        transaction.update(businessRef, { lastOrderToken: nextToken });
+        return nextToken;
+    });
+
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
     const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
@@ -249,7 +258,7 @@ async function resolveDineInLikeToken({
 
     return {
         dineInToken,
-        newTokenNumber,
+        newTokenNumber: null, // Already updated atomically in the transaction above
         dineInTabId: resolvedDineInTabId
     };
 }
@@ -933,16 +942,7 @@ export async function createOrderV2(req, options = {}) {
                 paymentMethod
             });
 
-            if (newTokenNumber !== null) {
-                try {
-                    await firestore.collection(business.collection).doc(business.id).update({
-                        lastOrderToken: newTokenNumber
-                    });
-                    console.log(`[createOrderV2] 🔢 Updated lastOrderToken to ${newTokenNumber} for ${business.type}`);
-                } catch (err) {
-                    console.warn('[createOrderV2] Failed to update token counter after online order:', err?.message || err);
-                }
-            }
+            // Token counter already updated atomically in resolveDineInLikeToken transaction
 
             // Return response based on gateway
             if (gateway === 'razorpay') {
@@ -1068,7 +1068,7 @@ export async function createOrderV2(req, options = {}) {
             try {
                 await firestore.collection('auth_tokens').doc(trackingToken).set({
                     userId,
-                    expiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+                    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
                     type: 'tracking',
                     scopes: ['track_orders', 'active_orders']
                 });
@@ -1105,16 +1105,8 @@ export async function createOrderV2(req, options = {}) {
             }
         })();
 
-        const tokenCounterPromise = (newTokenNumber !== null) ? (async () => {
-            try {
-                await firestore.collection(business.collection).doc(business.id).update({
-                    lastOrderToken: newTokenNumber
-                });
-                console.log(`[createOrderV2] Updated lastOrderToken to ${newTokenNumber} for ${business.type}`);
-            } catch (err) {
-                console.warn('[createOrderV2] Failed to update token counter:', err);
-            }
-        })() : Promise.resolve();
+        // Token counter already updated atomically in resolveDineInLikeToken transaction
+        const tokenCounterPromise = Promise.resolve();
 
         const tabUpdatePromise = (deliveryType === 'dine-in' && resolvedDineInTabId && business.data.dineInModel === 'post-paid') ? (async () => {
             const dineInTabId = resolvedDineInTabId;
