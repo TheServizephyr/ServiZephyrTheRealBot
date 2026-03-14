@@ -125,9 +125,24 @@ const generateSecureToken = async (firestore, userId) => {
 };
 
 const toTemplateButtonSuffix = (pathWithQuery = '') => {
-    const clean = String(pathWithQuery || '').trim();
+    let clean = String(pathWithQuery || '').trim();
     if (!clean) return '';
-    return clean.startsWith('/') ? clean.slice(1) : clean;
+    
+    // Remove base URL if it accidentally got included
+    if (clean.startsWith('http')) {
+       try {
+           const urlObj = new URL(clean);
+           clean = urlObj.pathname + urlObj.search;
+       } catch(e) {
+           // ignore invalid urls
+       }
+    }
+    
+    // Meta requires the suffix to EXACTLY append to what's defined in the template.
+    // If the template defines 'https://www.servizephyr.com/' (with trailing slash),
+    // then the variable must NOT start with a slash.
+    // E.g. returning 'order/patel-ki-hatti?ref=...'
+    return clean.replace(/^\/+/, '');
 };
 
 const buildWelcomeCtaTemplatePayload = ({
