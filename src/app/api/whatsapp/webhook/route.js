@@ -74,14 +74,30 @@ export async function POST(request) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://www.servizephyr.com';
         const processUrl = `${baseUrl.replace(/\/+$/, '')}/api/whatsapp/webhook/process`;
 
-        await qstashClient.publishJSON({
-            url: processUrl,
-            body: body,
-            retries: 3
-        });
-
-        console.log('[Webhook WA Receiver] 🚀 Event queued successfully to QStash');
-        return NextResponse.json({ message: 'Event queued successfully' }, { status: 200 });
+        try {
+            await qstashClient.publishJSON({
+                url: processUrl,
+                body: body,
+                retries: 3
+            });
+            console.log('[Webhook WA Receiver] 🚀 Event queued successfully to QStash');
+            return NextResponse.json({ message: 'Event queued successfully' }, { status: 200 });
+        } catch (qstashError) {
+            console.error('[Webhook WA Receiver] ⚠️ QStash queuing failed (Limit Exceeded?). Falling back to synchronous processing.', qstashError.message);
+            
+            // 🔥 FAIL-SAFE FALLBACK: Call the processor synchronously directly
+            const fallbackResponse = await fetch(processUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-internal-fallback-bypass': appSecret || 'fallback-secret'
+                },
+                body: JSON.stringify(body)
+            });
+            
+            console.log(`[Webhook WA Receiver] 🔄 Fallback complete. Status: ${fallbackResponse.status}`);
+            return NextResponse.json({ message: 'Processed via synchronous fallback' }, { status: 200 });
+        }
 
     } catch (error) {
         console.error('[Webhook WA Receiver] CRITICAL Error processing POST request:', error);
