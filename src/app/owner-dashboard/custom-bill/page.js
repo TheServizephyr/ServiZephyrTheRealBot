@@ -1290,7 +1290,7 @@ function CustomBillPage() {
                                 <Edit className="mr-1 h-4 w-4 text-primary" /> IDT
                             </Button>
                             <Button
-                                onClick={() => setIsBillModalOpen(true)}
+                                onClick={handleBrowserPrintForBill}
                                 className="w-full h-10 px-2 text-sm bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md shadow-primary/20 transition-all"
                                 disabled={cart.length === 0 || isCreatingOrder}
                             >

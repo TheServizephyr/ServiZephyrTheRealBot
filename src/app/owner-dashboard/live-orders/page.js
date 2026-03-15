@@ -2156,16 +2156,28 @@ export default function LiveOrdersPage() {
                             placeholder="Search orders..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full md:w-64 pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
+                            className="w-full md:w-64 pl-10 pr-4 py-2 h-10 rounded-md bg-input border border"
                         />
                     </div>
-                    <Link href="/owner-dashboard/custom-bill" passHref>
+                    <Link href={
+                        impersonatedOwnerId
+                            ? `/owner-dashboard/custom-bill?impersonate_owner_id=${impersonatedOwnerId}`
+                            : employeeOfOwnerId
+                                ? `/owner-dashboard/custom-bill?employee_of=${employeeOfOwnerId}`
+                                : `/owner-dashboard/custom-bill`
+                    } passHref>
                         <Button variant="outline" className="flex-shrink-0">
                             <FilePlus size={16} />
                             <span className="ml-2 hidden sm:inline">Custom Bill</span>
                         </Button>
                     </Link>
-                    <Link href="/owner-dashboard/order-history" passHref>
+                    <Link href={
+                        impersonatedOwnerId
+                            ? `/owner-dashboard/order-history?impersonate_owner_id=${impersonatedOwnerId}`
+                            : employeeOfOwnerId
+                                ? `/owner-dashboard/order-history?employee_of=${employeeOfOwnerId}`
+                                : `/owner-dashboard/order-history`
+                    } passHref>
                         <Button variant="outline" className="flex-shrink-0">
                             <History size={16} />
                             <span className="ml-2 hidden sm:inline">History</span>
