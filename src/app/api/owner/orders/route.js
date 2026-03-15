@@ -712,6 +712,53 @@ export async function PATCH(req) {
             }, { status: 200 });
         }
 
+        // --- Special Action: Settle / Unsettle History ---
+        if (action === 'settle' || action === 'unsettle') {
+            if (!callerHasPermission(userRole, callerPermissions, PERMISSIONS.PROCESS_PAYMENT)) { // Assuming process payment or similar is required
+                return NextResponse.json({ message: 'Access Denied: You cannot settle bills.' }, { status: 403 });
+            }
+            if (finalIdsToUpdate.length === 0) {
+                return NextResponse.json({ message: 'At least one order is required to settle/unsettle.' }, { status: 400 });
+            }
+
+            let updatedCount = 0;
+            for (const id of finalIdsToUpdate) {
+                const orderSnap = orderMap.get(id);
+                if (!orderSnap || orderSnap.data().restaurantId !== businessId) continue;
+
+                const orderData = orderSnap.data();
+                if (action === 'settle') {
+                    if (orderData.isSettled) continue;
+                    batch.update(orderSnap.ref, {
+                        isSettled: true,
+                        settledAt: FieldValue.serverTimestamp(),
+                        settledByUid: uid,
+                        settledByRole: callerRole || null
+                    });
+                } else {
+                    if (!orderData.isSettled) continue;
+                    batch.update(orderSnap.ref, {
+                        isSettled: false,
+                        settledAt: null,
+                        settledByUid: null,
+                        settledByRole: null
+                    });
+                }
+                updatedCount++;
+            }
+
+            if (updatedCount > 0) {
+                await batch.commit();
+            }
+
+            return NextResponse.json({
+                message: updatedCount > 0 
+                  ? `${updatedCount} order(s) ${action === 'settle' ? 'settled' : 'unsettled'} successfully.` 
+                  : `No orders were eligible to be ${action === 'settle' ? 'settled' : 'unsettled'}.`,
+                updatedCount
+            }, { status: 200 });
+        }
+
         // --- 2. Handle Cash Refund ---
         if (effectiveIsCashRefund && effectiveCashRefundIds.length > 0) {
             for (const id of effectiveCashRefundIds) {

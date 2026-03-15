@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { Calendar, RefreshCw, ChevronLeft, Download, Printer, Search, Filter, X } from 'lucide-react';
+import { RefreshCw, ChevronLeft, Search, Calendar, X, Package, Phone, MapPin, CreditCard, Clock, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, orderBy, getDocs, limit, Timestamp } from 'firebase/firestore';
@@ -13,422 +12,651 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { OrderStatusBadge } from '@/components/OrderStatusBadge';
-import Link from 'next/link';
 
-// Date presets for quick selection
 const DATE_PRESETS = [
     { label: "Today", getValue: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
     { label: "Yesterday", getValue: () => ({ from: startOfDay(subDays(new Date(), 1)), to: endOfDay(subDays(new Date(), 1)) }) },
     { label: "Last 7 Days", getValue: () => ({ from: startOfDay(subDays(new Date(), 7)), to: endOfDay(new Date()) }) }
 ];
 
+const toDateInput = (date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const toAmount = (v, fallback = 0) => { const n = Number(v); return Number.isFinite(n) ? n : fallback; };
+
+// ─── Order Detail Modal ──────────────────────────────────────────────────────
+function OrderDetailModal({ order, activeTab, onClose }) {
+    if (!order) return null;
+
+    const isCustom = activeTab === 'custom';
+
+    const items = order.items || [];
+    const subtotal = toAmount(order.subtotal || order.billDetails?.subtotal, 0);
+    const cgst = toAmount(order.cgst || order.billDetails?.cgst, 0);
+    const sgst = toAmount(order.sgst || order.billDetails?.sgst, 0);
+    const deliveryCharge = toAmount(order.deliveryCharge || order.billDetails?.deliveryCharge, 0);
+    const serviceFee = toAmount(order.serviceFee || order.billDetails?.serviceFee, 0);
+    const discount = toAmount(order.discount || order.billDetails?.discount, 0);
+    const total = toAmount(order.totalAmount, 0) || Math.max(0, subtotal + cgst + sgst + deliveryCharge + serviceFee - discount);
+
+    const orderId = order.customerOrderId || order.historyId || order.id;
+    const customer = order.customer || order.customerName || 'Guest';
+    const phone = order.customerPhone || order.phone || null;
+    const rawAddress = order.customerAddress || order.deliveryAddress || null;
+    const address = !rawAddress ? null
+        : typeof rawAddress === 'string' ? rawAddress
+        : [rawAddress.full, rawAddress.label, rawAddress.street, rawAddress.landmark, rawAddress.city, rawAddress.state, rawAddress.pincode]
+            .filter(Boolean).join(', ') || null;
+    const pm = order.paymentMethod || 'N/A';
+    const orderDate = isCustom
+        ? (order.printedAt ? format(new Date(order.printedAt), 'PPp') : 'N/A')
+        : (order.orderDate?.seconds ? format(new Date(order.orderDate.seconds * 1000), 'PPp') : 'N/A');
+    const status = order.status || (isCustom ? 'custom_bill' : 'N/A');
+
+    const statusColor = {
+        delivered: 'bg-green-500/10 text-green-400 border-green-500/30',
+        picked_up: 'bg-green-500/10 text-green-400 border-green-500/30',
+        rejected: 'bg-red-500/10 text-red-400 border-red-500/30',
+        cancelled: 'bg-red-500/10 text-red-400 border-red-500/30',
+        custom_bill: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    }[status] || 'bg-muted text-muted-foreground border-border';
+
+    return (
+        <Dialog open={!!order} onOpenChange={onClose}>
+            <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto p-0">
+                <DialogHeader className="p-5 border-b border-border sticky top-0 bg-background z-10">
+                    <div className="flex items-center justify-between">
+                        <DialogTitle className="text-lg font-bold">Order #{orderId}</DialogTitle>
+                        <span className={cn("px-2 py-1 text-xs font-semibold rounded-full border capitalize", statusColor)}>
+                            {status.replace(/_/g, ' ')}
+                        </span>
+                    </div>
+                </DialogHeader>
+
+                <div className="p-5 space-y-5">
+                    {/* Customer Info */}
+                    <div className="bg-muted/40 rounded-xl p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                            <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <span className="font-semibold">{customer}</span>
+                        </div>
+                        {phone && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Phone className="h-4 w-4 flex-shrink-0" />
+                                <span>{phone}</span>
+                            </div>
+                        )}
+                        {address && (
+                            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                                <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                                <span>{address}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Clock className="h-4 w-4 flex-shrink-0" />
+                            <span>{orderDate}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <CreditCard className="h-4 w-4 flex-shrink-0" />
+                            <span className="capitalize">{pm.replace(/_/g, ' ')}</span>
+                        </div>
+                    </div>
+
+                    {/* Items */}
+                    <div>
+                        <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                            <Package className="h-4 w-4" /> Items ({items.length})
+                        </h3>
+                        {items.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">No items info available</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {items.map((item, idx) => {
+                                    const qty = item.quantity || 1;
+                                    const name = item.name || item.itemName || item.item || 'Item';
+                                    const lineTotal = toAmount(item.totalPrice || item.serverVerifiedTotal, 0) || (toAmount(item.price, 0) * qty);
+                                    const variant = item.selectedVariant || item.variant || null;
+                                    const addons = item.addons || item.selectedAddons || [];
+                                    return (
+                                        <div key={idx} className="flex justify-between items-start py-2 border-b border-border last:border-0 text-sm">
+                                            <div className="flex-1 min-w-0 pr-2">
+                                                <p className="font-medium">{qty}× {name}</p>
+                                                {variant && <p className="text-xs text-muted-foreground mt-0.5">{variant}</p>}
+                                                {addons.length > 0 && (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        + {addons.map(a => a.name || a).join(', ')}
+                                                    </p>
+                                                )}
+                                                {item.specialInstructions && (
+                                                    <p className="text-xs text-yellow-500 mt-0.5 italic">&quot;{item.specialInstructions}&quot;</p>
+                                                )}
+                                            </div>
+                                            <span className="font-semibold flex-shrink-0">₹{lineTotal.toFixed(0)}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Bill Summary */}
+                    <div className="bg-muted/40 rounded-xl p-4 space-y-2 text-sm">
+                        <h3 className="font-semibold mb-3">Bill Summary</h3>
+                        {subtotal > 0 && (
+                            <div className="flex justify-between text-muted-foreground">
+                                <span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {cgst > 0 && (
+                            <div className="flex justify-between text-muted-foreground">
+                                <span>CGST</span><span>₹{cgst.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {sgst > 0 && (
+                            <div className="flex justify-between text-muted-foreground">
+                                <span>SGST</span><span>₹{sgst.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {deliveryCharge > 0 && (
+                            <div className="flex justify-between text-muted-foreground">
+                                <span>Delivery Charge</span><span>₹{deliveryCharge.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {serviceFee > 0 && (
+                            <div className="flex justify-between text-muted-foreground">
+                                <span>{order.serviceFeeLabel || 'Service Fee'}</span><span>₹{serviceFee.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {discount > 0 && (
+                            <div className="flex justify-between text-green-400">
+                                <span>Discount</span><span>-₹{discount.toFixed(2)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between font-bold text-base pt-2 border-t border-border">
+                            <span>Total</span><span>₹{total.toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    {/* Settlement Status */}
+                    {order.isSettled && (
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 text-sm text-green-400">
+                            ✓ This order has been settled.
+                        </div>
+                    )}
+
+                    {/* Notes / Rejection Reason */}
+                    {order.specialInstructions && (
+                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 text-sm text-yellow-400">
+                            <p className="font-semibold mb-1">Special Instructions:</p>
+                            <p>{order.specialInstructions}</p>
+                        </div>
+                    )}
+                    {order.rejectionReason && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-400">
+                            <p className="font-semibold mb-1">Rejection Reason:</p>
+                            <p>{order.rejectionReason}</p>
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
 export default function OrderHistoryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
 
+    const [activeTab, setActiveTab] = useState('online');
+    const [settlementFilter, setSettlementFilter] = useState('all'); // all | pending | settled
+
     const [orders, setOrders] = useState([]);
+    const [customBills, setCustomBills] = useState([]);
+
     const [loading, setLoading] = useState(true);
-    const [selectedOrder, setSelectedOrder] = useState(null); // ✅ For detail modal
+    const [actionLoadingId, setActionLoadingId] = useState(null);
+    const [selectedOrder, setSelectedOrder] = useState(null);
+
     const [dateRange, setDateRange] = useState({
         from: startOfDay(new Date()),
         to: endOfDay(new Date())
     });
-    const [statusFilter, setStatusFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Fetch completed orders
-    const fetchOrders = async () => {
-        setLoading(true);
+    // ── Fetchers ────────────────────────────────────────────────────────────
+    const fetchOrdersData = async () => {
         try {
             const user = auth.currentUser;
-            if (!user) {
-                setLoading(false);
-                return;
-            }
-
-            // Get owner's restaurant ID
+            if (!user) return;
             const ownerId = user.uid;
-            const restaurantsQuery = query(
-                collection(db, 'restaurants'),
-                where('ownerId', '==', ownerId),
-                limit(1)
-            );
-
+            const restaurantsQuery = query(collection(db, 'restaurants'), where('ownerId', '==', ownerId), limit(1));
             const restaurantSnapshot = await getDocs(restaurantsQuery);
-
-            if (restaurantSnapshot.empty) {
-                console.error('[OrderHistory] No restaurant found for owner:', ownerId);
-                setLoading(false);
-                return;
-            }
-
+            if (restaurantSnapshot.empty) return;
             const restaurantId = restaurantSnapshot.docs[0].id;
-            console.log('[OrderHistory] Found restaurantId:', restaurantId);
 
-            // Query completed orders within date range
-            // OPTIMIZATION: Query by Date only, then filter status in memory.
-            // This avoids complicated composite index requirements (Status + Date + Sort).
             const ordersQuery = query(
                 collection(db, 'orders'),
                 where('restaurantId', '==', restaurantId),
                 where('orderDate', '>=', Timestamp.fromDate(dateRange.from)),
                 where('orderDate', '<=', Timestamp.fromDate(dateRange.to)),
-                orderBy('orderDate', 'desc'), // Sorting by date is safe with date range filter
-                limit(100)
+                orderBy('orderDate', 'desc'),
+                limit(300)
             );
-
             const ordersSnapshot = await getDocs(ordersQuery);
-            const fetchedOrders = [];
             const historyStatuses = ['delivered', 'picked_up', 'rejected', 'cancelled', 'failed_delivery'];
-
+            const fetchedOrders = [];
             ordersSnapshot.forEach((doc) => {
                 const data = doc.data();
                 if (historyStatuses.includes(data.status)) {
                     fetchedOrders.push({ id: doc.id, ...data });
                 }
             });
-
-            console.log(`[OrderHistory] Fetched ${fetchedOrders.length} completed orders`);
             setOrders(fetchedOrders);
-
         } catch (error) {
             console.error('[OrderHistory] Error fetching orders:', error);
-        } finally {
-            setLoading(false);
         }
     };
 
-    useEffect(() => {
-        fetchOrders();
-    }, [dateRange]);
+    const fetchCustomBillsData = async () => {
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
+            apiUrl.searchParams.set('from', toDateInput(dateRange.from));
+            apiUrl.searchParams.set('to', toDateInput(dateRange.to));
+            apiUrl.searchParams.set('limit', '300');
+            if (impersonatedOwnerId) apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            else if (employeeOfOwnerId) apiUrl.searchParams.set('employee_of', employeeOfOwnerId);
 
-    // Filter orders by status and search
-    const filteredOrders = useMemo(() => {
-        let filtered = [...orders];
-
-        // Status filter
-        if (statusFilter !== 'All') {
-            const statusMap = {
-                'Delivered': (o) => o.status === 'delivered' || o.status === 'picked_up',
-                'Rejected': (o) => o.status === 'rejected'
-            };
-            filtered = filtered.filter(statusMap[statusFilter]);
+            const res = await fetch(apiUrl.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) setCustomBills(Array.isArray(data.history) ? data.history : []);
+        } catch (error) {
+            console.error('[OrderHistory] Error fetching custom bills:', error);
         }
+    };
 
-        // Search filter
+    const fetchAllData = async () => {
+        setLoading(true);
+        await Promise.all([fetchOrdersData(), fetchCustomBillsData()]);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchAllData(); /* eslint-disable-next-line */ }, [dateRange]);
+
+    // ── Settlement Action ───────────────────────────────────────────────────
+    const handleSettleAction = async (id, isCurrentlySettled, type) => {
+        const action = isCurrentlySettled ? 'unsettle' : 'settle';
+        setActionLoadingId(id);
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Not authenticated");
+            const idToken = await user.getIdToken();
+
+            const endpoint = type === 'custom' ? '/api/owner/custom-bill/history' : '/api/owner/orders';
+            const body = type === 'custom' ? { action, historyIds: [id] } : { action, idsToUpdate: [id] };
+
+            const apiUrl = new URL(endpoint, window.location.origin);
+            if (impersonatedOwnerId) apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            else if (employeeOfOwnerId) apiUrl.searchParams.set('employee_of', employeeOfOwnerId);
+
+            const res = await fetch(apiUrl.toString(), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+                body: JSON.stringify(body)
+            });
+
+            let data = {};
+            try { data = await res.json(); } catch { }
+            if (!res.ok) throw new Error(data.message || 'Operation failed');
+
+            // Optimistic update
+            if (type === 'custom') {
+                setCustomBills(prev => prev.map(bill => bill.id === id ? { ...bill, isSettled: !isCurrentlySettled } : bill));
+            } else {
+                setOrders(prev => prev.map(order => order.id === id ? { ...order, isSettled: !isCurrentlySettled } : order));
+            }
+            // Update selected order modal state too
+            if (selectedOrder?.id === id) {
+                setSelectedOrder(prev => ({ ...prev, isSettled: !isCurrentlySettled }));
+            }
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    // ── Filtered / Sorted Data ──────────────────────────────────────────────
+    const filteredData = useMemo(() => {
+        let items = [];
+        if (activeTab === 'online') items = orders.filter(o => !o.isManualCallOrder && o.orderSource !== 'manual_call');
+        else if (activeTab === 'manual') items = orders.filter(o => o.isManualCallOrder || o.orderSource === 'manual_call');
+        else if (activeTab === 'custom') items = customBills;
+
         if (searchQuery) {
-            const lowercased = searchQuery.toLowerCase();
-            filtered = filtered.filter(order =>
-                (order.customerOrderId || '').toString().toLowerCase().includes(lowercased) ||
-                order.id.toLowerCase().includes(lowercased) ||
-                (order.customer || order.customerName || '').toLowerCase().includes(lowercased) ||
-                (order.customerPhone || '').includes(searchQuery)
+            const q = searchQuery.toLowerCase();
+            items = items.filter(item =>
+                (item.customerOrderId || '').toString().toLowerCase().includes(q) ||
+                (item.historyId || item.id || '').toString().toLowerCase().includes(q) ||
+                (item.customer || item.customerName || '').toLowerCase().includes(q) ||
+                (item.customerPhone || '').includes(q)
             );
         }
 
-        return filtered;
-    }, [orders, statusFilter, searchQuery]);
+        if (settlementFilter === 'settled') items = items.filter(i => i.isSettled);
+        else if (settlementFilter === 'pending') items = items.filter(i => !i.isSettled);
 
+        return items.sort((a, b) => {
+            const dateA = a.orderDate?.seconds ? a.orderDate.seconds * 1000 : new Date(a.printedAt || a.createdAt).getTime();
+            const dateB = b.orderDate?.seconds ? b.orderDate.seconds * 1000 : new Date(b.printedAt || b.createdAt).getTime();
+            return dateB - dateA;
+        });
+    }, [orders, customBills, activeTab, searchQuery, settlementFilter]);
+
+    const renderTableDate = (item) => {
+        if (activeTab === 'custom') return item.printedAt ? format(new Date(item.printedAt), 'PPp') : 'N/A';
+        return item.orderDate?.seconds ? format(new Date(item.orderDate.seconds * 1000), 'PPp') : 'N/A';
+    };
+
+    // ── Status Badge Helper ─────────────────────────────────────────────────
+    const getStatusBadge = (status) => {
+        const s = (status || '').toLowerCase();
+        const map = {
+            delivered:       'bg-green-500/10 text-green-400 border-green-500/20',
+            picked_up:       'bg-green-500/10 text-green-400 border-green-500/20',
+            rejected:        'bg-red-500/10 text-red-400 border-red-500/20',
+            cancelled:       'bg-red-500/10 text-red-400 border-red-500/20',
+            failed_delivery: 'bg-red-500/10 text-red-400 border-red-500/20',
+            custom_bill:     'bg-purple-500/10 text-purple-400 border-purple-500/20',
+        };
+        const cls = map[s] || 'bg-muted text-muted-foreground border-border';
+        const label = s === 'picked_up' ? 'Picked Up'
+            : s === 'failed_delivery' ? 'Failed'
+            : s === 'custom_bill' ? 'Custom Bill'
+            : s.charAt(0).toUpperCase() + s.slice(1);
+        return <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${cls}`}>{label}</span>;
+    };
+
+    const isNonPayableStatus = (status) => {
+        return ['rejected', 'cancelled', 'failed_delivery'].includes((status || '').toLowerCase());
+    };
+
+    // ── Settlement Cell Helper ──────────────────────────────────────────────
+    const renderSettlementCell = (item, isOnlinePrepaid) => {
+        const isSettled = item.isSettled;
+        const itemId = item.id;
+        const isItemLoading = actionLoadingId === itemId;
+
+        if (isOnlinePrepaid) {
+            return <span className="px-3 py-1 bg-blue-500/10 text-blue-500 text-xs font-medium rounded-full border border-blue-500/20">Online Paid</span>;
+        }
+        // Rejected/Cancelled orders cannot be settled
+        if (activeTab !== 'custom' && isNonPayableStatus(item.status)) {
+            return <span className="px-2 py-1 text-xs text-muted-foreground">—</span>;
+        }
+        if (isSettled) {
+            return (
+                <div className="flex items-center justify-center gap-2">
+                    <span className="px-2 py-1 bg-green-500/10 text-green-500 text-xs font-medium rounded-full">Settled</span>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                        disabled={isItemLoading} onClick={(e) => { e.stopPropagation(); handleSettleAction(itemId, true, activeTab); }}>
+                        {isItemLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : "Undo"}
+                    </Button>
+                </div>
+            );
+        }
+        return (
+            <Button variant="default" size="sm" className="h-8 w-20 text-xs" disabled={isItemLoading}
+                onClick={(e) => { e.stopPropagation(); handleSettleAction(itemId, false, activeTab); }}>
+                {isItemLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Settle"}
+            </Button>
+        );
+    };
+
+    const renderMobileSettlementCell = (item, isOnlinePrepaid) => {
+        const isSettled = item.isSettled;
+        const itemId = item.id;
+        const isItemLoading = actionLoadingId === itemId;
+
+        if (isOnlinePrepaid) {
+            return <span className="px-3 py-1.5 bg-blue-500/10 text-blue-500 text-xs font-medium rounded-md border border-blue-500/20">Online Paid</span>;
+        }
+        // Rejected/Cancelled orders cannot be settled
+        if (activeTab !== 'custom' && isNonPayableStatus(item.status)) {
+            return <span className="text-xs text-muted-foreground px-1">—</span>;
+        }
+        if (isSettled) {
+            return (
+                <div className="flex items-center gap-2">
+                    <span className="px-2 py-1 bg-green-500/10 text-green-500 text-xs font-medium rounded-md">Settled</span>
+                    <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-destructive px-2"
+                        disabled={isItemLoading} onClick={() => handleSettleAction(itemId, true, activeTab)}>
+                        {isItemLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : "Undo"}
+                    </Button>
+                </div>
+            );
+        }
+        return (
+            <Button variant="default" size="sm" className="h-8 w-20 text-xs font-semibold"
+                disabled={isItemLoading} onClick={() => handleSettleAction(itemId, false, activeTab)}>
+                {isItemLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Settle"}
+            </Button>
+        );
+    };
+
+    // ── Render ──────────────────────────────────────────────────────────────
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div className="flex items-center gap-3">
-                    <Button
-                        onClick={() => router.push('/owner-dashboard/live-orders')}
-                        variant="ghost"
-                        size="icon"
-                    >
+                    <Button onClick={() => router.push('/owner-dashboard/live-orders')} variant="ghost" size="icon">
                         <ChevronLeft className="h-5 w-5" />
                     </Button>
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Order History</h1>
-                        <p className="text-muted-foreground mt-1 text-sm md:text-base">
-                            View and analyze completed orders
-                        </p>
+                        <p className="text-muted-foreground mt-1 text-sm md:text-base">View completed orders and manage settlements</p>
                     </div>
                 </div>
-
-                <div className="flex items-center gap-3">
-                    <Button onClick={fetchOrders} variant="outline" disabled={loading}>
-                        <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-                        <span className="ml-2 hidden sm:inline">Refresh</span>
-                    </Button>
-                </div>
+                <Button onClick={fetchAllData} variant="outline" disabled={loading}>
+                    <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                    <span className="ml-2 hidden sm:inline">Refresh</span>
+                </Button>
             </div>
 
             {/* Filters */}
-            <div className="bg-card border border-border rounded-xl p-4 mb-6">
-                {/* Date Range Presets */}
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <span className="text-sm font-semibold text-muted-foreground mr-2">Quick Select:</span>
+            <div className="bg-card border border-border rounded-xl p-4 mb-6 space-y-4">
+                {/* Date Presets */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-muted-foreground mr-1">Quick:</span>
                     {DATE_PRESETS.map((preset) => (
-                        <Button
-                            key={preset.label}
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDateRange(preset.getValue())}
-                            className="text-xs"
-                        >
+                        <Button key={preset.label} variant="outline" size="sm" onClick={() => setDateRange(preset.getValue())} className="text-xs">
                             {preset.label}
                         </Button>
                     ))}
                 </div>
 
-                {/* Date Range Picker */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* From Date */}
+                {/* Date Pickers + Search + Settlement Filter */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
-                        <label className="text-sm font-medium mb-2 block">From Date</label>
+                        <label className="text-xs font-medium mb-1 block text-muted-foreground">From</label>
                         <Popover>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full justify-start">
-                                    <Calendar className="mr-2 h-4 w-4" />
-                                    {format(dateRange.from, 'PPP')}
+                                <Button variant="outline" className="w-full justify-start text-sm">
+                                    <Calendar className="mr-2 h-4 w-4" />{format(dateRange.from, 'PP')}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
-                                <CalendarComponent
-                                    mode="single"
-                                    selected={dateRange.from}
-                                    onSelect={(date) => date && setDateRange({ ...dateRange, from: startOfDay(date) })}
-                                    initialFocus
-                                />
+                                <CalendarComponent mode="single" selected={dateRange.from} onSelect={(date) => date && setDateRange({ ...dateRange, from: startOfDay(date) })} initialFocus />
                             </PopoverContent>
                         </Popover>
                     </div>
 
-                    {/* To Date */}
                     <div>
-                        <label className="text-sm font-medium mb-2 block">To Date</label>
+                        <label className="text-xs font-medium mb-1 block text-muted-foreground">To</label>
                         <Popover>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full justify-start">
-                                    <Calendar className="mr-2 h-4 w-4" />
-                                    {format(dateRange.to, 'PPP')}
+                                <Button variant="outline" className="w-full justify-start text-sm">
+                                    <Calendar className="mr-2 h-4 w-4" />{format(dateRange.to, 'PP')}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
-                                <CalendarComponent
-                                    mode="single"
-                                    selected={dateRange.to}
-                                    onSelect={(date) => date && setDateRange({ ...dateRange, to: endOfDay(date) })}
-                                    initialFocus
-                                />
+                                <CalendarComponent mode="single" selected={dateRange.to} onSelect={(date) => date && setDateRange({ ...dateRange, to: endOfDay(date) })} initialFocus />
                             </PopoverContent>
                         </Popover>
                     </div>
 
-                    {/* Search */}
                     <div>
-                        <label className="text-sm font-medium mb-2 block">Search</label>
+                        <label className="text-xs font-medium mb-1 block text-muted-foreground">Search</label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <input
-                                type="text"
-                                placeholder="Customer Order ID, customer..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
-                            />
+                            <input type="text" placeholder="ID, name, phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2 h-10 rounded-md bg-input border border-border text-sm" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-medium mb-1 block text-muted-foreground">Settlement</label>
+                        <div className="flex rounded-md border border-border overflow-hidden h-10">
+                            {[['all','All'],['pending','Pending'],['settled','Settled']].map(([val, label]) => (
+                                <button key={val} onClick={() => setSettlementFilter(val)}
+                                    className={cn("flex-1 text-xs font-medium transition-colors", settlementFilter === val ? "bg-primary text-primary-foreground" : "bg-input text-muted-foreground hover:bg-muted")}>
+                                    {label}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Status Tabs */}
-            <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full mb-6">
-                <TabsList className="grid w-full grid-cols-3 h-auto p-1 bg-muted">
-                    <TabsTrigger value="All">All ({orders.length})</TabsTrigger>
-                    <TabsTrigger value="Delivered">Delivered</TabsTrigger>
-                    <TabsTrigger value="Rejected">Rejected</TabsTrigger>
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSettlementFilter('all'); }} className="w-full mb-6">
+                <TabsList className="grid w-full grid-cols-3 h-auto p-1 bg-muted rounded-xl">
+                    <TabsTrigger value="online" className="rounded-lg py-2 text-xs sm:text-sm">Online Orders</TabsTrigger>
+                    <TabsTrigger value="manual" className="rounded-lg py-2 text-xs sm:text-sm">Manual Call</TabsTrigger>
+                    <TabsTrigger value="custom" className="rounded-lg py-2 text-xs sm:text-sm">Custom Bills</TabsTrigger>
                 </TabsList>
             </Tabs>
 
-            {/* Orders Table */}
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
+            {/* ── Desktop Table ────────────────────────────────────────────── */}
+            <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
                             <tr className="bg-muted/30">
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Customer Order ID</th>
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Customer</th>
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Amount</th>
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Date & Time</th>
-                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Status</th>
+                                <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">ID</th>
+                                <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Customer</th>
+                                <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Amount</th>
+                                <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date & Time</th>
+                                {activeTab !== 'custom' && <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>}
+                                <th className="p-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Settlement</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                             {loading ? (
                                 Array.from({ length: 5 }).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-24"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-32"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-16"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-28"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-20"></div></td>
+                                        {[24, 32, 16, 28, 20].map((w, j) => (
+                                            <td key={j} className="p-4"><div className={`h-5 bg-muted rounded w-${w}`}></div></td>
+                                        ))}
                                     </tr>
                                 ))
-                            ) : filteredOrders.length === 0 ? (
+                            ) : filteredData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                                        No orders found for the selected date range.
+                                    <td colSpan={5} className="p-12 text-center text-muted-foreground">
+                                        No {settlementFilter !== 'all' ? settlementFilter : ''} entries found.
                                     </td>
                                 </tr>
-                            ) : (
-                                filteredOrders.map((order) => (
-                                    <tr
-                                        key={order.id}
-                                        className="hover:bg-muted/50 cursor-pointer"
-                                        onClick={() => setSelectedOrder(order)}
-                                    >
-                                        <td className="p-4 font-mono text-sm">{order.customerOrderId || order.id.substring(0, 8)}</td>
-                                        <td className="p-4 text-sm">{order.customer || order.customerName || 'Guest'}</td>
-                                        <td className="p-4 text-sm font-semibold">₹{order.totalAmount?.toFixed(0) || 0}</td>
-                                        <td className="p-4 text-sm text-muted-foreground">
-                                            {order.orderDate?.seconds
-                                                ? format(new Date(order.orderDate.seconds * 1000), 'PPp')
-                                                : 'N/A'}
+                            ) : filteredData.map((item) => {
+                                const itemId = item.id;
+                                const pm = (item.paymentMethod || '').toLowerCase();
+                                const isPostpaid = ['cod', 'pod', 'pay_on_delivery', 'cash', 'pay_at_restaurant', 'pay at restaurant', 'offline_counter'].includes(pm);
+                                const isOnlinePrepaid = activeTab === 'online' && !isPostpaid && !!pm;
+
+                                return (
+                                    <tr key={itemId} className="hover:bg-muted/40 cursor-pointer transition-colors"
+                                        onClick={() => setSelectedOrder(item)}>
+                                        <td className="p-4 font-mono text-sm text-primary font-semibold">
+                                            #{item.customerOrderId || item.historyId?.substring(0,8) || itemId.substring(0, 8)}
                                         </td>
-                                        <td className="p-4">
-                                            <OrderStatusBadge status={order.status} />
-                                        </td>
+                                        <td className="p-4 text-sm">{item.customer || item.customerName || 'Guest'}</td>
+                                        <td className="p-4 text-sm font-semibold">₹{(item.totalAmount || 0).toFixed(0)}</td>
+                                        <td className="p-4 text-sm text-muted-foreground">{renderTableDate(item)}</td>
+                                        {activeTab !== 'custom' && <td className="p-4">{getStatusBadge(item.status)}</td>}
+                                        <td className="p-4 text-center">{renderSettlementCell(item, isOnlinePrepaid)}</td>
                                     </tr>
-                                ))
-                            )}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            {/* Order Detail Modal */}
-            <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center justify-between">
-                            <span>Order Details</span>
-                            <span className="font-mono text-sm text-muted-foreground">
-                                {selectedOrder?.customerOrderId || selectedOrder?.id.substring(0, 10)}
-                            </span>
-                        </DialogTitle>
-                    </DialogHeader>
-
-                    {selectedOrder && (
-                        <div className="space-y-6">
-                            {/* Customer Info */}
-                            <div className="bg-muted/30 rounded-lg p-4">
-                                <h3 className="font-semibold mb-2">Customer Information</h3>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div>
-                                        <p className="text-muted-foreground">Name</p>
-                                        <p className="font-medium">{selectedOrder.customer || selectedOrder.customerName || 'Guest'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-muted-foreground">Phone</p>
-                                        <p className="font-medium">{selectedOrder.customerPhone || 'N/A'}</p>
-                                    </div>
-                                    {selectedOrder.address && (
-                                        <div className="col-span-2">
-                                            <p className="text-muted-foreground">Address</p>
-                                            <p className="font-medium">{
-                                                typeof selectedOrder.address === 'string'
-                                                    ? selectedOrder.address
-                                                    : (selectedOrder.address?.street || selectedOrder.address?.formattedAddress || 'N/A')
-                                            }</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Order Items */}
-                            <div>
-                                <h3 className="font-semibold mb-3">Order Items</h3>
-                                <div className="space-y-2">
-                                    {selectedOrder.items && selectedOrder.items.length > 0 ? (
-                                        selectedOrder.items.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-start p-3 bg-muted/20 rounded-lg">
-                                                <div className="flex-1">
-                                                    <p className="font-medium">{item.name || item.itemName}</p>
-                                                    {item.portion && (
-                                                        <p className="text-sm text-muted-foreground">Portion: {item.portion.name}</p>
-                                                    )}
-                                                    {item.customizations && item.customizations.length > 0 && (
-                                                        <p className="text-xs text-muted-foreground mt-1">
-                                                            {item.customizations.map(c => c.name).join(', ')}
-                                                        </p>
-                                                    )}
-                                                    <p className="text-sm font-medium mt-1">Qty: {item.quantity}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="font-semibold">₹{(item.totalPrice || item.serverVerifiedTotal || 0).toFixed(0)}</p>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">No items found</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Bill Summary */}
-                            <div className="border-t pt-4">
-                                <h3 className="font-semibold mb-3">Bill Summary</h3>
-                                <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Subtotal</span>
-                                        <span>₹{(selectedOrder.subtotal || 0).toFixed(0)}</span>
-                                    </div>
-                                    {selectedOrder.cgst > 0 && (
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">CGST</span>
-                                            <span>₹{selectedOrder.cgst.toFixed(0)}</span>
-                                        </div>
-                                    )}
-                                    {selectedOrder.sgst > 0 && (
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">SGST</span>
-                                            <span>₹{selectedOrder.sgst.toFixed(0)}</span>
-                                        </div>
-                                    )}
-                                    {selectedOrder.deliveryCharge > 0 && (
-                                        <div className="flex justify-between">
-                                            <span className="text-muted-foreground">Delivery Charge</span>
-                                            <span>₹{selectedOrder.deliveryCharge.toFixed(0)}</span>
-                                        </div>
-                                    )}
-                                    <div className="flex justify-between font-bold text-base pt-2 border-t">
-                                        <span>Total Amount</span>
-                                        <span>₹{(selectedOrder.totalAmount || 0).toFixed(0)}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Status & Date */}
-                            <div className="bg-muted/30 rounded-lg p-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <p className="text-sm text-muted-foreground">Status</p>
-                                        <div className="mt-1">
-                                            <OrderStatusBadge status={selectedOrder.status} />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-muted-foreground">Order Date</p>
-                                        <p className="font-medium mt-1">
-                                            {selectedOrder.orderDate?.seconds
-                                                ? format(new Date(selectedOrder.orderDate.seconds * 1000), 'PPp')
-                                                : 'N/A'}
-                                        </p>
-                                    </div>
-                                </div>
+            {/* ── Mobile Cards ─────────────────────────────────────────────── */}
+            <div className="md:hidden flex flex-col gap-3">
+                {loading ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="bg-card border border-border rounded-xl p-4 animate-pulse space-y-3">
+                            <div className="h-4 bg-muted w-1/3 rounded"></div>
+                            <div className="h-4 bg-muted w-1/2 rounded"></div>
+                            <div className="h-4 bg-muted w-1/4 rounded"></div>
+                            <div className="flex justify-between items-center pt-2 border-t border-border">
+                                <div className="h-8 bg-muted w-24 rounded"></div>
+                                <div className="h-8 bg-muted w-20 rounded"></div>
                             </div>
                         </div>
-                    )}
-                </DialogContent>
-            </Dialog>
+                    ))
+                ) : filteredData.length === 0 ? (
+                    <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
+                        No {settlementFilter !== 'all' ? settlementFilter : ''} entries found.
+                    </div>
+                ) : filteredData.map((item) => {
+                    const itemId = item.id;
+                    const pm = (item.paymentMethod || '').toLowerCase();
+                    const isPostpaid = ['cod', 'pod', 'pay_on_delivery', 'cash', 'pay_at_restaurant', 'pay at restaurant', 'offline_counter'].includes(pm);
+                    const isOnlinePrepaid = activeTab === 'online' && !isPostpaid && !!pm;
+
+                    return (
+                        <div key={itemId} className="bg-card border border-border rounded-xl p-4 shadow-sm active:opacity-80 transition-opacity"
+                            onClick={() => setSelectedOrder(item)}>
+                            <div className="flex justify-between items-start mb-3">
+                                <div>
+                                    <p className="font-mono text-xs font-bold text-primary">
+                                        #{item.customerOrderId || item.historyId?.substring(0,8) || itemId.substring(0, 8)}
+                                    </p>
+                                    <p className="font-semibold text-base mt-0.5">{item.customer || item.customerName || 'Guest'}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{renderTableDate(item)}</p>
+                                    {activeTab !== 'custom' && <div className="mt-1.5">{getStatusBadge(item.status)}</div>}
+                                </div>
+                                <p className="font-bold text-lg">₹{(item.totalAmount || 0).toFixed(0)}</p>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-3 border-t border-border" onClick={e => e.stopPropagation()}>
+                                <span className="text-[10px] text-muted-foreground capitalize bg-muted px-2 py-1 rounded truncate max-w-[45%]">
+                                    {pm.replace(/_/g, ' ') || (activeTab === 'custom' ? 'Counter' : 'Online')}
+                                </span>
+                                {renderMobileSettlementCell(item, isOnlinePrepaid)}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* ── Order Detail Modal ───────────────────────────────────────── */}
+            <OrderDetailModal
+                order={selectedOrder}
+                activeTab={activeTab}
+                onClose={() => setSelectedOrder(null)}
+            />
         </div>
     );
 }

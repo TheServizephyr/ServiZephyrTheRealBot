@@ -360,7 +360,7 @@ export async function PATCH(req) {
             'custom_bill_settle_history',
             {},
             false,
-            [PERMISSIONS.MANUAL_BILLING.WRITE, PERMISSIONS.CREATE_ORDER]
+            [PERMISSIONS.MANUAL_BILLING?.WRITE || PERMISSIONS.MANUAL_BILLING, PERMISSIONS.CREATE_ORDER]
         );
 
         const { businessId, collectionName, uid, callerRole, adminId = null } = context;
@@ -372,14 +372,14 @@ export async function PATCH(req) {
             ? [...new Set(body.historyIds.map((id) => sanitizeText(id, '')).filter(Boolean))]
             : [];
 
-        if (action !== 'settle') {
+        if (action !== 'settle' && action !== 'unsettle') {
             return NextResponse.json({ message: 'Unsupported action.' }, { status: 400 });
         }
         if (historyIds.length === 0) {
             return NextResponse.json({ message: 'At least one bill ID is required.' }, { status: 400 });
         }
         if (historyIds.length > 500) {
-            return NextResponse.json({ message: 'You can settle up to 500 bills in one request.' }, { status: 400 });
+            return NextResponse.json({ message: `You can ${action} up to 500 bills in one request.` }, { status: 400 });
         }
 
         const historyRef = firestore
@@ -396,8 +396,8 @@ export async function PATCH(req) {
 
         const docs = await Promise.all(historyIds.map((id) => historyRef.doc(id).get()));
         const batch = firestore.batch();
-        let settledCount = 0;
-        let settledAmount = 0;
+        let updatedCount = 0;
+        let updatedAmount = 0;
         let skippedCount = 0;
 
         docs.forEach((docSnap) => {
@@ -409,35 +409,58 @@ export async function PATCH(req) {
             const data = docSnap.data() || {};
             const printedVia = data.printedVia || 'browser';
             const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
-            if (!settlementEligible || data.isSettled) {
+            
+            if (!settlementEligible) {
                 skippedCount += 1;
                 return;
             }
 
-            settledCount += 1;
-            settledAmount += toAmount(data.totalAmount, 0);
-            batch.update(docSnap.ref, {
-                settlementEligible: true,
-                isSettled: true,
-                settledAt: FieldValue.serverTimestamp(),
-                settledByUid: actorUid,
-                settledByRole: callerRole || null,
-                settlementBatchId,
-            });
+            if (action === 'settle') {
+                if (data.isSettled) {
+                    skippedCount += 1;
+                    return;
+                }
+                updatedCount += 1;
+                updatedAmount += toAmount(data.totalAmount, 0);
+                batch.update(docSnap.ref, {
+                    settlementEligible: true,
+                    isSettled: true,
+                    settledAt: FieldValue.serverTimestamp(),
+                    settledByUid: actorUid,
+                    settledByRole: callerRole || null,
+                    settlementBatchId,
+                });
+            } else if (action === 'unsettle') {
+                if (!data.isSettled) {
+                    skippedCount += 1;
+                    return;
+                }
+                updatedCount += 1;
+                updatedAmount += toAmount(data.totalAmount, 0);
+                batch.update(docSnap.ref, {
+                    isSettled: false,
+                    settledAt: null,
+                    settledByUid: null,
+                    settledByRole: null,
+                    settlementBatchId: null,
+                });
+            }
         });
 
-        if (settledCount > 0) {
+        if (updatedCount > 0) {
             await batch.commit();
         }
 
+        const actionPastTense = action === 'settle' ? 'settled' : 'unsettled';
+
         return NextResponse.json({
-            message: settledCount > 0
-                ? `${settledCount} bill(s) settled successfully.`
-                : 'No pending manual bills were eligible for settlement.',
-            settledCount,
-            settledAmount,
+            message: updatedCount > 0
+                ? `${updatedCount} bill(s) ${actionPastTense} successfully.`
+                : `No bills were eligible to be ${actionPastTense}.`,
+            settledCount: updatedCount,
+            settledAmount: updatedAmount,
             skippedCount,
-            settlementBatchId: settledCount > 0 ? settlementBatchId : null,
+            settlementBatchId: updatedCount > 0 && action === 'settle' ? settlementBatchId : null,
         });
     } catch (error) {
         console.error('[Custom Bill History][PATCH] Error:', error);
