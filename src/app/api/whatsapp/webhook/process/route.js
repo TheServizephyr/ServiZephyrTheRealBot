@@ -85,27 +85,27 @@ const getBusinessSupportLabel = (business = null) => {
 export const maxDuration = 60;
 async function getBusiness(firestore, botPhoneNumberId) {
     console.log(`[Webhook WA] getBusiness: Searching for business with botPhoneNumberId: ${botPhoneNumberId}`);
-    const restaurantsQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    // ⚡ Parallel queries instead of sequential — saves ~200-400ms
+    const [restaurantsQuery, shopsQuery, streetVendorsQuery] = await Promise.all([
+        firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
+        firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
+        firestore.collection('street_vendors').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
+    ]);
     if (!restaurantsQuery.empty) {
         const doc = restaurantsQuery.docs[0];
         console.log(`[Webhook WA] getBusiness: Found business in 'restaurants' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'restaurants' };
     }
-
-    const shopsQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!shopsQuery.empty) {
         const doc = shopsQuery.docs[0];
         console.log(`[Webhook WA] getBusiness: Found business in 'shops' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'shops' };
     }
-
-    const streetVendorsQuery = await firestore.collection('street_vendors').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!streetVendorsQuery.empty) {
         const doc = streetVendorsQuery.docs[0];
         console.log(`[Webhook WA] getBusiness: Found business in 'street_vendors' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'street_vendors' };
     }
-
     console.warn(`[Webhook WA] getBusiness: No business found for botPhoneNumberId: ${botPhoneNumberId}`);
     return null;
 }
@@ -214,27 +214,32 @@ const resolveActionIdFromTemplateReply = (rawId, businessId) => {
 const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) => {
     const normalizedPhone = normalizePhone(customerPhoneWithCode);
     const { userId } = await getOrCreateGuestProfile(firestore, normalizedPhone);
-    const { ref: publicRef } = await issueGuestAccessRef(firestore, {
-        subjectId: userId,
-        subjectType: String(userId || '').startsWith('g_') ? 'guest' : 'user',
-        phone: normalizedPhone,
-        businessId: business.id,
-        channel: 'whatsapp',
-        scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-        ttlMs: 24 * 60 * 60 * 1000,
-    });
+
+    // ⚡ Both operations only need userId — run them in parallel
+    const subjectType = String(userId || '').startsWith('g_') ? 'guest' : 'user';
+    const [{ ref: publicRef }, latestOrderSnapshot] = await Promise.all([
+        issueGuestAccessRef(firestore, {
+            subjectId: userId,
+            subjectType,
+            phone: normalizedPhone,
+            businessId: business.id,
+            channel: 'whatsapp',
+            scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
+            ttlMs: 24 * 60 * 60 * 1000,
+        }),
+        firestore.collection('orders')
+            .where('restaurantId', '==', business.id)
+            .where('userId', '==', userId)
+            .orderBy('orderDate', 'desc')
+            .limit(1)
+            .get(),
+    ]);
+
     const encodedRef = encodeURIComponent(publicRef);
     const encodedBusinessId = encodeURIComponent(String(business.id || '').trim());
 
     const orderPath = `/order/${encodedBusinessId}?ref=${encodedRef}`;
     let trackPath = `${orderPath}&from=track_last_order`;
-
-    const latestOrderSnapshot = await firestore.collection('orders')
-        .where('restaurantId', '==', business.id)
-        .where('userId', '==', userId)
-        .orderBy('orderDate', 'desc')
-        .limit(1)
-        .get();
 
     if (!latestOrderSnapshot.empty) {
         const latestOrderDoc = latestOrderSnapshot.docs[0];
@@ -339,23 +344,36 @@ const sendWelcomeMessageWithOptions = async (
 ) => {
     console.log(`[Webhook WA] Preparing to send welcome message to ${customerPhoneWithCode}`);
 
-    // Standardize phone number for Firestore
     const fromPhoneNumber = normalizePhone(customerPhoneWithCode);
     const firestore = await getFirestore();
     const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
     const bypassRateLimit = options?.bypassRateLimit === true;
     const forceInteractive = options?.forceInteractive === true;
 
-    // Rate limiting: Don't send more than one welcome menu every 10 seconds to same user
-    if (!bypassRateLimit) {
-        const conversationDoc = await conversationRef.get();
-        if (conversationDoc.exists) {
-            const lastSent = conversationDoc.data().lastWelcomeSent;
-            if (lastSent && (Date.now() - lastSent.toDate().getTime()) < 10000) {
+    // ⚡ OPTIMIZATION: Rate-limit check and path building run in parallel
+    const [conversationDoc, builtPaths] = await Promise.all([
+        bypassRateLimit ? Promise.resolve(null) : conversationRef.get(),
+        buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode).catch(e => {
+            console.error('[Webhook WA] buildWelcomeCtaPaths error:', e?.message || e);
+            return null;
+        }),
+    ]);
+
+    // Rate limit check (using already-fetched doc)
+    if (!bypassRateLimit && conversationDoc?.exists) {
+        const lastSent = conversationDoc.data()?.lastWelcomeSent;
+        if (lastSent) {
+            const lastSentDate = coerceDate(lastSent);
+            if (lastSentDate && (Date.now() - lastSentDate.getTime()) < 10000) {
                 console.log(`[Webhook WA] Welcome message rate-limited for ${fromPhoneNumber}`);
                 return;
             }
         }
+    }
+
+    if (!builtPaths) {
+        console.error(`[Webhook WA] Could not build welcome CTA paths for ${fromPhoneNumber}. Aborting welcome.`);
+        return;
     }
 
     const supportLabel = getBusinessSupportLabel(business);
@@ -365,45 +383,50 @@ const sendWelcomeMessageWithOptions = async (
         `• For assistance from the ${supportLabel}, type *Need Help*.`;
     const welcomeBody = customMessage || defaultWelcomeBody;
     const collectionName = business.ref.parent.id;
+
+    // ⚡ OPTIMIZATION: Firestore save + Realtime mirror run in parallel after message is sent
     const sendInteractiveMessageWithLogging = async (payload, fallbackText) => {
         const response = await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
         const wamid = response?.messages?.[0]?.id;
         if (wamid) {
-            await conversationRef.collection('messages').doc(wamid).set({
-                id: wamid,
-                sender: 'system',
-                type: 'system',
-                text: fallbackText || welcomeBody,
-                interactive_type: payload?.interactive?.type || 'interactive',
-                timestamp: FieldValue.serverTimestamp(),
-                status: 'sent',
-                isSystem: true
-            });
-            await mirrorWhatsAppMessageToRealtime({
-                businessId: business.id,
-                conversationId: fromPhoneNumber,
-                messageId: wamid,
-                message: {
+            await Promise.all([
+                conversationRef.collection('messages').doc(wamid).set({
                     id: wamid,
                     sender: 'system',
                     type: 'system',
                     text: fallbackText || welcomeBody,
                     interactive_type: payload?.interactive?.type || 'interactive',
+                    timestamp: FieldValue.serverTimestamp(),
                     status: 'sent',
-                    isSystem: true,
-                    timestamp: new Date().toISOString(),
-                }
-            });
+                    isSystem: true
+                }),
+                mirrorWhatsAppMessageToRealtime({
+                    businessId: business.id,
+                    conversationId: fromPhoneNumber,
+                    messageId: wamid,
+                    message: {
+                        id: wamid,
+                        sender: 'system',
+                        type: 'system',
+                        text: fallbackText || welcomeBody,
+                        interactive_type: payload?.interactive?.type || 'interactive',
+                        status: 'sent',
+                        isSystem: true,
+                        timestamp: new Date().toISOString(),
+                    }
+                }),
+            ]);
         }
         return response;
     };
 
+    // Use already-computed paths in both branches (no duplicate buildWelcomeCtaPaths call)
+    const { orderPath } = builtPaths;
+    const headerText = String(business.data.name || 'ServiZephyr').slice(0, 60);
+
     if (USE_SESSION_CTA_WELCOME && !forceInteractive) {
         try {
-            const { orderPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
             const orderUrl = toAbsoluteWelcomeUrl(orderPath);
-            const headerText = String(business.data.name || 'ServiZephyr').slice(0, 60);
-
             const orderCtaPayload = {
                 type: 'interactive',
                 interactive: {
@@ -421,24 +444,17 @@ const sendWelcomeMessageWithOptions = async (
                 }
             };
             await sendInteractiveMessageWithLogging(orderCtaPayload, `Order now: ${orderUrl}`);
-
             await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
             console.log(`[Webhook WA] Session CTA welcome sent to ${customerPhoneWithCode}`);
             return;
         } catch (sessionCtaError) {
-            console.warn(`[Webhook WA] Session CTA welcome failed. Falling back to template/interactive.`, sessionCtaError?.message || sessionCtaError);
+            console.warn(`[Webhook WA] Session CTA welcome failed. Falling back to interactive.`, sessionCtaError?.message || sessionCtaError);
         }
     }
 
-    // Skip template-first approach — use interactive CTA directly (single Order Now button).
-    // The Meta template has 2 URL buttons but only 1 is needed.
-
     console.log(`[Webhook WA] Sending interactive welcome CTA message to ${customerPhoneWithCode}`);
 
-    const { orderPath } = await buildWelcomeCtaPaths(firestore, business, customerPhoneWithCode);
     const orderUrl = toAbsoluteWelcomeUrl(orderPath);
-    const headerText = String(business.data.name || 'ServiZephyr').slice(0, 60);
-
     const payload = {
         type: "interactive",
         interactive: {
@@ -460,12 +476,10 @@ const sendWelcomeMessageWithOptions = async (
 
     const response = await sendInteractiveMessageWithLogging(payload, welcomeBody);
 
-    // ✅ PERSISTENCE: Save Welcome Message to Firestore
     if (response && response.messages && response.messages[0]) {
         console.log(`[Webhook WA] Welcome message saved to Firestore: ${response.messages[0].id}`);
     }
 
-    // ✅ Update timestamp to prevent duplicates
     await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
 }
 

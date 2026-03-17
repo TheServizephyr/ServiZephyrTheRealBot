@@ -4,11 +4,14 @@ import crypto from 'crypto';
 import { getFirestore } from '@/lib/firebase-admin';
 
 async function getBusinessBrief(firestore, botPhoneNumberId) {
-    const rSnap = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    // ⚡ Parallel queries instead of sequential — saves ~200-400ms
+    const [rSnap, sSnap, vSnap] = await Promise.all([
+        firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
+        firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
+        firestore.collection('street_vendors').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
+    ]);
     if (!rSnap.empty) return { id: rSnap.docs[0].id, collection: 'restaurants' };
-    const sSnap = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!sSnap.empty) return { id: sSnap.docs[0].id, collection: 'shops' };
-    const vSnap = await firestore.collection('street_vendors').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!vSnap.empty) return { id: vSnap.docs[0].id, collection: 'street_vendors' };
     return null;
 }
