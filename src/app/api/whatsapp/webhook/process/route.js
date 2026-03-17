@@ -1109,6 +1109,36 @@ export async function POST(request) {
                     }
                 }
 
+                const customerNameFromPayload = change.value.contacts?.[0]?.profile?.name || fromPhoneNumber;
+
+                // ✅ 0.5. INSTANT WELCOME FIRE (Optimistic execution for max speed)
+                let instantWelcomePromise = null;
+
+                if (message.type === 'text' && conversationData.state === 'menu') {
+                    const rawTextBody = message.text?.body || '';
+                    const textBody = rawTextBody.trim().toLowerCase();
+                    
+                    const isNeedHelp = textBody.match(/^["']?\s*need\s*help\??\s*["']?$/i) || textBody.match(/^["']?\s*help\s*["']?$/i);
+                    const isEndChat = textBody.match(/^["]?\s*end\s*chat\s*["]?$/i);
+                    const greetingMatch = rawTextBody.match(/^\s*(hi+|hii+|hello+|hey+|hlo+)\b[\s!.?]*$/i);
+                    
+                    // If it's a greeting, shoot the welcome message IMMEDIATELY before starting the 5 DB writes
+                    if (greetingMatch && !isNeedHelp && !isEndChat) {
+                        console.log(`[Webhook WA] ⚡ Firing INSTANT welcome message for ${fromPhoneNumber} before DB writes`);
+                        
+                        instantWelcomePromise = sendWelcomeMessageWithOptions(
+                            fromNumber,
+                            business,
+                            botPhoneNumberId,
+                            null,
+                            { 
+                                customerName: customerNameFromPayload,
+                                bypassRateLimit: true // skip rate limit DB check for absolute fastest response
+                            }
+                        ).catch(e => console.error("[Webhook WA] Instant welcome error:", e));
+                    }
+                }
+
                 // ✅ 1. UNIVERSAL LOGGING: Save EVERY incoming message to Firestore FIRST
                 const messageRef = conversationRef.collection('messages').doc(message.id);
 
@@ -1166,7 +1196,6 @@ export async function POST(request) {
                     }
                 });
 
-                const customerNameFromPayload = change.value.contacts?.[0]?.profile?.name || fromPhoneNumber;
                 const shouldIncrementUnreadForOwner = conversationData.state === 'direct_chat';
                 const conversationUpdate = {
                     customerName: customerNameFromPayload,
@@ -1259,13 +1288,20 @@ export async function POST(request) {
                     const greetingMatch = rawTextBody.match(/^\s*(hi+|hii+|hello+|hey+|hlo+)\b[\s!.?]*$/i);
                     if (greetingMatch && conversationData.state !== 'direct_chat' && conversationData.state !== 'browsing_order') {
                         await conversationRef.set({ state: 'menu' }, { merge: true });
-                        await sendWelcomeMessageWithOptions(
-                            fromNumber,
-                            business,
-                            botPhoneNumberId,
-                            null,
-                            { customerName: customerNameFromPayload }
-                        );
+                        
+                        if (instantWelcomePromise) {
+                            // Message was already fired at the very beginning of the loop! Just wait for it to finish.
+                            await instantWelcomePromise;
+                        } else {
+                            // Fallback if it wasn't caught by the pre-flight check
+                            await sendWelcomeMessageWithOptions(
+                                fromNumber,
+                                business,
+                                botPhoneNumberId,
+                                null,
+                                { customerName: customerNameFromPayload }
+                            );
+                        }
                         continue; // Process next message in batch
                     }
                 }
