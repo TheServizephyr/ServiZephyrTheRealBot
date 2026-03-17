@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { MoreVertical, Eye, UserX, UserCheck, Search, RefreshCw, Trash2 } from 'lucide-react';
+import { MoreVertical, Eye, UserX, UserCheck, Search, RefreshCw, Trash2, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -147,6 +147,8 @@ export default function AdminUsersPage() {
   const [selectedUserDetail, setSelectedUserDetail] = useState(null);
   const [selectedUserActivity, setSelectedUserActivity] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('owners');
+  const [exporting, setExporting] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -357,6 +359,70 @@ export default function AdminUsersPage() {
     ));
   };
 
+
+  const handleExportCSV = async () => {
+    const roleMap = {
+      'owners': 'Owner',
+      'customers': 'Customer',
+      'guest-customers': 'Guest Customer',
+      'street-vendors': 'Street Vendor',
+      'shop-owners': 'Shop Owner',
+      'riders': 'Rider',
+      'admins': 'Admin'
+    };
+    const targetRole = roleMap[activeTab];
+    if (!targetRole) return;
+
+    setExporting(true);
+    try {
+      const currentUser = auth.currentUser;
+      const headers = {};
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
+      const res = await fetch(`/api/admin/users/export?role=${encodeURIComponent(targetRole)}`, { headers });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to export data');
+      }
+      
+      const { exportData } = await res.json();
+      if (!exportData || exportData.length === 0) {
+        setInfoDialog({ isOpen: true, title: 'Export', message: 'No data to export for this role.' });
+        return;
+      }
+
+      const replacer = (key, value) => {
+          if (value === null || value === undefined) return '';
+          return value;
+      };
+
+      const header = Object.keys(exportData[0]);
+      let csv = exportData.map(row => 
+        header.map(fieldName => JSON.stringify(row[fieldName], replacer)).join(',')
+      );
+      csv.unshift(header.join(','));
+      const csvArray = csv.join('\r\n');
+
+      const blob = new Blob([csvArray], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${targetRole.replace(/\s+/g, '_').toLowerCase()}_export.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+    } catch (err) {
+      setInfoDialog({ isOpen: true, title: 'Export Error', message: err.message });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <InfoDialog
@@ -366,7 +432,7 @@ export default function AdminUsersPage() {
         message={infoDialog.message}
       />
       <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
-      <Tabs defaultValue="owners">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <TabsList className="w-full flex justify-start overflow-x-auto no-scrollbar gap-2 bg-muted/50 p-1 h-auto rounded-xl">
             <TabsTrigger value="owners" className="flex-shrink-0 rounded-lg">Owners ({getRoleCount('Owner')})</TabsTrigger>
@@ -377,14 +443,29 @@ export default function AdminUsersPage() {
             <TabsTrigger value="riders" className="flex-shrink-0 rounded-lg">Riders ({getRoleCount('Rider')})</TabsTrigger>
             <TabsTrigger value="admins" className="flex-shrink-0 rounded-lg">Admins ({getRoleCount('Admin')})</TabsTrigger>
           </TabsList>
-          <div className="relative w-full md:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-            <Input
-              placeholder="Search by name or email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col sm:flex-row gap-2 w-full md:max-w-[400px] justify-end">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+              <Input
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Button
+              variant="outline"
+              disabled={exporting}
+              onClick={handleExportCSV}
+              className="w-full sm:w-auto flex-shrink-0"
+            >
+              {exporting ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {exporting ? 'Exporting...' : 'Export'}
+            </Button>
           </div>
         </div>
         <Card>
