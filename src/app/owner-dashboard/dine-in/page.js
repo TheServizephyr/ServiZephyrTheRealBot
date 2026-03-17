@@ -608,7 +608,7 @@ const actionConfig = {
 };
 
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading, lastBulkAction, setLastBulkAction, setConfirmationState, userRole, canPerformAction }) => {
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus, onMarkForCleaning, buttonLoading, lastBulkAction, setLastBulkAction, setConfirmationState, userRole, canPerformAction, restaurantDetails }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -738,6 +738,11 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 }
 
                                 const firstOrder = activeOrders[0] || group;
+
+                                // Waiter RBAC Logic (moved here to access firstOrder)
+                                // We should consider it a Waiter Order if the group itself or ANY active order was placed by a waiter.
+                                const isWaiterOrder = group.ordered_by?.startsWith('waiter_') || activeOrders.some(o => o.ordered_by?.startsWith('waiter_'));
+                                const hideStatusButtons = isWaiterOrder && !restaurantDetails?.dineInRbacEnabled;
 
                                 // Use mainStatus for determining which action button to show - ONLY from active orders
                                 const mainStatus = group.mainStatus || firstOrder?.status || 'pending';
@@ -904,19 +909,21 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                         </span>
                                                                     )}
                                                                     {/* NEW Badge for recent orders */}
-                                                                    {isRecent && (
+                                                                    {isRecent && !hideStatusButtons && (
                                                                         <span className="bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                                                                             NEW
                                                                         </span>
                                                                     )}
                                                                 </div>
                                                                 {/* Status Badge */}
-                                                                <span className={cn(
-                                                                    "text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase",
-                                                                    statusBadgeColors[orderBatch.status] || 'bg-gray-500 text-white'
-                                                                )}>
-                                                                    {orderBatch.status === 'ready_for_pickup' ? 'Ready' : orderBatch.status}
-                                                                </span>
+                                                                {!hideStatusButtons && (
+                                                                    <span className={cn(
+                                                                        "text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase",
+                                                                        statusBadgeColors[orderBatch.status] || 'bg-gray-500 text-white'
+                                                                    )}>
+                                                                        {orderBatch.status === 'ready_for_pickup' ? 'Ready' : orderBatch.status}
+                                                                    </span>
+                                                                )}
                                                             </div>
 
                                                             {/* Items in this order batch with ADDONS */}
@@ -960,7 +967,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             {/* Action Buttons - Compact row layout */}
                                                             <div className="mt-1.5 flex gap-1">
                                                                 {/* Main progression button - RBAC PROTECTED */}
-                                                                {(() => {
+                                                                {!hideStatusButtons && (() => {
                                                                     const batchActionConfig = {
                                                                         'confirmed': { label: 'Start Preparing', next: 'preparing', className: 'bg-orange-500 hover:bg-orange-600', icon: CookingPot },
                                                                         'preparing': { label: 'Mark Ready', next: 'ready_for_pickup', className: 'bg-green-500 hover:bg-green-600', icon: ShoppingBag },
@@ -992,7 +999,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 })()}
 
                                                                 {/* Undo button for valid non-final states */}
-                                                                {(() => {
+                                                                {!hideStatusButtons && (() => {
                                                                     const undoMap = {
                                                                         'confirmed': 'pending',
                                                                         'preparing': 'confirmed',
@@ -1028,7 +1035,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                                 })()}
 
                                                                 {/* Cancel button only for truly pre-confirmation states */}
-                                                                {orderBatch.canCancel && ['pending', 'placed', 'accepted'].includes(String(orderBatch.status || '').toLowerCase()) && (
+                                                                {!hideStatusButtons && orderBatch.canCancel && ['pending', 'placed', 'accepted'].includes(String(orderBatch.status || '').toLowerCase()) && (
                                                                     <Button
                                                                         size="sm"
                                                                         variant="ghost"
@@ -1101,7 +1108,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 /* PENDING: Bulk Confirm All + Individual Reject per batch */
                                                 <>
                                                     {/* Bulk Confirm All Pending Orders */}
-                                                    {(() => {
+                                                    {!hideStatusButtons && (() => {
                                                         const pendingBatches = group.orderBatches?.filter(b => ['pending', 'confirmed'].includes(b.status)) || [];
                                                         const pendingOrderIds = pendingBatches.map(b => b.id);
 
@@ -1136,7 +1143,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     })()}
 
                                                     {/* Global Undo Button (appears after bulk action on this table) */}
-                                                    {lastBulkAction && lastBulkAction.tableId === tableData.id && (
+                                                    {!hideStatusButtons && lastBulkAction && lastBulkAction.tableId === tableData.id && (
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
@@ -1167,7 +1174,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     )}
 
                                                     {/* Reject All Pending (Optional) */}
-                                                    {(() => {
+                                                    {!hideStatusButtons && (() => {
                                                         const pendingBatches = group.orderBatches?.filter(b => b.status === 'pending') || [];
                                                         const pendingOrderIds = pendingBatches.map(b => b.id);
 
@@ -1196,7 +1203,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                     {/* BULK PROGRESSION BUTTONS */}
                                                     <div className="mt-2 flex gap-1">
                                                         {/* BULK PROGRESSION BUTTON */}
-                                                        {(() => {
+                                                        {!hideStatusButtons && (() => {
                                                             const bulkProgressionConfig = {
                                                                 'confirmed': {
                                                                     label: 'Start Preparing All',
@@ -1315,10 +1322,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                             </span>
                                                         </div>
                                                     )}
+                                                </>
+                                            )}
 
-                                                    {/* Pay at Counter Action or Served & Unpaid - RBAC PROTECTED */}
-                                                    {(isPayAtCounter || (isServed && !isPaid)) && (
-                                                        (userRole === 'owner' || userRole === 'manager' || userRole === 'cashier') ? (
+                                            {/* Pay at Counter Action or Served & Unpaid - RBAC PROTECTED */}
+                                            {(!isPaid && (isPayAtCounter || isServed || hideStatusButtons)) && (
+                                                (userRole === 'owner' || userRole === 'manager' || userRole === 'cashier') ? (
                                                             <Button
                                                                 size="sm"
                                                                 onClick={(e) => {
@@ -1373,24 +1382,22 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         )
                                                     )}
 
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="w-full mt-2"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onPrintBill({ tableId: tableData.id, ...group });
-                                                        }}
-                                                    >
-                                                        <Printer className="mr-2 h-4 w-4" />
-                                                        Print Bill
-                                                    </Button>
-                                                </>
-                                            )}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full mt-2"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onPrintBill({ tableId: tableData.id, ...group });
+                                                }}
+                                            >
+                                                <Printer className="mr-2 h-4 w-4" />
+                                                Print Bill
+                                            </Button>
                                         </div>
 
                                         {/* Clear tab X button (only for empty/no-bill tabs) */}
-                                        {!isPending && totalBill === 0 && (
+                                        {(!isPending || hideStatusButtons) && totalBill === 0 && (
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -2579,7 +2586,8 @@ const DineInPageContent = () => {
                         id: settingsData.businessId,
                         name: settingsData.restaurantName,
                         address: settingsData.address,
-                        gstin: settingsData.gstin
+                        gstin: settingsData.gstin,
+                        dineInRbacEnabled: settingsData.dineInRbacEnabled
                     });
 
                 } else {
@@ -2593,9 +2601,21 @@ const DineInPageContent = () => {
                 setIsBusinessTypeResolved(true);
             }
         };
-
         fetchAndSetRestaurantDetails();
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    // Handle auto-printing when billData changes
+    useEffect(() => {
+        if (billData?.autoPrint) {
+            // Give a small delay for content to render in BillModal ref
+            const timer = setTimeout(() => {
+                handlePrint();
+                // Optionally close the modal after printing starts
+                // setBillData(null); 
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [billData, handlePrint]);
 
 
     const handleSaveTable = async (tableName, maxCapacity) => {
@@ -2751,11 +2771,25 @@ const DineInPageContent = () => {
 
         try {
             // Find all orders in this tab and update their paymentStatus
-            let tabData = allData.tables.find(t => t.id === tableId)?.tabs?.[tabId];
+            let tabData;
+            const table = allData.tables.find(t => t.id === tableId);
+            
+            if (table) {
+                // 1. Check standard active tabs
+                tabData = table.tabs?.[tabId];
+                
+                // 2. Check pending orders (crucial for waiter-created orders)
+                if (!tabData && table.pendingOrders) {
+                    tabData = table.pendingOrders.find(p => p.id === tabId || p.dineInTabId === tabId);
+                }
+            }
+
+            // 3. Check virtual car tables
             if (!tabData) {
                 const virtualCarTables = buildCarVirtualTables(allData.carOrders || []);
                 tabData = virtualCarTables.find(t => t.id === tableId)?.tabs?.[tabId];
             }
+
             if (!tabData?.orders) {
                 throw new Error('Tab not found');
             }
@@ -2806,7 +2840,10 @@ const DineInPageContent = () => {
         });
 
         try {
-            await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
+            // 🚿 Only call cleanup API for REAL tables. Skip for "Car Spot X" virtual tables.
+            if (!String(tableId).startsWith('Car Spot')) {
+                await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
+            }
             toast({ title: "Success", description: `Table ${tableId} is now available.` });
         } catch (error) {
             await fetchData(true);
@@ -2816,7 +2853,12 @@ const DineInPageContent = () => {
 
     const confirmClearTab = (tabId, tableId, paxCount, options = {}) => {
         const table = allData?.tables?.find(t => t.id === tableId);
-        const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+        let tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+        
+        if (!tabData && String(tableId).startsWith('Car Spot')) {
+            const virtualCarTables = buildCarVirtualTables(allData.carOrders || []);
+            tabData = virtualCarTables.find(t => t.id === tableId)?.tabs?.[tabId];
+        }
         const hasOrders = Object.keys(tabData?.orders || {}).length > 0;
         const isAlreadyPaid = tabData?.isPaid === true || String(tabData?.paymentStatus || '').toLowerCase() === 'paid';
         const skipSettlementPrompt = options?.skipSettlementPrompt === true;
@@ -2845,7 +2887,12 @@ const DineInPageContent = () => {
             ? normalizedTableId.replace(/^car\s+spot\s*/i, '').trim()
             : '';
         const table = allData?.tables?.find(t => t.id === tableId);
-        const tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+        let tabData = table?.tabs?.[tabId] || (table?.pendingOrders || []).find(o => o.id === tabId);
+
+        if (!tabData && isCarSlot) {
+            const virtualCarTables = buildCarVirtualTables(allData.carOrders || []);
+            tabData = virtualCarTables.find(t => t.id === normalizedTableId)?.tabs?.[normalizedTabId];
+        }
 
         // Robust ID extraction: use real dineInTabId from Firestore if available
         const realDineInTabId = tabData?.dineInTabId || tabData?.id || tabId;
@@ -3158,7 +3205,7 @@ const DineInPageContent = () => {
                     key={table.id}
                     tableData={table}
                     onMarkAsPaid={confirmMarkAsPaid}
-                    onPrintBill={setBillData}
+                    onPrintBill={(data) => setBillData({ ...data, autoPrint: true })}
                     onMarkAsCleaned={handleMarkAsCleaned}
                     onConfirmOrder={(orderId) => handleUpdateStatus(orderId, 'confirmed')}
                     onRejectOrder={handleRejectOrder}
@@ -3171,6 +3218,7 @@ const DineInPageContent = () => {
                     setConfirmationState={setConfirmationState}
                     userRole={userRole}
                     canPerformAction={canPerformAction}
+                    restaurantDetails={restaurantDetails}
                 />
             );
         }).flat();
@@ -3222,7 +3270,7 @@ const DineInPageContent = () => {
                 table={manageTabsTable}
                 onMarkAsPaid={confirmMarkAsPaid}
                 onClearTab={confirmClearTab}
-                onPrintBill={setBillData}
+                onPrintBill={(data) => setBillData({ ...data, autoPrint: true })}
                 buttonLoading={buttonLoading}
                 userRole={userRole}
             />

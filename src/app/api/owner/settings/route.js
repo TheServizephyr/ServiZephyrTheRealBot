@@ -313,6 +313,7 @@ export async function GET(req) {
             openingTime: businessData?.openingTime || '09:00',
             closingTime: businessData?.closingTime || '22:00',
             dineInModel: businessData?.dineInModel || 'post-paid',
+            dineInRbacEnabled: businessData?.dineInRbacEnabled || false,
             // Add-on Charges Configuration
             gstEnabled: businessData?.gstEnabled || false,
             gstRate: businessData?.gstPercentage || businessData?.gstRate || 5,
@@ -499,6 +500,7 @@ export async function PATCH(req) {
         // Dine-In Settings (Not moved to delivery-settings yet)
         if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
         if (updates.dineInModel !== undefined) businessUpdateData.dineInModel = updates.dineInModel;
+        if (updates.dineInRbacEnabled !== undefined) businessUpdateData.dineInRbacEnabled = updates.dineInRbacEnabled;
 
         // Pickup Settings
         if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
@@ -625,6 +627,7 @@ export async function PATCH(req) {
             openingTime: finalBusinessData?.openingTime || '09:00',
             closingTime: finalBusinessData?.closingTime || '22:00',
             dineInModel: finalBusinessData?.dineInModel || 'post-paid',
+            dineInRbacEnabled: finalBusinessData?.dineInRbacEnabled || false,
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
             // Add-on Charges Configuration
             gstEnabled: finalBusinessData?.gstEnabled || false,

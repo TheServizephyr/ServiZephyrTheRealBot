@@ -891,6 +891,8 @@ export async function createOrderV2(req, options = {}) {
                 dineInToken: dineInToken || null,
                 dineInTabId: resolvedDineInTabId || null,
                 tableId: actualTableId || null,
+                ordered_by: body.ordered_by || 'customer',
+                ordered_by_name: body.ordered_by_name || null,
                 ...(deliveryType === 'car-order' && {
                     tab_name: body.tab_name || finalCustomerName || 'Car Guest',
                     pax_count: 1
@@ -1032,6 +1034,8 @@ export async function createOrderV2(req, options = {}) {
             deliveryChargeLocked: ownerManualDeliveryChargeProvided,
             manualDeliveryChargeLocked: ownerManualDeliveryChargeProvided,
             manualDeliveryCharge: ownerManualDeliveryChargeProvided ? validatedDeliveryCharge : 0,
+            ordered_by: body.ordered_by || 'customer',
+            ordered_by_name: body.ordered_by_name || null,
             // ✅ Dine-in specific fields
             ...(deliveryType === 'dine-in' && {
                 tableId: actualTableId, // Use normalized table ID

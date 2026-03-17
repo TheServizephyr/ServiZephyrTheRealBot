@@ -999,6 +999,54 @@ export async function PATCH(req) {
                             effects.push(kv.del(`order_status:${id}`));
                         }
 
+                        // F. Auto-Cleanup Dine-In Tabs on Cancellation/Rejection
+                        if ((newStatus === 'rejected' || newStatus === 'cancelled') && orderData.deliveryType === 'dine-in' && orderData.dineInTabId) {
+                            const tabId = orderData.dineInTabId;
+                            const tableId = orderData.tableId;
+
+                            // Check if any other active orders exist for this tab
+                            const activeOrdersSnap = await firestore.collection('orders')
+                                .where('dineInTabId', '==', tabId)
+                                .where('status', 'not-in', ['rejected', 'cancelled', 'picked_up'])
+                                .get();
+
+                            // Filter out the orders currently being updated in this batch (since they aren't rejected yet in the query)
+                            const remainingActiveOrders = activeOrdersSnap.docs.filter(doc => !finalIdsToUpdate.includes(doc.id));
+
+                            if (remainingActiveOrders.length === 0) {
+                                console.log(`[Auto-Cleanup] Last order of tab ${tabId} cancelled/rejected. Closing tab.`);
+                                
+                                const tabRef = businessRef.collection('dineInTabs').doc(tabId);
+                                effects.push(tabRef.update({
+                                    status: newStatus, // Use the same status as the order (rejected or cancelled)
+                                    closedAt: FieldValue.serverTimestamp(),
+                                    reason: `Auto-closed due to order ${newStatus}`
+                                }));
+
+                                // Also update the table's current_pax and state
+                                if (tableId) {
+                                    const tableRef = businessRef.collection('tables').doc(tableId);
+                                    const openTabsSnap = await businessRef.collection('dineInTabs')
+                                        .where('tableId', '==', tableId)
+                                        .where('status', 'in', ['active', 'inactive'])
+                                        .get();
+
+                                    // Filter out the tab we just closed
+                                    const otherOpenTabs = openTabsSnap.docs.filter(doc => doc.id !== tabId);
+                                    
+                                    const recalculatedPax = otherOpenTabs.reduce((sum, doc) => {
+                                        return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
+                                    }, 0);
+
+                                    effects.push(tableRef.update({
+                                        current_pax: recalculatedPax,
+                                        state: recalculatedPax > 0 ? 'occupied' : 'available',
+                                        updatedAt: FieldValue.serverTimestamp()
+                                    }));
+                                }
+                            }
+                        }
+
                         await Promise.allSettled(effects);
                     } catch (err) {
                         console.error(`[SideEffect Error] Order ${id}:`, err);

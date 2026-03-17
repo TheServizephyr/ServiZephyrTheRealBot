@@ -491,6 +491,7 @@ function SettingsPageContent() {
                 pickupEnabled: editedUser.pickupEnabled,
                 dineInEnabled: editedUser.dineInEnabled,
                 dineInModel: editedUser.dineInModel, // The new Master Switch
+                dineInRbacEnabled: editedUser.dineInRbacEnabled ?? false,
                 deliveryOnlinePaymentEnabled: editedUser.deliveryOnlinePaymentEnabled,
                 deliveryCodEnabled: editedUser.deliveryCodEnabled,
                 pickupOnlinePaymentEnabled: editedUser.pickupOnlinePaymentEnabled,
@@ -825,32 +826,7 @@ function SettingsPageContent() {
                         }
                     >
                         <div className="space-y-6">
-                            {isRestaurantBusiness && editedUser.dineInEnabled && (
-                                <div className="border-t border-border pt-6">
-                                    <Label className="font-semibold text-lg">Dine-In Model (Master Switch)</Label>
-                                    <p className="text-sm text-muted-foreground mb-4">Choose the primary billing flow for your dine-in customers.</p>
-                                    <div className="grid md:grid-cols-2 gap-4">
-                                        <button
-                                            type="button"
-                                            onClick={() => isEditingPayment && setEditedUser(prev => ({ ...prev, dineInModel: 'post-paid' }))}
-                                            className={cn("p-4 border-2 rounded-lg text-left transition-all", editedUser.dineInModel === 'post-paid' ? 'border-primary bg-primary/10' : 'border-border', isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70')}
-                                            disabled={!isEditingPayment}
-                                        >
-                                            <h4 className="font-bold">Bill at the End (Post-Paid)</h4>
-                                            <p className="text-xs text-muted-foreground mt-1">Customers order freely and pay their total bill at the end. Ideal for fine dining, cafes.</p>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => isEditingPayment && setEditedUser(prev => ({ ...prev, dineInModel: 'pre-paid' }))}
-                                            className={cn("p-4 border-2 rounded-lg text-left transition-all", editedUser.dineInModel === 'pre-paid' ? 'border-primary bg-primary/10' : 'border-border', isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70')}
-                                            disabled={!isEditingPayment}
-                                        >
-                                            <h4 className="font-bold">Pay First (Pre-Paid)</h4>
-                                            <p className="text-xs text-muted-foreground mt-1">Customers pay for their items before the order is sent to the kitchen. Ideal for QSRs, food courts.</p>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+
 
                             <div className="border-t border-border pt-6">
                                 <Label className="font-semibold text-lg">Manual UPI Collection (WhatsApp)</Label>
@@ -959,6 +935,51 @@ function SettingsPageContent() {
                                     )}
                                 </div>
                             </div>
+                            
+                            {isRestaurantBusiness && editedUser.dineInEnabled && (
+                                <div className="border-t border-border pt-6">
+                                    <Label className="font-semibold text-lg">Dine-In Model (Master Switch)</Label>
+                                    <p className="text-sm text-muted-foreground mb-4">Choose the primary billing flow for your dine-in customers.</p>
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => isEditingPayment && setEditedUser(prev => ({ ...prev, dineInModel: 'post-paid' }))}
+                                            className={cn("p-4 border-2 rounded-lg text-left transition-all", editedUser.dineInModel === 'post-paid' ? 'border-primary bg-primary/10' : 'border-border', isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70')}
+                                            disabled={!isEditingPayment}
+                                        >
+                                            <h4 className="font-bold">Bill at the End (Post-Paid)</h4>
+                                            <p className="text-xs text-muted-foreground mt-1">Customers order freely and pay their total bill at the end. Ideal for fine dining, cafes.</p>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => isEditingPayment && setEditedUser(prev => ({ ...prev, dineInModel: 'pre-paid' }))}
+                                            className={cn("p-4 border-2 rounded-lg text-left transition-all", editedUser.dineInModel === 'pre-paid' ? 'border-primary bg-primary/10' : 'border-border', isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70')}
+                                            disabled={!isEditingPayment}
+                                        >
+                                            <h4 className="font-bold">Pay First (Pre-Paid)</h4>
+                                            <p className="text-xs text-muted-foreground mt-1">Customers pay for their items before the order is sent to the kitchen. Ideal for QSRs, food courts.</p>
+                                        </button>
+                                    </div>
+                                    <div className="mt-8 border p-4 rounded-lg bg-card/50">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <Label htmlFor="dineInRbacEnabled" className="font-semibold text-lg flex items-center gap-2">
+                                                    <Shield size={18} /> Waiter Role-Based UI Flow (RBAC)
+                                                </Label>
+                                                <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+                                                    When OFF, orders booked by waiters skip the standard order progression stages. This reduces waiter taps by only requiring payment and table clearance. Turn ON if your waiters or kitchen staff need to manage Confirmed/Preparing/Served statuses for table orders individually.
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                id="dineInRbacEnabled"
+                                                checked={editedUser.dineInRbacEnabled}
+                                                onCheckedChange={(checked) => handlePaymentToggle('dineInRbacEnabled', checked)}
+                                                disabled={!isEditingPayment}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </SectionCard>
                     <SectionCard

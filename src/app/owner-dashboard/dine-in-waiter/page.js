@@ -12,7 +12,9 @@ import {
     X,
     Send,
     Trash2,
-    Pencil
+    Pencil,
+    Maximize2,
+    Minimize2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,12 +41,12 @@ const getAddonSignature = (selectedAddOns = []) => {
 const buildCartKey = (itemId, portionName = '', addonSignature = 'noaddon') =>
     `${String(itemId)}__${normalizePortionName(portionName)}__${String(addonSignature || 'noaddon')}`;
 
-// Table status badge component
+// Table status badge component - Premium Style
 const TableBadge = ({ table, isSelected, onClick }) => {
     const stateConfig = {
-        available: { bg: 'bg-green-500/20', border: 'border-green-500', text: 'text-green-500', icon: '🟢' },
-        occupied: { bg: 'bg-yellow-500/20', border: 'border-yellow-500', text: 'text-yellow-500', icon: '🟡' },
-        needs_cleaning: { bg: 'bg-red-500/20', border: 'border-red-500', text: 'text-red-500', icon: '🔴' },
+        available: { bg: 'bg-green-500/10', border: 'border-green-500/60', text: 'text-green-500', label: 'Free' },
+        occupied: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/60', text: 'text-yellow-500', label: 'Busy' },
+        needs_cleaning: { bg: 'bg-red-500/10', border: 'border-red-500/60', text: 'text-red-500', label: 'Clean' },
     };
     const config = stateConfig[table.state] || stateConfig.available;
 
@@ -52,132 +54,78 @@ const TableBadge = ({ table, isSelected, onClick }) => {
         <button
             onClick={onClick}
             className={cn(
-                "p-2 md:p-3 rounded-xl border-2 transition-all text-center min-w-[72px] md:min-w-[80px] flex-shrink-0",
+                "flex-shrink-0 p-3 rounded-2xl border-2 transition-all duration-200 text-center min-w-[88px]",
                 config.bg, config.border,
-                isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                isSelected
+                    ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg shadow-primary/20 scale-105"
+                    : "hover:scale-102 hover:shadow-md"
             )}
         >
-            <p className="text-xs text-muted-foreground">{config.icon}</p>
-            <p className={cn("font-bold", config.text)}>{table.id}</p>
-            <p className="text-xs text-muted-foreground">{table.current_pax || 0}/{table.max_capacity}</p>
+            <p className={cn("text-2xl font-black tracking-tight", config.text)}>{table.id}</p>
+            <p className="text-xs font-semibold text-muted-foreground mt-0.5">{table.current_pax || 0}/{table.max_capacity} seats</p>
+            <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full mt-1 inline-block", config.text, config.bg)}>{config.label}</span>
         </button>
     );
 };
 
-// Menu Item Card for grid view - optimized for fast billing
+// Menu Item Card — Exact copy of custom-bill card style. Click = instant add.
 const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, getVariantQuantity }) => {
     const portions = Array.isArray(item?.portions) ? item.portions.filter((p) => p?.name) : [];
-    const hasMultiplePortions = portions.length > 1;
-    const hasAddOnGroups = Array.isArray(item?.addOnGroups) && item.addOnGroups.some((group) => Array.isArray(group?.options) && group.options.length > 0);
     const hasQuantity = quantity > 0;
 
     return (
         <motion.div
-            layout
-            whileTap={{ scale: 0.97 }}
+            whileHover={{ y: -4, scale: 1.02 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
             className={cn(
-                "relative flex flex-col gap-2 p-4 rounded-2xl border-2 transition-all cursor-pointer min-h-[140px]",
-                "backdrop-blur-sm",
+                'p-5 rounded-2xl border-2 transition-all shadow-md min-h-[130px] flex flex-col backdrop-blur-sm',
                 hasQuantity
-                    ? "bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary shadow-lg shadow-primary/20 ring-2 ring-primary/30"
-                    : "bg-gradient-to-br from-card to-card/80 border-border/40 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/10"
+                    ? 'bg-gradient-to-br from-primary/15 via-primary/8 to-primary/5 border-primary shadow-primary/20 hover:shadow-xl hover:shadow-primary/30'
+                    : 'bg-gradient-to-br from-card via-card to-card/90 border-border/40 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10'
             )}
-            onClick={() => !hasQuantity && !hasMultiplePortions && !hasAddOnGroups && onIncrement(item, null)}
-            style={{
-                transform: hasQuantity ? 'translateY(-2px)' : 'none'
-            }}
         >
-            <div className="absolute top-3 left-3">
-                <div className={cn(
-                    "w-6 h-6 border-2 flex items-center justify-center rounded-md shadow-sm",
-                    item.isVeg
-                        ? 'border-green-500 bg-green-500/10 shadow-green-500/30'
-                        : 'border-red-500 bg-red-500/10 shadow-red-500/30'
-                )}>
-                    <div className={cn(
-                        "w-3 h-3 rounded-full shadow-sm",
-                        item.isVeg ? 'bg-green-500 shadow-green-500/50' : 'bg-red-500 shadow-red-500/50'
-                    )}></div>
-                </div>
-            </div>
-
-            {hasQuantity && (
-                <motion.div
-                    initial={{ scale: 0, rotate: -180 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                    className="absolute -top-2 -right-2 bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm shadow-lg shadow-primary/50 border-2 border-background"
-                >
-                    {quantity}
-                </motion.div>
-            )}
-
-            <div className="flex-1 flex flex-col justify-center items-center text-center mt-6">
-                <p className="font-bold text-foreground line-clamp-2 leading-tight mb-2 px-1 text-base">
-                    {item.name}
-                </p>
-                {!hasMultiplePortions && (
-                    <p className="text-xl font-extrabold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                        {formatCurrency(item.price)}
-                    </p>
+            {/* Item name + qty badge */}
+            <div className="flex-1 mb-3 flex items-start justify-between gap-2">
+                <p className="font-bold text-foreground text-base leading-tight">{item.name}</p>
+                {hasQuantity && (
+                    <span className="bg-primary text-primary-foreground text-xs font-black px-2 py-0.5 rounded-full min-w-[24px] text-center flex-shrink-0">
+                        {quantity}
+                    </span>
                 )}
             </div>
 
-            <div className="flex items-center justify-center mt-auto" onClick={(e) => e.stopPropagation()}>
-                {hasMultiplePortions ? (
-                    <div className="w-full grid grid-cols-2 gap-2">
-                        {portions.map((portion) => {
-                            const portionQty = getVariantQuantity(item.id, portion.name);
-                            return (
-                                <button
-                                    key={`${item.id}-${portion.name}`}
-                                    onClick={() => onIncrement(item, portion)}
-                                    className={cn(
-                                        "w-full h-9 rounded-lg border flex items-center justify-between px-2 text-xs font-bold transition-all",
-                                        portionQty > 0
-                                            ? "border-primary bg-primary/15 text-primary"
-                                            : "border-primary/40 bg-primary/5 text-foreground hover:bg-primary/10"
-                                    )}
-                                >
-                                    <span className="uppercase tracking-wide">{portion.name}</span>
-                                    <span>{formatCurrency(Number(portion.price || 0))}{portionQty > 0 ? ` • ${portionQty}` : ''}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                ) : hasAddOnGroups ? (
-                    <button
-                        onClick={() => onIncrement(item, null, { forceCustomize: true })}
-                        className="w-full h-11 rounded-xl bg-gradient-to-r from-primary via-primary to-primary/90 flex items-center justify-center gap-2 text-primary-foreground font-bold hover:shadow-lg hover:shadow-primary/40 active:scale-98 transition-all shadow-md text-sm tracking-wide"
-                    >
-                        <Plus size={20} strokeWidth={3} />
-                        <span>ADD / CUSTOMIZE</span>
-                    </button>
-                ) : hasQuantity ? (
-                    <div className="flex items-center gap-3 bg-background/90 backdrop-blur-md rounded-full px-2 py-1.5 border-2 border-primary/30 shadow-md">
-                        <button
-                            onClick={() => onDecrement(buildCartKey(item.id, item?.portion?.name || 'default'))}
-                            className="w-9 h-9 rounded-full bg-gradient-to-br from-muted to-muted/70 flex items-center justify-center text-foreground hover:from-destructive/20 hover:to-destructive/10 hover:text-destructive active:scale-90 transition-all shadow-sm"
+            {/* Portion buttons */}
+            <div className={`grid gap-2.5 mt-auto ${portions.length === 1 ? 'grid-cols-1' : portions.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {portions.map((portion) => {
+                    const portionQty = getVariantQuantity(item.id, portion.name);
+                    return (
+                        <motion.button
+                            key={`${item.id}-${portion.name}`}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => onIncrement(item, portion)}
+                            className={cn(
+                                'px-3 py-3 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg min-h-[70px] relative overflow-hidden transition-all',
+                                portionQty > 0
+                                    ? 'bg-primary text-primary-foreground border-primary shadow-primary/30'
+                                    : 'bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary hover:shadow-primary/30'
+                            )}
                         >
-                            <Minus size={18} strokeWidth={3} />
-                        </button>
-                        <span className="w-10 text-center font-black text-foreground text-xl">{quantity}</span>
-                        <button
-                            onClick={() => onIncrement(item, item?.portion || null)}
-                            className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-primary-foreground hover:from-primary hover:to-primary shadow-md hover:shadow-lg hover:shadow-primary/30 active:scale-90 transition-all"
-                        >
-                            <Plus size={18} strokeWidth={3} />
-                        </button>
-                    </div>
-                ) : (
-                    <button
-                        onClick={() => onIncrement(item, null)}
-                        className="w-full h-11 rounded-xl bg-gradient-to-r from-primary via-primary to-primary/90 flex items-center justify-center gap-2 text-primary-foreground font-bold hover:shadow-lg hover:shadow-primary/40 active:scale-98 transition-all shadow-md text-sm tracking-wide"
-                    >
-                        <Plus size={20} strokeWidth={3} />
-                        <span>ADD TO CART</span>
-                    </button>
-                )}
+                            <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none" />
+                            {portions.length > 1 && (
+                                <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
+                                    {portion.name}
+                                </span>
+                            )}
+                            <div className="flex items-center justify-center relative z-10">
+                                <span className="text-base font-black">{formatCurrency(Number(portion.price || 0))}</span>
+                            </div>
+                            {portionQty > 0 && (
+                                <span className="text-[10px] font-bold opacity-80 relative z-10">×{portionQty}</span>
+                            )}
+                        </motion.button>
+                    );
+                })}
             </div>
         </motion.div>
     );
@@ -211,6 +159,8 @@ function WaiterOrderContent() {
     const [newTabPax, setNewTabPax] = useState(2);
     const [activeCategory, setActiveCategory] = useState('');
     const [mobilePanel, setMobilePanel] = useState('menu');
+    const [showTables, setShowTables] = useState(true);
+    const [menuExpanded, setMenuExpanded] = useState(false);
     const [customizeState, setCustomizeState] = useState({
         isOpen: false,
         item: null,
@@ -423,19 +373,8 @@ function WaiterOrderContent() {
         });
     }, []);
 
-    // Cart functions
+    // Cart functions — NO add-on dialogs, always direct add for speed
     const handleIncrement = useCallback((item, selectedPortion = null, options = {}) => {
-        const hasAddOnGroups = Array.isArray(item?.addOnGroups) && item.addOnGroups.some((group) => Array.isArray(group?.options) && group.options.length > 0);
-        if (hasAddOnGroups && !options?.skipCustomize) {
-            setCustomizeState({
-                isOpen: true,
-                item,
-                portion: selectedPortion || null,
-                selectedAddOns: Array.isArray(options?.selectedAddOns) ? options.selectedAddOns : [],
-                itemNote: String(options?.itemNote || '')
-            });
-            return;
-        }
 
         const selectedAddOns = Array.isArray(options?.selectedAddOns) ? options.selectedAddOns : [];
         const itemNote = String(options?.itemNote || '');
@@ -578,6 +517,16 @@ function WaiterOrderContent() {
 
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
+
+            // Auto-select the newly created tab so subsequent orders are attached to it
+            setSelectedTab({
+                id: data.tabId,
+                dineInTabId: data.tabId,
+                tab_name: newTabName.trim() || 'Guest',
+                pax_count: newTabPax,
+                orders: {},
+                orderBatches: []
+            });
 
             setShowNewTabModal(false);
             setNewTabName('');
@@ -723,14 +672,12 @@ function WaiterOrderContent() {
             if (!res.ok) throw new Error(data.message);
 
             setCart({});
-            setInfoDialog({
-                isOpen: true,
-                title: 'Order Sent! 🎉',
-                message: `Order sent to kitchen. Token: ${data.dineInToken || 'N/A'}`
-            });
 
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-            fetchData();
+
+            // Redirect back to dine-in page with success toast
+            const queryString = buildQueryString();
+            router.push(`/owner-dashboard/dine-in${queryString}`);
         } catch (error) {
             console.error('Error sending order:', error);
             setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
@@ -958,225 +905,186 @@ function WaiterOrderContent() {
                 </DialogContent>
             </Dialog>
 
-            {/* Header */}
-            <div className="p-3 md:p-4 border-b border-border">
-                <div className="flex items-center justify-between mb-2 md:mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center">
-                            <UtensilsCrossed className="w-5 h-5 text-primary" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-bold text-foreground">Waiter Order Panel</h1>
-                            <p className="text-muted-foreground text-xs">Take orders for tables</p>
-                        </div>
+            {/* Header — compact single row with optional tables strip */}
+            <div className={cn("border-b border-border bg-card/50 backdrop-blur-sm", menuExpanded && "hidden")}>
+                {/* Top bar */}
+                <div className="flex items-center gap-2 px-3 py-2">
+                    <Link
+                        href={`/owner-dashboard/dine-in${buildQueryString()}`}
+                        className="flex items-center justify-center w-8 h-8 rounded-lg border border-border bg-background hover:bg-muted transition-colors flex-shrink-0"
+                    >
+                        <X className="w-4 h-4" />
+                    </Link>
+                    <div className="w-7 h-7 bg-primary/15 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <UtensilsCrossed className="w-4 h-4 text-primary" />
                     </div>
-                    <Button variant="ghost" size="icon" onClick={fetchData} disabled={isRefreshing}>
-                        <RefreshCw className={cn("w-5 h-5", isRefreshing && "animate-spin")} />
+                    <span className="font-bold text-sm text-foreground flex-1">Create Dine-In Order</span>
+
+                    {/* Toggle tables visibility */}
+                    <button
+                        onClick={() => setShowTables(v => !v)}
+                        className={cn(
+                            "flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all",
+                            showTables
+                                ? "bg-primary/10 border-primary/40 text-primary"
+                                : "bg-muted border-border text-muted-foreground"
+                        )}
+                    >
+                        {showTables ? 'Hide Tables' : 'Show Tables'}
+                    </button>
+
+                    <Button variant="ghost" size="icon" onClick={fetchData} disabled={isRefreshing} className="h-8 w-8 flex-shrink-0">
+                        <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
                     </Button>
                 </div>
 
-                {/* Tables Scroll */}
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                    {tables.map(table => (
-                        <TableBadge
-                            key={table.id}
-                            table={table}
-                            isSelected={selectedTable?.id === table.id}
-                            onClick={() => handleTableClick(table)}
-                        />
-                    ))}
-                    {tables.length === 0 && (
-                        <p className="text-muted-foreground text-sm">No tables found.</p>
-                    )}
-                </div>
+                {/* Tables Scroll — collapsible */}
+                {showTables && (
+                    <div className="flex gap-2 overflow-x-auto px-3 pb-2 no-scrollbar">
+                        {tables.length === 0 ? (
+                            <p className="text-muted-foreground text-xs py-1">No tables found.</p>
+                        ) : (
+                            tables.map(table => (
+                                <TableBadge
+                                    key={table.id}
+                                    table={table}
+                                    isSelected={selectedTable?.id === table.id}
+                                    onClick={() => handleTableClick(table)}
+                                />
+                            ))
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Main Content */}
             <div className="flex-1 overflow-hidden flex flex-col">
                 {selectedTable ? (
                     <>
-                        {/* Selected Table Info */}
-                        <div className="p-2.5 md:p-3 border-b border-border bg-muted/30">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h3 className="font-bold text-lg">Table {selectedTable.id}</h3>
-                                    <p className="text-sm text-muted-foreground">
-                                        {selectedTable.current_pax || 0}/{selectedTable.max_capacity} seats
-                                    </p>
-                                </div>
-                                <Button onClick={() => setShowNewTabModal(true)} size="sm">
-                                    <Plus size={16} className="mr-2" /> New Tab
-                                </Button>
-                            </div>
+                        {/* Selected Table Info — single compact strip */}
+                        <div className={cn("flex items-center gap-3 px-3 py-2 border-b border-border bg-muted/20 overflow-x-auto no-scrollbar", menuExpanded && "hidden")}>
+                            {/* Table badge */}
+                            <span className="font-black text-base text-primary flex-shrink-0">T{selectedTable.id}</span>
+                            <span className="text-xs text-muted-foreground flex-shrink-0">{selectedTable.current_pax || 0}/{selectedTable.max_capacity}💺</span>
 
-                            {/* Tabs & Pending Orders */}
-                            {(Object.keys(selectedTable.tabs || {}).length > 0 || (selectedTable.pendingOrders || []).length > 0) && (
-                                <div className="flex gap-2 mt-3 overflow-x-auto">
-                                    {Object.entries(selectedTable.tabs || {}).map(([tabId, tab]) => {
-                                        const effectiveTabId = getEffectiveTabId(tab, tabId);
-                                        const tabWithId = { ...tab, id: effectiveTabId, dineInTabId: effectiveTabId };
-                                        const hasOrders = (Array.isArray(tab?.orderBatches) && tab.orderBatches.length > 0) ||
-                                            (tab?.orders && Object.keys(tab.orders).length > 0) ||
-                                            Number(tab?.totalAmount || 0) > 0;
-                                        const canCloseEmptyTab = !hasOrders;
-                                        return (
-                                            <div
-                                                key={effectiveTabId || tabId}
-                                                className={cn(
-                                                    "flex items-center gap-1 px-2 py-1 rounded-full text-sm font-medium transition-all whitespace-nowrap",
-                                                    selectedTabId === effectiveTabId
-                                                        ? "bg-primary text-primary-foreground"
-                                                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                                )}
-                                            >
-                                                <button
-                                                    onClick={() => setSelectedTab(tabWithId)}
-                                                    className="px-2 py-1"
-                                                >
-                                                    {tab.tab_name} ({tab.pax_count})
-                                                </button>
-                                                {canCloseEmptyTab && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleCloseEmptyTab(tabWithId);
-                                                        }}
-                                                        disabled={closingTabId === effectiveTabId}
-                                                        className="rounded-full p-1 hover:bg-black/10 disabled:opacity-60"
-                                                        title="Close empty tab"
-                                                    >
-                                                        {closingTabId === effectiveTabId ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                    {(selectedTable.pendingOrders || []).map(order => (
-                                        <button
-                                            key={order.id}
-                                            onClick={() => {
-                                                const effectiveTabId = getEffectiveTabId(order, order.id);
-                                                setSelectedTab({ ...order, id: effectiveTabId, dineInTabId: effectiveTabId });
-                                            }}
-                                            className={cn(
-                                                "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap border-2 border-dashed",
-                                                selectedTabId === getEffectiveTabId(order, order.id)
-                                                    ? "bg-yellow-500 text-black border-yellow-500"
-                                                    : "bg-yellow-500/10 text-yellow-500 border-yellow-500/50 hover:bg-yellow-500/20"
-                                            )}
-                                        >
-                                            {order.tab_name || 'Pending'} ⏳
+                            {/* Tab pills */}
+                            {Object.entries(selectedTable.tabs || {}).map(([tabId, tab]) => {
+                                const effectiveTabId = getEffectiveTabId(tab, tabId);
+                                const tabWithId = { ...tab, id: effectiveTabId, dineInTabId: effectiveTabId };
+                                const hasOrders = (Array.isArray(tab?.orderBatches) && tab.orderBatches.length > 0) ||
+                                    (tab?.orders && Object.keys(tab.orders).length > 0) ||
+                                    Number(tab?.totalAmount || 0) > 0;
+                                return (
+                                    <div key={effectiveTabId || tabId} className={cn(
+                                        "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap border flex-shrink-0",
+                                        selectedTabId === effectiveTabId
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-muted text-muted-foreground border-border hover:border-primary/40"
+                                    )}>
+                                        <button onClick={() => setSelectedTab(tabWithId)}>
+                                            {tab.tab_name} ({tab.pax_count})
                                         </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            <div className="mt-3 grid grid-cols-2 gap-2 md:hidden">
-                                <button
-                                    onClick={() => setMobilePanel('menu')}
+                                        {!hasOrders && (
+                                            <button onClick={(e) => { e.stopPropagation(); handleCloseEmptyTab(tabWithId); }}
+                                                disabled={closingTabId === effectiveTabId}
+                                                className="ml-0.5 opacity-60 hover:opacity-100">
+                                                {closingTabId === effectiveTabId ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            {(selectedTable.pendingOrders || []).map(order => (
+                                <button key={order.id}
+                                    onClick={() => { const eid = getEffectiveTabId(order, order.id); setSelectedTab({ ...order, id: eid, dineInTabId: eid }); }}
                                     className={cn(
-                                        "h-10 rounded-md text-sm font-semibold border transition-colors",
-                                        mobilePanel === 'menu'
-                                            ? "bg-primary text-primary-foreground border-primary"
-                                            : "bg-background text-foreground border-border"
-                                    )}
-                                >
-                                    Menu
+                                        "px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border-2 border-dashed flex-shrink-0",
+                                        selectedTabId === getEffectiveTabId(order, order.id)
+                                            ? "bg-yellow-500 text-black border-yellow-500"
+                                            : "bg-yellow-500/10 text-yellow-500 border-yellow-500/50"
+                                    )}>
+                                    {order.tab_name || 'Pending'} ⏳
                                 </button>
+                            ))}
+
+                            {/* Divider + New Tab */}
+                            <div className="ml-auto flex-shrink-0">
                                 <button
-                                    onClick={() => setMobilePanel('order')}
-                                    className={cn(
-                                        "h-10 rounded-md text-sm font-semibold border transition-colors",
-                                        mobilePanel === 'order'
-                                            ? "bg-primary text-primary-foreground border-primary"
-                                            : "bg-background text-foreground border-border"
-                                    )}
+                                    onClick={() => setShowNewTabModal(true)}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-primary/10 border border-primary/40 text-primary text-xs font-bold hover:bg-primary hover:text-primary-foreground transition-all"
                                 >
-                                    Current Order ({cartCount})
+                                    <Plus size={12} /> New Tab
                                 </button>
                             </div>
                         </div>
 
-                        {/* Menu + Cart Layout (Custom Bill Style) */}
-                        <div className="flex-1 overflow-hidden p-4">
-                            <div className="grid grid-cols-1 xl:grid-cols-[240px_minmax(0,1fr)_320px] gap-4 h-full">
-                                <div className="hidden md:block rounded-xl border border-border bg-card p-3 overflow-y-auto">
-                                    <h4 className="font-semibold text-sm text-muted-foreground mb-3">Categories</h4>
-                                    <div className="space-y-2">
+                        {/* Menu + Cart Layout — Menu takes full left space */}
+                        <div className="flex-1 overflow-hidden p-3">
+                            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3 h-full">
+
+                                {/* MENU PANEL — full width */}
+                                <div className={cn("rounded-xl border border-border bg-card p-3 flex flex-col min-h-0", mobilePanel !== 'menu' && "hidden md:flex")}>
+                                    {/* Horizontal category pills + expand button */}
+                                    <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar mb-2 border-b border-border">
                                         {menuCategoryIds.map((categoryId) => (
                                             <button
                                                 key={categoryId}
                                                 onClick={() => handleCategoryJump(categoryId)}
                                                 className={cn(
-                                                    "w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-all",
+                                                    "shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-all whitespace-nowrap",
                                                     activeCategory === categoryId
-                                                        ? "bg-primary text-primary-foreground"
-                                                        : "bg-muted/40 text-foreground hover:bg-muted"
+                                                        ? "bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/30"
+                                                        : "bg-muted/30 text-foreground border-border hover:border-primary/50 hover:bg-muted"
                                                 )}
                                             >
                                                 {formatCategoryLabel(categoryId)}
                                             </button>
                                         ))}
-                                        {menuCategoryIds.length === 0 && (
-                                            <p className="text-sm text-muted-foreground">No categories found.</p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className={cn("rounded-xl border border-border bg-card p-4 flex flex-col min-h-0", mobilePanel !== 'menu' && "hidden md:flex")}>
-                                    <div className="md:hidden mb-3">
-                                        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                                            {menuCategoryIds.map((categoryId) => (
-                                                <button
-                                                    key={categoryId}
-                                                    onClick={() => handleCategoryJump(categoryId)}
-                                                    className={cn(
-                                                        "shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
-                                                        activeCategory === categoryId
-                                                            ? "bg-primary text-primary-foreground border-primary"
-                                                            : "bg-muted/30 text-foreground border-border"
-                                                    )}
-                                                >
-                                                    {formatCategoryLabel(categoryId)}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        {/* Expand / Collapse menu to full height */}
+                                        <button
+                                            onClick={() => setMenuExpanded(v => !v)}
+                                            title={menuExpanded ? 'Restore view' : 'Expand menu (hide top bar)'}
+                                            className={cn(
+                                                "ml-auto flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border transition-all",
+                                                menuExpanded
+                                                    ? "bg-primary text-primary-foreground border-primary"
+                                                    : "bg-muted/30 border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                                            )}
+                                        >
+                                            {menuExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                                        </button>
                                     </div>
 
-                                    <div className="relative mb-4">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                                    {/* Search */}
+                                    <div className="relative mb-3">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                                         <Input
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
                                             placeholder="Search menu..."
-                                            className="pl-10"
+                                            className="pl-9 h-9 text-sm"
                                         />
                                         {searchQuery && (
                                             <button
                                                 onClick={() => setSearchQuery('')}
                                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                                             >
-                                                <X size={18} />
+                                                <X size={16} />
                                             </button>
                                         )}
                                     </div>
-
-                                    <h4 className="font-semibold text-sm text-muted-foreground mb-3">
-                                        MENU ({totalVisibleItems} items)
-                                    </h4>
 
                                     <div ref={menuScrollRef} className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                                         {totalVisibleItems === 0 ? (
                                             <p className="text-center text-muted-foreground py-12">No items found</p>
                                         ) : (
-                                            <div className="space-y-6">
+                                            <div className="space-y-5">
                                                 {scopedMenuEntries.map(([categoryId, items]) => (
                                                     <section key={categoryId} ref={(node) => { categorySectionRefs.current[categoryId] = node; }}>
-                                                        <h5 className="font-bold text-base text-foreground mb-3 border-l-4 border-primary pl-3">
+                                                        <h5 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
                                                             {formatCategoryLabel(categoryId)}
                                                         </h5>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                                                             {items.map((item) => (
                                                                 <MenuItemCard
                                                                     key={item.id}
@@ -1239,7 +1147,22 @@ function WaiterOrderContent() {
                                                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleDecrement(item.cartKey)}>
                                                                 <Minus size={14} />
                                                             </Button>
-                                                            <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                value={item.quantity}
+                                                                onChange={(e) => {
+                                                                    const val = parseInt(e.target.value, 10);
+                                                                    if (isNaN(val) || val < 1) return;
+                                                                    setCart(prev => {
+                                                                        const existing = prev[item.cartKey];
+                                                                        if (!existing) return prev;
+                                                                        return { ...prev, [item.cartKey]: { ...existing, quantity: val } };
+                                                                    });
+                                                                }}
+                                                                onClick={(e) => e.target.select()}
+                                                                className="w-10 text-center text-sm font-bold bg-transparent border-b border-primary/50 focus:border-primary outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                            />
                                                             <Button size="icon" className="h-7 w-7" onClick={() => handleIncrement(item, item?.portion || null)}>
                                                                 <Plus size={14} />
                                                             </Button>

@@ -224,11 +224,10 @@ export async function GET(req) {
                     const tabRef = businessRef.collection('dineInTabs').doc(tabId);
                     const tabSnap = await tabRef.get();
 
-                    // ✅ ONLY exclude if tab EXISTS and status='completed'
-                    // Non-existent tabs are valid (backwards compatibility with old orders)
-                    if (tabSnap.exists && tabSnap.data().status === 'completed') {
+                    // ✅ ONLY exclude if tab EXISTS and status is finished
+                    if (tabSnap.exists && ['completed', 'rejected', 'cancelled'].includes(tabSnap.data().status)) {
                         completedTabIds.add(tabId);
-                        console.log(`[Dine-In API] ✅ Hiding completed tab from dashboard: ${tabId}`);
+                        console.log(`[Dine-In API] ✅ Hiding ${tabSnap.data().status} tab from dashboard: ${tabId}`);
                     }
                 } catch (err) {
                     console.warn(`[Dine-In API] Error checking tab ${tabId}:`, err.message);
@@ -293,6 +292,7 @@ export async function GET(req) {
                         orderDate: o.orderDate,
                         paymentStatus: o.paymentStatus,
                         paymentMethod: o.paymentMethod,
+                        ordered_by: o.ordered_by,
                         canCancel: ['pending', 'confirmed'].includes(o.status)
                     }))
                     .sort((a, b) => {
@@ -308,14 +308,18 @@ export async function GET(req) {
             // If has any pending, put in pendingOrders
             if (hasPending) {
                 table.pendingOrders.push(groupData);
+                
+                // ✅ FIX: Aggressively remove placeholders for this tab/group to avoid double-counting pax.
+                // We check by dineInTabId, by groupKey, and by tab_name fallback.
+                if (group.dineInTabId) delete table.tabs[group.dineInTabId];
+                if (groupKey) delete table.tabs[groupKey];
             } else {
                 // Active orders go to tabs (detailed view)
-                // Override placeholder tab (if any) with full orderGroup details
-                if (group.dineInTabId && table.tabs[group.dineInTabId]) {
-                    delete table.tabs[group.dineInTabId];
-                }
+                // Overwrite placeholder tab (if any) with full orderGroup details
+                if (group.dineInTabId) delete table.tabs[group.dineInTabId];
                 table.tabs[groupKey] = groupData;
             }
+
         });
 
         // 5.5. Calculate hasPending, status, mainStatus for tabs (for button display)
@@ -354,6 +358,7 @@ export async function GET(req) {
                             orderDate: o.orderDate, // Firestore timestamp
                             paymentStatus: o.paymentStatus,
                             paymentMethod: o.paymentMethod,
+                            ordered_by: o.ordered_by,
                             canCancel: ['pending', 'confirmed'].includes(o.status) // Helper for UI
                         }))
                         .sort((a, b) => {
