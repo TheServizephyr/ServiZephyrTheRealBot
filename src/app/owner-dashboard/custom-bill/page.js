@@ -78,6 +78,9 @@ function CustomBillPage() {
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
     const searchInputRef = useRef(null);
+    const sidebarRef = useRef(null);
+    const isResizing = useRef(false);
+    const [manualSidebarWidth, setManualSidebarWidth] = useState(null); // null means use dynamic default
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
@@ -353,6 +356,22 @@ function CustomBillPage() {
         return entries;
     }, [menu, openItems, normalizedSearchQuery]);
 
+    // Calculate dynamic default width based on the longest category name
+    const defaultSidebarWidth = useMemo(() => {
+        if (!visibleMenuEntries || visibleMenuEntries.length === 0) return 150;
+        let maxLen = 0;
+        for (const [categoryId] of visibleMenuEntries) {
+            const label = formatCategoryLabel(categoryId);
+            if (label.length > maxLen) {
+                maxLen = label.length;
+            }
+        }
+        // Estimate width: 8.5px per char (text-sm) + 50px for padding, scrollbar, margins
+        return Math.max(130, Math.min(maxLen * 8.5 + 50, 400));
+    }, [visibleMenuEntries]);
+
+    const sidebarWidth = manualSidebarWidth !== null ? manualSidebarWidth : defaultSidebarWidth;
+
     // Handle Scroll Spy
     useEffect(() => {
         const container = scrollContainerRef.current;
@@ -397,6 +416,44 @@ function CustomBillPage() {
             setActiveCategory(catId);
         }
     };
+
+    // --- Sidebar Resizing Logic ---
+    const startResizing = useCallback((e) => {
+        e.preventDefault(); // Prevent text selection while dragging
+        isResizing.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none'; // Prevent selection on body
+    }, []);
+
+    const stopResizing = useCallback(() => {
+        if (!isResizing.current) return;
+        isResizing.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }, []);
+
+    const handleMouseMove = useCallback((e) => {
+        if (!isResizing.current || !sidebarRef.current) return;
+        // Calculate new width relative to the left edge of the sidebar container
+        const newWidth = e.clientX - sidebarRef.current.getBoundingClientRect().left;
+        // Constrain width: min 130px, max 800px (or half screen)
+        const minWidth = 130;
+        const maxWidth = Math.min(800, window.innerWidth * 0.5);
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+            setManualSidebarWidth(newWidth);
+        }
+    }, []);
+
+    useEffect(() => {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', stopResizing);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [handleMouseMove, stopResizing]);
+    // ------------------------------
+
 
     const addToCart = (item, portion) => {
         const cartItemId = `${item.id}-${portion.name}`;
@@ -1082,9 +1139,13 @@ function CustomBillPage() {
                         </div>
                     </div>
 
-                    <div className="flex gap-4 flex-1 min-h-0">
+                    <div className="flex gap-4 flex-1 min-h-0 relative">
                         {/* CATEGORY NAVIGATION SIDEBAR */}
-                        <div className="w-1/4 flex-shrink-0 border-r border-border pr-2 overflow-y-auto overscroll-contain custom-scrollbar hidden md:block">
+                        <div
+                            ref={sidebarRef}
+                            style={{ width: `${sidebarWidth}px` }}
+                            className="flex-shrink-0 border-r border-border pr-2 overflow-y-auto overscroll-contain custom-scrollbar hidden md:block"
+                        >
                             <div className="space-y-1">
                                 {visibleMenuEntries.map(([categoryId]) => (
                                     <button
@@ -1101,6 +1162,16 @@ function CustomBillPage() {
                                     </button>
                                 ))}
                             </div>
+                        </div>
+
+                        {/* RESIZE HANDLE */}
+                        <div
+                            onMouseDown={startResizing}
+                            className="hidden md:block absolute top-0 bottom-0 z-10 w-2 cursor-col-resize flex items-center justify-center group"
+                            style={{ left: `${sidebarWidth - 1}px`, transform: 'translateX(-50%)' }}
+                            title="Drag to resize sidebar"
+                        >
+                            <div className="h-10 w-1 bg-border rounded-full group-hover:bg-primary transition-colors"></div>
                         </div>
 
                         {/* ITEM LIST */}
