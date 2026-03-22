@@ -865,6 +865,16 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             return;
         }
 
+        if (!tableStatus) {
+            setInfoDialog({
+                isOpen: true,
+                title: "Table Status Unavailable",
+                message: "We could not load the latest table status yet. Please wait a moment and try again."
+            });
+            setIsSaving(false);
+            return;
+        }
+
         // Use availableSeats from backend (includes uncleaned pax subtraction)
         const availableCapacity = tableStatus.availableSeats !== undefined
             ? tableStatus.availableSeats
@@ -1353,6 +1363,7 @@ const OrderPageInternal = () => {
     // ✅ FIX: Persist Ref to LocalStorage to survive reloads/navigation
     const refParam = searchParams.get('ref');
     const [ref, setRef] = useState(refParam);
+    const searchParamsString = searchParams.toString();
 
     useEffect(() => {
         if (refParam) {
@@ -1389,17 +1400,7 @@ const OrderPageInternal = () => {
     const hasAttemptedAutoOpen = useRef(false);
     const isAddressSelectionInProgress = useRef(false);
     const hasTrackedOrderPageOpen = useRef(false);
-
-    // FETCH ADDRESSES FOR DRAWER
-    useEffect(() => {
-        const loadAddresses = async () => {
-            if (isAddressSelectorOpen && customerLocation?.id) {
-                // Only fetch if we are opening it and have basic profile info
-                // Actually, we need to fetch if we have phone/ref
-                // Simplification: Fetch on Open if needed, or rely on passed data 
-            }
-        }
-    }, [isAddressSelectorOpen]);
+    const [deliveryType, setDeliveryType] = useState(() => (tableIdFromUrl ? 'dine-in' : 'delivery'));
 
     // Handler to close address selector with validation
     const handleCloseAddressSelector = () => {
@@ -1441,7 +1442,7 @@ const OrderPageInternal = () => {
     };
 
 
-    const handleOpenAddressDrawer = async () => {
+    const handleOpenAddressDrawer = useCallback(async () => {
         if (tableIdFromUrl || deliveryType !== 'delivery') {
             console.log('[handleOpenAddressDrawer] Skipped: address drawer is only allowed for delivery orders without table context.');
             return;
@@ -1452,9 +1453,10 @@ const OrderPageInternal = () => {
 
         try {
             // Re-use logic to resolve user/guest
-            const savedName = localStorage.getItem('customerName');
+            const savedPhone = localStorage.getItem('customerPhone') || '';
             const lookupPayload = {};
-            if (phone) lookupPayload.phone = phone;
+            const fallbackPhone = phone || savedPhone;
+            if (fallbackPhone) lookupPayload.phone = fallbackPhone;
             if (ref) lookupPayload.ref = ref;
 
             console.log('[handleOpenAddressDrawer] 📋 Payload:', lookupPayload, 'auth.currentUser:', auth.currentUser ? 'YES' : 'NO');
@@ -1488,7 +1490,7 @@ const OrderPageInternal = () => {
         } finally {
             setAddressLoading(false);
         }
-    };
+    }, [tableIdFromUrl, deliveryType, phone, ref, auth.currentUser]);
 
     // ✅ NEW: Reusable validation function (separated from UI logic)
     const validateDelivery = async (addr, currentSubtotal) => {
@@ -1559,6 +1561,8 @@ const OrderPageInternal = () => {
         // Call validation with current subtotal
         await validateDelivery(addr, subtotal);
     };
+
+    const [activeOrderRefreshKey, setActiveOrderRefreshKey] = useState(0);
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
@@ -1721,7 +1725,7 @@ const OrderPageInternal = () => {
                 const shouldAutoAttachActiveOrder = !activeOrderId && !tableIdFromUrl;
                 if (shouldAutoAttachActiveOrder && latestActiveOrder) {
                     console.log("[Order Page] Auto-redirecting to latest active order:", latestActiveOrder.orderId);
-                    const newParams = new URLSearchParams(searchParams.toString());
+                    const newParams = new URLSearchParams(searchParamsString);
                     newParams.set('activeOrderId', latestActiveOrder.orderId);
                     if (latestActiveOrder.trackingToken) {
                         newParams.set('token', latestActiveOrder.trackingToken);
@@ -1752,7 +1756,12 @@ const OrderPageInternal = () => {
             if (tableIdFromUrl) return;
 
             // Check if we have identifiers (Phone OR Ref)
-            const identifierParam = ref ? `ref=${ref}` : (phone ? `phone=${phone}` : null);
+            const savedPhone = localStorage.getItem('customerPhone') || '';
+            const fallbackPhone = phone || savedPhone;
+            const queryParts = [];
+            if (ref) queryParts.push(`ref=${encodeQueryParam(ref)}`);
+            if (fallbackPhone) queryParts.push(`phone=${encodeQueryParam(fallbackPhone)}`);
+            const identifierParam = queryParts.length > 0 ? queryParts.join('&') : null;
 
             if (identifierParam) {
                 console.log("[Order Page] Identity found. Checking server for active orders...");
@@ -1800,7 +1809,7 @@ const OrderPageInternal = () => {
         pollStatus();
         checkActiveOrder();
 
-    }, [restaurantId, searchParams, activeOrderId, router, phone, token, ref, tableIdFromUrl, tabIdFromUrl]);
+    }, [restaurantId, searchParamsString, activeOrderId, router, phone, token, ref, tableIdFromUrl, tabIdFromUrl, activeOrderRefreshKey]);
 
 
     // ... (Existing state hooks: location, restaurantData, etc.) ...
@@ -1843,7 +1852,6 @@ const OrderPageInternal = () => {
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [deliveryType, setDeliveryType] = useState(() => (tableIdFromUrl ? 'dine-in' : 'delivery'));
 
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState("");
@@ -2212,12 +2220,11 @@ const OrderPageInternal = () => {
         setIsEditingModal(false);
     };
 
-    // Force re-fetch on every page mount by using a timestamp key
-    const [fetchKey, setFetchKey] = useState(0);
     const intervalRef = useRef(null);
     const lastForegroundRefreshAtRef = useRef(0);
 
-    // Auto-refresh: Immediate fetch on tab return + 2-min interval while visible
+    // Auto-refresh active-order recovery only.
+    // Menu/settings stay stable and cached; only live-order state should refresh on tab return.
     useEffect(() => {
         const TWO_MINUTES = 2 * 60 * 1000;
         const MIN_FOCUS_REFRESH_GAP_MS = 45 * 1000;
@@ -2231,20 +2238,20 @@ const OrderPageInternal = () => {
             // Start 2-minute interval
             intervalRef.current = setInterval(() => {
                 if (!document.hidden) {
-                    console.log('[Order Page] 2-min auto-refresh (tab visible)');
+                    console.log('[Order Page] 2-min active-order refresh (tab visible)');
                     const now = Date.now();
                     lastForegroundRefreshAtRef.current = now;
-                    setFetchKey(now);
+                    setActiveOrderRefreshKey(now);
                 }
             }, TWO_MINUTES);
-            console.log('[Order Page] Auto-refresh interval started');
+            console.log('[Order Page] Active-order refresh interval started');
         };
 
         const stopInterval = () => {
             if (intervalRef.current) {
                 clearInterval(intervalRef.current);
                 intervalRef.current = null;
-                console.log('[Order Page] Auto-refresh interval stopped');
+                console.log('[Order Page] Active-order refresh interval stopped');
             }
         };
 
@@ -2254,11 +2261,11 @@ const OrderPageInternal = () => {
                 const now = Date.now();
                 const elapsed = now - (lastForegroundRefreshAtRef.current || 0);
                 if (elapsed >= MIN_FOCUS_REFRESH_GAP_MS) {
-                    console.log('[Order Page] Tab visible - fetching fresh data');
+                    console.log('[Order Page] Tab visible - refreshing active-order state');
                     lastForegroundRefreshAtRef.current = now;
-                    setFetchKey(now);
+                    setActiveOrderRefreshKey(now);
                 } else {
-                    console.log('[Order Page] Tab visible - skipping refresh (cooldown active)');
+                    console.log('[Order Page] Tab visible - skipping active-order refresh (cooldown active)');
                 }
                 startInterval(); // Start interval for future refreshes
             } else {
@@ -2271,7 +2278,7 @@ const OrderPageInternal = () => {
         // Initial setup
         const initialTs = Date.now();
         lastForegroundRefreshAtRef.current = initialTs;
-        setFetchKey(initialTs); // Initial fetch on mount
+        setActiveOrderRefreshKey(initialTs);
         if (!document.hidden) {
             startInterval(); // Start interval if tab is visible
         }
@@ -2287,8 +2294,6 @@ const OrderPageInternal = () => {
     }, []);
 
     useEffect(() => {
-        if (!fetchKey) return;
-
         const abortController = new AbortController();
         let isActive = true;
 
@@ -2387,7 +2392,7 @@ const OrderPageInternal = () => {
             isActive = false;
             abortController.abort();
         };
-    }, [restaurantId, phone, fetchKey]); // Added fetchKey to force re-fetch on mount
+    }, [restaurantId, phone]);
 
 
 
@@ -3473,16 +3478,19 @@ const OrderPageInternal = () => {
                 params.set('tabId', carSessionTabId);
             }
         }
-        // ✅ Keep liveOrder for Track button (works for ALL business types)
-        // - For street vendors: Shows LATEST order, track page has tabs for all orders
-        // - For restaurants: Can be used for add-on orders
+        // Only attach activeOrderId for session-style order flows.
+        // Standard delivery/pickup should create a brand new order even if another
+        // active delivery order already exists; the track page handles multi-order tabs.
         const normalizedCurrentTable = String(tableIdFromUrl || '').trim().toLowerCase();
         const normalizedLiveOrderTable = String(liveOrder?.tableId || liveOrder?.table || '').trim().toLowerCase();
         const normalizedCurrentTab = String(tabIdFromUrl || activeTabInfo.id || '').trim().toLowerCase();
         const normalizedLiveOrderTab = String(liveOrder?.dineInTabId || liveOrder?.tabId || '').trim().toLowerCase();
         const liveOrderType = String(liveOrder?.deliveryType || '').trim().toLowerCase();
+        const shouldAttachExistingOrder =
+            effectiveDeliveryType === 'dine-in' || effectiveDeliveryType === 'car-order';
         const canAttachActiveOrder =
             !!liveOrder &&
+            shouldAttachExistingOrder &&
             liveOrder.restaurantId === restaurantId &&
             (
                 !tableIdFromUrl

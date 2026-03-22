@@ -268,7 +268,6 @@ function OrderTrackingContent() {
     useEffect(() => {
         // Derive phone from URL param OR fetched order data
         const phoneToUse = userPhone || orderData?.order?.customerPhone || orderData?.order?.phone;
-        const refParam = searchParams.get('ref');
 
         if (!phoneToUse && !refParam) return;
 
@@ -311,7 +310,7 @@ function OrderTrackingContent() {
             }
         };
         fetchActiveOrders();
-    }, [userPhone, orderData]);
+    }, [userPhone, refParam, orderData?.order?.customerPhone, orderData?.order?.phone]);
 
 
     const fetchData = useCallback(async (isBackground = false) => {
@@ -406,7 +405,7 @@ function OrderTrackingContent() {
             fetch(`/api/public/settings/${orderData.restaurant.id}`)
                 .then(res => res.json())
                 .then(data => {
-                    setRestaurantSettings(data);
+                    setDeliverySettings(data);
                 })
                 .catch(err => console.error("Failed to fetch settings:", err));
         }

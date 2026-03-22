@@ -13,6 +13,72 @@
 
 import { getFirestore } from '@/lib/firebase-admin';
 
+const BUSINESS_LOOKUP_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function getBusinessLookupCacheStore() {
+    if (!globalThis.__servizephyrBusinessLookupCache) {
+        globalThis.__servizephyrBusinessLookupCache = new Map();
+    }
+    return globalThis.__servizephyrBusinessLookupCache;
+}
+
+function readBusinessLookupCache(key) {
+    if (!key) return null;
+    const store = getBusinessLookupCacheStore();
+    const entry = store.get(key);
+    if (!entry) return null;
+    if (!entry.expiresAt || entry.expiresAt < Date.now()) {
+        store.delete(key);
+        return null;
+    }
+    return entry.collectionName || null;
+}
+
+function writeBusinessLookupCache(key, collectionName) {
+    if (!key || !collectionName) return;
+    getBusinessLookupCacheStore().set(String(key).trim(), {
+        collectionName,
+        expiresAt: Date.now() + BUSINESS_LOOKUP_CACHE_TTL_MS,
+    });
+}
+
+function normalizeFindBusinessOptions(collectionNameHintOrOptions = null, maybeOptions = {}) {
+    if (collectionNameHintOrOptions && typeof collectionNameHintOrOptions === 'object' && !Array.isArray(collectionNameHintOrOptions)) {
+        return {
+            collectionNameHint: String(collectionNameHintOrOptions.collectionNameHint || '').trim() || null,
+            includeDeliverySettings: collectionNameHintOrOptions.includeDeliverySettings !== false,
+            useCollectionCache: collectionNameHintOrOptions.useCollectionCache !== false,
+        };
+    }
+
+    return {
+        collectionNameHint: String(collectionNameHintOrOptions || '').trim() || null,
+        includeDeliverySettings: maybeOptions?.includeDeliverySettings !== false,
+        useCollectionCache: maybeOptions?.useCollectionCache !== false,
+    };
+}
+
+async function loadDeliverySettings(docRef) {
+    try {
+        const dsSnap = await docRef.collection('delivery_settings').doc('config').get();
+        return dsSnap.exists ? (dsSnap.data() || {}) : {};
+    } catch (e) {
+        console.warn(`[BusinessService] Failed to load delivery settings for ${docRef.id}`, e);
+        return {};
+    }
+}
+
+async function buildBusinessResult({ docRef, docSnap, collectionName, includeDeliverySettings }) {
+    const deliverySettings = includeDeliverySettings ? await loadDeliverySettings(docRef) : {};
+    return {
+        id: docSnap.id,
+        ref: docRef,
+        data: { ...(docSnap.data() || {}), ...deliverySettings },
+        collection: collectionName,
+        type: getBusinessTypeFromCollection(collectionName)
+    };
+}
+
 /**
  * Business type to Firestore collection mapping
  */
@@ -47,7 +113,13 @@ export function getBusinessCollection(businessType) {
  * @param {string} businessId - Business document ID
  * @returns {Promise<Object|null>} Business data with metadata
  */
-export async function findBusinessById(firestore, businessId, collectionNameHint = null) {
+export async function findBusinessById(firestore, businessId, collectionNameHintOrOptions = null, maybeOptions = {}) {
+    const {
+        collectionNameHint,
+        includeDeliverySettings,
+        useCollectionCache,
+    } = normalizeFindBusinessOptions(collectionNameHintOrOptions, maybeOptions);
+
     let collections = ['restaurants', 'shops', 'street_vendors'];
     if (collectionNameHint && collections.includes(collectionNameHint)) {
         collections = [collectionNameHint, ...collections.filter(c => c !== collectionNameHint)];
@@ -80,6 +152,11 @@ export async function findBusinessById(firestore, businessId, collectionNameHint
 
     console.log(`[BusinessService] Lookup candidates: ${JSON.stringify(uniqueIds)}`);
 
+    const cachedCollection = useCollectionCache ? readBusinessLookupCache(cleanBusinessId) : null;
+    if (cachedCollection && collections.includes(cachedCollection)) {
+        collections = [cachedCollection, ...collections.filter(c => c !== cachedCollection)];
+    }
+
     // 1. Try direct business lookup (Document ID)
     for (const targetId of uniqueIds) {
         for (const collectionName of collections) {
@@ -89,26 +166,10 @@ export async function findBusinessById(firestore, businessId, collectionNameHint
 
                 if (docSnap.exists) {
                     console.log(`[BusinessService] Found business ${targetId} in collection: ${collectionName}`);
-
-
-                    // Fetch delivery settings sub-collection
-                    let deliverySettings = {};
-                    try {
-                        const dsSnap = await docRef.collection('delivery_settings').doc('config').get();
-                        if (dsSnap.exists) {
-                            deliverySettings = dsSnap.data();
-                        }
-                    } catch (e) {
-                        console.warn(`[BusinessService] Failed to load delivery settings for ${targetId}`, e);
-                    }
-
-                    return {
-                        id: targetId,
-                        ref: docRef,
-                        data: { ...docSnap.data(), ...deliverySettings }, // Merge settings
-                        collection: collectionName,
-                        type: getBusinessTypeFromCollection(collectionName)
-                    };
+                    writeBusinessLookupCache(cleanBusinessId, collectionName);
+                    writeBusinessLookupCache(targetId, collectionName);
+                    writeBusinessLookupCache(docSnap.id, collectionName);
+                    return await buildBusinessResult({ docRef, docSnap, collectionName, includeDeliverySettings });
                 }
             } catch (error) {
                 console.error(`[BusinessService] Error checking ${collectionName} for ${targetId}:`, error);
@@ -126,7 +187,15 @@ export async function findBusinessById(firestore, businessId, collectionNameHint
 
                     // Recursive call with the REAL business ID
                     // (We return the result of the recursive call)
-                    return await findBusinessById(firestore, userData.businessId);
+                    const resolvedBusiness = await findBusinessById(firestore, userData.businessId, {
+                        collectionNameHint,
+                        includeDeliverySettings,
+                        useCollectionCache,
+                    });
+                    if (resolvedBusiness?.collection) {
+                        writeBusinessLookupCache(cleanBusinessId, resolvedBusiness.collection);
+                    }
+                    return resolvedBusiness;
                 }
             }
         } catch (err) {
@@ -143,24 +212,14 @@ export async function findBusinessById(firestore, businessId, collectionNameHint
                         const docSnap = querySnap.docs[0];
                         console.log(`[BusinessService] Found business via Merchant ID in collection: ${collectionName}`);
 
-                        // Fetch delivery settings sub-collection
-                        let deliverySettings = {};
-                        try {
-                            const dsSnap = await docSnap.ref.collection('delivery_settings').doc('config').get();
-                            if (dsSnap.exists) {
-                                deliverySettings = dsSnap.data();
-                            }
-                        } catch (e) {
-                            console.warn(`[BusinessService] Failed to load delivery settings for ${docSnap.id}`, e);
-                        }
-
-                        return {
-                            id: docSnap.id, // Return the actual document ID
-                            ref: docSnap.ref,
-                            data: { ...docSnap.data(), ...deliverySettings },
-                            collection: collectionName,
-                            type: getBusinessTypeFromCollection(collectionName)
-                        };
+                        writeBusinessLookupCache(cleanBusinessId, collectionName);
+                        writeBusinessLookupCache(docSnap.id, collectionName);
+                        return await buildBusinessResult({
+                            docRef: docSnap.ref,
+                            docSnap,
+                            collectionName,
+                            includeDeliverySettings,
+                        });
                     }
                 } catch (error) {
                     console.error(`[BusinessService] Error querying merchantId in ${collectionName}:`, error);
@@ -192,24 +251,15 @@ export async function findBusinessById(firestore, businessId, collectionNameHint
                         const docSnap = querySnap.docs[0];
                         console.log(`[BusinessService] Found business via Slug '${slug}' in collection: ${collectionName}`);
 
-                        // Fetch delivery settings sub-collection
-                        let deliverySettings = {};
-                        try {
-                            const dsSnap = await docSnap.ref.collection('delivery_settings').doc('config').get();
-                            if (dsSnap.exists) {
-                                deliverySettings = dsSnap.data();
-                            }
-                        } catch (e) {
-                            console.warn(`[BusinessService] Failed to load delivery settings for ${docSnap.id}`, e);
-                        }
-
-                        return {
-                            id: docSnap.id, // Return the actual document ID
-                            ref: docSnap.ref,
-                            data: { ...docSnap.data(), ...deliverySettings },
-                            collection: collectionName,
-                            type: getBusinessTypeFromCollection(collectionName)
-                        };
+                        writeBusinessLookupCache(cleanBusinessId, collectionName);
+                        writeBusinessLookupCache(slug, collectionName);
+                        writeBusinessLookupCache(docSnap.id, collectionName);
+                        return await buildBusinessResult({
+                            docRef: docSnap.ref,
+                            docSnap,
+                            collectionName,
+                            includeDeliverySettings,
+                        });
                     }
                 } catch (error) {
                     console.error(`[BusinessService] Error querying slug in ${collectionName}:`, error);

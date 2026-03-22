@@ -146,7 +146,9 @@ export async function GET(req) {
             }
 
             if (!businessDoc?.exists) {
-                const fallbackBusiness = await findBusinessById(firestore, businessIdFromQuery);
+                const fallbackBusiness = await findBusinessById(firestore, businessIdFromQuery, {
+                    includeDeliverySettings: false,
+                });
                 if (fallbackBusiness?.ref) {
                     businessDoc = await fallbackBusiness.ref.get();
                     matchedBusinessId = fallbackBusiness.id || businessDoc.id;

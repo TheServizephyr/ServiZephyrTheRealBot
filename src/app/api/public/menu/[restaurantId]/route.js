@@ -246,7 +246,9 @@ export async function GET(req, { params }) {
         let resolvedUsedCollectionCache = usedCollectionCache;
 
         if (!resolvedWinner) {
-            const fallbackBusiness = await findBusinessById(firestore, canonicalRestaurantId);
+            const fallbackBusiness = await findBusinessById(firestore, canonicalRestaurantId, {
+                includeDeliverySettings: false,
+            });
             if (fallbackBusiness?.ref) {
                 const fallbackSnapshot = await fallbackBusiness.ref.get();
                 if (fallbackSnapshot.exists) {

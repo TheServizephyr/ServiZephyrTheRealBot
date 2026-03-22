@@ -4,7 +4,35 @@ import { usePathname } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const HIDE_LAYOUT_EXACT_PATHS = new Set([
+  '/login',
+  '/complete-profile',
+  '/select-role',
+  '/join',
+  '/cart',
+  '/checkout',
+  '/location',
+  '/add-address',
+  '/customer-form',
+  '/about',
+  '/contact',
+]);
+
+const HIDE_LAYOUT_PREFIXES = [
+  '/owner-dashboard',
+  '/admin-dashboard',
+  '/customer-dashboard',
+  '/rider-dashboard',
+  '/order',
+  '/track',
+  '/bill',
+  '/street-vendor-dashboard',
+  '/pre-order',
+  '/split-pay',
+  '/public',
+];
 
 const LayoutWrapper = ({ children }) => {
   const pathname = usePathname();
@@ -23,8 +51,6 @@ const LayoutWrapper = ({ children }) => {
     const currentTheme = resolvedTheme || theme;
     const themeColor = currentTheme === 'dark' ? '#0a0a0a' : '#ffffff';
 
-    console.log('[Theme] Current:', currentTheme, '-> Color:', themeColor);
-
     // Find existing theme-color meta tags and update them
     const metaTags = document.querySelectorAll('meta[name="theme-color"]');
     metaTags.forEach(tag => {
@@ -40,35 +66,11 @@ const LayoutWrapper = ({ children }) => {
     }
   }, [mounted, theme, resolvedTheme]);
 
-  // Define paths where Header and Footer should NOT be shown
-  const noLayoutPaths = [
-    '/owner-dashboard',
-    '/admin-dashboard',
-    '/customer-dashboard',
-    '/rider-dashboard',
-    '/login',
-    '/complete-profile',
-    '/select-role',
-    '/join',
-    '/order',
-    '/cart',
-    '/checkout',
-    '/track',
-    '/location',
-    '/add-address',
-    '/customer-form',
-    '/bill',
-    '/order/placed',
-    '/street-vendor-dashboard',
-    '/pre-order',
-    '/split-pay',
-    '/about',
-    '/contact',
-    '/public'
-  ];
-
-  // Check if the current path starts with any of the noLayoutPaths
-  const hideLayout = noLayoutPaths.some(path => pathname.startsWith(path));
+  const hideLayout = useMemo(() => {
+    if (!pathname) return false;
+    if (HIDE_LAYOUT_EXACT_PATHS.has(pathname)) return true;
+    return HIDE_LAYOUT_PREFIXES.some((pathPrefix) => pathname.startsWith(pathPrefix));
+  }, [pathname]);
 
 
 

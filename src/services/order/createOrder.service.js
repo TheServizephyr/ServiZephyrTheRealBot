@@ -27,6 +27,7 @@ import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
+import { FEATURE_FLAGS } from '@/lib/featureFlags';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
@@ -44,8 +45,6 @@ import {
     buildCODResponse,
     buildRazorpayResponse,
     buildPhonePeResponse,
-    buildAddonResponse,
-    buildSplitBillResponse,
     buildDineInPostPaidResponse,
     buildErrorResponse
 } from './orderResponseBuilder';
@@ -147,6 +146,8 @@ const shouldGeneratePhysicalToken = ({ deliveryType, businessType, dineInModel }
         businessType === 'street-vendor'
     );
 };
+
+const normalizePaymentMethod = (paymentMethod) => String(paymentMethod || '').trim().toLowerCase();
 
 async function verifyBearerUid(req) {
     const authHeader = String(req?.headers?.get?.('authorization') || req?.headers?.authorization || '');
@@ -325,6 +326,7 @@ export async function createOrderV2(req, options = {}) {
             initialStatus = 'pending'
         } = body;
 
+        const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
         const requestedInitialStatus = String(initialStatus || 'pending').trim().toLowerCase();
         const allowedInitialStatuses = new Set(['pending', 'confirmed']);
         const effectiveInitialStatus =
@@ -338,6 +340,7 @@ export async function createOrderV2(req, options = {}) {
         // ✅ CRITICAL: Street vendors DON'T support add-ons!
         // Force new order creation by ignoring existingOrderId
         const finalExistingOrderId = (businessType === 'street-vendor') ? null : existingOrderId;
+        const requiresLegacyAddonFlow = Boolean(finalExistingOrderId);
 
         if (businessType === 'street-vendor' && existingOrderId) {
             console.log(`[createOrderV2] 🚫 Street vendor detected - IGNORING existingOrderId ${existingOrderId}, creating NEW order`);
@@ -346,14 +349,30 @@ export async function createOrderV2(req, options = {}) {
         // ========================================
         // PAYMENT METHOD ROUTING
         // ===============================================
-        // V1: Online payments (Razorpay, PhonePe) - Not tested in V2 yet
-        // V2: COD, Cash, Counter - Tested and working
-        const isOnlinePayment = paymentMethod === 'online' ||
-            paymentMethod === 'razorpay' ||
-            paymentMethod === 'phonepe';
+        // V1 fallback remains available for sensitive online-payment paths until
+        // the dedicated V2 online-payment flag is explicitly enabled.
+        const isOnlinePayment = normalizedPaymentMethod === 'online' ||
+            normalizedPaymentMethod === 'razorpay' ||
+            normalizedPaymentMethod === 'phonepe';
+        const requiresLegacySplitBillFlow = normalizedPaymentMethod === 'split_bill';
 
-        if (isOnlinePayment && deliveryType !== 'car-order') {
-            console.log('[createOrderV2] 🔄 Online payment → Using V1 (Body passed directly)');
+        const shouldFallbackToLegacyOnlinePayment =
+            isOnlinePayment &&
+            deliveryType !== 'car-order' &&
+            !FEATURE_FLAGS.USE_V2_ONLINE_PAYMENT;
+
+        if (requiresLegacyAddonFlow) {
+            console.log('[createOrderV2] 🔄 Add-on order fallback → Using V1 (V2 parity not complete yet)');
+            return await processOrderV1(body, firestore);
+        }
+
+        if (requiresLegacySplitBillFlow) {
+            console.log('[createOrderV2] 🔄 Split bill fallback → Using V1 (V2 parity not complete yet)');
+            return await processOrderV1(body, firestore);
+        }
+
+        if (shouldFallbackToLegacyOnlinePayment) {
+            console.log('[createOrderV2] 🔄 Online payment fallback → Using V1 (feature flag disabled)');
             return await processOrderV1(body, firestore);
         }
 
@@ -398,7 +417,7 @@ export async function createOrderV2(req, options = {}) {
         // 2. Idempotency Reservation
         const idempotencyReservationPromise = idempotencyRepository.reserveAtomic(idempotencyKey, {
             restaurantId,
-            paymentMethod
+            paymentMethod: normalizedPaymentMethod || paymentMethod
         });
 
         // 3. User Identity (Refined to be more parallel)
@@ -497,9 +516,35 @@ export async function createOrderV2(req, options = {}) {
         if (idempotencyResult.isDuplicate) {
             console.log(`[createOrderV2] Duplicate request detected, returning existing order`);
             const existingOrder = await orderRepository.getById(idempotencyResult.orderId);
+            const duplicatePaymentMethod = normalizePaymentMethod(idempotencyResult.paymentMethod || normalizedPaymentMethod);
+            const duplicateGatewayOrderId =
+                idempotencyResult.gatewayOrderId ||
+                idempotencyResult.razorpayOrderId ||
+                idempotencyResult.phonePeOrderId ||
+                null;
+
+            if (duplicatePaymentMethod === 'phonepe') {
+                return NextResponse.json({
+                    message: 'Order already exists',
+                    phonepe_order_id: idempotencyResult.phonePeOrderId || duplicateGatewayOrderId,
+                    firestore_order_id: idempotencyResult.orderId,
+                    token: existingOrder?.trackingToken,
+                    amount: Number(existingOrder?.totalAmount || grandTotal || 0),
+                }, { status: 200 });
+            }
+
+            if (!isOnlinePayment && duplicatePaymentMethod !== 'razorpay') {
+                return NextResponse.json({
+                    message: 'Order already exists',
+                    order_id: idempotencyResult.orderId,
+                    firestore_order_id: idempotencyResult.orderId,
+                    token: existingOrder?.trackingToken
+                }, { status: 200 });
+            }
+
             return NextResponse.json({
                 message: 'Order already exists',
-                razorpay_order_id: idempotencyResult.razorpayOrderId,
+                razorpay_order_id: idempotencyResult.razorpayOrderId || duplicateGatewayOrderId,
                 firestore_order_id: idempotencyResult.orderId,
                 token: existingOrder?.trackingToken
             }, { status: 200 });
@@ -839,7 +884,7 @@ export async function createOrderV2(req, options = {}) {
         // ONLINE PAYMENT FLOW (Razorpay/PhonePe)
         // ========================================
         if (isOnlinePayment) {
-            console.log(`[createOrderV2] Handling online payment: ${paymentMethod}`);
+            console.log(`[createOrderV2] Handling online payment: ${normalizedPaymentMethod}`);
 
             // CRITICAL: Create Firestore order FIRST (same as V1)
             // Status: 'awaiting_payment' (webhook will change to 'pending')
@@ -913,8 +958,18 @@ export async function createOrderV2(req, options = {}) {
                     cgst: serverCgst,
                     sgst: serverSgst,
                     deliveryCharge: validatedDeliveryCharge,
+                    packagingCharge: packagingCharge || 0,
+                    platformFee: platformFee || 0,
+                    convenienceFee: convenienceFee || 0,
+                    serviceFee: serviceFee || 0,
+                    serviceFeeLabel: serviceFee ? (String(serviceFeeLabel || '').trim() || 'Additional Charge') : null,
+                    serviceFeeType: serviceFee ? (serviceFeeType === 'percentage' ? 'percentage' : 'fixed') : null,
+                    serviceFeeValue: serviceFee ? (Number(serviceFeeValue) || 0) : 0,
+                    serviceFeeApplyOn: serviceFee ? (String(serviceFeeApplyOn || '').trim() || 'all') : 'all',
                     tipAmount,
-                    coupon: verifiedCoupon || null
+                    coupon: verifiedCoupon || null,
+                    pickupTime: body.pickupTime || '',
+                    diningPreference: sanitizedDiningPreference,
                 },
                 items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
                 restaurantId: business.id, // ✅ FIX
@@ -928,20 +983,33 @@ export async function createOrderV2(req, options = {}) {
             };
 
             // Create payment gateway order
-            const gateway = paymentService.determineGateway(paymentMethod);
+            const gateway = paymentService.determineGateway(normalizedPaymentMethod);
             const paymentOrder = await paymentService.createPaymentOrder({
                 gateway,
                 amount: serverGrandTotal,
                 orderId: firestoreOrderId,
-                metadata: { restaurantName: business.data.name },
+                metadata: {
+                    restaurantName: business.data.name,
+                    restaurant_id: business.id,
+                    businessType: business.type,
+                    deliveryType,
+                },
                 servizephyrPayload
             });
 
             // Mark idempotency as completed
-            await idempotencyRepository.complete(idempotencyKey, {
+            const idempotencyCompletionPayload = {
                 orderId: firestoreOrderId,
-                razorpayOrderId: paymentOrder.id,
-                paymentMethod
+                paymentMethod: normalizedPaymentMethod,
+                gatewayOrderId: paymentOrder.id,
+            };
+            if (gateway === 'razorpay') {
+                idempotencyCompletionPayload.razorpayOrderId = paymentOrder.id;
+            } else if (gateway === 'phonepe') {
+                idempotencyCompletionPayload.phonePeOrderId = paymentOrder.id;
+            }
+            await idempotencyRepository.complete(idempotencyKey, {
+                ...idempotencyCompletionPayload,
             });
 
             // Token counter already updated atomically in resolveDineInLikeToken transaction
@@ -1044,7 +1112,7 @@ export async function createOrderV2(req, options = {}) {
                 dineInTabId: resolvedDineInTabId || null
             }),
             paymentDetails: [{
-                method: 'cod',
+                method: normalizedPaymentMethod || 'cod',
                 amount: serverGrandTotal,
                 status: 'pending',
                 timestamp: new Date()
@@ -1083,7 +1151,7 @@ export async function createOrderV2(req, options = {}) {
 
         const idempotencyPromise = idempotencyRepository.complete(idempotencyKey, {
             orderId,
-            paymentMethod: 'cod'
+            paymentMethod: normalizedPaymentMethod || 'cod'
         });
 
         const syncProfilePromise = (async () => {

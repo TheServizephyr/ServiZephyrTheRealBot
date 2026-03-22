@@ -33,7 +33,10 @@ export class IdempotencyRepository {
             return {
                 isDuplicate: true,
                 orderId: data.orderId,
-                razorpayOrderId: data.razorpayOrderId
+                razorpayOrderId: data.razorpayOrderId,
+                phonePeOrderId: data.phonePeOrderId,
+                gatewayOrderId: data.gatewayOrderId,
+                paymentMethod: data.paymentMethod
             };
         }
 
@@ -114,7 +117,10 @@ export class IdempotencyRepository {
                     return {
                         isDuplicate: true,
                         orderId: data.orderId,
-                        razorpayOrderId: data.razorpayOrderId
+                        razorpayOrderId: data.razorpayOrderId,
+                        phonePeOrderId: data.phonePeOrderId,
+                        gatewayOrderId: data.gatewayOrderId,
+                        paymentMethod: data.paymentMethod
                     };
                 }
 

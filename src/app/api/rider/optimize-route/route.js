@@ -33,7 +33,9 @@ export async function POST(request) {
         }
 
         // Fetch business location (restaurant/shop/street-vendor)
-        const business = await findBusinessById(db, restaurantId);
+        const business = await findBusinessById(db, restaurantId, {
+            includeDeliverySettings: false,
+        });
         if (!business) {
             console.error('[Route Optimizer] Business not found:', restaurantId);
             return Response.json({ error: 'Business not found' }, { status: 404 });

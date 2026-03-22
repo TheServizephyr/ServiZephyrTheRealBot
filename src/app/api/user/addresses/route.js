@@ -259,7 +259,9 @@ export async function POST(req) {
 
                             // Recalculate delivery charge/range on server after address capture.
                             if (orderData.deliveryType === 'delivery') {
-                                const business = await findBusinessById(firestore, orderData.restaurantId);
+                                const business = await findBusinessById(firestore, orderData.restaurantId, {
+                                    includeDeliverySettings: false,
+                                });
                                 if (!business) {
                                     throw new Error('Business not found for delivery recalculation.');
                                 }

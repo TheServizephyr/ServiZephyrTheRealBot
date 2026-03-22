@@ -13,7 +13,7 @@ import axios from 'axios';
 import { nanoid } from 'nanoid';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime } from '@/lib/whatsapp-realtime';
-import { issueGuestAccessRef } from '@/lib/public-auth';
+import { issueGuestAccessRef, WHATSAPP_GUEST_SESSION_TTL_MS } from '@/lib/public-auth';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -225,7 +225,7 @@ const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) 
             businessId: business.id,
             channel: 'whatsapp',
             scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-            ttlMs: 24 * 60 * 60 * 1000,
+            ttlMs: WHATSAPP_GUEST_SESSION_TTL_MS,
         }),
         firestore.collection('orders')
             .where('restaurantId', '==', business.id)
@@ -649,7 +649,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     businessId,
                     channel: 'whatsapp',
                     scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-                    ttlMs: 24 * 60 * 60 * 1000,
+                    ttlMs: WHATSAPP_GUEST_SESSION_TTL_MS,
                 });
                 console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
 
@@ -703,7 +703,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                         businessId: business.id,
                         channel: 'whatsapp',
                         scopes: ['customer_lookup', 'active_orders', 'checkout', 'track_orders'],
-                        ttlMs: 24 * 60 * 60 * 1000,
+                        ttlMs: WHATSAPP_GUEST_SESSION_TTL_MS,
                     });
 
                     let trackingPath = 'delivery/'; // Default to delivery

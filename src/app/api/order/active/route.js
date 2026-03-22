@@ -16,11 +16,74 @@ import {
 import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 export const dynamic = 'force-dynamic';
+const DEFAULT_ROUTE_GUEST_SCOPES = ['customer_lookup', 'active_orders', 'checkout', 'track_orders'];
 
 const getClientIp = (req) => {
     const forwardedFor = req.headers.get('x-forwarded-for') || '';
     return forwardedFor.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
 };
+
+const normalizeScopes = (scopes = []) => [...new Set((Array.isArray(scopes) ? scopes : [scopes]).map((value) => String(value || '').trim()).filter(Boolean))];
+
+const toDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+async function resolveGuestAccessRefForRoute(firestore, ref, requiredScopes = []) {
+    const resolved = await resolveGuestAccessRef(firestore, ref, {
+        requiredScopes,
+        allowLegacy: true,
+        touch: true,
+    });
+    if (resolved) return resolved;
+
+    const safeRef = String(ref || '').trim();
+    if (!safeRef) return null;
+
+    const sessionDoc = await firestore.collection('guest_sessions').doc(safeRef).get();
+    if (!sessionDoc.exists) {
+        console.warn(`[API /order/active] guest_sessions/${safeRef} not found during fallback resolution.`);
+        return null;
+    }
+
+    const sessionData = sessionDoc.data() || {};
+    const expiresAt = toDate(sessionData.expiresAt);
+    const expired = !expiresAt || Date.now() >= expiresAt.getTime();
+    const revoked = String(sessionData.status || '').toLowerCase() === 'revoked';
+    const effectiveScopes = normalizeScopes(
+        Array.isArray(sessionData.scopes) && sessionData.scopes.length > 0
+            ? sessionData.scopes
+            : DEFAULT_ROUTE_GUEST_SCOPES
+    );
+    const missingScopes = normalizeScopes(requiredScopes).filter((scope) => !effectiveScopes.includes(scope));
+
+    if (expired || revoked || missingScopes.length > 0) {
+        console.warn('[API /order/active] Fallback ref inspection rejected session.', {
+            ref: safeRef,
+            expired,
+            revoked,
+            missingScopes,
+            subjectId: String(sessionData.subjectId || '').trim(),
+            status: String(sessionData.status || ''),
+        });
+        return null;
+    }
+
+    console.warn(`[API /order/active] Resolved ref ${safeRef} via direct guest_sessions fallback.`);
+    return {
+        subjectId: String(sessionData.subjectId || '').trim(),
+        subjectType: String(sessionData.subjectType || 'guest').trim() || 'guest',
+        phone: String(sessionData.phone || '').trim(),
+        businessId: String(sessionData.businessId || '').trim(),
+        scopes: effectiveScopes,
+        sessionId: sessionDoc.id,
+        source: 'session_ref_fallback',
+        legacy: false,
+    };
+}
 
 // GET: Fetch order data by tabId, phone, or ref
 export async function GET(req) {
@@ -102,16 +165,17 @@ export async function GET(req) {
 
             // Resolve Target Identity
             if (ref) {
-                const refSession = await resolveGuestAccessRef(firestore, ref, {
-                    requiredScopes: ['active_orders'],
-                    allowLegacy: true,
-                    touch: true,
-                });
+                const refSession = await resolveGuestAccessRefForRoute(firestore, ref, ['active_orders']);
                 targetCustomerId = refSession?.subjectId || null;
                 if (!targetCustomerId) {
-                    return respond({ message: 'Invalid Ref' }, 400, {
-                        outcome: 'invalid_ref',
-                    });
+                    if (phone) {
+                        targetPhone = phone.replace(/\D/g, '').slice(-10);
+                        console.warn(`[API /order/active] Ref invalid, falling back to phone lookup for ${targetPhone ? 'provided phone' : 'missing phone'}`);
+                    } else {
+                        return respond({ message: 'Invalid Ref' }, 400, {
+                            outcome: 'invalid_ref',
+                        });
+                    }
                 }
                 if (refSession && refSession.legacy !== true) {
                     isAuthorized = true;

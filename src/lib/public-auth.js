@@ -8,6 +8,8 @@ export const GUEST_SESSION_COOKIE_NAME = 'auth_guest_session';
 const DEFAULT_GUEST_SCOPES = ['customer_lookup', 'active_orders', 'checkout', 'track_orders'];
 const DEFAULT_GUEST_SESSION_MAX_AGE_SEC = 24 * 60 * 60;
 const DEFAULT_GUEST_SESSION_TTL_MS = DEFAULT_GUEST_SESSION_MAX_AGE_SEC * 1000;
+export const WHATSAPP_GUEST_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const WHATSAPP_GUEST_SESSION_RENEW_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const RATE_LIMIT_MEMORY_BUCKETS = globalThis.__servizephyrRateLimitBuckets || new Map();
 globalThis.__servizephyrRateLimitBuckets = RATE_LIMIT_MEMORY_BUCKETS;
 
@@ -201,14 +203,19 @@ export async function issueGuestAccessRef(firestore, {
     throw new Error('Guest ref subject is required.');
   }
 
+  const safeChannel = String(channel || 'whatsapp').trim() || 'whatsapp';
+  const requestedTtlMs = Number(ttlMs);
+  const effectiveTtlMs = requestedTtlMs > 0
+    ? requestedTtlMs
+    : (safeChannel === 'whatsapp' ? WHATSAPP_GUEST_SESSION_TTL_MS : DEFAULT_GUEST_SESSION_TTL_MS);
   const ref = nanoid(32);
-  const expiresAt = new Date(Date.now() + Math.max(60_000, Number(ttlMs) || 0));
+  const expiresAt = new Date(Date.now() + Math.max(60_000, effectiveTtlMs));
   await firestore.collection('guest_sessions').doc(ref).set({
     subjectId: safeSubjectId,
     subjectType: String(subjectType || 'guest').trim() || 'guest',
     phone: String(phone || '').trim(),
     businessId: String(businessId || '').trim(),
-    channel: String(channel || 'whatsapp').trim() || 'whatsapp',
+    channel: safeChannel,
     scopes: normalizeScopes(scopes),
     status: 'active',
     createdAt: FieldValue.serverTimestamp(),
@@ -234,17 +241,53 @@ export async function resolveGuestAccessRef(firestore, ref, {
     const expiresAt = toDate(sessionData.expiresAt);
     const expired = !expiresAt || Date.now() >= expiresAt.getTime();
     const revoked = String(sessionData.status || '').toLowerCase() === 'revoked';
+    const safeChannel = String(sessionData.channel || '').trim().toLowerCase();
+    const effectiveScopes = normalizeScopes(
+      Array.isArray(sessionData.scopes) && sessionData.scopes.length > 0
+        ? sessionData.scopes
+        : DEFAULT_GUEST_SCOPES
+    );
 
-    if (!expired && !revoked && scopesSatisfied(sessionData.scopes || [], requiredScopes)) {
+    if (!expired && !revoked && scopesSatisfied(effectiveScopes, requiredScopes)) {
       if (touch) {
         void sessionDoc.ref.set({ lastUsedAt: FieldValue.serverTimestamp() }, { merge: true });
       }
       return {
         subjectId: String(sessionData.subjectId || '').trim(),
         subjectType: String(sessionData.subjectType || 'guest').trim() || 'guest',
-        scopes: normalizeScopes(sessionData.scopes || []),
+        phone: String(sessionData.phone || '').trim(),
+        businessId: String(sessionData.businessId || '').trim(),
+        scopes: effectiveScopes,
         sessionId: sessionDoc.id,
         source: 'session_ref',
+        legacy: false,
+      };
+    }
+
+    const renewableWhatsappSession =
+      expired
+      && !revoked
+      && safeChannel === 'whatsapp'
+      && expiresAt
+      && (Date.now() - expiresAt.getTime()) <= WHATSAPP_GUEST_SESSION_RENEW_GRACE_MS
+      && scopesSatisfied(effectiveScopes, requiredScopes);
+
+    if (renewableWhatsappSession) {
+      const renewedExpiresAt = new Date(Date.now() + WHATSAPP_GUEST_SESSION_TTL_MS);
+      await sessionDoc.ref.set({
+        expiresAt: renewedExpiresAt,
+        lastUsedAt: FieldValue.serverTimestamp(),
+        status: 'active',
+      }, { merge: true });
+
+      return {
+        subjectId: String(sessionData.subjectId || '').trim(),
+        subjectType: String(sessionData.subjectType || 'guest').trim() || 'guest',
+        phone: String(sessionData.phone || '').trim(),
+        businessId: String(sessionData.businessId || '').trim(),
+        scopes: effectiveScopes,
+        sessionId: sessionDoc.id,
+        source: 'renewed_session_ref',
         legacy: false,
       };
     }
@@ -259,6 +302,8 @@ export async function resolveGuestAccessRef(firestore, ref, {
   return {
     subjectId: legacySubjectId,
     subjectType: String(legacySubjectId).startsWith('g_') ? 'guest' : 'user',
+    phone: '',
+    businessId: '',
     scopes: ['legacy_ref'],
     sessionId: '',
     source: 'legacy_ref',
