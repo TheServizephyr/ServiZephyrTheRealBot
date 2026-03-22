@@ -22,6 +22,7 @@ import {
   MapPin,
   QrCode,
   UserCircle,
+  FilePlus,
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -61,6 +62,7 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
   const isStoreBusiness = businessType === 'store' || businessType === 'shop';
   const items = [
     { name: "Dashboard", icon: LayoutDashboard, href: appendParam("/owner-dashboard"), featureId: "dashboard" },
+    { name: "Manual Order", icon: FilePlus, href: appendParam("/owner-dashboard/manual-order"), featureId: "manual-order" },
     { name: "Live Orders", icon: ClipboardList, href: appendParam("/owner-dashboard/live-orders"), featureId: "live-orders" },
     isStoreBusiness
       ? { name: "Items", icon: PackageIcon, href: appendParam("/owner-dashboard/menu"), featureId: "menu" }

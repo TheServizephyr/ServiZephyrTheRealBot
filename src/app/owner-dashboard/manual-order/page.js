@@ -2,17 +2,17 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2 } from 'lucide-react';
+import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
 import { useReactToPrint } from 'react-to-print';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { useToast } from "@/components/ui/use-toast";
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -40,23 +40,34 @@ const isEditableTarget = (target) => {
     return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
 };
 
-function CustomBillPage() {
+function ManualOrderPage() {
+    const { toast } = useToast();
     const [menu, setMenu] = useState({});
     const [cart, setCart] = useState([]);
     const [loading, setLoading] = useState(true);
     const [restaurant, setRestaurant] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isSavingBillHistory, setIsSavingBillHistory] = useState(false);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const billPrintRef = useRef();
+    const tablePrintRef = useRef(null);
 
     const [customerDetails, setCustomerDetails] = useState({
         name: '',
         phone: '',
         address: ''
     });
+    const [orderType, setOrderType] = useState('delivery'); // 'delivery', 'dine-in', 'pickup'
+    const [activeTable, setActiveTable] = useState(null);
+    const [manualTables, setManualTables] = useState([]);
+    const [isLoadingTables, setIsLoadingTables] = useState(false);
+    const [isCreateTableModalOpen, setIsCreateTableModalOpen] = useState(false);
+    const [newTableName, setNewTableName] = useState('');
+    const [selectedOccupiedTable, setSelectedOccupiedTable] = useState(null);
+    const [tableActionLoading, setTableActionLoading] = useState(false);
+    const [tableToPrint, setTableToPrint] = useState(null); // Holds table data briefly for printing
     const [deliveryChargeInput, setDeliveryChargeInput] = useState('0');
     const [additionalChargeNameInput, setAdditionalChargeNameInput] = useState('');
     const [additionalChargeInput, setAdditionalChargeInput] = useState('0');
@@ -68,7 +79,6 @@ function CustomBillPage() {
     const [activeCategory, setActiveCategory] = useState('');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isCreatingOrder, setIsCreatingOrder] = useState(false);
-    const [isSavingBillHistory, setIsSavingBillHistory] = useState(false);
     const [isNoAddressDialogOpen, setIsNoAddressDialogOpen] = useState(false);
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
@@ -131,8 +141,23 @@ function CustomBillPage() {
     // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
+        documentTitle: `Bill-${Date.now()}`,
         onAfterPrint: () => setIsBillModalOpen(false), // Close modal after printing
     });
+
+    const handleTablePrint = useReactToPrint({
+        content: () => tablePrintRef.current,
+        documentTitle: `Table-Bill-${Date.now()}`,
+    });
+
+    useEffect(() => {
+        if (tableToPrint && handleTablePrint) {
+            handleTablePrint();
+            // Automatically clear after a short delay so consecutive prints work
+            const timer = setTimeout(() => setTableToPrint(null), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [tableToPrint, handleTablePrint]);
 
     useEffect(() => {
         if (hasHydratedFromCacheRef.current) return;
@@ -258,13 +283,10 @@ function CustomBillPage() {
                     if (!isMounted) return;
                     if (!settingsRes.ok) {
                         const settingsError = await settingsRes.json().catch(() => ({}));
-                        setInfoDialog((prev) => {
-                            if (prev.isOpen) return prev;
-                            return {
-                                isOpen: true,
-                                title: 'Warning',
-                                message: `Menu loaded, but restaurant details could not load: ${settingsError?.message || 'Failed to fetch settings.'}`,
-                            };
+                        toast({
+                            title: 'Warning',
+                            description: `Menu loaded, but restaurant details could not load: ${settingsError?.message || 'Failed to fetch settings.'}`,
+                            variant: 'warning'
                         });
                         return;
                     }
@@ -294,7 +316,7 @@ function CustomBillPage() {
             } catch (error) {
                 if (isMounted) {
                     setCacheStatus('error');
-                    setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load menu: ${error.message}` });
+                    toast({ title: 'Error', description: `Could not load menu: ${error.message}`, variant: 'destructive' });
                 }
             } finally {
                 if (isMounted) {
@@ -312,7 +334,34 @@ function CustomBillPage() {
             isMounted = false;
             unsubscribe();
         };
-    }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload]);
+    }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload, toast]);
+
+    const fetchManualTables = useCallback(async () => {
+        setIsLoadingTables(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const res = await fetch(buildScopedUrl('/api/owner/manual-tables'), {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setManualTables(data.tables || []);
+            }
+        } catch (error) {
+            console.error('Error fetching manual tables:', error);
+            // Ignore toast or define later if we missed it
+        } finally {
+            setIsLoadingTables(false);
+        }
+    }, [buildScopedUrl]);
+
+    useEffect(() => {
+        if (orderType === 'dine-in') {
+            fetchManualTables();
+        }
+    }, [orderType, fetchManualTables]);
 
     // Compute normalized search query
     const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
@@ -690,7 +739,7 @@ function CustomBillPage() {
                 setIsBillModalOpen(false);
             }
             if (notifyUser) {
-                setInfoDialog({ isOpen: true, title: 'Printed', message: 'Receipt sent to thermal printer (USB).' });
+                toast({ title: 'Printed', description: 'Receipt sent to thermal printer (USB).' });
             }
             return { ok: true, transport: 'usb' };
         } catch (usbError) {
@@ -710,7 +759,7 @@ function CustomBillPage() {
                 setIsBillModalOpen(false);
             }
             if (notifyUser) {
-                setInfoDialog({ isOpen: true, title: 'Printed', message: 'Receipt sent to thermal printer (Serial).' });
+                toast({ title: 'Printed', description: 'Receipt sent to thermal printer (Serial).' });
             }
             return { ok: true, transport: 'serial' };
         } catch (serialError) {
@@ -729,17 +778,17 @@ function CustomBillPage() {
 
         if (notifyUser) {
             const readableError = transportErrors.map((err, idx) => `${idx === 0 ? 'USB' : 'Serial'}: ${err?.message || 'Unknown error'}`).join('\n');
-            setInfoDialog({
-                isOpen: true,
+            toast({
                 title: 'Print Failed',
-                message: `Could not print using USB or Serial.\n${readableError}`,
+                description: `Could not print using USB or Serial.\n${readableError}`,
+                variant: 'destructive'
             });
         }
 
         return { ok: false, error: lastError };
     };
 
-    const saveCustomBillHistory = async (printedVia = 'browser') => {
+    const saveCustomBillHistory = async (printedVia = 'browser', typeOverride = null) => {
         const user = auth.currentUser;
         if (!user) throw new Error('Authentication required.');
         const idToken = await user.getIdToken();
@@ -763,7 +812,7 @@ function CustomBillPage() {
             },
             body: JSON.stringify({
                 billDraftId,
-                printedVia,
+                printedVia: typeOverride || orderType, // Use printedVia/orderType to distinguish offline types
                 customerDetails,
                 items: historyItems,
                 billDetails: {
@@ -788,82 +837,121 @@ function CustomBillPage() {
         return data;
     };
 
-    const submitCreateOrder = async () => {
+    const handleOccupyTable = async () => {
+        if (!activeTable) return;
+        setTableActionLoading(true);
         try {
             const user = auth.currentUser;
-            if (!user) throw new Error('Authentication required.');
             const idToken = await user.getIdToken();
+            
+            const currentOrder = {
+                items: cart,
+                customerDetails,
+                subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal,
+                orderType: 'dine-in'
+            };
 
-            setIsCreatingOrder(true);
-
-            const orderItems = cart.map((item) => ({
-                id: item.id,
-                name: item.name,
-                categoryId: item.categoryId,
-                isVeg: item.isVeg,
-                quantity: item.quantity,
-                price: item.price,
-                totalPrice: item.totalPrice,
-                cartItemId: item.cartItemId,
-                portion: item.portion,
-                selectedAddOns: item.selectedAddOns || [],
-            }));
-
-            const endpoint = accessQuery ? `/api/owner/custom-bill/create-order?${accessQuery}` : '/api/owner/custom-bill/create-order';
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`,
-                },
-                body: JSON.stringify({
-                    customerDetails,
-                    items: orderItems,
-                    deliveryCharge,
-                    serviceFee: additionalCharge,
-                    serviceFeeLabel: additionalChargeLabel,
-                    notes: '',
-                }),
+            const res = await fetch(buildScopedUrl(`/api/owner/manual-tables/${activeTable.id}`), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ action: 'occupy', currentOrder })
             });
-
-            const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data?.message || 'Failed to create order.');
-            }
-
-            if (!data?.duplicateRequest) {
-                if (billPrintRef.current && handlePrint) {
-                    handlePrint();
-                }
-            }
-
-            resetCurrentBill();
+            
+            if (!res.ok) throw new Error('Failed to save to table');
+            
+            toast({ title: 'Saved', description: `Order saved to ${activeTable.name}` });
+            setActiveTable(null);
+            handleClear(); // Clear cart
+            fetchManualTables();
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: 'Create Order Failed', message: error.message });
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
         } finally {
-            setIsCreatingOrder(false);
+            setTableActionLoading(false);
         }
     };
 
-    const handleCreateOrder = async () => {
-        if (!cart.length) {
-            setInfoDialog({ isOpen: true, title: 'Missing Items', message: 'At least one item is required to create an order.' });
-            return;
+    const handleCreateTable = async () => {
+        if (!newTableName.trim()) return;
+        setTableActionLoading(true);
+        try {
+            const user = auth.currentUser;
+            const idToken = await user.getIdToken();
+            const res = await fetch(buildScopedUrl('/api/owner/manual-tables'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ name: newTableName })
+            });
+            
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to create table');
+            }
+            
+            toast({ title: 'Success', description: 'Table created' });
+            setIsCreateTableModalOpen(false);
+            setNewTableName('');
+            fetchManualTables();
+        } catch (error) {
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        } finally {
+            setTableActionLoading(false);
         }
+    };
 
-        const phoneDigits = String(customerDetails.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) {
-            setInfoDialog({ isOpen: true, title: 'Invalid Phone', message: 'Please enter a valid customer phone number.' });
-            return;
+    const handleSettleTable = async (tableData = null) => {
+        const tableToSettle = tableData?.id ? tableData : selectedOccupiedTable;
+        if (!tableToSettle || !tableToSettle.currentOrder) return;
+        setTableActionLoading(true);
+        try {
+            const user = auth.currentUser;
+            const idToken = await user.getIdToken();
+            
+            const historyItems = tableToSettle.currentOrder.items.map((item) => ({
+                id: item.id, name: item.name, categoryId: item.categoryId,
+                quantity: item.quantity, price: item.price, totalPrice: item.totalPrice, portion: item.portion || null,
+            }));
+
+            const historyRes = await fetch(buildScopedUrl('/api/owner/custom-bill/history'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({
+                    billDraftId: createBillDraftId(),
+                    printedVia: 'dine-in',
+                    customerDetails: tableToSettle.currentOrder.customerDetails || {},
+                    items: historyItems,
+                    billDetails: {
+                        subtotal: tableToSettle.currentOrder.subtotal,
+                        cgst: tableToSettle.currentOrder.cgst,
+                        sgst: tableToSettle.currentOrder.sgst,
+                        deliveryCharge: tableToSettle.currentOrder.deliveryCharge,
+                        serviceFee: tableToSettle.currentOrder.additionalCharge,
+                        serviceFeeLabel: tableToSettle.currentOrder.additionalChargeLabel,
+                        grandTotal: tableToSettle.currentOrder.grandTotal,
+                    },
+                }),
+            });
+
+            if (!historyRes.ok) throw new Error('Failed to save bill history');
+
+            // 2. Free the table
+            const freeRes = await fetch(buildScopedUrl(`/api/owner/manual-tables/${tableToSettle.id}`), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ action: 'free' })
+            });
+
+            if (!freeRes.ok) throw new Error('Failed to free table');
+
+            toast({ title: 'Settled', description: `Table ${tableToSettle.name} settled and freed.` });
+            if (!tableData?.id) {
+                setSelectedOccupiedTable(null);
+            }
+            fetchManualTables();
+        } catch (error) {
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        } finally {
+            setTableActionLoading(false);
         }
-
-        const hasAddress = !!String(customerDetails.address || '').trim();
-        if (!hasAddress) {
-            setIsNoAddressDialogOpen(true);
-            return;
-        }
-
-        await submitCreateOrder();
     };
 
 
@@ -873,7 +961,7 @@ function CustomBillPage() {
         setIsSavingBillHistory(true);
         let saveError = null;
         try {
-            await saveCustomBillHistory('browser');
+            await saveCustomBillHistory('browser', orderType);
         } catch (error) {
             saveError = error;
             console.error('[Custom Bill] Failed to save browser-print history:', error);
@@ -886,11 +974,10 @@ function CustomBillPage() {
         }
 
         if (saveError) {
-            setInfoDialog({
-                isOpen: true,
-                title: 'Printed (History Pending)',
-                message: `Bill print ho gaya, lekin history save nahi hui: ${saveError.message}`,
-            });
+            toast({ title: 'Printed', description: `Printed, but history failed: ${saveError.message}`, variant: 'destructive' });
+        } else {
+            toast({ title: 'Success', description: 'Bill printed and saved.' });
+            handleClear(); // Automatically clear cart after success for Delivery/Pickup
         }
     };
 
@@ -918,17 +1005,17 @@ function CustomBillPage() {
 
             try {
                 await saveCustomBillHistory('direct_usb');
-                setInfoDialog({ isOpen: true, title: 'Printed', message: 'Receipt printed and saved in bill history.' });
+                toast({ title: 'Printed', description: 'Receipt printed and saved in bill history.' });
             } catch (historyError) {
                 console.error('[Custom Bill] Failed to save direct-print history:', historyError);
-                setInfoDialog({
-                    isOpen: true,
+                toast({
                     title: 'Printed (History Pending)',
-                    message: `Receipt print ho gaya, lekin history save nahi hui: ${historyError.message}`,
+                    description: `Receipt print ho gaya, lekin history save nahi hui: ${historyError.message}`,
+                    variant: 'warning'
                 });
             }
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: 'Print Failed', message: error.message });
+            toast({ title: 'Print Failed', description: error.message, variant: 'destructive' });
         } finally {
             setIsSavingBillHistory(false);
         }
@@ -936,13 +1023,6 @@ function CustomBillPage() {
 
     return (
         <div className="text-foreground bg-background min-h-screen overflow-y-auto lg:min-h-0 lg:h-[calc(100dvh-88px)] lg:overflow-hidden">
-            <InfoDialog
-                isOpen={infoDialog.isOpen}
-                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-                title={infoDialog.title}
-                message={infoDialog.message}
-            />
-
             <Dialog open={isNoAddressDialogOpen} onOpenChange={setIsNoAddressDialogOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-md">
                     <DialogHeader>
@@ -1069,7 +1149,109 @@ function CustomBillPage() {
                 </DialogContent>
             </Dialog>
 
-            <style jsx global>{`
+            {/* Create Table Modal */}
+            <Dialog open={isCreateTableModalOpen} onOpenChange={setIsCreateTableModalOpen}>
+                <DialogContent className="bg-card border-border max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Create New Table</DialogTitle>
+                        <DialogDescription>Enter a name or identifier for the new table.</DialogDescription>
+                    </DialogHeader>
+                    <div className="py-2">
+                        <Label>Table Name / DB</Label>
+                        <input
+                            type="text"
+                            value={newTableName}
+                            onChange={(e) => setNewTableName(e.target.value)}
+                            placeholder="e.g. Table 1, T2"
+                            className="w-full mt-2 p-2 border rounded-md bg-input border-border focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            autoFocus
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsCreateTableModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleCreateTable} disabled={!newTableName.trim() || tableActionLoading} className="bg-primary hover:bg-primary/90">
+                            {tableActionLoading ? 'Creating...' : 'Create'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Occupied Table Modal */}
+            <Dialog open={!!selectedOccupiedTable} onOpenChange={(open) => !open && setSelectedOccupiedTable(null)}>
+                <DialogContent className="bg-card border-border text-foreground max-w-sm">
+                    {selectedOccupiedTable && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle>{selectedOccupiedTable.name}</DialogTitle>
+                                <DialogDescription className="text-primary font-medium">Currently Occupied</DialogDescription>
+                            </DialogHeader>
+                            <div className="py-2 space-y-3">
+                                {selectedOccupiedTable.currentOrder?.items?.length > 0 && (
+                                    <div className="max-h-[30vh] overflow-y-auto pr-2 custom-scrollbar space-y-3">
+                                        {selectedOccupiedTable.currentOrder.items.map((item, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                                                <div>
+                                                    <span className="font-medium">{item.name}</span>
+                                                    {item.portion && <span className="text-xs text-muted-foreground ml-1">({item.portion.name})</span>}
+                                                    <div className="text-xs text-muted-foreground mt-0.5">Qty: {item.quantity} × {formatCurrency(item.price)}</div>
+                                                </div>
+                                                <span className="font-semibold">{formatCurrency(item.totalPrice)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="p-3 bg-muted rounded-lg space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">Items:</span>
+                                        <span className="font-semibold">{selectedOccupiedTable.currentOrder?.items?.length || 0}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-muted-foreground">Subtotal:</span>
+                                        <span className="font-semibold">{formatCurrency(selectedOccupiedTable.currentOrder?.subtotal || 0)}</span>
+                                    </div>
+                                    <div className="flex justify-between font-bold text-base pt-2 border-t border-border">
+                                        <span>Total:</span>
+                                        <span className="text-primary">{formatCurrency(selectedOccupiedTable.currentOrder?.grandTotal || 0)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <DialogFooter className="flex-col sm:flex-col gap-2 mt-2" style={{ display: 'flex' }}>
+                                <Button
+                                    onClick={() => {
+                                        const order = selectedOccupiedTable.currentOrder;
+                                        if (order) {
+                                            setCart(order.items || []);
+                                            if (order.customerDetails) setCustomerDetails(order.customerDetails);
+                                            if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
+                                            if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
+                                            if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
+                                        }
+                                        setActiveTable(selectedOccupiedTable);
+                                        setSelectedOccupiedTable(null);
+                                    }}
+                                    variant="outline"
+                                    className="w-full border-2 border-primary/20 hover:bg-primary/10"
+                                    disabled={tableActionLoading}
+                                >
+                                    <Edit className="w-4 h-4 mr-2" /> Add/Edit Items
+                                </Button>
+                                <Button
+                                    onClick={() => {
+                                        setTableToPrint(selectedOccupiedTable); // Triggers print
+                                        handleSettleTable();
+                                    }}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold"
+                                    disabled={tableActionLoading}
+                                >
+                                    <Printer className="w-4 h-4 mr-2" /> Settle, Print & Free
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+    <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 5px;
                 }
@@ -1091,6 +1273,24 @@ function CustomBillPage() {
                     <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center flex-wrap gap-2">
                             <h1 className="text-lg font-bold tracking-tight">Manual Billing</h1>
+
+                            <div className="flex bg-muted p-1 rounded-lg ml-0 sm:ml-2">
+                                {['delivery', 'dine-in', 'pickup'].map(mode => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => {
+                                            setOrderType(mode);
+                                            if (mode !== 'dine-in') setActiveTable(null);
+                                        }}
+                                        className={cn(
+                                            "px-3 py-1.5 text-sm font-semibold rounded-md capitalize transition-colors",
+                                            orderType === mode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10"
+                                        )}
+                                    >
+                                        {mode.replace('-', ' ')}
+                                    </button>
+                                ))}
+                            </div>
 
                             <Link href={historyUrl}>
                                 <Button
@@ -1137,6 +1337,96 @@ function CustomBillPage() {
                         </div>
                     </div>
 
+                    {orderType === 'dine-in' && !activeTable ? (
+                        <div className="flex-1 overflow-y-auto p-4 bg-muted/20 border-t border-border mt-4 rounded-xl">
+                            {isLoadingTables ? (
+                                <div className="flex justify-center items-center h-full">
+                                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                    {manualTables.map(table => {
+                                        if (table.status === 'occupied') {
+                                            return (
+                                                <div 
+                                                    key={table.id}
+                                                    className="relative flex flex-col p-4 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[140px] text-center overflow-hidden"
+                                                    onClick={() => setSelectedOccupiedTable(table)}
+                                                >
+                                                    <h3 className="font-bold text-3xl mb-1 text-white">{table.name}</h3>
+                                                    <div className="flex flex-col items-center mb-2">
+                                                        <span className="text-xl font-bold text-amber-500">{formatCurrency(table.currentOrder?.grandTotal || 0)}</span>
+                                                        <span className="text-sm text-gray-400 mt-1">{table.currentOrder?.items?.length || 0} {table.currentOrder?.items?.length === 1 ? 'item' : 'items'}</span>
+                                                    </div>
+                                                    
+                                                    <div className="mt-auto pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                                                        <button 
+                                                           onClick={(e) => {
+                                                               e.stopPropagation();
+                                                               const order = table.currentOrder;
+                                                               if (order) {
+                                                                   setCart(order.items || []);
+                                                                   if (order.customerDetails) setCustomerDetails(order.customerDetails);
+                                                                   if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
+                                                                   if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
+                                                                   if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
+                                                               }
+                                                               setActiveTable(table);
+                                                               setSelectedOccupiedTable(null);
+                                                           }}
+                                                           className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-amber-500 hover:bg-[#333] transition-colors"
+                                                           title="Add/Edit Items"
+                                                        >
+                                                            <Plus size={18} />
+                                                        </button>
+                                                        <button 
+                                                           onClick={async (e) => {
+                                                               e.stopPropagation();
+                                                               setTableToPrint(table); // Triggers direct browser print via useEffect
+                                                               await handleSettleTable(table);
+                                                           }}
+                                                           disabled={tableActionLoading}
+                                                           className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-white hover:bg-[#333] transition-colors"
+                                                           title="Settle & Free Table"
+                                                        >
+                                                            {tableActionLoading ? (
+                                                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                            ) : (
+                                                                <Printer size={18} />
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <div 
+                                                key={table.id}
+                                                onClick={() => {
+                                                    setActiveTable(table);
+                                                    handleClear(); // Reset cart for new table safely
+                                                }}
+                                                className="cursor-pointer p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[140px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md"
+                                            >
+                                                <h3 className="font-bold text-lg mb-1">{table.name}</h3>
+                                                <span className="text-xs text-muted-foreground uppercase tracking-widest flex items-center gap-1"><CheckCircle size={12} /> Available</span>
+                                            </div>
+                                        );
+                                    })}
+                                    
+                                    {/* Create Table Card */}
+                                    <div 
+                                        onClick={() => setIsCreateTableModalOpen(true)}
+                                        className="cursor-pointer p-4 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:bg-muted/30 hover:border-primary/50 transition-all flex flex-col items-center justify-center min-h-[120px] text-center text-muted-foreground hover:text-foreground"
+                                    >
+                                        <PlusCircle className="w-8 h-8 mb-2" />
+                                        <span className="font-semibold text-sm">Create Table</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
                     <div className="flex gap-4 flex-1 min-h-0 relative">
                         {/* CATEGORY NAVIGATION SIDEBAR */}
                         <div
@@ -1273,6 +1563,7 @@ function CustomBillPage() {
                             ))}
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Right Side: Live Bill Preview (30%) */}
@@ -1342,36 +1633,63 @@ function CustomBillPage() {
                                 />
                             </div>
                         </div>
-                        <div className="p-3 bg-muted/50 rounded-b-lg border-t border-border grid grid-cols-3 gap-2 no-print">
-                            <Button
-                                onClick={handleCreateOrder}
-                                className="w-full h-10 px-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-900/30 transition-all"
-                                disabled={cart.length === 0 || isCreatingOrder}
-                            >
-                                {isCreatingOrder ? 'Creating...' : 'Create Order'}
-                            </Button>
+                        <div className="p-3 bg-muted/50 rounded-b-lg border-t border-border flex gap-2 no-print">
+                            {orderType === 'dine-in' ? (
+                                <Button
+                                    onClick={handleOccupyTable}
+                                    className="flex-1 h-10 px-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-md shadow-indigo-900/30 transition-all"
+                                    disabled={cart.length === 0 || tableActionLoading}
+                                >
+                                    {tableActionLoading ? 'Saving...' : 'Save to Table'}
+                                </Button>
+                            ) : (
+                                <Button
+                                    onClick={handleBrowserPrintForBill}
+                                    className="flex-1 h-10 px-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-900/30 transition-all"
+                                    disabled={cart.length === 0 || isSavingBillHistory}
+                                >
+                                    <Printer className="mr-2 h-4 w-4" /> Save & Print
+                                </Button>
+                            )}
                             <Button
                                 onClick={() => setIsEditModalOpen(true)}
                                 variant="outline"
-                                className="w-full h-10 px-2 text-sm border-2 border-primary/50 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
-                                disabled={cart.length === 0 || isCreatingOrder}
+                                className="w-auto px-4 h-10 text-sm border-2 border-primary/50 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
+                                disabled={cart.length === 0}
                             >
-                                <Edit className="mr-1 h-4 w-4 text-primary" /> IDT
-                            </Button>
-                            <Button
-                                onClick={handleBrowserPrintForBill}
-                                className="w-full h-10 px-2 text-sm bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md shadow-primary/20 transition-all"
-                                disabled={cart.length === 0 || isCreatingOrder}
-                            >
-                                <Printer className="mr-1 h-4 w-4" /> Print
+                                <Edit className="h-4 w-4 text-primary" />
                             </Button>
                         </div>
                     </div>
                 </div>
             </div>
-        </div >
+            
+            {/* Hidden Table Print Component */}
+            <div className="hidden">
+                <div ref={tablePrintRef} className="preview-bill">
+                    {tableToPrint && tableToPrint.currentOrder && (
+                        <BillToPrint
+                            order={{ orderDate: new Date() }}
+                            restaurant={restaurant}
+                            billDetails={{ 
+                                subtotal: tableToPrint.currentOrder.subtotal, 
+                                cgst: tableToPrint.currentOrder.cgst, 
+                                sgst: tableToPrint.currentOrder.sgst, 
+                                deliveryCharge: tableToPrint.currentOrder.deliveryCharge, 
+                                serviceFee: tableToPrint.currentOrder.additionalCharge, 
+                                serviceFeeLabel: tableToPrint.currentOrder.additionalChargeLabel, 
+                                grandTotal: tableToPrint.currentOrder.grandTotal, 
+                                discount: 0 
+                            }}
+                            items={tableToPrint.currentOrder.items || []}
+                            customerDetails={tableToPrint.currentOrder.customerDetails || {}}
+                        />
+                    )}
+                </div>
+            </div>
+
+        </div>
     );
 }
 
-export default CustomBillPage;
-
+export default ManualOrderPage;
