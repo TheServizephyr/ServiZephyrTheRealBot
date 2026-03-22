@@ -1159,12 +1159,45 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                         )}
                     </div>
 
-                    <div className={cn(
-                        "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground w-fit",
-                        statusConfig[order.status]?.color?.split(' ')[1]
-                    )}>
-                        {statusLabel}
-                    </div>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <button
+                                onClick={(e) => e.stopPropagation()}
+                                className={cn(
+                                    "text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-secondary text-secondary-foreground w-fit transition-all hover:scale-105 hover:shadow-md cursor-pointer",
+                                    statusConfig[order.status]?.color?.split(' ')[1]
+                                )}
+                            >
+                                {statusLabel}
+                            </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80" onClick={(e) => e.stopPropagation()}>
+                            <div className="grid gap-4">
+                                <div className="space-y-2">
+                                    <h4 className="font-medium leading-none flex items-center gap-2">
+                                        <History size={16} /> Status History
+                                    </h4>
+                                    <div className="text-sm text-muted-foreground space-y-2">
+                                        {(order.statusHistory || []).length > 0 ? (
+                                            [...order.statusHistory].reverse().map((h, i) => (
+                                                <div key={i} className="flex items-center gap-2">
+                                                    <ClockIcon size={12} />
+                                                    <span className="font-semibold capitalize">
+                                                        {getOrderStatusLabel(h.status, actionButtonProps?.businessType, order.deliveryType)}:
+                                                    </span>
+                                                    <span>
+                                                        {format(new Date(h.timestamp?.seconds ? h.timestamp.seconds * 1000 : h.timestamp), 'hh:mm:ss a')}
+                                                    </span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p>No history available.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
                 </div>
 
                 {showPaymentRequestAction && (
