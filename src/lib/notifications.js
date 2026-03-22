@@ -1,6 +1,7 @@
 
 import { sendSystemMessage, sendWhatsAppMessage } from './whatsapp';
 import { getFirestore, FieldValue } from './firebase-admin';
+import { createShortBillLink } from './short-link';
 
 const normalizeIndianPhoneForWhatsApp = (value) => {
     const digits = String(value || '').replace(/\D/g, '');
@@ -160,7 +161,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 };
 
 
-export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, customerOrderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant', deliveryType = null, trackingToken = null, amount = 0, orderDate = null, hasCustomerLocation = true }) => {
+export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, customerOrderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant', deliveryType = null, trackingToken = null, amount = 0, orderDate = null, hasCustomerLocation = true, businessId = null }) => {
     console.log(`[Notification Lib] Preparing status update for customer ${customerPhone}. Order: ${orderId}, New Status: ${status}.`);
 
     if (!customerPhone || !botPhoneNumberId) {
@@ -247,12 +248,31 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             console.log(`[Notification Lib] Using template '${templateName}' with secure tracking URL.`);
             break;
 
-        case 'confirmed':
+        case 'confirmed': {
             // FALLBACK TO STANDARD TEMPLATE
             templateName = 'order_status_update';
 
             const billTokenParam = trackingToken ? `?token=${encodeURIComponent(trackingToken)}` : '';
-            const billUrl = `https://www.servizephyr.com/public/bill/${orderId}${billTokenParam}`;
+            const fullBillUrl = `https://www.servizephyr.com/public/bill/${orderId}${billTokenParam}`;
+            const billTargetPath = `/public/bill/${orderId}${billTokenParam}`;
+
+            // Try to generate a short bill link (non-blocking, falls back to full URL)
+            let billUrl = fullBillUrl;
+            try {
+                const firestore = await getFirestore();
+                const shortCode = await createShortBillLink({
+                    firestore,
+                    targetPath: billTargetPath,
+                    orderId,
+                    businessId: businessId || null,
+                    customerPhone: normalizeIndianPhoneForWhatsApp(customerPhone),
+                });
+                billUrl = `https://www.servizephyr.com/a/${shortCode}`;
+                console.log(`[Notification Lib] Short bill URL generated: ${billUrl}`);
+            } catch (shortLinkErr) {
+                console.warn(`[Notification Lib] Failed to create short bill link, using full URL. Error: ${shortLinkErr?.message}`);
+            }
+
             const finalConfirmedMsg = `${confirmedMessage} View Bill: ${billUrl}`;
 
             const confirmedParams = [
@@ -265,8 +285,9 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
             fullMessageText = `Hi ${safeCustomerName}, here's an update on your order ${displayOrderId} from ${safeRestaurantName}.\n\nStatus: ${finalConfirmedMsg}\n\nWe'll keep you posted!`;
 
-            console.log(`[Notification Lib] Reverted to standard '${templateName}' for order confirmed.`);
+            console.log(`[Notification Lib] Standard '${templateName}' for order confirmed with ${billUrl === fullBillUrl ? 'full' : 'short'} bill URL.`);
             break;
+        }
 
         case 'preparing':
             templateName = 'order_status_update';

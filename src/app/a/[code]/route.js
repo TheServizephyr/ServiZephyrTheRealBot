@@ -14,10 +14,13 @@ function coerceDate(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+const ALLOWED_PATH_PREFIXES = ['/add-address', '/public/bill/'];
+
 function normalizeTargetPath(targetPath) {
     if (typeof targetPath !== 'string') return null;
     if (!targetPath.startsWith('/')) return null;
-    if (!targetPath.startsWith('/add-address')) return null;
+    const isAllowed = ALLOWED_PATH_PREFIXES.some((prefix) => targetPath.startsWith(prefix));
+    if (!isAllowed) return null;
     return targetPath;
 }
 
