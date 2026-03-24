@@ -63,3 +63,5 @@ diff_output.txt
 .gitignore
 WHATSAPP_DIRECT_FEATURE_AUDIT.md
 diff_temp.txt
+
+ngrok.log
