@@ -91,6 +91,10 @@ function ManualOrderPage() {
     const sidebarRef = useRef(null);
     const isResizing = useRef(false);
     const [manualSidebarWidth, setManualSidebarWidth] = useState(null); // null means use dynamic default
+    
+    const billContainerRef = useRef(null);
+    const isResizingBill = useRef(false);
+    const [billSidebarWidth, setBillSidebarWidth] = useState(340);
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
@@ -483,9 +487,7 @@ function ManualOrderPage() {
 
     const handleMouseMove = useCallback((e) => {
         if (!isResizing.current || !sidebarRef.current) return;
-        // Calculate new width relative to the left edge of the sidebar container
         const newWidth = e.clientX - sidebarRef.current.getBoundingClientRect().left;
-        // Constrain width: min 130px, max 800px (or half screen)
         const minWidth = 130;
         const maxWidth = Math.min(800, window.innerWidth * 0.5);
         if (newWidth >= minWidth && newWidth <= maxWidth) {
@@ -493,14 +495,48 @@ function ManualOrderPage() {
         }
     }, []);
 
+    // --- Bill Sidebar Resizing Logic ---
+    const startResizingBill = useCallback((e) => {
+        e.preventDefault();
+        isResizingBill.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, []);
+
+    const stopResizingBill = useCallback(() => {
+        if (!isResizingBill.current) return;
+        isResizingBill.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }, []);
+
+    const handleMouseMoveBill = useCallback((e) => {
+        if (!isResizingBill.current || !billContainerRef.current) return;
+        const rect = billContainerRef.current.getBoundingClientRect();
+        const newWidth = rect.right - e.clientX;
+        const minWidth = 280;
+        const maxWidth = Math.min(800, window.innerWidth * 0.5);
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+            setBillSidebarWidth(newWidth);
+        }
+    }, []);
+
     useEffect(() => {
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', stopResizing);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', stopResizing);
+        const onMouseMove = (e) => {
+            if (isResizing.current) handleMouseMove(e);
+            if (isResizingBill.current) handleMouseMoveBill(e);
         };
-    }, [handleMouseMove, stopResizing]);
+        const onMouseUp = () => {
+            if (isResizing.current) stopResizing();
+            if (isResizingBill.current) stopResizingBill();
+        };
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+    }, [handleMouseMove, stopResizing, handleMouseMoveBill, stopResizingBill]);
     // ------------------------------
 
 
@@ -1267,9 +1303,9 @@ function ManualOrderPage() {
                 }
             `}</style>
 
-            <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 lg:h-full lg:overflow-hidden">
-                {/* Left Side: Menu Selection (70%) */}
-                <div className="lg:col-span-7 bg-card border border-border rounded-xl p-3 flex flex-col h-full lg:min-h-0">
+            <div className="flex flex-col lg:flex-row gap-4 lg:h-full lg:overflow-hidden">
+                {/* Left Side: Menu Selection (Flexible) */}
+                <div className="flex-1 min-w-0 bg-card border border-border rounded-xl p-3 flex flex-col h-full lg:min-h-0">
                     <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center flex-wrap gap-2">
                             <h1 className="text-lg font-bold tracking-tight">Manual Billing</h1>
@@ -1566,8 +1602,21 @@ function ManualOrderPage() {
                     )}
                 </div>
 
-                {/* Right Side: Live Bill Preview (30%) */}
-                <div className="lg:col-span-3 flex flex-col gap-4 h-full lg:min-h-0 overflow-y-auto overscroll-contain pr-1">
+                {/* Bill Sidebar Resizer Handle */}
+                <div
+                    onMouseDown={startResizingBill}
+                    className="hidden lg:flex group w-2 hover:w-3 -ml-3 -mr-3 z-30 cursor-col-resize items-center justify-center transition-all bg-transparent"
+                    title="Drag to resize bill preview"
+                >
+                    <div className="h-10 w-1 bg-border rounded-full group-hover:bg-primary transition-colors"></div>
+                </div>
+
+                {/* Right Side: Live Bill Preview (Resizable) */}
+                <div 
+                    ref={billContainerRef}
+                    style={{ width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${billSidebarWidth}px` : '100%' }}
+                    className="flex-shrink-0 flex flex-col gap-4 h-full lg:min-h-0 overflow-y-auto overscroll-contain pr-1"
+                >
                     <div className="bg-card border border-border rounded-xl p-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="space-y-2">
