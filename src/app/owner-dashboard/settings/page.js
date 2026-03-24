@@ -326,6 +326,7 @@ function SettingsPageContent() {
                     serviceFeeType: data.serviceFeeType || 'fixed',
                     serviceFeeValue: data.serviceFeeValue ?? 0,
                     serviceFeeApplyOn: data.serviceFeeApplyOn || 'all',
+                    serviceFeeApplyOnManualOrders: data.serviceFeeApplyOnManualOrders || false,
                 };
                 setUser(userData);
                 setEditedUser(userData);
@@ -511,6 +512,7 @@ function SettingsPageContent() {
                 serviceFeeType: editedUser.serviceFeeType || 'fixed',
                 serviceFeeValue: Number(editedUser.serviceFeeValue) || 0,
                 serviceFeeApplyOn: editedUser.serviceFeeApplyOn || 'all',
+                serviceFeeApplyOnManualOrders: editedUser.serviceFeeApplyOnManualOrders || false,
             }
         }
 
@@ -547,6 +549,7 @@ function SettingsPageContent() {
                 serviceFeeType: updatedUser.serviceFeeType || 'fixed',
                 serviceFeeValue: updatedUser.serviceFeeValue ?? 0,
                 serviceFeeApplyOn: updatedUser.serviceFeeApplyOn || 'all',
+                serviceFeeApplyOnManualOrders: updatedUser.serviceFeeApplyOnManualOrders || false,
             };
             setUser(finalUser);
             setEditedUser(finalUser);
@@ -1138,6 +1141,21 @@ function SettingsPageContent() {
                                                         {option.label}
                                                     </Button>
                                                 ))}
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <Label className="font-semibold">Apply Charge On Manual Orders</Label>
+                                            <div className="flex items-center gap-2 mt-2 mb-4">
+                                                <Switch
+                                                    id="serviceFeeApplyOnManualOrders"
+                                                    checked={editedUser.serviceFeeApplyOnManualOrders || false}
+                                                    onCheckedChange={(checked) => setEditedUser({ ...editedUser, serviceFeeApplyOnManualOrders: checked })}
+                                                    disabled={!isEditingGst}
+                                                />
+                                                <Label htmlFor="serviceFeeApplyOnManualOrders" className="text-sm font-normal text-muted-foreground cursor-pointer">
+                                                    Automatically apply this charge to manual billing orders.
+                                                </Label>
                                             </div>
                                         </div>
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle } from 'lucide-react';
+import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
@@ -80,6 +80,7 @@ function ManualOrderPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isCreatingOrder, setIsCreatingOrder] = useState(false);
     const [isNoAddressDialogOpen, setIsNoAddressDialogOpen] = useState(false);
+    const [qtyInputMap, setQtyInputMap] = useState({}); // local display value per cartItemId
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
@@ -95,16 +96,26 @@ function ManualOrderPage() {
     const billContainerRef = useRef(null);
     const isResizingBill = useRef(false);
     const [billSidebarWidth, setBillSidebarWidth] = useState(340);
+    const [isCustomerDetailsOpen, setIsCustomerDetailsOpen] = useState(true);
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
             ? `employee_of=${encodeURIComponent(employeeOfOwnerId)}`
             : '';
     const historyUrl = impersonatedOwnerId
-        ? `/owner-dashboard/custom-bill-history?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
+        ? `/owner-dashboard/manual-order-history?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
-            ? `/owner-dashboard/custom-bill-history?employee_of=${encodeURIComponent(employeeOfOwnerId)}`
-            : '/owner-dashboard/custom-bill-history';
+            ? `/owner-dashboard/manual-order-history?employee_of=${encodeURIComponent(employeeOfOwnerId)}`
+            : '/owner-dashboard/manual-order-history';
+    // Auto-collapse customer details when first item is added to cart
+    const prevCartLengthRef = useRef(0);
+    useEffect(() => {
+        if (prevCartLengthRef.current === 0 && cart.length > 0) {
+            setIsCustomerDetailsOpen(false);
+        }
+        prevCartLengthRef.current = cart.length;
+    }, [cart.length]);
+
     const cacheKey = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_custom_bill_cache_v2_${scope}`;
@@ -236,6 +247,12 @@ function ManualOrderPage() {
                                 gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
                                 gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
                                 gstCalculationMode: settingsData.gstCalculationMode || (settingsData.gstIncludedInPrice === false ? 'excluded' : 'included'),
+                                serviceFeeEnabled: !!settingsData.serviceFeeEnabled,
+                                serviceFeeLabel: settingsData.serviceFeeLabel || 'Additional Charge',
+                                serviceFeeType: settingsData.serviceFeeType || 'fixed',
+                                serviceFeeValue: Number(settingsData.serviceFeeValue) || 0,
+                                serviceFeeApplyOn: settingsData.serviceFeeApplyOn || 'all',
+                                serviceFeeApplyOnManualOrders: !!settingsData.serviceFeeApplyOnManualOrders,
                             };
                             setRestaurant(nextRestaurantPayload);
                             writeCachedPayload({
@@ -304,6 +321,12 @@ function ManualOrderPage() {
                         gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
                         gstMinAmount: Number(settingsData.gstMinAmount ?? 0),
                         gstCalculationMode: settingsData.gstCalculationMode || (settingsData.gstIncludedInPrice === false ? 'excluded' : 'included'),
+                        serviceFeeEnabled: !!settingsData.serviceFeeEnabled,
+                        serviceFeeLabel: settingsData.serviceFeeLabel || 'Additional Charge',
+                        serviceFeeType: settingsData.serviceFeeType || 'fixed',
+                        serviceFeeValue: Number(settingsData.serviceFeeValue) || 0,
+                        serviceFeeApplyOn: settingsData.serviceFeeApplyOn || 'all',
+                        serviceFeeApplyOnManualOrders: !!settingsData.serviceFeeApplyOnManualOrders,
                     };
                     if (isMounted) setRestaurant(nextRestaurantPayload);
 
@@ -616,6 +639,7 @@ function ManualOrderPage() {
         setCart([]);
         setItemHistory([]);
         setBillDraftId(createBillDraftId());
+        setCustomerDetails({ name: '', phone: '', address: '' });
     };
 
     const handleClear = () => {
@@ -642,9 +666,23 @@ function ManualOrderPage() {
 
     const { subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
-        const normalizedDeliveryCharge = Math.max(0, Number(deliveryChargeInput) || 0);
-        const normalizedAdditionalCharge = Math.max(0, Number(additionalChargeInput) || 0);
-        const normalizedAdditionalChargeLabel = String(additionalChargeNameInput || 'Additional Charge').trim() || 'Additional Charge';
+        
+        const normalizedDeliveryCharge = orderType === 'delivery' ? Math.max(0, Number(deliveryChargeInput) || 0) : 0;
+        
+        let normalizedAdditionalCharge = 0;
+        let normalizedAdditionalChargeLabel = 'Additional Charge';
+
+        const applyServiceFee = restaurant?.serviceFeeEnabled && restaurant?.serviceFeeApplyOnManualOrders && (restaurant?.serviceFeeApplyOn === 'all' || restaurant?.serviceFeeApplyOn === orderType);
+
+        if (applyServiceFee) {
+            normalizedAdditionalChargeLabel = restaurant.serviceFeeLabel || 'Additional Charge';
+            if (restaurant.serviceFeeType === 'percentage') {
+                normalizedAdditionalCharge = Math.round((sub * (Number(restaurant.serviceFeeValue) || 0)) / 100);
+            } else {
+                normalizedAdditionalCharge = Number(restaurant.serviceFeeValue) || 0;
+            }
+        }
+
         const gstEnabled = !!restaurant?.gstEnabled;
         const gstPercentage = Number(restaurant?.gstPercentage || 0);
         const gstMinAmount = Number(restaurant?.gstMinAmount || 0);
@@ -689,7 +727,7 @@ function ManualOrderPage() {
             additionalChargeLabel: normalizedAdditionalChargeLabel,
             grandTotal: total
         };
-    }, [cart, restaurant, deliveryChargeInput, additionalChargeInput, additionalChargeNameInput]);
+    }, [cart, restaurant, deliveryChargeInput, orderType]);
 
     const printReceiptToUsb = async ({
         items,
@@ -1617,72 +1655,161 @@ function ManualOrderPage() {
                     style={{ width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${billSidebarWidth}px` : '100%' }}
                     className="flex-shrink-0 flex flex-col gap-4 h-full lg:min-h-0 overflow-y-auto overscroll-contain pr-1"
                 >
-                    <div className="bg-card border border-border rounded-xl p-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2"><User size={16} /> Customer Name</Label>
-                                <input value={customerDetails.name} onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })} className="w-full p-2 border rounded-md bg-input border-border" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2"><Phone size={16} /> Customer Phone</Label>
-                                <input value={customerDetails.phone} onChange={e => setCustomerDetails({ ...customerDetails, phone: e.target.value })} className="w-full p-2 border rounded-md bg-input border-border" />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <Label className="flex items-center gap-2"><MapPin size={16} /> Customer Address</Label>
-                                <textarea value={customerDetails.address} onChange={e => setCustomerDetails({ ...customerDetails, address: e.target.value })} className="w-full p-2 border rounded-md bg-input border-border min-h-[60px]" />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <Label className="flex items-center gap-2">Delivery Charge (Optional)</Label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={deliveryChargeInput}
-                                    onChange={(e) => setDeliveryChargeInput(e.target.value)}
-                                    onWheel={(e) => e.currentTarget.blur()}
-                                    className="w-full p-2 border rounded-md bg-input border-border"
-                                    placeholder="Enter delivery charge"
-                                />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <Label className="flex items-center gap-2">Additional Charge Name (Optional)</Label>
-                                <input
-                                    type="text"
-                                    value={additionalChargeNameInput}
-                                    onChange={(e) => setAdditionalChargeNameInput(e.target.value)}
-                                    className="w-full p-2 border rounded-md bg-input border-border"
-                                    placeholder="e.g. Inflation Charge, Convenience Fee"
-                                />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <Label className="flex items-center gap-2">Additional Charge Amount (Optional)</Label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={additionalChargeInput}
-                                    onChange={(e) => setAdditionalChargeInput(e.target.value)}
-                                    onWheel={(e) => e.currentTarget.blur()}
-                                    className="w-full p-2 border rounded-md bg-input border-border"
-                                    placeholder="Enter additional charge amount"
-                                />
+                    {/* Collapsible Customer Details */}
+                    <div className="bg-card border border-border rounded-xl overflow-hidden flex-shrink-0">
+                        {/* Accordion Header — always visible, click to toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setIsCustomerDetailsOpen(p => !p)}
+                            className="w-full flex items-center justify-between px-3 py-2 text-sm font-semibold hover:bg-muted/40 transition-colors"
+                        >
+                            <span className="flex items-center gap-2">
+                                <User size={14} />
+                                {customerDetails.name ? customerDetails.name : 'Customer Details'}
+                                {customerDetails.phone && <span className="text-muted-foreground font-normal">· {customerDetails.phone}</span>}
+                            </span>
+                            <ChevronDown size={14} className={cn('transition-transform duration-200', isCustomerDetailsOpen ? 'rotate-180' : '')} />
+                        </button>
+
+                        {/* Collapsible Body */}
+                        <div className={cn('transition-all duration-200 overflow-hidden', isCustomerDetailsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0')}>
+                            <div className="p-2 border-t border-border">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <Label className="flex items-center gap-1.5 text-xs"><User size={13} /> Name</Label>
+                                        <input value={customerDetails.name} onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="flex items-center gap-1.5 text-xs"><Phone size={13} /> Phone</Label>
+                                        <input value={customerDetails.phone} onChange={e => setCustomerDetails({ ...customerDetails, phone: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" />
+                                    </div>
+                                    {orderType === 'delivery' && (
+                                        <>
+                                            <div className="space-y-1 col-span-2">
+                                                <Label className="flex items-center gap-1.5 text-xs"><MapPin size={13} /> Address</Label>
+                                                <textarea rows={2} value={customerDetails.address} onChange={e => setCustomerDetails({ ...customerDetails, address: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border resize-none" />
+                                            </div>
+                                            <div className="space-y-1 col-span-2">
+                                                <Label className="text-xs">Delivery Charge (Optional)</Label>
+                                                <input type="number" min="0" step="1" value={deliveryChargeInput} onChange={(e) => setDeliveryChargeInput(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="0" />
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-card border border-border rounded-xl flex-grow flex flex-col min-h-0">
-                        <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow">
-                            <div ref={billPrintRef} className="preview-bill">
-                                <BillToPrint
-                                    order={{ orderDate: new Date() }}
-                                    restaurant={restaurant}
-                                    billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
-                                    items={cart}
-                                    customerDetails={customerDetails}
-                                />
+                    {/* Hidden ref for actual printing — never visible */}
+                    <div className="hidden">
+                        <div ref={billPrintRef} className="preview-bill">
+                            <BillToPrint
+                                order={{ orderDate: new Date() }}
+                                restaurant={restaurant}
+                                billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
+                                items={cart}
+                                customerDetails={customerDetails}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Current Order Panel */}
+                    <div className="bg-card border border-border rounded-xl flex flex-col flex-grow min-h-0 overflow-hidden">
+                        {/* Panel Header */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+                            <h2 className="font-bold text-base">Current Order</h2>
+                            <button
+                                onClick={handleClear}
+                                disabled={cart.length === 0}
+                                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
+                            >
+                                <Trash2 size={13} /> Clear
+                            </button>
+                        </div>
+
+                        {/* Cart Items — scrollable */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 space-y-2">
+                            {cart.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full py-8 text-muted-foreground text-sm">
+                                    <p>No items added yet.</p>
+                                    <p className="text-xs mt-1">Tap a menu item to add it here.</p>
+                                </div>
+                            ) : (
+                                cart.map((item) => (
+                                    <div key={item.cartItemId} className="flex items-center justify-between gap-2 p-2.5 bg-muted/20 border border-border/50 rounded-xl">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold text-sm leading-tight truncate">{item.name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {item.portion ? `${item.portion.name} · ` : ''}{formatCurrency(item.price)} each
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <span className="text-xs font-semibold text-right w-14">{formatCurrency(item.totalPrice)}</span>
+                                            <div className="flex items-center border border-border rounded-lg bg-background overflow-hidden h-7">
+                                                <button
+                                                    onClick={() => updateQuantity(item.cartItemId, -1)}
+                                                    className="w-7 h-full flex items-center justify-center hover:bg-muted transition-colors border-r border-border"
+                                                >
+                                                    <Minus size={12} />
+                                                </button>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={qtyInputMap[item.cartItemId] ?? item.quantity}
+                                                    onChange={e => {
+                                                        const raw = e.target.value;
+                                                        setQtyInputMap(prev => ({ ...prev, [item.cartItemId]: raw }));
+                                                        const newVal = parseInt(raw, 10);
+                                                        if (!isNaN(newVal) && newVal >= 1) {
+                                                            updateQuantity(item.cartItemId, newVal - item.quantity);
+                                                        }
+                                                    }}
+                                                    onBlur={e => {
+                                                        const raw = e.target.value;
+                                                        const newVal = parseInt(raw, 10);
+                                                        const safeVal = (!isNaN(newVal) && newVal >= 1) ? newVal : 1;
+                                                        if (safeVal !== item.quantity) {
+                                                            updateQuantity(item.cartItemId, safeVal - item.quantity);
+                                                        }
+                                                        // Clear local override so it syncs back from cart
+                                                        setQtyInputMap(prev => { const n = { ...prev }; delete n[item.cartItemId]; return n; });
+                                                    }}
+                                                    onWheel={e => e.currentTarget.blur()}
+                                                    className="w-10 h-full text-center text-sm font-bold bg-transparent border-none outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                />
+                                                <button
+                                                    onClick={() => updateQuantity(item.cartItemId, 1)}
+                                                    className="w-7 h-full flex items-center justify-center hover:bg-muted transition-colors border-l border-border"
+                                                >
+                                                    <Plus size={12} />
+                                                </button>
+                                            </div>
+                                            <button
+                                                onClick={() => updateQuantity(item.cartItemId, -item.quantity)}
+                                                className="p-1 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                                                title="Remove item"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Totals */}
+                        <div className="px-4 py-2.5 border-t border-border space-y-1 flex-shrink-0 text-sm">
+                            <div className="flex justify-between text-muted-foreground text-xs">
+                                <span>{cart.reduce((s, i) => s + i.quantity, 0)} item(s)</span>
+                                <span>{formatCurrency(subtotal)}</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-base pt-1 border-t border-border">
+                                <span>Total</span><span>{formatCurrency(grandTotal)}</span>
                             </div>
                         </div>
-                        <div className="p-3 bg-muted/50 rounded-b-lg border-t border-border flex gap-2 no-print">
+
+                        {/* Action Buttons */}
+                        <div className="p-3 border-t border-border flex gap-2 flex-shrink-0">
                             {orderType === 'dine-in' ? (
                                 <Button
                                     onClick={handleOccupyTable}
@@ -1697,21 +1824,14 @@ function ManualOrderPage() {
                                     className="flex-1 h-10 px-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-900/30 transition-all"
                                     disabled={cart.length === 0 || isSavingBillHistory}
                                 >
-                                    <Printer className="mr-2 h-4 w-4" /> Save & Print
+                                    <Printer className="mr-2 h-4 w-4" /> {isSavingBillHistory ? 'Saving...' : 'Save & Print'}
                                 </Button>
                             )}
-                            <Button
-                                onClick={() => setIsEditModalOpen(true)}
-                                variant="outline"
-                                className="w-auto px-4 h-10 text-sm border-2 border-primary/50 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
-                                disabled={cart.length === 0}
-                            >
-                                <Edit className="h-4 w-4 text-primary" />
-                            </Button>
                         </div>
                     </div>
-                </div>
-            </div>
+
+                </div>{/* end billContainerRef */}
+            </div>{/* end flex flex-col lg:flex-row */}
             
             {/* Hidden Table Print Component */}
             <div className="hidden">

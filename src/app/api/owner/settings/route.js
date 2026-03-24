@@ -194,6 +194,7 @@ export async function GET(req) {
                 serviceFeeType: businessData.serviceFeeType || 'fixed',
                 serviceFeeValue: businessData.serviceFeeValue ?? 0,
                 serviceFeeApplyOn: businessData.serviceFeeApplyOn || 'all',
+                serviceFeeApplyOnManualOrders: businessData.serviceFeeApplyOnManualOrders || false,
                 // Include delivery fees for public menu (often needed for cart calc)
                 deliveryFeeType: fallback('deliveryFeeType', 'fixed'),
                 // FIXED: Calculate deliveryCharge for frontend compatibility
@@ -333,6 +334,7 @@ export async function GET(req) {
             serviceFeeType: businessData?.serviceFeeType || 'fixed',
             serviceFeeValue: businessData?.serviceFeeValue ?? 0,
             serviceFeeApplyOn: businessData?.serviceFeeApplyOn || 'all',
+            serviceFeeApplyOnManualOrders: businessData?.serviceFeeApplyOnManualOrders || false,
             gstPercentage: businessData?.gstPercentage || businessData?.gstRate || 0,
             businessId: businessId,
             merchantId: businessData?.merchantId || '',
@@ -498,6 +500,9 @@ export async function PATCH(req) {
             const normalizedApplyTarget = String(updates.serviceFeeApplyOn || '').trim();
             businessUpdateData.serviceFeeApplyOn = allowedApplyTargets.has(normalizedApplyTarget) ? normalizedApplyTarget : 'all';
         }
+        if (updates.serviceFeeApplyOnManualOrders !== undefined) {
+            businessUpdateData.serviceFeeApplyOnManualOrders = Boolean(updates.serviceFeeApplyOnManualOrders);
+        }
 
         // Dine-In Settings (Not moved to delivery-settings yet)
         if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
@@ -648,6 +653,7 @@ export async function PATCH(req) {
             serviceFeeType: finalBusinessData?.serviceFeeType || 'fixed',
             serviceFeeValue: finalBusinessData?.serviceFeeValue ?? 0,
             serviceFeeApplyOn: finalBusinessData?.serviceFeeApplyOn || 'all',
+            serviceFeeApplyOnManualOrders: finalBusinessData?.serviceFeeApplyOnManualOrders || false,
             businessId: finalBusinessId,
             merchantId: finalBusinessData?.merchantId || '',
             customerId: finalUserData?.customerId || '',

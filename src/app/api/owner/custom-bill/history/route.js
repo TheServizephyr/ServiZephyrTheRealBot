@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
+import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 
 const toAmount = (value, fallback = 0) => {
     const amount = Number(value);
@@ -132,6 +133,8 @@ export async function POST(req) {
         const printedVia = ['browser', 'direct_usb', 'create_order'].includes(printedViaRaw)
             ? printedViaRaw
             : 'browser';
+        const orderTypeRaw = sanitizeText(body?.orderType, '').toLowerCase();
+        const orderType = ['delivery', 'pickup', 'dine-in'].includes(orderTypeRaw) ? orderTypeRaw : (['delivery', 'pickup', 'dine-in'].includes(printedViaRaw) ? printedViaRaw : 'dine-in');
         const settlementEligible = isSettlementEligible(printedVia);
 
         const historyRef = firestore
@@ -159,13 +162,16 @@ export async function POST(req) {
             totalAmount,
         });
 
+        const customerOrderId = generateCustomerOrderId();
         const docRef = historyRef.doc();
         await docRef.set({
             historyId: docRef.id,
+            customerOrderId,
             billDraftId: billDraftId || null,
             source: 'offline_counter',
             channel: 'custom_bill',
             printedVia,
+            orderType,
             fingerprint,
             businessId,
             ownerId: uid,
@@ -312,6 +318,8 @@ export async function GET(req) {
                 customerAddress: data.customerAddress || null,
                 customerType: data.customerType || 'guest',
                 customerId: data.customerId || null,
+                customerOrderId: data.customerOrderId || null,
+                orderType: data.orderType || data.printedVia || 'dine-in',
                 settlementEligible,
                 isSettled,
                 settledAt: timestampToDate(data.settledAt)?.toISOString() || null,

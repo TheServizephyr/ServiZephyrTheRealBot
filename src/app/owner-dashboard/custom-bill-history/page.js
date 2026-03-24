@@ -52,6 +52,7 @@ export default function CustomBillHistoryPage() {
     const employeeOfOwnerId = searchParams.get('employee_of');
 
     const [history, setHistory] = useState([]);
+    const [activeTab, setActiveTab] = useState('all');
     const [summary, setSummary] = useState(defaultSummary);
     const [loading, setLoading] = useState(true);
     const [isSettling, setIsSettling] = useState(false);
@@ -178,11 +179,16 @@ export default function CustomBillHistoryPage() {
         runPrint();
     }, [pendingRebillPrint, printBillData, handleRebillPrint]);
 
+    const filteredHistory = useMemo(
+        () => history.filter(bill => activeTab === 'all' || bill.orderType === activeTab),
+        [history, activeTab]
+    );
+
     const selectableBillIds = useMemo(
-        () => history
+        () => filteredHistory
             .filter((bill) => bill?.settlementEligible && !bill?.isSettled)
             .map((bill) => bill.id),
-        [history]
+        [filteredHistory]
     );
 
     const selectedBillIdSet = useMemo(
@@ -200,11 +206,11 @@ export default function CustomBillHistoryPage() {
     }, [selectableBillIds]);
 
     const selectedSettleAmount = useMemo(() => {
-        return history.reduce((sum, bill) => {
+        return filteredHistory.reduce((sum, bill) => {
             if (!selectedBillIdSet.has(bill.id)) return sum;
             return sum + Number(bill.totalAmount || 0);
         }, 0);
-    }, [history, selectedBillIdSet]);
+    }, [filteredHistory, selectedBillIdSet]);
 
     const allSelectableSelected = selectableBillIds.length > 0 && selectableBillIds.every((id) => selectedBillIdSet.has(id));
 
@@ -316,10 +322,10 @@ export default function CustomBillHistoryPage() {
     );
 
     const backUrl = impersonatedOwnerId
-        ? `/owner-dashboard/custom-bill?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
+        ? `/owner-dashboard/manual-order?impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
-            ? `/owner-dashboard/custom-bill?employee_of=${encodeURIComponent(employeeOfOwnerId)}`
-            : '/owner-dashboard/custom-bill';
+            ? `/owner-dashboard/manual-order?employee_of=${encodeURIComponent(employeeOfOwnerId)}`
+            : '/owner-dashboard/manual-order';
 
     const triggerRebill = (bill) => {
         if (!bill) return;
@@ -447,6 +453,24 @@ export default function CustomBillHistoryPage() {
                 </div>
             </div>
 
+            {/* Tabs for Order Type Filtering */}
+            <div className="flex flex-wrap bg-muted/30 p-1 rounded-xl w-fit mb-4">
+                {['all', 'delivery', 'pickup', 'dine-in'].map((tab) => (
+                    <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={cn(
+                            "px-6 py-2.5 rounded-lg text-sm font-semibold capitalize transition-all",
+                            activeTab === tab
+                                ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        )}
+                    >
+                        {tab}
+                    </button>
+                ))}
+            </div>
+
             <div className="bg-card border border-border rounded-xl p-4 mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                     <p className="text-sm font-semibold">
@@ -490,7 +514,8 @@ export default function CustomBillHistoryPage() {
                                         onClick={(event) => event.stopPropagation()}
                                     />
                                 </th>
-                                <th className="p-4 text-left font-semibold text-muted-foreground">Bill ID</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground">Order ID</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground">Type</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Customer</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Items</th>
                                 <th className="p-4 text-left font-semibold text-muted-foreground">Amount</th>
@@ -513,14 +538,14 @@ export default function CustomBillHistoryPage() {
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-20" /></td>
                                     </tr>
                                 ))
-                            ) : history.length === 0 ? (
+                            ) : filteredHistory.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                                    <td colSpan={9} className="p-8 text-center text-muted-foreground">
                                         No custom bill history found in selected range.
                                     </td>
                                 </tr>
                             ) : (
-                                history.map((bill) => {
+                                filteredHistory.map((bill) => {
                                     const isSelectable = !!bill?.settlementEligible && !bill?.isSettled;
                                     const isSelected = selectedBillIdSet.has(bill.id);
                                     const isRowSettling = settlingBillIdSet.has(bill.id);
@@ -540,7 +565,8 @@ export default function CustomBillHistoryPage() {
                                                 onClick={(event) => event.stopPropagation()}
                                             />
                                         </td>
-                                        <td className="p-4 font-mono text-xs md:text-sm">{String(bill.historyId || bill.id).slice(0, 12)}</td>
+                                        <td className="p-4 font-mono text-xs md:text-sm">{bill.customerOrderId || String(bill.historyId || bill.id).slice(0, 12)}</td>
+                                        <td className="p-4 uppercase text-xs font-semibold text-muted-foreground">{bill.orderType || '-'}</td>
                                         <td className="p-4">
                                             <div className="font-medium">{bill.customerName || 'Walk-in Customer'}</div>
                                             <div className="text-xs text-muted-foreground">{bill.customerPhone || '-'}</div>
