@@ -64,6 +64,9 @@ function ManualOrderPage() {
     const [manualTables, setManualTables] = useState([]);
     const [isLoadingTables, setIsLoadingTables] = useState(false);
     const [isCreateTableModalOpen, setIsCreateTableModalOpen] = useState(false);
+    const [isEditTableModalOpen, setIsEditTableModalOpen] = useState(false);
+    const [tableToEdit, setTableToEdit] = useState(null);
+    const [tableToDelete, setTableToDelete] = useState(null);
     const [newTableName, setNewTableName] = useState('');
     const [selectedOccupiedTable, setSelectedOccupiedTable] = useState(null);
     const [tableActionLoading, setTableActionLoading] = useState(false);
@@ -374,7 +377,9 @@ function ManualOrderPage() {
             });
             if (res.ok) {
                 const data = await res.json();
-                setManualTables(data.tables || []);
+                // Sort ascending by name (numeric sort)
+                const sortedTables = (data.tables || []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                setManualTables(sortedTables);
             }
         } catch (error) {
             console.error('Error fetching manual tables:', error);
@@ -490,6 +495,71 @@ function ManualOrderPage() {
             const top = element.offsetTop - container.offsetTop;
             container.scrollTo({ top, behavior: 'smooth' });
             setActiveCategory(catId);
+        }
+    };
+
+    const handleEditTableSubmit = async (e) => {
+        e.preventDefault();
+        if (!newTableName.trim() || !tableToEdit) return;
+        setTableActionLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Not authenticated");
+            const idToken = await user.getIdToken();
+            const res = await fetch(buildScopedUrl('/api/owner/manual-tables'), {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify({ id: tableToEdit.id, name: newTableName.trim() })
+            });
+
+            if (res.ok) {
+                toast({ title: 'Success', description: 'Table updated successfully.', variant: 'success' });
+                setIsEditTableModalOpen(false);
+                setTableToEdit(null);
+                setNewTableName('');
+                fetchManualTables();
+            } else {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to update table');
+            }
+        } catch (error) {
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        } finally {
+            setTableActionLoading(false);
+        }
+    };
+
+    const handleDeleteTable = (table) => {
+        setTableToDelete(table);
+    };
+
+    const executeDeleteTable = async () => {
+        if (!tableToDelete) return;
+        setTableActionLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Not authenticated");
+            const idToken = await user.getIdToken();
+            const res = await fetch(buildScopedUrl(`/api/owner/manual-tables?tableId=${tableToDelete.id}`), {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+
+            if (res.ok) {
+                toast({ title: 'Success', description: 'Table deleted successfully.', variant: 'success' });
+                fetchManualTables();
+                setTableToDelete(null);
+            } else {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to delete table');
+            }
+        } catch (error) {
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        } finally {
+            setTableActionLoading(false);
         }
     };
 
@@ -1250,6 +1320,24 @@ function ManualOrderPage() {
                 </DialogContent>
             </Dialog>
 
+            {/* Delete Table Modal */}
+            <Dialog open={!!tableToDelete} onOpenChange={(open) => !open && setTableToDelete(null)}>
+                <DialogContent className="bg-card border-border max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="text-destructive font-bold">Delete Table</DialogTitle>
+                        <DialogDescription className="pt-2 text-[15px]">
+                            Are you sure you want to delete <strong className="text-foreground">"{tableToDelete?.name}"</strong>? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="mt-2">
+                        <Button variant="outline" onClick={() => setTableToDelete(null)}>Cancel</Button>
+                        <Button variant="destructive" className="bg-destructive hover:bg-destructive/90" onClick={executeDeleteTable} disabled={tableActionLoading}>
+                            {tableActionLoading ? 'Deleting...' : 'Delete'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Occupied Table Modal */}
             <Dialog open={!!selectedOccupiedTable} onOpenChange={(open) => !open && setSelectedOccupiedTable(null)}>
                 <DialogContent className="bg-card border-border text-foreground max-w-sm">
@@ -1283,6 +1371,24 @@ function ManualOrderPage() {
                                         <span className="text-muted-foreground">Subtotal:</span>
                                         <span className="font-semibold">{formatCurrency(selectedOccupiedTable.currentOrder?.subtotal || 0)}</span>
                                     </div>
+                                    {(selectedOccupiedTable.currentOrder?.cgst > 0 || selectedOccupiedTable.currentOrder?.sgst > 0) && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-muted-foreground">GST:</span>
+                                            <span className="font-semibold">{formatCurrency((selectedOccupiedTable.currentOrder?.cgst || 0) + (selectedOccupiedTable.currentOrder?.sgst || 0))}</span>
+                                        </div>
+                                    )}
+                                    {selectedOccupiedTable.currentOrder?.deliveryCharge > 0 && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-muted-foreground">Delivery Charge:</span>
+                                            <span className="font-semibold">{formatCurrency(selectedOccupiedTable.currentOrder?.deliveryCharge || 0)}</span>
+                                        </div>
+                                    )}
+                                    {selectedOccupiedTable.currentOrder?.additionalCharge > 0 && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-muted-foreground">{selectedOccupiedTable.currentOrder?.additionalChargeLabel || 'Additional Charge'}:</span>
+                                            <span className="font-semibold">{formatCurrency(selectedOccupiedTable.currentOrder?.additionalCharge || 0)}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between font-bold text-base pt-2 border-t border-border">
                                         <span>Total:</span>
                                         <span className="text-primary">{formatCurrency(selectedOccupiedTable.currentOrder?.grandTotal || 0)}</span>
@@ -1376,39 +1482,43 @@ function ManualOrderPage() {
                                 </Button>
                             </Link>
                         </div>
-                        <div className="w-full grid grid-cols-[1fr_auto_auto] gap-2 sm:w-auto sm:flex sm:items-center">
-                            <div className="relative min-w-0">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                                <input
-                                    ref={searchInputRef}
-                                    type="text"
-                                    placeholder="Search menu..."
-                                    value={searchQuery}
-                                    onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full min-w-0 pl-9 pr-4 py-2 h-10 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                                />
+                        
+                        {/* Only show Search, Clear, Undo if NOT in Dine In OR if a specific table is active */}
+                        {(orderType !== 'dine-in' || activeTable) && (
+                            <div className="w-full grid grid-cols-[1fr_auto_auto] gap-2 sm:w-auto sm:flex sm:items-center">
+                                <div className="relative min-w-0">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                                    <input
+                                        ref={searchInputRef}
+                                        type="text"
+                                        placeholder="Search menu..."
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        className="w-full min-w-0 pl-9 pr-4 py-2 h-10 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                    />
+                                </div>
+                                <Button
+                                    onClick={handleClear}
+                                    disabled={cart.length === 0}
+                                    variant="outline"
+                                    className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-destructive/60 text-destructive hover:bg-destructive/10 font-bold transition-all shadow-sm"
+                                    title="Clear entire cart"
+                                >
+                                    <Trash2 size={16} />
+                                    <span className="hidden sm:inline">Clear</span>
+                                </Button>
+                                <Button
+                                    onClick={handleUndo}
+                                    disabled={itemHistory.length === 0}
+                                    variant="outline"
+                                    className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-primary/60 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
+                                    title="Undo last item added"
+                                >
+                                    <RotateCcw size={16} />
+                                    <span className="hidden sm:inline">Undo</span>
+                                </Button>
                             </div>
-                            <Button
-                                onClick={handleClear}
-                                disabled={cart.length === 0}
-                                variant="outline"
-                                className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-destructive/60 text-destructive hover:bg-destructive/10 font-bold transition-all shadow-sm"
-                                title="Clear entire cart"
-                            >
-                                <Trash2 size={16} />
-                                <span className="hidden sm:inline">Clear</span>
-                            </Button>
-                            <Button
-                                onClick={handleUndo}
-                                disabled={itemHistory.length === 0}
-                                variant="outline"
-                                className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-primary/60 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
-                                title="Undo last item added"
-                            >
-                                <RotateCcw size={16} />
-                                <span className="hidden sm:inline">Undo</span>
-                            </Button>
-                        </div>
+                        )}
                     </div>
 
                     {orderType === 'dine-in' && !activeTable ? (
@@ -1418,15 +1528,23 @@ function ManualOrderPage() {
                                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                     {manualTables.map(table => {
                                         if (table.status === 'occupied') {
                                             return (
                                                 <div 
                                                     key={table.id}
-                                                    className="relative flex flex-col p-4 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[140px] text-center overflow-hidden"
+                                                    className="relative flex flex-col p-4 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[140px] text-center overflow-hidden cursor-pointer group"
                                                     onClick={() => setSelectedOccupiedTable(table)}
                                                 >
+                                                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setTableToEdit(table); setNewTableName(table.name); setIsEditTableModalOpen(true); }} 
+                                                            className="p-1.5 bg-amber-500/20 text-amber-500 hover:bg-amber-500/40 rounded-md transition-colors"
+                                                            title="Rename Table">
+                                                            <Edit size={14} />
+                                                        </button>
+                                                    </div>
                                                     <h3 className="font-bold text-3xl mb-1 text-white">{table.name}</h3>
                                                     <div className="flex flex-col items-center mb-2">
                                                         <span className="text-xl font-bold text-amber-500">{formatCurrency(table.currentOrder?.grandTotal || 0)}</span>
@@ -1481,8 +1599,22 @@ function ManualOrderPage() {
                                                     setActiveTable(table);
                                                     handleClear(); // Reset cart for new table safely
                                                 }}
-                                                className="cursor-pointer p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[140px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md"
+                                                className="cursor-pointer relative p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[140px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md group"
                                             >
+                                                <div className="absolute top-2 right-2 flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setTableToEdit(table); setNewTableName(table.name); setIsEditTableModalOpen(true); }} 
+                                                        className="p-1.5 bg-muted/80 text-foreground hover:bg-muted-foreground/20 rounded-md transition-colors"
+                                                        title="Rename Table">
+                                                        <Edit size={14} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteTable(table); }} 
+                                                        className="p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md transition-colors"
+                                                        title="Delete Table">
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
                                                 <h3 className="font-bold text-lg mb-1">{table.name}</h3>
                                                 <span className="text-xs text-muted-foreground uppercase tracking-widest flex items-center gap-1"><CheckCircle size={12} /> Available</span>
                                             </div>
@@ -1803,6 +1935,24 @@ function ManualOrderPage() {
                                 <span>{cart.reduce((s, i) => s + i.quantity, 0)} item(s)</span>
                                 <span>{formatCurrency(subtotal)}</span>
                             </div>
+                            {(cgst > 0 || sgst > 0) && (
+                                <div className="flex justify-between text-muted-foreground text-xs">
+                                    <span>GST</span>
+                                    <span>{formatCurrency((cgst || 0) + (sgst || 0))}</span>
+                                </div>
+                            )}
+                            {deliveryCharge > 0 && orderType === 'delivery' && (
+                                <div className="flex justify-between text-muted-foreground text-xs">
+                                    <span>Delivery Charge</span>
+                                    <span>{formatCurrency(deliveryCharge)}</span>
+                                </div>
+                            )}
+                            {additionalCharge > 0 && (
+                                <div className="flex justify-between text-muted-foreground text-xs">
+                                    <span>{additionalChargeLabel || 'Additional Charge'}</span>
+                                    <span>{formatCurrency(additionalCharge)}</span>
+                                </div>
+                            )}
                             <div className="flex justify-between font-bold text-base pt-1 border-t border-border">
                                 <span>Total</span><span>{formatCurrency(grandTotal)}</span>
                             </div>

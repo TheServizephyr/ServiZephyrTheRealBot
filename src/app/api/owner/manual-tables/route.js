@@ -107,3 +107,58 @@ export async function POST(req) {
         );
     }
 }
+
+export async function DELETE(req) {
+    try {
+        const context = await verifyOwnerWithAudit(req, 'manual_tables_delete', {}, false, [PERMISSIONS.CREATE_ORDER, PERMISSIONS.MANUAL_BILLING?.WRITE || PERMISSIONS.MANUAL_BILLING]);
+        const { businessId, collectionName } = context;
+        const firestore = await getFirestore();
+        const url = new URL(req.url);
+        const tableId = url.searchParams.get('tableId');
+        if (!tableId) return NextResponse.json({ message: 'Table ID required.' }, { status: 400 });
+
+        const docRef = firestore.collection(collectionName).doc(businessId).collection('manual_tables').doc(tableId);
+        const doc = await docRef.get();
+        if (!doc.exists) return NextResponse.json({ message: 'Table not found.' }, { status: 404 });
+        if (doc.data().status === 'occupied') return NextResponse.json({ message: 'Cannot delete an occupied table.' }, { status: 400 });
+
+        await docRef.delete();
+        return NextResponse.json({ message: 'Table deleted.' }, { status: 200 });
+    } catch (error) {
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+export async function PUT(req) {
+    try {
+        const context = await verifyOwnerWithAudit(req, 'manual_tables_edit', {}, false, [PERMISSIONS.CREATE_ORDER, PERMISSIONS.MANUAL_BILLING?.WRITE || PERMISSIONS.MANUAL_BILLING]);
+        const { businessId, collectionName } = context;
+        const firestore = await getFirestore();
+        const body = await req.json();
+        
+        const tableId = body?.id;
+        const tableName = String(body?.name || '').trim();
+        if (!tableId || !tableName) return NextResponse.json({ message: 'Table ID and new name are required.' }, { status: 400 });
+
+        const tablesRef = firestore.collection(collectionName).doc(businessId).collection('manual_tables');
+        const docRef = tablesRef.doc(tableId);
+        
+        const allTablesSnap = await tablesRef.get();
+        let exists = false;
+        allTablesSnap.forEach(doc => {
+            if (doc.id !== tableId && String(doc.data().name || '').toLowerCase() === tableName.toLowerCase()) {
+                exists = true;
+            }
+        });
+        if (exists) return NextResponse.json({ message: 'Another table with this name already exists.' }, { status: 400 });
+
+        await docRef.update({
+            name: tableName,
+            updatedAt: FieldValue.serverTimestamp()
+        });
+
+        return NextResponse.json({ message: 'Table updated.' }, { status: 200 });
+    } catch (error) {
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
