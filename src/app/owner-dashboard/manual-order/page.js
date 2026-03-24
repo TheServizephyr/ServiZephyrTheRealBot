@@ -1326,7 +1326,7 @@ function ManualOrderPage() {
                     <DialogHeader>
                         <DialogTitle className="text-destructive font-bold">Delete Table</DialogTitle>
                         <DialogDescription className="pt-2 text-[15px]">
-                            Are you sure you want to delete <strong className="text-foreground">"{tableToDelete?.name}"</strong>? This action cannot be undone.
+                            Are you sure you want to delete <strong className="text-foreground">&quot;{tableToDelete?.name}&quot;</strong>? This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="mt-2">
