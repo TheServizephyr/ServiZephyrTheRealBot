@@ -572,20 +572,6 @@ const AddAddressPageInternal = () => {
     const isAddressDetailMissing = !addressDetail.trim();
     const isRecipientNameMissing = !recipientName.trim();
     const isRecipientPhoneMissing = !recipientPhone.trim();
-    const missingRequiredFields = [
-        isFullAddressMissing ? 'Complete Address' : null,
-        isAddressDetailMissing ? 'Address Details' : null,
-        isRecipientNameMissing ? 'Contact Person' : null,
-        isRecipientPhoneMissing ? 'Contact Number' : null,
-    ].filter(Boolean);
-    const isSaveDisabled =
-        loading ||
-        isSaving ||
-        !addressDetails ||
-        isFullAddressMissing ||
-        isAddressDetailMissing ||
-        isRecipientNameMissing ||
-        isRecipientPhoneMissing;
     const requiredFieldClassName =
         'mt-1 border-red-300 bg-red-50/80 focus-visible:ring-red-400 dark:border-red-900 dark:bg-red-950/30';
     const filledRequiredFieldClassName =
@@ -673,9 +659,6 @@ const AddAddressPageInternal = () => {
                         </div>
                     ) : addressDetails ? (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-                            <div className="rounded-lg border border-red-200 bg-red-50/70 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200">
-                                Required fields are highlighted until you fill them. That is why the save button stays disabled.
-                            </div>
                             <div>
                                 <Label htmlFor="fullAddress">Complete Address *</Label>
                                 <p className="mt-1 text-xs text-muted-foreground">Full address from map. Edit if house number, locality, or pin needs correction.</p>
@@ -723,12 +706,7 @@ const AddAddressPageInternal = () => {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-border mt-4">
-                                {missingRequiredFields.length > 0 && (
-                                    <p className="mb-3 text-sm text-red-700 dark:text-red-300">
-                                        Fill these required fields to continue: {missingRequiredFields.join(', ')}.
-                                    </p>
-                                )}
-                                <Button onClick={handleConfirmLocation} disabled={isSaveDisabled} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails || !addressDetail.trim() || !fullAddress.trim()} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                     {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
                                 </Button>
                             </div>
