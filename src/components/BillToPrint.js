@@ -131,15 +131,6 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         border-color: #000000 !important;
                     }
 
-                    /* Use solid strong borders for better printer rendering */
-                    #bill-print-root .border-dashed,
-                    #bill-print-root .border-dotted,
-                    #bill-print-root .divide-dotted,
-                    #bill-print-root .divide-dashed {
-                        border-style: solid !important;
-                        border-color: #000000 !important;
-                    }
-
                     /* Increase contrast for totals and ensure grand total prints very dark */
                     #bill-print-root .text-green-600,
                     #bill-print-root .text-green-700,
@@ -149,7 +140,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     }
                 }
             `}</style>
-            <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
+            <div className="text-center mb-4 pb-2" style={{ borderBottom: '2px solid #000000' }}>
                 <h1 className="text-xl font-bold uppercase">{safeRender(restaurant?.name, 'Restaurant')}</h1>
                 <p className="text-xs font-bold">{restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')}</p>
                 {restaurant?.gstin && <p className="text-xs mt-1 font-bold">GSTIN: {restaurant.gstin}</p>}
@@ -172,7 +163,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
             </div>
 
             <table className="w-full text-[13px] mb-2">
-                <thead className="border-y-2 border-dashed border-black">
+                <thead style={{ borderTop: '2px solid #000000', borderBottom: '2px solid #000000' }}>
                     <tr>
                         <th className="text-left font-bold py-1">ITEM</th>
                         <th className="text-center font-bold py-1">QTY</th>
@@ -180,7 +171,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         <th className="text-right font-bold py-1">TOTAL</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-dotted divide-black">
+                <tbody>
                     {finalItems.map((item, index) => {
                         const pricePerUnit = getItemPrice(item);
                         const totalItemPrice = getItemTotal(item);
@@ -190,7 +181,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         return (
                             <tr key={index}>
                                 <td className="py-1.5 align-top pr-1">
-                                    <div className="text-[15px] leading-snug font-normal">
+                                    <div className="text-[17px] leading-snug font-normal">
                                         {safeRender(item.name || item.itemName)}
                                         {variantLabel}
                                     </div>
@@ -213,13 +204,13 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 </tbody>
             </table>
 
-            <div className="text-xs border-t-2 border-dashed border-black pt-2 mt-2">
-                <div className="flex justify-between font-semibold">
+            <div className="text-xs pt-2 mt-2" style={{ borderTop: '2px solid #000000' }}>
+                <div className="font-semibold" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                     <span>Subtotal</span>
                     <span>{formatCurrency(finalBillDetails.subtotal)}</span>
                 </div>
                 {finalBillDetails.discount > 0 && (
-                    <div className="flex justify-between">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <span>Discount</span>
                         <span>- {formatCurrency(finalBillDetails.discount)}</span>
                     </div>
@@ -227,37 +218,37 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
 
                 {/* NEW: Extra Charges */}
                 {finalBillDetails.packagingCharge > 0 && (
-                    <div className="flex justify-between">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <span>Packaging Charge</span>
                         <span>+ {formatCurrency(finalBillDetails.packagingCharge)}</span>
                     </div>
                 )}
                 {finalBillDetails.platformFee > 0 && (
-                    <div className="flex justify-between">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <span>Platform Fee</span>
                         <span>+ {formatCurrency(finalBillDetails.platformFee)}</span>
                     </div>
                 )}
                 {finalBillDetails.convenienceFee > 0 && (
-                    <div className="flex justify-between">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <span>Convenience Fee</span>
                         <span>+ {formatCurrency(finalBillDetails.convenienceFee)}</span>
                     </div>
                 )}
                 {finalBillDetails.serviceFee > 0 && (
-                    <div className="flex justify-between">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <span>{String(finalBillDetails.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge'}</span>
                         <span>+ {formatCurrency(finalBillDetails.serviceFee)}</span>
                     </div>
                 )}
                 {finalBillDetails.deliveryCharge > 0 && (
-                    <div className="flex justify-between">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <span>Delivery Charge</span>
                         <span>+ {formatCurrency(finalBillDetails.deliveryCharge)}</span>
                     </div>
                 )}
                 {finalBillDetails.tip > 0 && (
-                    <div className="flex justify-between">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <span>Tip</span>
                         <span>+ {formatCurrency(finalBillDetails.tip)}</span>
                     </div>
@@ -271,13 +262,13 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     return (
                         <>
                             {finalBillDetails.cgst > 0 && (
-                                <div className="flex justify-between">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                                     <span>CGST ({halfRate}%)</span>
                                     <span>+ {formatCurrency(finalBillDetails.cgst)}</span>
                                 </div>
                             )}
                             {finalBillDetails.sgst > 0 && (
-                                <div className="flex justify-between">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                                     <span>SGST ({halfRate}%)</span>
                                     <span>+ {formatCurrency(finalBillDetails.sgst)}</span>
                                 </div>
@@ -287,12 +278,12 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 })()}
             </div>
 
-            <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
+            <div className="font-bold text-lg pt-1 mt-1" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', borderTop: '2px solid #000000' }}>
                 <span>GRAND TOTAL</span>
                 <span className="grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
-            <div className="text-center mt-4 pt-2 border-t border-dashed border-black">
+            <div className="text-center mt-4 pt-2" style={{ borderTop: '1px solid #000000' }}>
                 <p className="text-xs italic">Thank you for your order!</p>
                 <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
             </div>
