@@ -24,7 +24,7 @@ npm run kiosk:install-startup
 Optional (custom URL):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/install-kiosk-startup.ps1 -Url "https://www.servizephyr.com/owner-dashboard/custom-bill"
+powershell -ExecutionPolicy Bypass -File scripts/install-kiosk-startup.ps1 -Url "https://www.servizephyr.com/owner-dashboard/manual-order?printMode=kiosk"
 ```
 
 This creates a startup shortcut so kiosk browser opens automatically after Windows sign-in.
@@ -38,10 +38,16 @@ npm run kiosk:launch
 Optional with custom URL/browser:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/launch-kiosk-printing.ps1 -Browser chrome -Url "http://localhost:3000/owner-dashboard/custom-bill"
+powershell -ExecutionPolicy Bypass -File scripts/launch-kiosk-printing.ps1 -Browser chrome -Url "http://localhost:3000/owner-dashboard/manual-order?printMode=kiosk"
 ```
 
 Before launching, close all normal Chrome windows first.
+
+Tip:
+- Add `?printMode=kiosk` in the billing page URL so the app shows `Silent Print` mode in UI.
+- Example deployed URLs:
+  - `https://www.servizephyr.com/owner-dashboard/manual-order?printMode=kiosk`
+  - `https://www.servizephyr.com/owner-dashboard/custom-bill?printMode=kiosk`
 
 ## 4. Set default printer quickly
 

@@ -13,6 +13,7 @@ import { useReactToPrint } from 'react-to-print';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -73,6 +74,7 @@ function CustomBillPage() {
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
+    const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
     const [cacheStatus, setCacheStatus] = useState('checking');
     const hasHydratedFromCacheRef = useRef(false);
     const scrollContainerRef = useRef(null);
@@ -133,6 +135,10 @@ function CustomBillPage() {
         content: () => billPrintRef.current,
         onAfterPrint: () => setIsBillModalOpen(false), // Close modal after printing
     });
+
+    useEffect(() => {
+        setPreferredPrintMode(resolvePreferredPrintMode(searchParams));
+    }, [searchParams]);
 
     useEffect(() => {
         if (hasHydratedFromCacheRef.current) return;
@@ -984,6 +990,11 @@ function CustomBillPage() {
                             customerDetails={customerDetails}
                         />
                     </div>
+                    {isKioskPrintMode(preferredPrintMode) && (
+                        <div className="px-4 py-2 text-xs text-emerald-700 bg-emerald-50 border-t border-emerald-200 no-print">
+                            Silent print mode active. Kiosk browser se print karne par system popup nahi aayega.
+                        </div>
+                    )}
                     <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">
                         <Button
                             onClick={handleDirectPrint}
@@ -997,9 +1008,10 @@ function CustomBillPage() {
                             onClick={handleBrowserPrintForBill}
                             className="bg-primary hover:bg-primary/90"
                             disabled={isSavingBillHistory}
+                            title={isKioskPrintMode(preferredPrintMode) ? 'Silent print via kiosk browser' : 'Standard browser print dialog'}
                         >
                             <Printer className="mr-2 h-4 w-4" />
-                            {isSavingBillHistory ? 'Saving...' : 'Browser Print'}
+                            {isSavingBillHistory ? 'Saving...' : isKioskPrintMode(preferredPrintMode) ? 'Silent Print' : 'Browser Print'}
                         </Button>
                     </div>
                 </DialogContent>

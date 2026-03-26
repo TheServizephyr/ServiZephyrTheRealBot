@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/components/ui/use-toast";
+import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -60,6 +61,7 @@ function ManualOrderPage() {
         address: ''
     });
     const [orderType, setOrderType] = useState('delivery'); // 'delivery', 'dine-in', 'pickup'
+    const [phoneError, setPhoneError] = useState(false);
     const [activeTable, setActiveTable] = useState(null);
     const [manualTables, setManualTables] = useState([]);
     const [isLoadingTables, setIsLoadingTables] = useState(false);
@@ -87,6 +89,7 @@ function ManualOrderPage() {
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
+    const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
     const [cacheStatus, setCacheStatus] = useState('checking');
     const hasHydratedFromCacheRef = useRef(false);
     const scrollContainerRef = useRef(null);
@@ -95,7 +98,7 @@ function ManualOrderPage() {
     const sidebarRef = useRef(null);
     const isResizing = useRef(false);
     const [manualSidebarWidth, setManualSidebarWidth] = useState(null); // null means use dynamic default
-    
+
     const billContainerRef = useRef(null);
     const isResizingBill = useRef(false);
     const [billSidebarWidth, setBillSidebarWidth] = useState(340);
@@ -167,6 +170,10 @@ function ManualOrderPage() {
         content: () => tablePrintRef.current,
         documentTitle: `Table-Bill-${Date.now()}`,
     });
+
+    useEffect(() => {
+        setPreferredPrintMode(resolvePreferredPrintMode(searchParams));
+    }, [searchParams]);
 
     useEffect(() => {
         if (tableToPrint && handleTablePrint) {
@@ -710,6 +717,7 @@ function ManualOrderPage() {
         setItemHistory([]);
         setBillDraftId(createBillDraftId());
         setCustomerDetails({ name: '', phone: '', address: '' });
+        setPhoneError(false);
     };
 
     const handleClear = () => {
@@ -736,9 +744,9 @@ function ManualOrderPage() {
 
     const { subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
-        
+
         const normalizedDeliveryCharge = orderType === 'delivery' ? Math.max(0, Number(deliveryChargeInput) || 0) : 0;
-        
+
         let normalizedAdditionalCharge = 0;
         let normalizedAdditionalChargeLabel = 'Additional Charge';
 
@@ -981,13 +989,45 @@ function ManualOrderPage() {
         return data;
     };
 
+    const validatePhoneNumber = () => {
+        const phone = customerDetails.phone?.trim() || '';
+        const isDelivery = orderType === 'delivery';
+        const hasNonDigits = /[^0-9]/.test(phone);
+
+        if (hasNonDigits) {
+            setPhoneError(true);
+            setIsCustomerDetailsOpen(true);
+            toast({ title: 'Invalid Phone Number', description: 'Only Numeric values are allowed.', variant: 'destructive' });
+            return false;
+        }
+
+        if (isDelivery) {
+            if (phone.length !== 10) {
+                setPhoneError(true);
+                setIsCustomerDetailsOpen(true);
+                toast({ title: 'Invalid Phone Number', description: 'For Delivery order 10 digit number is mandatory.', variant: 'destructive' });
+                return false;
+            }
+        } else {
+            if (phone.length > 0 && phone.length !== 10) {
+                setPhoneError(true);
+                setIsCustomerDetailsOpen(true);
+                toast({ title: 'Invalid Phone Number', description: 'Phone number should be 10 digits.', variant: 'destructive' });
+                return false;
+            }
+        }
+        setPhoneError(false);
+        return true;
+    };
+
     const handleOccupyTable = async () => {
         if (!activeTable) return;
+        if (!validatePhoneNumber()) return;
         setTableActionLoading(true);
         try {
             const user = auth.currentUser;
             const idToken = await user.getIdToken();
-            
+
             const currentOrder = {
                 items: cart,
                 customerDetails,
@@ -1000,9 +1040,9 @@ function ManualOrderPage() {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ action: 'occupy', currentOrder })
             });
-            
+
             if (!res.ok) throw new Error('Failed to save to table');
-            
+
             toast({ title: 'Saved', description: `Order saved to ${activeTable.name}` });
             setActiveTable(null);
             handleClear(); // Clear cart
@@ -1025,12 +1065,12 @@ function ManualOrderPage() {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ name: newTableName })
             });
-            
+
             if (!res.ok) {
                 const data = await res.json();
                 throw new Error(data.message || 'Failed to create table');
             }
-            
+
             toast({ title: 'Success', description: 'Table created' });
             setIsCreateTableModalOpen(false);
             setNewTableName('');
@@ -1049,7 +1089,7 @@ function ManualOrderPage() {
         try {
             const user = auth.currentUser;
             const idToken = await user.getIdToken();
-            
+
             const historyItems = tableToSettle.currentOrder.items.map((item) => ({
                 id: item.id, name: item.name, categoryId: item.categoryId,
                 quantity: item.quantity, price: item.price, totalPrice: item.totalPrice, portion: item.portion || null,
@@ -1101,6 +1141,7 @@ function ManualOrderPage() {
 
     const handleBrowserPrintForBill = async () => {
         if (!cart.length) return;
+        if (!validatePhoneNumber()) return;
 
         setIsSavingBillHistory(true);
         let saveError = null;
@@ -1127,6 +1168,7 @@ function ManualOrderPage() {
 
     const handleDirectPrint = async () => {
         if (!cart.length) return;
+        if (!validatePhoneNumber()) return;
 
         setIsSavingBillHistory(true);
         try {
@@ -1208,6 +1250,11 @@ function ManualOrderPage() {
                             customerDetails={customerDetails}
                         />
                     </div>
+                    {isKioskPrintMode(preferredPrintMode) && (
+                        <div className="px-4 py-2 text-xs text-emerald-700 bg-emerald-50 border-t border-emerald-200 no-print">
+                            Silent print mode active. Kiosk browser se print karne par system popup nahi aayega.
+                        </div>
+                    )}
                     <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">
                         <Button
                             onClick={handleDirectPrint}
@@ -1221,9 +1268,10 @@ function ManualOrderPage() {
                             onClick={handleBrowserPrintForBill}
                             className="bg-primary hover:bg-primary/90"
                             disabled={isSavingBillHistory}
+                            title={isKioskPrintMode(preferredPrintMode) ? 'Silent print via kiosk browser' : 'Standard browser print dialog'}
                         >
                             <Printer className="mr-2 h-4 w-4" />
-                            {isSavingBillHistory ? 'Saving...' : 'Browser Print'}
+                            {isSavingBillHistory ? 'Saving...' : isKioskPrintMode(preferredPrintMode) ? 'Silent Print' : 'Browser Print'}
                         </Button>
                     </div>
                 </DialogContent>
@@ -1431,7 +1479,7 @@ function ManualOrderPage() {
                 </DialogContent>
             </Dialog>
 
-    <style jsx global>{`
+            <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 5px;
                 }
@@ -1482,7 +1530,7 @@ function ManualOrderPage() {
                                 </Button>
                             </Link>
                         </div>
-                        
+
                         {/* Only show Search, Clear, Undo if NOT in Dine In OR if a specific table is active */}
                         {(orderType !== 'dine-in' || activeTable) && (
                             <div className="w-full grid grid-cols-[1fr_auto_auto] gap-2 sm:w-auto sm:flex sm:items-center">
@@ -1528,63 +1576,63 @@ function ManualOrderPage() {
                                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
                                     {manualTables.map(table => {
                                         if (table.status === 'occupied') {
                                             return (
-                                                <div 
+                                                <div
                                                     key={table.id}
-                                                    className="relative flex flex-col p-4 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[140px] text-center overflow-hidden cursor-pointer group"
+                                                    className="relative flex flex-col p-2.5 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[110px] text-center overflow-hidden cursor-pointer group"
                                                     onClick={() => setSelectedOccupiedTable(table)}
                                                 >
-                                                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); setTableToEdit(table); setNewTableName(table.name); setIsEditTableModalOpen(true); }} 
+                                                    <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setTableToEdit(table); setNewTableName(table.name); setIsEditTableModalOpen(true); }}
                                                             className="p-1.5 bg-amber-500/20 text-amber-500 hover:bg-amber-500/40 rounded-md transition-colors"
                                                             title="Rename Table">
-                                                            <Edit size={14} />
+                                                            <Edit size={12} />
                                                         </button>
                                                     </div>
-                                                    <h3 className="font-bold text-3xl mb-1 text-white">{table.name}</h3>
-                                                    <div className="flex flex-col items-center mb-2">
-                                                        <span className="text-xl font-bold text-amber-500">{formatCurrency(table.currentOrder?.grandTotal || 0)}</span>
-                                                        <span className="text-sm text-gray-400 mt-1">{table.currentOrder?.items?.length || 0} {table.currentOrder?.items?.length === 1 ? 'item' : 'items'}</span>
+                                                    <h3 className="font-bold text-xl mb-0.5 text-white">{table.name}</h3>
+                                                    <div className="flex flex-col items-center mb-1">
+                                                        <span className="text-base font-bold text-amber-500">{formatCurrency(table.currentOrder?.grandTotal || 0)}</span>
+                                                        <span className="text-[10px] text-gray-400 mt-0.5">{table.currentOrder?.items?.length || 0} {table.currentOrder?.items?.length === 1 ? 'item' : 'items'}</span>
                                                     </div>
-                                                    
-                                                    <div className="mt-auto pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                                                        <button 
-                                                           onClick={(e) => {
-                                                               e.stopPropagation();
-                                                               const order = table.currentOrder;
-                                                               if (order) {
-                                                                   setCart(order.items || []);
-                                                                   if (order.customerDetails) setCustomerDetails(order.customerDetails);
-                                                                   if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
-                                                                   if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
-                                                                   if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
-                                                               }
-                                                               setActiveTable(table);
-                                                               setSelectedOccupiedTable(null);
-                                                           }}
-                                                           className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-amber-500 hover:bg-[#333] transition-colors"
-                                                           title="Add/Edit Items"
+
+                                                    <div className="mt-auto pt-2 border-t border-white/10 flex items-center justify-between gap-1.5">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const order = table.currentOrder;
+                                                                if (order) {
+                                                                    setCart(order.items || []);
+                                                                    if (order.customerDetails) setCustomerDetails(order.customerDetails);
+                                                                    if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
+                                                                    if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
+                                                                    if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
+                                                                }
+                                                                setActiveTable(table);
+                                                                setSelectedOccupiedTable(null);
+                                                            }}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-amber-500 hover:bg-[#333] transition-colors"
+                                                            title="Add/Edit Items"
                                                         >
-                                                            <Plus size={18} />
+                                                            <Plus size={15} />
                                                         </button>
-                                                        <button 
-                                                           onClick={async (e) => {
-                                                               e.stopPropagation();
-                                                               setTableToPrint(table); // Triggers direct browser print via useEffect
-                                                               await handleSettleTable(table);
-                                                           }}
-                                                           disabled={tableActionLoading}
-                                                           className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-white hover:bg-[#333] transition-colors"
-                                                           title="Settle & Free Table"
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                setTableToPrint(table); // Triggers direct browser print via useEffect
+                                                                await handleSettleTable(table);
+                                                            }}
+                                                            disabled={tableActionLoading}
+                                                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-white hover:bg-[#333] transition-colors"
+                                                            title="Settle & Free Table"
                                                         >
                                                             {tableActionLoading ? (
-                                                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                                             ) : (
-                                                                <Printer size={18} />
+                                                                <Printer size={15} />
                                                             )}
                                                         </button>
                                                     </div>
@@ -1593,182 +1641,182 @@ function ManualOrderPage() {
                                         }
 
                                         return (
-                                            <div 
+                                            <div
                                                 key={table.id}
                                                 onClick={() => {
                                                     setActiveTable(table);
                                                     handleClear(); // Reset cart for new table safely
                                                 }}
-                                                className="cursor-pointer relative p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[140px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md group"
+                                                className="cursor-pointer relative p-2.5 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[100px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md group"
                                             >
-                                                <div className="absolute top-2 right-2 flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); setTableToEdit(table); setNewTableName(table.name); setIsEditTableModalOpen(true); }} 
-                                                        className="p-1.5 bg-muted/80 text-foreground hover:bg-muted-foreground/20 rounded-md transition-colors"
+                                                <div className="absolute top-1.5 right-1.5 flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setTableToEdit(table); setNewTableName(table.name); setIsEditTableModalOpen(true); }}
+                                                        className="p-1 bg-muted/80 text-foreground hover:bg-muted-foreground/20 rounded-md transition-colors"
                                                         title="Rename Table">
-                                                        <Edit size={14} />
+                                                        <Edit size={12} />
                                                     </button>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteTable(table); }} 
-                                                        className="p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md transition-colors"
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteTable(table); }}
+                                                        className="p-1 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md transition-colors"
                                                         title="Delete Table">
-                                                        <Trash2 size={14} />
+                                                        <Trash2 size={12} />
                                                     </button>
                                                 </div>
-                                                <h3 className="font-bold text-lg mb-1">{table.name}</h3>
-                                                <span className="text-xs text-muted-foreground uppercase tracking-widest flex items-center gap-1"><CheckCircle size={12} /> Available</span>
+                                                <h3 className="font-bold text-base mb-0.5">{table.name}</h3>
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} /> Available</span>
                                             </div>
                                         );
                                     })}
-                                    
+
                                     {/* Create Table Card */}
-                                    <div 
+                                    <div
                                         onClick={() => setIsCreateTableModalOpen(true)}
-                                        className="cursor-pointer p-4 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:bg-muted/30 hover:border-primary/50 transition-all flex flex-col items-center justify-center min-h-[120px] text-center text-muted-foreground hover:text-foreground"
+                                        className="cursor-pointer p-2 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:bg-muted/30 hover:border-primary/50 transition-all flex flex-col items-center justify-center min-h-[90px] text-center text-muted-foreground hover:text-foreground"
                                     >
-                                        <PlusCircle className="w-8 h-8 mb-2" />
-                                        <span className="font-semibold text-sm">Create Table</span>
+                                        <PlusCircle className="w-6 h-6 mb-1.5" />
+                                        <span className="font-semibold text-xs">Create Table</span>
                                     </div>
                                 </div>
                             )}
                         </div>
                     ) : (
-                    <div className="flex gap-4 flex-1 min-h-0 relative">
-                        {/* CATEGORY NAVIGATION SIDEBAR */}
-                        <div
-                            ref={sidebarRef}
-                            style={{ width: `${sidebarWidth}px` }}
-                            className="flex-shrink-0 border-r border-border pr-2 overflow-y-auto overscroll-contain custom-scrollbar hidden md:block"
-                        >
-                            <div className="space-y-1">
-                                {visibleMenuEntries.map(([categoryId]) => (
-                                    <button
-                                        key={categoryId}
-                                        onClick={() => scrollToCategory(categoryId)}
-                                        className={cn(
-                                            "w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all capitalize",
-                                            activeCategory === categoryId
-                                                ? "bg-primary text-primary-foreground shadow-md scale-[1.02]"
-                                                : "text-muted-foreground hover:bg-muted"
-                                        )}
-                                    >
-                                        {formatCategoryLabel(categoryId)}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* RESIZE HANDLE */}
-                        <div
-                            onMouseDown={startResizing}
-                            className="hidden md:block absolute top-0 bottom-0 z-10 w-2 cursor-col-resize flex items-center justify-center group"
-                            style={{ left: `${sidebarWidth - 1}px`, transform: 'translateX(-50%)' }}
-                            title="Drag to resize sidebar"
-                        >
-                            <div className="h-10 w-1 bg-border rounded-full group-hover:bg-primary transition-colors"></div>
-                        </div>
-
-                        {/* ITEM LIST */}
-                        <div
-                            ref={scrollContainerRef}
-                            className="flex-grow min-h-0 overflow-y-auto overscroll-contain pr-2 custom-scrollbar"
-                        >
-                            {loading ? (
-                                <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
-                                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                                    <p>Loading menu...</p>
+                        <div className="flex gap-4 flex-1 min-h-0 relative">
+                            {/* CATEGORY NAVIGATION SIDEBAR */}
+                            <div
+                                ref={sidebarRef}
+                                style={{ width: `${sidebarWidth}px` }}
+                                className="flex-shrink-0 border-r border-border pr-2 overflow-y-auto overscroll-contain custom-scrollbar hidden md:block"
+                            >
+                                <div className="space-y-1">
+                                    {visibleMenuEntries.map(([categoryId]) => (
+                                        <button
+                                            key={categoryId}
+                                            onClick={() => scrollToCategory(categoryId)}
+                                            className={cn(
+                                                "w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all capitalize",
+                                                activeCategory === categoryId
+                                                    ? "bg-primary text-primary-foreground shadow-md scale-[1.02]"
+                                                    : "text-muted-foreground hover:bg-muted"
+                                            )}
+                                        >
+                                            {formatCategoryLabel(categoryId)}
+                                        </button>
+                                    ))}
                                 </div>
-                            ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
-                                <div key={categoryId} id={`cat-${categoryId}`} className="mb-5 pt-1">
-                                    <h3 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
-                                        {formatCategoryLabel(categoryId)}
-                                    </h3>
-                                    {categoryId === 'open-items' && filteredItems.length === 0 ? (
-                                        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-900/10 text-sm text-muted-foreground">
-                                            No open items yet. Add them from Menu Management to use in manual billing.
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {filteredItems.map(item => {
-                                                // Handle Open Items (no portions)
-                                                if (categoryId === 'open-items' || !item.portions) {
+                            </div>
+
+                            {/* RESIZE HANDLE */}
+                            <div
+                                onMouseDown={startResizing}
+                                className="hidden md:block absolute top-0 bottom-0 z-10 w-2 cursor-col-resize flex items-center justify-center group"
+                                style={{ left: `${sidebarWidth - 1}px`, transform: 'translateX(-50%)' }}
+                                title="Drag to resize sidebar"
+                            >
+                                <div className="h-10 w-1 bg-border rounded-full group-hover:bg-primary transition-colors"></div>
+                            </div>
+
+                            {/* ITEM LIST */}
+                            <div
+                                ref={scrollContainerRef}
+                                className="flex-grow min-h-0 overflow-y-auto overscroll-contain pr-2 custom-scrollbar"
+                            >
+                                {loading ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+                                        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                                        <p>Loading menu...</p>
+                                    </div>
+                                ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
+                                    <div key={categoryId} id={`cat-${categoryId}`} className="mb-5 pt-1">
+                                        <h3 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
+                                            {formatCategoryLabel(categoryId)}
+                                        </h3>
+                                        {categoryId === 'open-items' && filteredItems.length === 0 ? (
+                                            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-900/10 text-sm text-muted-foreground">
+                                                No open items yet. Add them from Menu Management to use in manual billing.
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                {filteredItems.map(item => {
+                                                    // Handle Open Items (no portions)
+                                                    if (categoryId === 'open-items' || !item.portions) {
+                                                        return (
+                                                            <motion.div
+                                                                key={item.id}
+                                                                whileHover={{ y: -4, scale: 1.02 }}
+                                                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                                className="p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 rounded-2xl border-2 border-amber-600/30 hover:border-amber-500/60 transition-all shadow-md hover:shadow-xl hover:shadow-amber-900/20 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                            >
+                                                                <div className="flex-1 mb-3">
+                                                                    <p className="font-bold text-foreground text-base leading-tight">
+                                                                        {item.name}
+                                                                    </p>
+                                                                </div>
+                                                                <motion.button
+                                                                    whileHover={{ scale: 1.05 }}
+                                                                    whileTap={{ scale: 0.95 }}
+                                                                    onClick={() => addToCart(item, { name: 'Regular', price: item.price })}
+                                                                    className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
+                                                                >
+                                                                    <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+                                                                    <span className="text-base font-black relative z-10">
+                                                                        {formatCurrency(item.price)}
+                                                                    </span>
+                                                                </motion.button>
+                                                            </motion.div>
+                                                        );
+                                                    }
+
+                                                    // Handle Regular Menu Items
                                                     return (
                                                         <motion.div
                                                             key={item.id}
                                                             whileHover={{ y: -4, scale: 1.02 }}
                                                             transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                            className="p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 rounded-2xl border-2 border-amber-600/30 hover:border-amber-500/60 transition-all shadow-md hover:shadow-xl hover:shadow-amber-900/20 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                            className="p-5 bg-gradient-to-br from-card via-card to-card/90 hover:from-card hover:via-muted/20 hover:to-card rounded-2xl border-2 border-border/40 hover:border-primary/50 transition-all shadow-md hover:shadow-xl hover:shadow-primary/10 min-h-[130px] flex flex-col backdrop-blur-sm"
                                                         >
                                                             <div className="flex-1 mb-3">
                                                                 <p className="font-bold text-foreground text-base leading-tight">
                                                                     {item.name}
                                                                 </p>
                                                             </div>
-                                                            <motion.button
-                                                                whileHover={{ scale: 1.05 }}
-                                                                whileTap={{ scale: 0.95 }}
-                                                                onClick={() => addToCart(item, { name: 'Regular', price: item.price })}
-                                                                className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
-                                                            >
-                                                                <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
-                                                                <span className="text-base font-black relative z-10">
-                                                                    {formatCurrency(item.price)}
-                                                                </span>
-                                                            </motion.button>
+                                                            <div className={`grid gap-2.5 mt-auto ${item.portions.length === 1 ? 'grid-cols-1' :
+                                                                item.portions.length === 2 ? 'grid-cols-2' :
+                                                                    'grid-cols-3'
+                                                                }`}>
+                                                                {item.portions.map(portion => (
+                                                                    <motion.button
+                                                                        key={portion.name}
+                                                                        whileHover={{ scale: 1.05 }}
+                                                                        whileTap={{ scale: 0.95 }}
+                                                                        onClick={() => addToCart(item, portion)}
+                                                                        className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
+                                                                    >
+                                                                        {/* Subtle gradient overlay on hover */}
+                                                                        <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+
+                                                                        {item.portions.length > 1 && (
+                                                                            <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
+                                                                                {portion.name}
+                                                                            </span>
+                                                                        )}
+                                                                        <div className="flex items-center justify-center relative z-10">
+                                                                            <span className="text-base font-black">
+                                                                                {formatCurrency(portion.price)}
+                                                                            </span>
+                                                                        </div>
+                                                                    </motion.button>
+                                                                ))}
+                                                            </div>
                                                         </motion.div>
                                                     );
-                                                }
-
-                                                // Handle Regular Menu Items
-                                                return (
-                                                    <motion.div
-                                                        key={item.id}
-                                                        whileHover={{ y: -4, scale: 1.02 }}
-                                                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                        className="p-5 bg-gradient-to-br from-card via-card to-card/90 hover:from-card hover:via-muted/20 hover:to-card rounded-2xl border-2 border-border/40 hover:border-primary/50 transition-all shadow-md hover:shadow-xl hover:shadow-primary/10 min-h-[130px] flex flex-col backdrop-blur-sm"
-                                                    >
-                                                        <div className="flex-1 mb-3">
-                                                            <p className="font-bold text-foreground text-base leading-tight">
-                                                                {item.name}
-                                                            </p>
-                                                        </div>
-                                                        <div className={`grid gap-2.5 mt-auto ${item.portions.length === 1 ? 'grid-cols-1' :
-                                                            item.portions.length === 2 ? 'grid-cols-2' :
-                                                                'grid-cols-3'
-                                                            }`}>
-                                                            {item.portions.map(portion => (
-                                                                <motion.button
-                                                                    key={portion.name}
-                                                                    whileHover={{ scale: 1.05 }}
-                                                                    whileTap={{ scale: 0.95 }}
-                                                                    onClick={() => addToCart(item, portion)}
-                                                                    className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
-                                                                >
-                                                                    {/* Subtle gradient overlay on hover */}
-                                                                    <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
-
-                                                                    {item.portions.length > 1 && (
-                                                                        <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
-                                                                            {portion.name}
-                                                                        </span>
-                                                                    )}
-                                                                    <div className="flex items-center justify-center relative z-10">
-                                                                        <span className="text-base font-black">
-                                                                            {formatCurrency(portion.price)}
-                                                                        </span>
-                                                                    </div>
-                                                                </motion.button>
-                                                            ))}
-                                                        </div>
-                                                    </motion.div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
                     )}
                 </div>
 
@@ -1782,7 +1830,7 @@ function ManualOrderPage() {
                 </div>
 
                 {/* Right Side: Live Bill Preview (Resizable) */}
-                <div 
+                <div
                     ref={billContainerRef}
                     style={{ width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${billSidebarWidth}px` : '100%' }}
                     className="flex-shrink-0 flex flex-col gap-4 h-full lg:min-h-0 overflow-y-auto overscroll-contain pr-1"
@@ -1813,7 +1861,23 @@ function ManualOrderPage() {
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><Phone size={13} /> Phone</Label>
-                                        <input value={customerDetails.phone} onChange={e => setCustomerDetails({ ...customerDetails, phone: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" />
+                                        <input
+                                            value={customerDetails.phone}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setCustomerDetails({ ...customerDetails, phone: val });
+                                                // Clear error if it becomes valid: length 10 or (empty and not delivery) AND numeric
+                                                const isNumeric = !/[^0-9]/.test(val);
+                                                if (val.length === 10 && isNumeric) setPhoneError(false);
+                                                if (val.length === 0 && orderType !== 'delivery') setPhoneError(false);
+                                            }}
+                                            className={cn(
+                                                "w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border transition-colors",
+                                                (customerDetails.phone.length > 10 || (customerDetails.phone.length > 0 && /[^0-9]/.test(customerDetails.phone))) ? "bg-red-500/20 border-red-500 text-red-500" : "",
+                                                phoneError ? "border-red-500 ring-1 ring-red-500" : ""
+                                            )}
+                                        />
+                                        {phoneError && <p className="text-[10px] font-bold text-red-500 mt-0.5 animate-pulse">INVALID PHONE NUMBER</p>}
                                     </div>
                                     {orderType === 'delivery' && (
                                         <>
@@ -1982,7 +2046,7 @@ function ManualOrderPage() {
 
                 </div>{/* end billContainerRef */}
             </div>{/* end flex flex-col lg:flex-row */}
-            
+
             {/* Hidden Table Print Component */}
             <div className="hidden">
                 <div ref={tablePrintRef} className="preview-bill">
@@ -1990,15 +2054,15 @@ function ManualOrderPage() {
                         <BillToPrint
                             order={{ orderDate: new Date() }}
                             restaurant={restaurant}
-                            billDetails={{ 
-                                subtotal: tableToPrint.currentOrder.subtotal, 
-                                cgst: tableToPrint.currentOrder.cgst, 
-                                sgst: tableToPrint.currentOrder.sgst, 
-                                deliveryCharge: tableToPrint.currentOrder.deliveryCharge, 
-                                serviceFee: tableToPrint.currentOrder.additionalCharge, 
-                                serviceFeeLabel: tableToPrint.currentOrder.additionalChargeLabel, 
-                                grandTotal: tableToPrint.currentOrder.grandTotal, 
-                                discount: 0 
+                            billDetails={{
+                                subtotal: tableToPrint.currentOrder.subtotal,
+                                cgst: tableToPrint.currentOrder.cgst,
+                                sgst: tableToPrint.currentOrder.sgst,
+                                deliveryCharge: tableToPrint.currentOrder.deliveryCharge,
+                                serviceFee: tableToPrint.currentOrder.additionalCharge,
+                                serviceFeeLabel: tableToPrint.currentOrder.additionalChargeLabel,
+                                grandTotal: tableToPrint.currentOrder.grandTotal,
+                                discount: 0
                             }}
                             items={tableToPrint.currentOrder.items || []}
                             customerDetails={tableToPrint.currentOrder.customerDetails || {}}

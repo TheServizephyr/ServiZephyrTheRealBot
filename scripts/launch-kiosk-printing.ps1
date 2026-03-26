@@ -52,7 +52,7 @@ if ([string]::IsNullOrWhiteSpace($Url)) {
     if (-not [string]::IsNullOrWhiteSpace($env:SERVIZEPHYR_KIOSK_URL)) {
         $Url = $env:SERVIZEPHYR_KIOSK_URL
     } else {
-        $Url = "http://localhost:3000/owner-dashboard/custom-bill"
+        $Url = "http://localhost:3000/owner-dashboard/custom-bill?printMode=kiosk"
     }
 }
 
