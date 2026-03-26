@@ -80,7 +80,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     };
 
     return (
-        <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto text-[12px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
+        <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto text-[16px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
             <style jsx global>{`
                 @media print {
                     @page {
@@ -99,7 +99,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         margin: 0 auto; /* Center it for A4 readability */
                         padding: 2mm; 
                         font-family: Arial, Helvetica, sans-serif;
-                        font-size: 13px; /* Slightly larger for clarity */
+                        font-size: 16px;
                         color: #000000 !important;
                         line-height: 1.2;
                         -webkit-print-color-adjust: exact;
@@ -141,12 +141,12 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 }
             `}</style>
             <div className="text-center mb-4 pb-2" style={{ borderBottom: '2px solid #000000' }}>
-                <h1 className="text-xl font-bold uppercase">{safeRender(restaurant?.name, 'Restaurant')}</h1>
-                <p className="text-xs font-bold">{restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')}</p>
-                {restaurant?.gstin && <p className="text-xs mt-1 font-bold">GSTIN: {restaurant.gstin}</p>}
-                {restaurant?.fssai && <p className="text-xs font-bold">FSSAI: {restaurant.fssai}</p>}
+                <h1 className="text-[16px] font-bold uppercase">{safeRender(restaurant?.name, 'Restaurant')}</h1>
+                <p className="text-[16px] font-bold">{restaurant?.address?.street || (typeof restaurant?.address === 'string' ? restaurant.address : '')}</p>
+                {restaurant?.gstin && <p className="text-[16px] mt-1 font-bold">GSTIN: {restaurant.gstin}</p>}
+                {restaurant?.fssai && <p className="text-[16px] font-bold">FSSAI: {restaurant.fssai}</p>}
             </div>
-            <div className="mb-2 text-xs font-bold">
+            <div className="mb-2 text-[16px] font-bold">
                 <p><strong>Bill To:</strong> {safeRender(finalCustomerDetails.name, 'Walk-in Customer')}</p>
                 {finalCustomerDetails.phone && <p><strong>Phone:</strong> {finalCustomerDetails.phone}</p>}
                 {finalCustomerDetails.address && (
@@ -162,7 +162,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 
-            <table className="w-full text-[13px] mb-2">
+            <table className="w-full text-[16px] mb-2">
                 <thead style={{ borderTop: '2px solid #000000', borderBottom: '2px solid #000000' }}>
                     <tr>
                         <th className="text-left font-bold py-1">ITEM</th>
@@ -181,14 +181,14 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         return (
                             <tr key={index}>
                                 <td className="py-1.5 align-top pr-1">
-                                    <div className="text-[17px] leading-snug font-normal">
+                                    <div className="text-[16px] leading-snug font-normal">
                                         {safeRender(item.name || item.itemName)}
                                         {variantLabel}
                                     </div>
 
                                     {/* FIXED: Show Add-ons as sub-items in Bill */}
                                     {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
-                                        <div className="text-[12px] font-medium text-black pl-2 leading-snug mt-0.5">
+                                        <div className="text-[16px] font-medium text-black pl-2 leading-snug mt-0.5">
                                             {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
                                                 <div key={aIdx}>+ {addon.name} (₹{addon.price})</div>
                                             ))}
@@ -204,7 +204,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 </tbody>
             </table>
 
-            <div className="text-xs pt-2 mt-2" style={{ borderTop: '2px solid #000000' }}>
+            <div className="text-[16px] pt-2 mt-2" style={{ borderTop: '2px solid #000000' }}>
                 <div className="font-semibold" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                     <span>Subtotal</span>
                     <span>{formatCurrency(finalBillDetails.subtotal)}</span>
@@ -278,14 +278,14 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 })()}
             </div>
 
-            <div className="font-bold text-lg pt-1 mt-1" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', borderTop: '2px solid #000000' }}>
+            <div className="font-bold text-[16px] pt-1 mt-1" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', borderTop: '2px solid #000000' }}>
                 <span>GRAND TOTAL</span>
                 <span className="grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
             <div className="text-center mt-4 pt-2" style={{ borderTop: '1px solid #000000' }}>
-                <p className="text-xs italic">Thank you for your order!</p>
-                <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
+                <p className="text-[16px] italic">Thank you for your order!</p>
+                <p className="text-[16px] font-bold mt-1">Powered by ServiZephyr</p>
             </div>
         </div>
     );
