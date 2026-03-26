@@ -661,6 +661,11 @@ function ManualOrderPage() {
                 totalPrice: portion.price
             };
 
+            const portionCount = Array.isArray(portions) ? portions.length : 0;
+            if (portionCount > 0) {
+                cartItem.portionCount = portionCount;
+            }
+
             // Only add portion data if there are multiple portions
             if (hasMultiplePortions) {
                 cartItem.portion = portion;
