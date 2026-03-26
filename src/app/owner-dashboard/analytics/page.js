@@ -806,6 +806,176 @@ const RiderAnalyticsHub = ({ data, loading }) => {
     );
 };
 
+// --- MANUAL ORDER ANALYTICS COMPONENT ---
+const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, employeeOfOwnerId, onlineRevenue }) => {
+    const [manualHistory, setManualHistory] = useState([]);
+    const [manualLoading, setManualLoading] = useState(true);
+
+    const toYMD = (d) => {
+        if (!d) return '';
+        const y = d.getFullYear();
+        const m = `${d.getMonth() + 1}`.padStart(2, '0');
+        const day = `${d.getDate()}`.padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    const getDateRange = () => {
+        const now = new Date();
+        if (activeDateFilter === 'Today') return { from: toYMD(now), to: toYMD(now) };
+        if (activeDateFilter === 'This Week') {
+            const start = new Date(now); start.setDate(now.getDate() - now.getDay());
+            return { from: toYMD(start), to: toYMD(now) };
+        }
+        if (activeDateFilter === 'This Year') {
+            return { from: `${now.getFullYear()}-01-01`, to: toYMD(now) };
+        }
+        if (activeDateFilter === 'Custom Range' && date?.from && date?.to) {
+            return { from: toYMD(date.from), to: toYMD(date.to) };
+        }
+        // Default: This Month
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        return { from: toYMD(start), to: toYMD(now) };
+    };
+
+    useEffect(() => {
+        const fetchManualHistory = async () => {
+            setManualLoading(true);
+            try {
+                const user = auth.currentUser;
+                if (!user) return;
+                const idToken = await user.getIdToken();
+                const { from, to } = getDateRange();
+                const url = new URL('/api/owner/custom-bill/history', window.location.origin);
+                url.searchParams.set('from', from);
+                url.searchParams.set('to', to);
+                url.searchParams.set('limit', '1000');
+                if (impersonatedOwnerId) url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+                else if (employeeOfOwnerId) url.searchParams.set('employee_of', employeeOfOwnerId);
+                const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) setManualHistory(Array.isArray(data.history) ? data.history : []);
+            } catch { /* silently ignore */ }
+            finally { setManualLoading(false); }
+        };
+        const unsub = auth.onAuthStateChanged(u => { if (u) fetchManualHistory(); else setManualLoading(false); });
+        return () => unsub();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeDateFilter, date, impersonatedOwnerId, employeeOfOwnerId]);
+
+    // Only count manual order types (delivery, dine-in, pickup) — exclude custom-bill types
+    const manualOrders = useMemo(() =>
+        manualHistory.filter(b => ['delivery', 'dine-in', 'pickup'].includes(b.orderType)),
+        [manualHistory]
+    );
+
+    const compute = (bills) => ({
+        count: bills.length,
+        revenue: bills.reduce((s, b) => s + Number(b.totalAmount || 0), 0),
+        avg: bills.length > 0 ? bills.reduce((s, b) => s + Number(b.totalAmount || 0), 0) / bills.length : 0,
+    });
+
+    const overall = useMemo(() => compute(manualOrders), [manualOrders]);
+    const byType = useMemo(() => ({
+        delivery: compute(manualOrders.filter(b => b.orderType === 'delivery')),
+        'dine-in': compute(manualOrders.filter(b => b.orderType === 'dine-in')),
+        pickup: compute(manualOrders.filter(b => b.orderType === 'pickup')),
+    }), [manualOrders]);
+
+    const combinedRevenue = (Number(onlineRevenue) || 0) + overall.revenue;
+
+    const typeConfig = [
+        { key: 'delivery', label: '📦 Delivery',  color: 'border-blue-500/30 bg-blue-500/5 text-blue-400' },
+        { key: 'dine-in',  label: '🍽️ Dine-In',   color: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-400' },
+        { key: 'pickup',   label: '🛍️ Pickup',    color: 'border-green-500/30 bg-green-500/5 text-green-400' },
+    ];
+
+    if (manualLoading) {
+        return (
+            <div className="space-y-4">
+                {[1,2].map(i => <div key={i} className="h-32 bg-card border border-border rounded-xl animate-pulse" />)}
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Combined revenue banner */}
+            <div className="bg-card border border-border rounded-xl p-5">
+                <p className="text-sm text-muted-foreground mb-1">Combined Total Revenue (Online + Manual Billing)</p>
+                <p className="text-4xl font-bold text-foreground">{formatCurrency(combinedRevenue)}</p>
+                <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
+                    <span>🌐 Online: <strong className="text-foreground">{formatCurrency(Number(onlineRevenue) || 0)}</strong></span>
+                    <span>📋 Manual: <strong className="text-foreground">{formatCurrency(overall.revenue)}</strong></span>
+                </div>
+            </div>
+
+            {/* KPI cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-card border border-border rounded-xl p-5">
+                    <p className="text-sm text-muted-foreground">Total Manual Orders</p>
+                    <p className="text-3xl font-bold mt-1">{overall.count.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="bg-card border border-border rounded-xl p-5">
+                    <p className="text-sm text-muted-foreground">Manual Billing Revenue</p>
+                    <p className="text-3xl font-bold mt-1">{formatCurrency(overall.revenue)}</p>
+                </div>
+                <div className="bg-card border border-border rounded-xl p-5">
+                    <p className="text-sm text-muted-foreground">Avg Bill Value</p>
+                    <p className="text-3xl font-bold mt-1">{formatCurrency(overall.avg)}</p>
+                </div>
+            </div>
+
+            {/* Per-type breakdown */}
+            <div>
+                <h3 className="text-lg font-semibold mb-3">Order Type Breakdown</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {typeConfig.map(({ key, label, color }) => (
+                        <div key={key} className={`border rounded-xl p-4 ${color}`}>
+                            <p className="text-sm font-semibold mb-2">{label}</p>
+                            <p className="text-2xl font-bold">{byType[key].count} orders</p>
+                            <p className="text-sm opacity-90 mt-1">{formatCurrency(byType[key].revenue)}</p>
+                            <p className="text-xs opacity-70 mt-0.5">Avg: {formatCurrency(byType[key].avg)}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Recent manual orders table */}
+            <div>
+                <h3 className="text-lg font-semibold mb-3">Recent Orders</h3>
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-muted/30 border-b border-border">
+                                <tr>
+                                    <th className="p-4 text-left font-semibold text-muted-foreground">Type</th>
+                                    <th className="p-4 text-left font-semibold text-muted-foreground">Customer</th>
+                                    <th className="p-4 text-left font-semibold text-muted-foreground">Amount</th>
+                                    <th className="p-4 text-left font-semibold text-muted-foreground">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                                {manualOrders.length === 0 ? (
+                                    <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No manual orders in selected period.</td></tr>
+                                ) : manualOrders.slice(0, 20).map((bill, i) => (
+                                    <tr key={bill.id || i} className="hover:bg-muted/20">
+                                        <td className="p-4 capitalize text-xs font-semibold text-muted-foreground">{bill.orderType}</td>
+                                        <td className="p-4">{bill.customerName || 'Walk-in'}</td>
+                                        <td className="p-4 font-semibold">{formatCurrency(bill.totalAmount || 0)}</td>
+                                        <td className="p-4 text-xs text-muted-foreground">
+                                            {bill.printedAt ? new Date(bill.printedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 // --- Main Page Component ---
 function AnalyticsPageContent() {
@@ -926,6 +1096,7 @@ function AnalyticsPageContent() {
         menu: { label: isStoreBusiness ? "Item Analytics" : "Menu Analytics" },
         customers: { label: "Customer Insights" },
         riders: { label: "Rider Analytics" },
+        manual: { label: "Manual Orders" },
     };
 
     const renderActiveTab = () => {
@@ -938,6 +1109,16 @@ function AnalyticsPageContent() {
                 return <CustomerRelationshipHub data={analyticsData} loading={loading} />;
             case 'riders':
                 return <RiderAnalyticsHub data={analyticsData} loading={loading} />;
+            case 'manual':
+                return (
+                    <ManualOrderAnalytics
+                        date={date}
+                        activeDateFilter={activeDateFilter}
+                        impersonatedOwnerId={impersonatedOwnerId}
+                        employeeOfOwnerId={employeeOfOwnerId}
+                        onlineRevenue={analyticsData?.salesData?.kpis?.totalRevenue || 0}
+                    />
+                );
             default:
                 return null;
         }

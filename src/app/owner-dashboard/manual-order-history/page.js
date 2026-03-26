@@ -160,11 +160,23 @@ export default function ManualOrderHistoryPage() {
 
     const selectedBillIdSet = useMemo(() => new Set(selectedBillIds), [selectedBillIds]);
     const settlingBillIdSet = useMemo(() => new Set(settlingBillIds), [settlingBillIds]);
+    // Per-tab computed stats (derived from full history, not filtered)
+    const tabStats = useMemo(() => {
+        const compute = (bills) => {
+            const total = bills.reduce((s, b) => s + Number(b.totalAmount || 0), 0);
+            const settled = bills.filter(b => b.isSettled).reduce((s, b) => s + Number(b.totalAmount || 0), 0);
+            const pending = bills.filter(b => b.settlementEligible && !b.isSettled).reduce((s, b) => s + Number(b.totalAmount || 0), 0);
+            return { count: bills.length, total, settled, pending };
+        };
+        return {
+            all: compute(history),
+            delivery: compute(history.filter(b => b.orderType === 'delivery')),
+            pickup: compute(history.filter(b => b.orderType === 'pickup')),
+            'dine-in': compute(history.filter(b => b.orderType === 'dine-in')),
+        };
+    }, [history]);
 
-    useEffect(() => {
-        const selSet = new Set(selectableBillIds);
-        setSelectedBillIds(prev => prev.filter(id => selSet.has(id)));
-    }, [selectableBillIds]);
+    const activeStat = tabStats[activeTab] || tabStats.all;
 
     const selectedSettleAmount = useMemo(() =>
         filteredHistory.reduce((sum, bill) => {
@@ -332,25 +344,44 @@ export default function ManualOrderHistoryPage() {
                 </div>
             </div>
 
-            {/* Summary Cards */}
+            {/* Summary Cards — react to active tab */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-card border border-border rounded-xl p-4">
-                    <p className="text-xs text-muted-foreground">Total Bills</p>
-                    <p className="text-2xl font-bold">{summary.totalBills}</p>
+                    <p className="text-xs text-muted-foreground">Bills ({activeTab === 'all' ? 'All Types' : activeTab})</p>
+                    <p className="text-2xl font-bold">{activeStat.count}</p>
                 </div>
                 <div className="bg-card border border-border rounded-xl p-4">
-                    <p className="text-xs text-muted-foreground">Total Amount</p>
-                    <p className="text-2xl font-bold">{formatCurrency(summary.totalAmount)}</p>
+                    <p className="text-xs text-muted-foreground">Revenue</p>
+                    <p className="text-2xl font-bold">{formatCurrency(activeStat.total)}</p>
                 </div>
                 <div className="bg-card border border-border rounded-xl p-4">
                     <p className="text-xs text-muted-foreground">Settled</p>
-                    <p className="text-2xl font-bold text-emerald-600">{formatCurrency(summary.settledAmount)}</p>
+                    <p className="text-2xl font-bold text-emerald-600">{formatCurrency(activeStat.settled)}</p>
                 </div>
                 <div className="bg-card border border-border rounded-xl p-4">
                     <p className="text-xs text-muted-foreground">Pending Settlement</p>
-                    <p className="text-2xl font-bold text-amber-600">{formatCurrency(summary.pendingSettlementAmount)}</p>
+                    <p className="text-2xl font-bold text-amber-600">{formatCurrency(activeStat.pending)}</p>
                 </div>
             </div>
+
+            {/* Cross-type breakdown bar (only visible on 'all' tab) */}
+            {activeTab === 'all' && !loading && history.length > 0 && (
+                <div className="grid grid-cols-3 gap-3 mb-5">
+                    {[
+                        { key: 'delivery', label: '📦 Delivery', color: 'border-blue-500/30 bg-blue-500/5 text-blue-400' },
+                        { key: 'dine-in',  label: '🍽️ Dine-In',  color: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-400' },
+                        { key: 'pickup',   label: '🛍️ Pickup',   color: 'border-green-500/30 bg-green-500/5 text-green-400' },
+                    ].map(({ key, label, color }) => (
+                        <button key={key}
+                            onClick={() => setActiveTab(key)}
+                            className={`border rounded-xl p-3 text-left transition-all hover:opacity-80 ${color}`}>
+                            <p className="text-xs font-semibold mb-1">{label}</p>
+                            <p className="text-lg font-bold">{tabStats[key].count} orders</p>
+                            <p className="text-xs opacity-80">{formatCurrency(tabStats[key].total)}</p>
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Date Range + Refresh */}
             <div className="bg-card border border-border rounded-xl p-4 mb-4 flex flex-col md:flex-row md:items-end gap-3">
