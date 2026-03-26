@@ -16,6 +16,35 @@ const safeRender = (val, fallback = 'N/A') => {
     return String(val);
 };
 
+const getRawVariantName = (item = {}) =>
+    String(
+        item?.portion?.name ||
+        item?.selectedPortion?.name ||
+        item?.variant ||
+        item?.portionName ||
+        item?.size ||
+        ''
+    ).trim();
+
+const getBillVariantLabel = (item = {}, allItems = []) => {
+    const defaultLabel = getItemVariantLabel(item);
+    if (defaultLabel) return defaultLabel;
+
+    const rawVariant = getRawVariantName(item);
+    if (!rawVariant || rawVariant.toLowerCase() !== 'full') return '';
+
+    const itemName = String(item?.name || item?.itemName || '').trim().toLowerCase();
+    if (!itemName) return '';
+
+    const hasSiblingVariant = allItems.some((candidate) => {
+        const candidateName = String(candidate?.name || candidate?.itemName || '').trim().toLowerCase();
+        const candidateVariant = getRawVariantName(candidate).toLowerCase();
+        return candidate !== item && candidateName === itemName && candidateVariant && candidateVariant !== 'full';
+    });
+
+    return hasSiblingVariant ? ' (Full)' : '';
+};
+
 
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
     if (!order) return null;
@@ -156,7 +185,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         const pricePerUnit = getItemPrice(item);
                         const totalItemPrice = getItemTotal(item);
                         const quantity = item.quantity || item.qty || 1;
-                        const variantLabel = getItemVariantLabel(item);
+                        const variantLabel = getBillVariantLabel(item, finalItems);
 
                         return (
                             <tr key={index}>
