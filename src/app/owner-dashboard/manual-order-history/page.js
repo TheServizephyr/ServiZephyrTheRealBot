@@ -4,8 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, RefreshCw, Printer } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
+import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
@@ -38,10 +39,82 @@ const defaultSummary = {
 };
 
 const TABS = ['all', 'delivery', 'pickup', 'dine-in'];
+const BUSINESS_COLLECTIONS = ['restaurants', 'shops', 'street_vendors'];
 
 const toAmount = (value) => {
     const num = Number(value);
     return Number.isFinite(num) ? num : 0;
+};
+
+const timestampToDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if (typeof value?.toDate === 'function') {
+        const converted = value.toDate();
+        return converted instanceof Date && !Number.isNaN(converted.getTime()) ? converted : null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isSettlementEligible = (printedVia) => printedVia !== 'create_order';
+
+const normalizeHistoryEntry = (doc) => {
+    const data = doc.data() || {};
+    const printedAt = timestampToDate(data.printedAt) || timestampToDate(data.createdAt);
+    const printedVia = data.printedVia || 'browser';
+    const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
+    const isSettled = settlementEligible ? !!data.isSettled : false;
+
+    return {
+        id: doc.id,
+        historyId: data.historyId || doc.id,
+        billDraftId: data.billDraftId || null,
+        source: data.source || 'offline_counter',
+        channel: data.channel || 'custom_bill',
+        printedVia,
+        customerName: data.customerName || 'Walk-in Customer',
+        customerPhone: data.customerPhone || null,
+        customerAddress: data.customerAddress || null,
+        customerType: data.customerType || 'guest',
+        customerId: data.customerId || null,
+        customerOrderId: data.customerOrderId || null,
+        orderType: data.orderType || data.printedVia || 'dine-in',
+        settlementEligible,
+        isSettled,
+        settledAt: timestampToDate(data.settledAt)?.toISOString() || null,
+        settledByUid: data.settledByUid || null,
+        settledByRole: data.settledByRole || null,
+        settlementBatchId: data.settlementBatchId || null,
+        subtotal: toAmount(data.subtotal),
+        cgst: toAmount(data.cgst),
+        sgst: toAmount(data.sgst),
+        deliveryCharge: toAmount(data.deliveryCharge),
+        serviceFee: toAmount(data.serviceFee),
+        serviceFeeLabel: String(data.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge',
+        totalAmount: toAmount(data.totalAmount),
+        itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 0)),
+        items: Array.isArray(data.items) ? data.items : [],
+        printedAt: printedAt ? printedAt.toISOString() : null,
+        createdAt: timestampToDate(data.createdAt)?.toISOString() || null,
+    };
+};
+
+const computeSummary = (entries) => {
+    const totalBills = entries.length;
+    const totalAmount = entries.reduce((sum, bill) => sum + toAmount(bill.totalAmount), 0);
+    const pendingBills = entries.filter((bill) => bill.settlementEligible && !bill.isSettled);
+    const settledBillsList = entries.filter((bill) => bill.settlementEligible && bill.isSettled);
+
+    return {
+        totalBills,
+        totalAmount,
+        avgBillValue: totalBills > 0 ? totalAmount / totalBills : 0,
+        pendingSettlementAmount: pendingBills.reduce((sum, bill) => sum + toAmount(bill.totalAmount), 0),
+        pendingSettlementBills: pendingBills.length,
+        settledAmount: settledBillsList.reduce((sum, bill) => sum + toAmount(bill.totalAmount), 0),
+        settledBills: settledBillsList.length,
+    };
 };
 
 const resolveBillBreakdown = (bill, restaurant = null) => {
@@ -89,6 +162,7 @@ export default function ManualOrderHistoryPage() {
     const [restaurant, setRestaurant] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const rebillPrintRef = useRef(null);
+    const pollingIntervalRef = useRef(null);
 
     const [fromDate, setFromDate] = useState(() => toDateInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
     const [toDate, setToDate] = useState(() => toDateInput(new Date()));
@@ -156,16 +230,101 @@ export default function ManualOrderHistoryPage() {
         }
     };
 
-    useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-            if (user) {
-                fetchHistory();
-                fetchRestaurantDetails().catch(() => {});
-            } else {
-                setLoading(false);
+    const resolveBusinessContext = async (targetOwnerId) => {
+        for (const collectionName of BUSINESS_COLLECTIONS) {
+            const snap = await getDocs(query(collection(db, collectionName), where('ownerId', '==', targetOwnerId), limit(1)));
+            if (!snap.empty) {
+                return {
+                    businessId: snap.docs[0].id,
+                    collectionName,
+                };
             }
+        }
+        return null;
+    };
+
+    useEffect(() => {
+        let snapshotUnsubscribe = null;
+
+        const stopPolling = () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+            }
+        };
+
+        const startPollingFallback = async () => {
+            stopPolling();
+            await fetchHistory();
+            pollingIntervalRef.current = setInterval(() => {
+                fetchHistory().catch(() => {});
+            }, 5000);
+        };
+
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+            if (!user) {
+                stopPolling();
+                setLoading(false);
+                return;
+            }
+
+            const setupRealtimeHistory = async () => {
+                try {
+                    stopPolling();
+                    setLoading(true);
+                    const targetOwnerId = impersonatedOwnerId || employeeOfOwnerId || user.uid;
+                    const businessContext = await resolveBusinessContext(targetOwnerId);
+
+                    if (!businessContext?.businessId || !businessContext?.collectionName) {
+                        throw new Error('No business associated with this owner.');
+                    }
+
+                    const from = new Date(fromDate);
+                    const to = new Date(toDate);
+                    from.setHours(0, 0, 0, 0);
+                    to.setHours(23, 59, 59, 999);
+
+                    const historyRef = collection(db, businessContext.collectionName, businessContext.businessId, 'custom_bill_history');
+                    const historyQuery = query(
+                        historyRef,
+                        where('printedAt', '>=', from),
+                        where('printedAt', '<=', to),
+                        orderBy('printedAt', 'desc'),
+                        limit(300)
+                    );
+
+                    snapshotUnsubscribe = onSnapshot(
+                        historyQuery,
+                        (snapshot) => {
+                            const entries = snapshot.docs.map(normalizeHistoryEntry);
+                            setHistory(entries);
+                            setSummary(computeSummary(entries));
+                            setLoading(false);
+                        },
+                        async (error) => {
+                            console.warn('[Manual Order History] Realtime listener failed, using API fallback:', error?.message || error);
+                            await startPollingFallback();
+                        }
+                    );
+
+                    fetchRestaurantDetails().catch(() => {});
+                } catch (error) {
+                    console.warn('[Manual Order History] Realtime setup failed, using API fallback:', error?.message || error);
+                    startPollingFallback().catch(() => {});
+                    fetchRestaurantDetails().catch(() => {});
+                }
+            };
+
+            setupRealtimeHistory();
         });
-        return () => unsubscribe();
+
+        return () => {
+            stopPolling();
+            if (typeof snapshotUnsubscribe === 'function') {
+                snapshotUnsubscribe();
+            }
+            if (typeof unsubscribe === 'function') unsubscribe();
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fromDate, toDate, accessQuery]);
 
