@@ -80,7 +80,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     };
 
     return (
-        <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto font-mono text-[12px] leading-tight">
+        <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto text-[12px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
             <style jsx global>{`
                 @media print {
                     @page {
@@ -98,7 +98,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         max-width: 79mm; /* Force receipt width even on A4 */
                         margin: 0 auto; /* Center it for A4 readability */
                         padding: 2mm; 
-                        font-family: 'Courier New', monospace;
+                        font-family: Arial, Helvetica, sans-serif;
                         font-size: 13px; /* Slightly larger for clarity */
                         color: #000000 !important;
                         line-height: 1.2;
@@ -108,20 +108,26 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         text-rendering: optimizeLegibility;
                     }
 
-                    /* Force all text to pure black and bold for printers with weak toner/ink */
+                    /* Force all text to pure black while keeping hierarchy readable */
                     #bill-print-root, #bill-print-root * {
                         color: #000000 !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
-                        font-weight: 700 !important;
+                        font-weight: 400 !important;
                         text-shadow: none !important;
                     }
 
-                    /* Make table headers and cells bolder and ensure alignment stays intact */
+                    /* Keep headings and totals emphasized */
+                    #bill-print-root h1,
+                    #bill-print-root strong,
                     #bill-print-root table th,
-                    #bill-print-root table td {
+                    #bill-print-root .grand-total-amount {
                         color: #000000 !important;
                         font-weight: 700 !important;
+                    }
+
+                    #bill-print-root table th,
+                    #bill-print-root table td {
                         border-color: #000000 !important;
                     }
 
@@ -137,12 +143,6 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     /* Increase contrast for totals and ensure grand total prints very dark */
                     #bill-print-root .text-green-600,
                     #bill-print-root .text-green-700,
-                    #bill-print-root .grand-total-amount {
-                        color: #000000 !important;
-                        font-weight: 800 !important;
-                    }
-
-                    /* Extra specific rule for grand total to make it bolder/darker */
                     #bill-print-root .grand-total-amount {
                         color: #000000 !important;
                         font-weight: 800 !important;
@@ -190,7 +190,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         return (
                             <tr key={index}>
                                 <td className="py-1.5 align-top pr-1">
-                                    <div className="text-[14px] leading-snug">
+                                    <div className="text-[14px] leading-snug font-normal">
                                         {safeRender(item.name || item.itemName)}
                                         {variantLabel}
                                     </div>
