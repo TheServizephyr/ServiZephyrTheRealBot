@@ -258,30 +258,31 @@ export default function ManualOrderHistoryPage() {
     return (
         <div className="text-foreground bg-background min-h-screen p-4 md:p-6">
             {/* Hidden print ref */}
-            <div style={{ display: 'none' }}>
-                {printBillData && (
-                    <BillToPrint
-                        ref={rebillPrintRef}
-                        order={{ orderDate: printBillData.printedAt || printBillData.createdAt }}
-                        restaurant={restaurant}
-                        billDetails={{
-                            subtotal: printBillData.subtotal || 0,
-                            cgst: printBillData.cgst || 0,
-                            sgst: printBillData.sgst || 0,
-                            deliveryCharge: printBillData.deliveryCharge || 0,
-                            serviceFee: printBillData.serviceFee || 0,
-                            serviceFeeLabel: printBillData.serviceFeeLabel || 'Additional Charge',
-                            grandTotal: printBillData.totalAmount || 0,
-                            discount: 0,
-                        }}
-                        items={Array.isArray(printBillData.items) ? printBillData.items : []}
-                        customerDetails={{
-                            name: printBillData.customerName || '',
-                            phone: printBillData.customerPhone || '',
-                            address: printBillData.customerAddress || '',
-                        }}
-                    />
-                )}
+            <div className="hidden">
+                <div ref={rebillPrintRef} className="preview-bill">
+                    {printBillData && (
+                        <BillToPrint
+                            order={{ orderDate: printBillData.printedAt || printBillData.createdAt }}
+                            restaurant={restaurant}
+                            billDetails={{
+                                subtotal: printBillData.subtotal || 0,
+                                cgst: printBillData.cgst || 0,
+                                sgst: printBillData.sgst || 0,
+                                deliveryCharge: printBillData.deliveryCharge || 0,
+                                serviceFee: printBillData.additionalCharge || 0,
+                                serviceFeeLabel: printBillData.additionalChargeLabel || 'Additional Charge',
+                                grandTotal: printBillData.totalAmount || 0,
+                                discount: 0
+                            }}
+                            items={Array.isArray(printBillData.items) ? printBillData.items : []}
+                            customerDetails={{
+                                name: printBillData.customerName || '',
+                                phone: printBillData.customerPhone || '',
+                                address: printBillData.customerAddress || '',
+                            }}
+                        />
+                    )}
+                </div>
             </div>
 
             <InfoDialog
