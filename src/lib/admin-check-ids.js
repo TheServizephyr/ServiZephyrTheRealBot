@@ -214,6 +214,62 @@ export function normalizeOrder(doc) {
   };
 }
 
+function normalizeManualBill(doc) {
+  const data = doc.data() || {};
+  const items = Array.isArray(data.items) ? data.items : [];
+  const historyCollectionRef = doc.ref.parent;
+  const businessDocRef = historyCollectionRef?.parent || null;
+  const businessCollectionName = businessDocRef?.parent?.id || null;
+  const businessId = businessDocRef?.id || data.businessId || null;
+  const paymentMethod = data.paymentMethod || (String(data.orderType || '').toLowerCase() === 'delivery' ? 'cash' : 'counter');
+
+  return {
+    firestoreOrderId: doc.id,
+    customerOrderId: data.customerOrderId || null,
+    historyId: data.historyId || doc.id,
+    status: data.isSettled ? 'settled' : (data.settlementEligible ? 'pending_settlement' : 'saved_manual_bill'),
+    orderDate: pickTimestamp(data, ['printedAt', 'createdAt', 'updatedAt']),
+    deliveryType: data.orderType || 'dine-in',
+    paymentMethod,
+    paymentStatus: data.paymentStatus || 'not_applicable',
+    restaurantId: businessId,
+    restaurantCollectionName: businessCollectionName,
+    customerId: data.customerId || null,
+    customerType: data.customerType || 'guest',
+    userId: data.customerType === 'uid' ? (data.customerId || null) : null,
+    customerName: data.customerName || 'Walk-in Customer',
+    customerPhone: data.customerPhone || null,
+    customerAddress: data.customerAddress || null,
+    subtotal: toNumber(data.subtotal || 0),
+    cgst: toNumber(data.cgst || 0),
+    sgst: toNumber(data.sgst || 0),
+    gstAmount: toNumber(data.cgst || 0) + toNumber(data.sgst || 0),
+    deliveryCharge: toNumber(data.deliveryCharge || 0),
+    tipAmount: 0,
+    grandTotal: toNumber(data.totalAmount ?? data.grandTotal ?? 0),
+    loyaltyDiscount: 0,
+    coupon: null,
+    restaurantName: null,
+    source: data.source || 'offline_counter',
+    channel: data.channel || 'custom_bill',
+    orderStorage: 'custom_bill_history',
+    isManualBill: true,
+    items: items.map((item) => {
+      const qty = Math.max(1, toNumber(item.quantity ?? item.qty, 1));
+      const price = toNumber(item.price ?? item.basePrice ?? item.mrp ?? 0);
+      const total = toNumber(item.total ?? item.itemTotal ?? item.totalPrice, qty * price);
+      return {
+        name: item.name || 'Unnamed Item',
+        qty,
+        quantity: qty,
+        price,
+        total,
+      };
+    }),
+    statusHistory: [],
+  };
+}
+
 async function queryOrdersWithFallback(baseQuery, limit = 20) {
   try {
     const query = baseQuery.orderBy('orderDate', 'desc');
@@ -420,7 +476,7 @@ export async function getRestaurantResult(firestore, merchantId) {
   };
 }
 
-async function resolveOrderDoc(firestore, orderSearchId) {
+async function resolveStandardOrderDoc(firestore, orderSearchId) {
   const normalizedId = normalizeText(orderSearchId);
   if (!normalizedId) return null;
 
@@ -451,22 +507,95 @@ async function resolveOrderDoc(firestore, orderSearchId) {
   return orderDoc;
 }
 
-export async function getOrderResult(firestore, orderSearchId) {
-  const orderDoc = await resolveOrderDoc(firestore, orderSearchId);
-  if (!orderDoc) return null;
+async function resolveManualBillDoc(firestore, orderSearchId) {
+  const normalizedId = normalizeText(orderSearchId);
+  if (!normalizedId) return null;
 
-  const order = normalizeOrder(orderDoc);
+  try {
+    let billDoc = null;
+
+    const byCustomerOrderId = await firestore.collectionGroup('custom_bill_history').where('customerOrderId', '==', normalizedId).limit(1).get();
+    if (!byCustomerOrderId.empty) {
+      billDoc = byCustomerOrderId.docs[0];
+    }
+
+    if (!billDoc) {
+      const byHistoryId = await firestore.collectionGroup('custom_bill_history').where('historyId', '==', normalizedId).limit(1).get();
+      if (!byHistoryId.empty) {
+        billDoc = byHistoryId.docs[0];
+      }
+    }
+
+    if (billDoc) {
+      return billDoc;
+    }
+  } catch (error) {
+    console.warn('[admin-check-ids] collectionGroup custom_bill_history lookup failed, falling back to per-business scan:', error?.message || error);
+  }
+
+  for (const config of BUSINESS_COLLECTIONS) {
+    const businessesSnap = await firestore.collection(config.name).select().get();
+
+    for (const businessDoc of businessesSnap.docs) {
+      const historyRef = businessDoc.ref.collection('custom_bill_history');
+
+      const directDoc = await historyRef.doc(normalizedId).get();
+      if (directDoc.exists) {
+        return directDoc;
+      }
+
+      const byCustomerOrderId = await historyRef.where('customerOrderId', '==', normalizedId).limit(1).get();
+      if (!byCustomerOrderId.empty) {
+        return byCustomerOrderId.docs[0];
+      }
+
+      const byHistoryId = await historyRef.where('historyId', '==', normalizedId).limit(1).get();
+      if (!byHistoryId.empty) {
+        return byHistoryId.docs[0];
+      }
+    }
+  }
+
+  return null;
+}
+
+async function resolveOrderDoc(firestore, orderSearchId) {
+  const standardOrderDoc = await resolveStandardOrderDoc(firestore, orderSearchId);
+  if (standardOrderDoc) {
+    return { source: 'orders', doc: standardOrderDoc };
+  }
+
+  const manualBillDoc = await resolveManualBillDoc(firestore, orderSearchId);
+  if (manualBillDoc) {
+    return { source: 'custom_bill_history', doc: manualBillDoc };
+  }
+
+  return null;
+}
+
+export async function getOrderResult(firestore, orderSearchId) {
+  const resolved = await resolveOrderDoc(firestore, orderSearchId);
+  if (!resolved?.doc) return null;
+
+  const order = resolved.source === 'custom_bill_history'
+    ? normalizeManualBill(resolved.doc)
+    : normalizeOrder(resolved.doc);
+  const customerLookupId =
+    order.userId ||
+    (resolved.source === 'custom_bill_history' && String(order?.customerType || '').toLowerCase() === 'uid'
+      ? order.customerId
+      : null);
   const [restaurant, customer] = await Promise.all([
     findBusinessByDocId(firestore, order.restaurantId),
-    getCustomerProfileByUid(firestore, order.userId),
+    customerLookupId ? getCustomerProfileByUid(firestore, customerLookupId) : null,
   ]);
 
   return {
     searchedId: normalizeText(orderSearchId),
     order,
     customer: customer || {
-      uid: order.userId,
-      customerId: null,
+      uid: order.userId || null,
+      customerId: order.customerId || null,
       name: order.customerName || 'N/A',
       phone: order.customerPhone || null,
       addresses: order.customerAddress ? [{ full: order.customerAddress }] : [],
@@ -509,6 +638,8 @@ export function buildResultSummary(type, data) {
     entity: 'order',
     firestoreOrderId: data.order?.firestoreOrderId || null,
     customerOrderId: data.order?.customerOrderId || null,
+    orderStorage: data.order?.orderStorage || 'orders',
+    source: data.order?.source || data.order?.channel || null,
     status: data.order?.status || null,
     orderDate: data.order?.orderDate || null,
     grandTotal: data.order?.grandTotal ?? 0,
@@ -724,13 +855,27 @@ export async function patchCustomerResult({ firestore, identifier, action, paylo
 }
 
 export async function deleteOrderResult({ firestore, identifier }) {
-  const orderDoc = await resolveOrderDoc(firestore, identifier);
-  if (!orderDoc) {
+  const resolved = await resolveOrderDoc(firestore, identifier);
+  if (!resolved?.doc) {
     throw new Error(`No order found for ID ${identifier}.`);
   }
 
-  const raw = orderDoc.data() || {};
-  const order = normalizeOrder(orderDoc);
+  if (resolved.source === 'custom_bill_history') {
+    const raw = resolved.doc.data() || {};
+    const order = normalizeManualBill(resolved.doc);
+    await resolved.doc.ref.delete();
+
+    return {
+      deletedOrder: order,
+      customerUid: order.userId || null,
+      businessId: order.restaurantId || null,
+      storage: 'custom_bill_history',
+      source: raw.source || 'offline_counter',
+    };
+  }
+
+  const raw = resolved.doc.data() || {};
+  const order = normalizeOrder(resolved.doc);
   const business = await findBusinessByDocId(firestore, order.restaurantId);
   const customerUid = order.userId;
   let couponRef = null;
@@ -747,7 +892,7 @@ export async function deleteOrderResult({ firestore, identifier }) {
   }
 
   const batch = firestore.batch();
-  batch.delete(orderDoc.ref);
+  batch.delete(resolved.doc.ref);
 
   if (raw.trackingToken) {
     batch.delete(firestore.collection('auth_tokens').doc(String(raw.trackingToken)));
@@ -767,5 +912,7 @@ export async function deleteOrderResult({ firestore, identifier }) {
     deletedOrder: order,
     customerUid: customerUid || null,
     businessId: business?.businessId || order.restaurantId || null,
+    storage: 'orders',
+    source: raw.orderSource || 'online_order',
   };
 }

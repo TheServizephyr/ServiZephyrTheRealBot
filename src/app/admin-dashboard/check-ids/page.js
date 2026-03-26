@@ -688,6 +688,8 @@ function SearchResultRenderer({
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
           <p><span className="text-muted-foreground">Customer Order ID:</span> {result.order.customerOrderId || 'N/A'}</p>
           <p><span className="text-muted-foreground">Firestore Order ID:</span> {result.order.firestoreOrderId || 'N/A'}</p>
+          <p><span className="text-muted-foreground">Storage:</span> {result.order.orderStorage || 'orders'}</p>
+          <p><span className="text-muted-foreground">Source:</span> {result.order.source || result.order.channel || 'N/A'}</p>
           <p><span className="text-muted-foreground">Status:</span> {result.order.status || 'N/A'}</p>
           <p><span className="text-muted-foreground">Order Date:</span> {formatDateTime(result.order.orderDate)}</p>
           <p><span className="text-muted-foreground">Delivery Type:</span> {result.order.deliveryType || 'N/A'}</p>
