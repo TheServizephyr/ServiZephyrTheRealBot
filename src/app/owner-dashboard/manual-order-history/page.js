@@ -39,6 +39,37 @@ const defaultSummary = {
 
 const TABS = ['all', 'delivery', 'pickup', 'dine-in'];
 
+const toAmount = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+};
+
+const resolveBillBreakdown = (bill, restaurant = null) => {
+    const subtotal = toAmount(bill?.subtotal);
+    const cgst = toAmount(bill?.cgst);
+    const sgst = toAmount(bill?.sgst);
+    const deliveryCharge = toAmount(bill?.deliveryCharge);
+    const storedServiceFee = toAmount(bill?.serviceFee);
+    const grandTotal = toAmount(bill?.totalAmount);
+    const inferredServiceFee = Math.max(0, grandTotal - subtotal - cgst - sgst - deliveryCharge);
+    const serviceFee = storedServiceFee > 0 ? storedServiceFee : inferredServiceFee;
+    const serviceFeeLabel = String(
+        bill?.serviceFeeLabel ||
+        restaurant?.serviceFeeLabel ||
+        'Additional Charge'
+    ).trim() || 'Additional Charge';
+
+    return {
+        subtotal,
+        cgst,
+        sgst,
+        deliveryCharge,
+        serviceFee,
+        serviceFeeLabel,
+        grandTotal,
+    };
+};
+
 export default function ManualOrderHistoryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -94,6 +125,7 @@ export default function ManualOrderHistoryPage() {
             gstEnabled: !!data.gstEnabled,
             gstPercentage: Number(data.gstPercentage ?? data.gstRate ?? 0),
             gstMinAmount: Number(data.gstMinAmount ?? 0),
+            serviceFeeLabel: data.serviceFeeLabel || 'Additional Charge',
         });
     };
 
@@ -258,30 +290,27 @@ export default function ManualOrderHistoryPage() {
     return (
         <div className="text-foreground bg-background min-h-screen p-4 md:p-6">
             {/* Hidden print ref */}
-            <div className="hidden">
+            <div style={{ display: 'none' }}>
                 <div ref={rebillPrintRef} className="preview-bill">
-                    {printBillData && (
-                        <BillToPrint
-                            order={{ orderDate: printBillData.printedAt || printBillData.createdAt }}
-                            restaurant={restaurant}
-                            billDetails={{
-                                subtotal: printBillData.subtotal || 0,
-                                cgst: printBillData.cgst || 0,
-                                sgst: printBillData.sgst || 0,
-                                deliveryCharge: printBillData.deliveryCharge || 0,
-                                serviceFee: printBillData.additionalCharge || 0,
-                                serviceFeeLabel: printBillData.additionalChargeLabel || 'Additional Charge',
-                                grandTotal: printBillData.totalAmount || 0,
-                                discount: 0
-                            }}
-                            items={Array.isArray(printBillData.items) ? printBillData.items : []}
-                            customerDetails={{
-                                name: printBillData.customerName || '',
-                                phone: printBillData.customerPhone || '',
-                                address: printBillData.customerAddress || '',
-                            }}
-                        />
-                    )}
+                    {printBillData && (() => {
+                        const billBreakdown = resolveBillBreakdown(printBillData, restaurant);
+                        return (
+                            <BillToPrint
+                                order={{ orderDate: printBillData.printedAt || printBillData.createdAt }}
+                                restaurant={restaurant}
+                                billDetails={{
+                                    ...billBreakdown,
+                                    discount: 0,
+                                }}
+                                items={Array.isArray(printBillData.items) ? printBillData.items : []}
+                                customerDetails={{
+                                    name: printBillData.customerName || '',
+                                    phone: printBillData.customerPhone || '',
+                                    address: printBillData.customerAddress || '',
+                                }}
+                            />
+                        );
+                    })()}
                 </div>
             </div>
 
@@ -294,6 +323,9 @@ export default function ManualOrderHistoryPage() {
 
             {/* Bill Detail Modal */}
             {selectedBill && (
+                (() => {
+                    const selectedBillBreakdown = resolveBillBreakdown(selectedBill, restaurant);
+                    return (
                 <Dialog open={!!selectedBill} onOpenChange={() => setSelectedBill(null)}>
                     <DialogContent className="bg-card border-border text-foreground max-w-md">
                         <DialogHeader>
@@ -306,12 +338,12 @@ export default function ManualOrderHistoryPage() {
                             <div className="flex justify-between"><span className="text-muted-foreground">Phone</span><span>{selectedBill.customerPhone || '-'}</span></div>
                             {selectedBill.customerAddress && <div className="flex justify-between"><span className="text-muted-foreground">Address</span><span className="text-right max-w-[60%]">{selectedBill.customerAddress}</span></div>}
                             <hr className="border-border" />
-                            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(selectedBill.subtotal)}</span></div>
-                            {selectedBill.cgst > 0 && <div className="flex justify-between"><span className="text-muted-foreground">CGST</span><span>{formatCurrency(selectedBill.cgst)}</span></div>}
-                            {selectedBill.sgst > 0 && <div className="flex justify-between"><span className="text-muted-foreground">SGST</span><span>{formatCurrency(selectedBill.sgst)}</span></div>}
-                            {selectedBill.deliveryCharge > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Delivery Charge</span><span>{formatCurrency(selectedBill.deliveryCharge)}</span></div>}
-                            {selectedBill.serviceFee > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{selectedBill.serviceFeeLabel || 'Additional Charge'}</span><span>{formatCurrency(selectedBill.serviceFee)}</span></div>}
-                            <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(selectedBill.totalAmount)}</span></div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(selectedBillBreakdown.subtotal)}</span></div>
+                            {selectedBillBreakdown.cgst > 0 && <div className="flex justify-between"><span className="text-muted-foreground">CGST</span><span>{formatCurrency(selectedBillBreakdown.cgst)}</span></div>}
+                            {selectedBillBreakdown.sgst > 0 && <div className="flex justify-between"><span className="text-muted-foreground">SGST</span><span>{formatCurrency(selectedBillBreakdown.sgst)}</span></div>}
+                            {selectedBillBreakdown.deliveryCharge > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Delivery Charge</span><span>{formatCurrency(selectedBillBreakdown.deliveryCharge)}</span></div>}
+                            {selectedBillBreakdown.serviceFee > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{selectedBillBreakdown.serviceFeeLabel}</span><span>{formatCurrency(selectedBillBreakdown.serviceFee)}</span></div>}
+                            <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(selectedBillBreakdown.grandTotal)}</span></div>
                             <hr className="border-border" />
                             {Array.isArray(selectedBill.items) && selectedBill.items.length > 0 && (
                                 <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -332,6 +364,8 @@ export default function ManualOrderHistoryPage() {
                         </div>
                     </DialogContent>
                 </Dialog>
+                    );
+                })()
             )}
 
             {/* Header */}
