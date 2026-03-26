@@ -190,7 +190,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         return (
                             <tr key={index}>
                                 <td className="py-1.5 align-top pr-1">
-                                    <div className="text-[14px] leading-snug font-normal">
+                                    <div className="text-[15px] leading-snug font-normal">
                                         {safeRender(item.name || item.itemName)}
                                         {variantLabel}
                                     </div>
