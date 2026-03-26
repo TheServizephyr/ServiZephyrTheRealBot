@@ -568,6 +568,28 @@ const AddAddressPageInternal = () => {
         return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
 
+    const isFullAddressMissing = !fullAddress.trim();
+    const isAddressDetailMissing = !addressDetail.trim();
+    const isRecipientNameMissing = !recipientName.trim();
+    const isRecipientPhoneMissing = !recipientPhone.trim();
+    const missingRequiredFields = [
+        isFullAddressMissing ? 'Complete Address' : null,
+        isAddressDetailMissing ? 'Address Details' : null,
+        isRecipientNameMissing ? 'Contact Person' : null,
+        isRecipientPhoneMissing ? 'Contact Number' : null,
+    ].filter(Boolean);
+    const isSaveDisabled =
+        loading ||
+        isSaving ||
+        !addressDetails ||
+        isFullAddressMissing ||
+        isAddressDetailMissing ||
+        isRecipientNameMissing ||
+        isRecipientPhoneMissing;
+    const requiredFieldClassName =
+        'mt-1 border-red-300 bg-red-50/80 focus-visible:ring-red-400 dark:border-red-900 dark:bg-red-950/30';
+    const filledRequiredFieldClassName =
+        'mt-1 border-border bg-background';
 
     return (
         <div className="h-screen w-screen flex flex-col bg-background text-foreground">
@@ -651,26 +673,39 @@ const AddAddressPageInternal = () => {
                         </div>
                     ) : addressDetails ? (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+                            <div className="rounded-lg border border-red-200 bg-red-50/70 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200">
+                                Required fields are highlighted until you fill them. That is why the save button stays disabled.
+                            </div>
                             <div>
                                 <Label htmlFor="fullAddress">Complete Address *</Label>
-                                <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} placeholder="e.g. House No. 42, Shivam Vihar, Near Post Office" required rows={3} className="mt-1" />
+                                <p className="mt-1 text-xs text-muted-foreground">Full address from map. Edit if house number, locality, or pin needs correction.</p>
+                                <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} required rows={3} className={isFullAddressMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
                                 <p className="text-xs text-muted-foreground mt-1">Drag the map pin to get the address, then edit it here if needed.</p>
                             </div>
                             <div>
                                 <Label htmlFor="addressDetail">Address Details *</Label>
+                                <p className="mt-1 text-xs text-muted-foreground">House no, floor, apartment, block, street, or gali name.</p>
                                 <Input
                                     id="addressDetail"
                                     value={addressDetail}
                                     onChange={e => setAddressDetail(e.target.value)}
-                                    placeholder="e.g. Floor 2, House No 93, Street/Gali name"
                                     required
+                                    className={isAddressDetailMissing ? requiredFieldClassName : filledRequiredFieldClassName}
                                 />
                                 <p className="text-xs text-muted-foreground mt-1">Eg: Floor, house no, street/gali, apartment/block - this helps rider find exact drop point.</p>
                             </div>
                             <div><Label htmlFor="landmark">Landmark (Optional)</Label><Input id="landmark" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder="e.g., Near Post Office" /></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><Label htmlFor="recipientName">Contact Person *</Label><Input id="recipientName" value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Your Name" required /></div>
-                                <div><Label htmlFor="recipientPhone">Contact Number *</Label><Input id="recipientPhone" type="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} placeholder="10-digit number" required /></div>
+                                <div>
+                                    <Label htmlFor="recipientName">Contact Person *</Label>
+                                    <p className="mt-1 text-xs text-muted-foreground">Name of the person receiving the order.</p>
+                                    <Input id="recipientName" value={recipientName} onChange={e => setRecipientName(e.target.value)} required className={isRecipientNameMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
+                                </div>
+                                <div>
+                                    <Label htmlFor="recipientPhone">Contact Number *</Label>
+                                    <p className="mt-1 text-xs text-muted-foreground">Enter the 10-digit number rider should call.</p>
+                                    <Input id="recipientPhone" type="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} required className={isRecipientPhoneMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
+                                </div>
                             </div>
                             <div>
                                 <Label>Save address as</Label>
@@ -688,7 +723,12 @@ const AddAddressPageInternal = () => {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-border mt-4">
-                                <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails || !addressDetail.trim() || !fullAddress.trim()} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                {missingRequiredFields.length > 0 && (
+                                    <p className="mb-3 text-sm text-red-700 dark:text-red-300">
+                                        Fill these required fields to continue: {missingRequiredFields.join(', ')}.
+                                    </p>
+                                )}
+                                <Button onClick={handleConfirmLocation} disabled={isSaveDisabled} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                     {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
                                 </Button>
                             </div>
