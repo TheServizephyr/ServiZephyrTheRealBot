@@ -163,6 +163,7 @@ export default function ManualOrderHistoryPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const rebillPrintRef = useRef(null);
     const pollingIntervalRef = useRef(null);
+    const historySignatureRef = useRef('');
 
     const [fromDate, setFromDate] = useState(() => toDateInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
     const [toDate, setToDate] = useState(() => toDateInput(new Date()));
@@ -203,9 +204,11 @@ export default function ManualOrderHistoryPage() {
         });
     };
 
-    const fetchHistory = async () => {
+    const fetchHistory = async ({ silent = false } = {}) => {
         try {
-            setLoading(true);
+            if (!silent) {
+                setLoading(true);
+            }
             const user = auth.currentUser;
             if (!user) throw new Error('Please login first.');
             const idToken = await user.getIdToken();
@@ -221,12 +224,39 @@ export default function ManualOrderHistoryPage() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || 'Failed to load order history.');
 
-            setHistory(Array.isArray(data.history) ? data.history : []);
-            setSummary({ ...defaultSummary, ...(data.summary || {}) });
+            const nextHistory = Array.isArray(data.history) ? data.history : [];
+            const nextSummary = { ...defaultSummary, ...(data.summary || {}) };
+            const nextSignature = JSON.stringify({
+                history: nextHistory.map((bill) => ({
+                    id: bill.id,
+                    historyId: bill.historyId,
+                    printedAt: bill.printedAt,
+                    createdAt: bill.createdAt,
+                    totalAmount: bill.totalAmount,
+                    isSettled: bill.isSettled,
+                    settlementEligible: bill.settlementEligible,
+                    serviceFee: bill.serviceFee,
+                    serviceFeeLabel: bill.serviceFeeLabel,
+                    itemCount: bill.itemCount,
+                })),
+                summary: nextSummary,
+            });
+
+            if (historySignatureRef.current !== nextSignature) {
+                historySignatureRef.current = nextSignature;
+                setHistory(nextHistory);
+                setSummary(nextSummary);
+            }
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: 'Load Failed', message: error.message });
+            if (!silent) {
+                setInfoDialog({ isOpen: true, title: 'Load Failed', message: error.message });
+            } else {
+                console.warn('[Manual Order History] Silent refresh failed:', error?.message || error);
+            }
         } finally {
-            setLoading(false);
+            if (!silent) {
+                setLoading(false);
+            }
         }
     };
 
@@ -257,7 +287,7 @@ export default function ManualOrderHistoryPage() {
             stopPolling();
             await fetchHistory();
             pollingIntervalRef.current = setInterval(() => {
-                fetchHistory().catch(() => {});
+                fetchHistory({ silent: true }).catch(() => {});
             }, 5000);
         };
 
@@ -297,6 +327,21 @@ export default function ManualOrderHistoryPage() {
                         historyQuery,
                         (snapshot) => {
                             const entries = snapshot.docs.map(normalizeHistoryEntry);
+                            historySignatureRef.current = JSON.stringify({
+                                history: entries.map((bill) => ({
+                                    id: bill.id,
+                                    historyId: bill.historyId,
+                                    printedAt: bill.printedAt,
+                                    createdAt: bill.createdAt,
+                                    totalAmount: bill.totalAmount,
+                                    isSettled: bill.isSettled,
+                                    settlementEligible: bill.settlementEligible,
+                                    serviceFee: bill.serviceFee,
+                                    serviceFeeLabel: bill.serviceFeeLabel,
+                                    itemCount: bill.itemCount,
+                                })),
+                                summary: computeSummary(entries),
+                            });
                             setHistory(entries);
                             setSummary(computeSummary(entries));
                             setLoading(false);
