@@ -30,6 +30,12 @@ import { useReactToPrint } from 'react-to-print';
 import { toPng } from 'html-to-image';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    buildOwnerDashboardShortcutPath,
+    navigateToShortcutPath,
+    OwnerDashboardShortcutsDialog,
+    useOwnerDashboardShortcuts,
+} from '@/lib/ownerDashboardShortcuts';
 
 
 import { usePolling } from '@/lib/usePolling';
@@ -2297,6 +2303,7 @@ const DineInPageContent = () => {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
     const [isManageTableTabsModalOpen, setIsManageTableTabsModalOpen] = useState(false);
     const [manageTabsTableId, setManageTabsTableId] = useState('');
@@ -2319,6 +2326,42 @@ const DineInPageContent = () => {
     const [selectedCards, setSelectedCards] = useState(new Set()); // Batch selection
     const [batchLoading, setBatchLoading] = useState(false); // Batch operation loading
     const dineInMenuSectionRef = useRef(null);
+
+    const shortcutScope = useMemo(() => ({
+        impersonatedOwnerId,
+        employeeOfOwnerId,
+    }), [employeeOfOwnerId, impersonatedOwnerId]);
+
+    const navigateWithShortcut = useCallback((basePath) => {
+        navigateToShortcutPath(buildOwnerDashboardShortcutPath(basePath, shortcutScope));
+    }, [shortcutScope]);
+
+    const shortcutSections = useMemo(() => ([
+        {
+            title: 'Page Navigation',
+            shortcuts: [
+                { combo: 'Alt+M', description: 'Open Manual Billing' },
+                { combo: 'Alt+O', description: 'Open Live Orders' },
+                { combo: 'Alt+A', description: 'Open Analytics' },
+                { combo: 'Alt+D', description: 'Open Dine In' },
+                { combo: 'Alt+W', description: 'Open WhatsApp Direct' },
+                { combo: '?', description: 'Show shortcut help' },
+            ],
+        },
+    ]), []);
+
+    const ownerDashboardShortcuts = useMemo(() => ([
+        { key: 'm', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/manual-order') },
+        { key: 'o', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/live-orders') },
+        { key: 'a', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/analytics') },
+        { key: 'd', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/dine-in') },
+        { key: 'w', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/whatsapp-direct') },
+    ]), [navigateWithShortcut]);
+
+    useOwnerDashboardShortcuts({
+        shortcuts: ownerDashboardShortcuts,
+        onOpenHelp: () => setIsShortcutHelpOpen(true),
+    });
 
     // Global undo state - tracks last bulk action for reversing
     const [lastBulkAction, setLastBulkAction] = useState(null);
@@ -3522,6 +3565,12 @@ const DineInPageContent = () => {
                     <p>When a customer scans a QR code and orders, their table will appear here live.</p>
                 </div>
             )}
+
+            <OwnerDashboardShortcutsDialog
+                open={isShortcutHelpOpen}
+                onOpenChange={setIsShortcutHelpOpen}
+                sections={shortcutSections}
+            />
         </div>
     );
 };

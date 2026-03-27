@@ -30,6 +30,12 @@ import CustomAudioPlayer from '@/components/CustomAudioPlayer';
 import { useToast } from "@/components/ui/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePolling } from '@/lib/usePolling';
+import {
+    buildOwnerDashboardShortcutPath,
+    navigateToShortcutPath,
+    OwnerDashboardShortcutsDialog,
+    useOwnerDashboardShortcuts,
+} from '@/lib/ownerDashboardShortcuts';
 
 export const dynamic = 'force-dynamic';
 
@@ -524,6 +530,7 @@ function WhatsAppDirectPageContent() {
     const [activeFilter, setActiveFilter] = useState('All');
     const [isConfirmEndChatOpen, setConfirmEndChatOpen] = useState(false);
     const [isCouponModalOpen, setCouponModalOpen] = useState(false);
+    const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
     const { toast } = useToast();
 
     const handleSaveReward = async (couponData) => {
@@ -572,6 +579,42 @@ function WhatsAppDirectPageContent() {
     const [realtimeResolveAttempted, setRealtimeResolveAttempted] = useState(false);
     const [realtimeRuntimeBlocked, setRealtimeRuntimeBlocked] = useState(false);
     const isRealtimeActive = realtimeEligible && !!realtimeBusinessTarget && !realtimeRuntimeBlocked;
+
+    const shortcutScope = useMemo(() => ({
+        impersonatedOwnerId,
+        employeeOfOwnerId,
+    }), [employeeOfOwnerId, impersonatedOwnerId]);
+
+    const navigateWithShortcut = useCallback((basePath) => {
+        navigateToShortcutPath(buildOwnerDashboardShortcutPath(basePath, shortcutScope));
+    }, [shortcutScope]);
+
+    const shortcutSections = useMemo(() => ([
+        {
+            title: 'Page Navigation',
+            shortcuts: [
+                { combo: 'Alt+M', description: 'Open Manual Billing' },
+                { combo: 'Alt+O', description: 'Open Live Orders' },
+                { combo: 'Alt+A', description: 'Open Analytics' },
+                { combo: 'Alt+D', description: 'Open Dine In' },
+                { combo: 'Alt+W', description: 'Open WhatsApp Direct' },
+                { combo: '?', description: 'Show shortcut help' },
+            ],
+        },
+    ]), []);
+
+    const ownerDashboardShortcuts = useMemo(() => ([
+        { key: 'm', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/manual-order') },
+        { key: 'o', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/live-orders') },
+        { key: 'a', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/analytics') },
+        { key: 'd', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/dine-in') },
+        { key: 'w', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/whatsapp-direct') },
+    ]), [navigateWithShortcut]);
+
+    useOwnerDashboardShortcuts({
+        shortcuts: ownerDashboardShortcuts,
+        onOpenHelp: () => setIsShortcutHelpOpen(true),
+    });
 
     // Calculate total unread count
     const totalUnreadCount = useMemo(() => {
@@ -2059,6 +2102,12 @@ function WhatsAppDirectPageContent() {
 
             {/* Right Sidebar - Profile Info */}
             {activeConversation && showProfileInfo && ProfileSidebar}
+
+            <OwnerDashboardShortcutsDialog
+                open={isShortcutHelpOpen}
+                onOpenChange={setIsShortcutHelpOpen}
+                sections={shortcutSections}
+            />
         </div>
     );
 }

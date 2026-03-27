@@ -28,6 +28,12 @@ import { usePolling } from '@/lib/usePolling';
 import { emitAppNotification } from '@/lib/appNotifications';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 import { useToast } from "@/components/ui/use-toast";
+import {
+    buildOwnerDashboardShortcutPath,
+    navigateToShortcutPath,
+    OwnerDashboardShortcutsDialog,
+    useOwnerDashboardShortcuts,
+} from '@/lib/ownerDashboardShortcuts';
 
 
 export const dynamic = 'force-dynamic';
@@ -1271,6 +1277,7 @@ export default function LiveOrdersPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [selectedOrders, setSelectedOrders] = useState([]);
+    const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
@@ -1349,6 +1356,42 @@ export default function LiveOrdersPage() {
     const staticCacheKey = useMemo(() => `live_orders_static_v1_${cacheScope}`, [cacheScope]);
     const ordersCacheKey = useMemo(() => `live_orders_orders_v1_${cacheScope}`, [cacheScope]);
     const autoPrintRef = useRef(null);
+
+    const shortcutScope = useMemo(() => ({
+        impersonatedOwnerId,
+        employeeOfOwnerId,
+    }), [employeeOfOwnerId, impersonatedOwnerId]);
+
+    const navigateWithShortcut = useCallback((basePath) => {
+        navigateToShortcutPath(buildOwnerDashboardShortcutPath(basePath, shortcutScope));
+    }, [shortcutScope]);
+
+    const shortcutSections = useMemo(() => ([
+        {
+            title: 'Page Navigation',
+            shortcuts: [
+                { combo: 'Alt+M', description: 'Open Manual Billing' },
+                { combo: 'Alt+O', description: 'Open Live Orders' },
+                { combo: 'Alt+A', description: 'Open Analytics' },
+                { combo: 'Alt+D', description: 'Open Dine In' },
+                { combo: 'Alt+W', description: 'Open WhatsApp Direct' },
+                { combo: '?', description: 'Show shortcut help' },
+            ],
+        },
+    ]), []);
+
+    const ownerDashboardShortcuts = useMemo(() => ([
+        { key: 'm', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/manual-order') },
+        { key: 'o', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/live-orders') },
+        { key: 'a', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/analytics') },
+        { key: 'd', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/dine-in') },
+        { key: 'w', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/whatsapp-direct') },
+    ]), [navigateWithShortcut]);
+
+    useOwnerDashboardShortcuts({
+        shortcuts: ownerDashboardShortcuts,
+        onOpenHelp: () => setIsShortcutHelpOpen(true),
+    });
 
     const persistOrdersToCache = useCallback((nextOrders = []) => {
         try {
@@ -2158,6 +2201,12 @@ export default function LiveOrdersPage() {
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
                 message={infoDialog.message}
+            />
+
+            <OwnerDashboardShortcutsDialog
+                open={isShortcutHelpOpen}
+                onOpenChange={setIsShortcutHelpOpen}
+                sections={shortcutSections}
             />
 
             <div className="hidden">

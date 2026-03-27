@@ -14,6 +14,12 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/components/ui/use-toast";
 import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
+import {
+    buildOwnerDashboardShortcutPath,
+    navigateToShortcutPath,
+    OwnerDashboardShortcutsDialog,
+    useOwnerDashboardShortcuts,
+} from '@/lib/ownerDashboardShortcuts';
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -126,6 +132,7 @@ function ManualOrderPage() {
     const isResizingBill = useRef(false);
     const [billSidebarWidth, setBillSidebarWidth] = useState(340);
     const [isCustomerDetailsOpen, setIsCustomerDetailsOpen] = useState(true);
+    const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
     const [, setTableTimeTick] = useState(0);
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
@@ -534,7 +541,7 @@ function ManualOrderPage() {
         if (element && scrollContainerRef.current) {
             const container = scrollContainerRef.current;
             const top = element.offsetTop - container.offsetTop;
-            container.scrollTo({ top, behavior: 'smooth' });
+            container.scrollTop = top;
             setActiveCategory(catId);
         }
     };
@@ -762,6 +769,77 @@ function ManualOrderPage() {
     const handleClear = () => {
         resetCurrentBill();
     };
+
+    const shortcutScope = useMemo(() => ({
+        impersonatedOwnerId,
+        employeeOfOwnerId,
+    }), [employeeOfOwnerId, impersonatedOwnerId]);
+
+    const navigateWithShortcut = useCallback((basePath) => {
+        navigateToShortcutPath(buildOwnerDashboardShortcutPath(basePath, shortcutScope));
+    }, [shortcutScope]);
+
+    const focusManualSearch = useCallback(() => {
+        if (!searchInputRef.current) return;
+        searchInputRef.current.focus();
+        searchInputRef.current.select?.();
+    }, []);
+
+    const switchOrderMode = useCallback((mode) => {
+        setOrderType(mode);
+        if (mode !== 'dine-in') setActiveTable(null);
+    }, []);
+
+    const openPrintShortcut = useCallback(() => {
+        if (!cart.length) return;
+        setIsBillModalOpen(true);
+    }, [cart.length]);
+
+    const shortcutSections = useMemo(() => ([
+        {
+            title: 'Page Navigation',
+            shortcuts: [
+                { combo: 'Alt+M', description: 'Open Manual Billing' },
+                { combo: 'Alt+O', description: 'Open Live Orders' },
+                { combo: 'Alt+A', description: 'Open Analytics' },
+                { combo: 'Alt+D', description: 'Open Dine In' },
+                { combo: 'Alt+W', description: 'Open WhatsApp Direct' },
+            ],
+        },
+        {
+            title: 'Manual Billing',
+            shortcuts: [
+                { combo: 'Alt+1', description: 'Switch to Delivery tab' },
+                { combo: 'Alt+2', description: 'Switch to Dine In tab' },
+                { combo: 'Alt+3', description: 'Switch to Pickup tab' },
+                { combo: '/', description: 'Focus search' },
+                { combo: 'Alt+Z', description: 'Undo last added item' },
+                { combo: 'Alt+X', description: 'Clear current bill' },
+                { combo: 'Alt+P', description: 'Open print bill dialog' },
+                { combo: '?', description: 'Show shortcut help' },
+            ],
+        },
+    ]), []);
+
+    const ownerDashboardShortcuts = useMemo(() => ([
+        { key: 'm', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/manual-order') },
+        { key: 'o', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/live-orders') },
+        { key: 'a', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/analytics') },
+        { key: 'd', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/dine-in') },
+        { key: 'w', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/whatsapp-direct') },
+        { key: '1', altKey: true, action: () => switchOrderMode('delivery') },
+        { key: '2', altKey: true, action: () => switchOrderMode('dine-in') },
+        { key: '3', altKey: true, action: () => switchOrderMode('pickup') },
+        { key: '/', action: focusManualSearch },
+        { key: 'z', altKey: true, action: handleUndo },
+        { key: 'x', altKey: true, action: handleClear },
+        { key: 'p', altKey: true, action: openPrintShortcut },
+    ]), [focusManualSearch, handleClear, handleUndo, navigateWithShortcut, openPrintShortcut, switchOrderMode]);
+
+    useOwnerDashboardShortcuts({
+        shortcuts: ownerDashboardShortcuts,
+        onOpenHelp: () => setIsShortcutHelpOpen(true),
+    });
 
     const resetCustomOpenItemForm = useCallback(() => {
         setCustomOpenItemName('');
@@ -2278,6 +2356,12 @@ function ManualOrderPage() {
                     )}
                 </div>
             </div>
+
+            <OwnerDashboardShortcutsDialog
+                open={isShortcutHelpOpen}
+                onOpenChange={setIsShortcutHelpOpen}
+                sections={shortcutSections}
+            />
 
         </div>
     );

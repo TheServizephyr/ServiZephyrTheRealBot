@@ -165,7 +165,7 @@ export default function ManualOrderHistoryPage() {
     const pollingIntervalRef = useRef(null);
     const historySignatureRef = useRef('');
 
-    const [fromDate, setFromDate] = useState(() => toDateInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
+    const [fromDate, setFromDate] = useState(() => toDateInput(new Date()));
     const [toDate, setToDate] = useState(() => toDateInput(new Date()));
 
     const accessQuery = impersonatedOwnerId

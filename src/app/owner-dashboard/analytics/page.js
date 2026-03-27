@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect, Suspense } from 'react';
+import { useState, useMemo, useEffect, Suspense, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, Sector, ScatterChart, Scatter, Legend, ReferenceLine, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { IndianRupee, Hash, Phone, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban } from 'lucide-react';
@@ -18,6 +18,12 @@ import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import {
+    buildOwnerDashboardShortcutPath,
+    navigateToShortcutPath,
+    OwnerDashboardShortcutsDialog,
+    useOwnerDashboardShortcuts,
+} from '@/lib/ownerDashboardShortcuts';
 
 export const dynamic = 'force-dynamic';
 const ANALYTICS_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -990,12 +996,49 @@ function AnalyticsPageContent() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
 
     const [analyticsData, setAnalyticsData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [businessType, setBusinessType] = useState('restaurant');
     const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
     const isStoreBusiness = normalizedBusinessType === 'store';
+
+    const shortcutScope = useMemo(() => ({
+        impersonatedOwnerId,
+        employeeOfOwnerId,
+    }), [employeeOfOwnerId, impersonatedOwnerId]);
+
+    const navigateWithShortcut = useCallback((basePath) => {
+        navigateToShortcutPath(buildOwnerDashboardShortcutPath(basePath, shortcutScope));
+    }, [shortcutScope]);
+
+    const shortcutSections = useMemo(() => ([
+        {
+            title: 'Page Navigation',
+            shortcuts: [
+                { combo: 'Alt+M', description: 'Open Manual Billing' },
+                { combo: 'Alt+O', description: 'Open Live Orders' },
+                { combo: 'Alt+A', description: 'Open Analytics' },
+                { combo: 'Alt+D', description: 'Open Dine In' },
+                { combo: 'Alt+W', description: 'Open WhatsApp Direct' },
+                { combo: '?', description: 'Show shortcut help' },
+            ],
+        },
+    ]), []);
+
+    const ownerDashboardShortcuts = useMemo(() => ([
+        { key: 'm', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/manual-order') },
+        { key: 'o', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/live-orders') },
+        { key: 'a', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/analytics') },
+        { key: 'd', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/dine-in') },
+        { key: 'w', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/whatsapp-direct') },
+    ]), [navigateWithShortcut]);
+
+    useOwnerDashboardShortcuts({
+        shortcuts: ownerDashboardShortcuts,
+        onOpenHelp: () => setIsShortcutHelpOpen(true),
+    });
 
     useEffect(() => {
         try {
@@ -1229,6 +1272,12 @@ function AnalyticsPageContent() {
                     </motion.div>
                 </AnimatePresence>
             </div>
+
+            <OwnerDashboardShortcutsDialog
+                open={isShortcutHelpOpen}
+                onOpenChange={setIsShortcutHelpOpen}
+                sections={shortcutSections}
+            />
         </div>
     );
 }
