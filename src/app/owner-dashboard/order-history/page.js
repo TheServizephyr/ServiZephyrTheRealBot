@@ -32,7 +32,7 @@ const toAmount = (v, fallback = 0) => { const n = Number(v); return Number.isFin
 function OrderDetailModal({ order, activeTab, onClose }) {
     if (!order) return null;
 
-    const isCustom = activeTab === 'custom';
+    const isManualHistory = activeTab === 'manual-history';
 
     const items = order.items || [];
     const subtotal = toAmount(order.subtotal || order.billDetails?.subtotal, 0);
@@ -52,17 +52,17 @@ function OrderDetailModal({ order, activeTab, onClose }) {
         : [rawAddress.full, rawAddress.label, rawAddress.street, rawAddress.landmark, rawAddress.city, rawAddress.state, rawAddress.pincode]
             .filter(Boolean).join(', ') || null;
     const pm = order.paymentMethod || 'N/A';
-    const orderDate = isCustom
+    const orderDate = isManualHistory
         ? (order.printedAt ? format(new Date(order.printedAt), 'PPp') : 'N/A')
         : (order.orderDate?.seconds ? format(new Date(order.orderDate.seconds * 1000), 'PPp') : 'N/A');
-    const status = order.status || (isCustom ? 'custom_bill' : 'N/A');
+    const status = order.status || (isManualHistory ? 'manual_order' : 'N/A');
 
     const statusColor = {
         delivered: 'bg-green-500/10 text-green-400 border-green-500/30',
         picked_up: 'bg-green-500/10 text-green-400 border-green-500/30',
         rejected: 'bg-red-500/10 text-red-400 border-red-500/30',
         cancelled: 'bg-red-500/10 text-red-400 border-red-500/30',
-        custom_bill: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+        manual_order: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
     }[status] || 'bg-muted text-muted-foreground border-border';
 
     return (
@@ -218,7 +218,7 @@ export default function OrderHistoryPage() {
     const [settlementFilter, setSettlementFilter] = useState('all'); // all | pending | settled
 
     const [orders, setOrders] = useState([]);
-    const [customBills, setCustomBills] = useState([]);
+    const [manualOrderHistory, setManualOrderHistory] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [actionLoadingId, setActionLoadingId] = useState(null);
@@ -264,7 +264,7 @@ export default function OrderHistoryPage() {
         }
     };
 
-    const fetchCustomBillsData = async () => {
+    const fetchManualOrderHistoryData = async () => {
         try {
             const user = auth.currentUser;
             if (!user) return;
@@ -278,15 +278,15 @@ export default function OrderHistoryPage() {
 
             const res = await fetch(apiUrl.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
             const data = await res.json().catch(() => ({}));
-            if (res.ok) setCustomBills(Array.isArray(data.history) ? data.history : []);
+            if (res.ok) setManualOrderHistory(Array.isArray(data.history) ? data.history : []);
         } catch (error) {
-            console.error('[OrderHistory] Error fetching custom bills:', error);
+            console.error('[OrderHistory] Error fetching manual order history:', error);
         }
     };
 
     const fetchAllData = async () => {
         setLoading(true);
-        await Promise.all([fetchOrdersData(), fetchCustomBillsData()]);
+        await Promise.all([fetchOrdersData(), fetchManualOrderHistoryData()]);
         setLoading(false);
     };
 
@@ -301,8 +301,8 @@ export default function OrderHistoryPage() {
             if (!user) throw new Error("Not authenticated");
             const idToken = await user.getIdToken();
 
-            const endpoint = type === 'custom' ? '/api/owner/custom-bill/history' : '/api/owner/orders';
-            const body = type === 'custom' ? { action, historyIds: [id] } : { action, idsToUpdate: [id] };
+            const endpoint = type === 'manual-history' ? '/api/owner/custom-bill/history' : '/api/owner/orders';
+            const body = type === 'manual-history' ? { action, historyIds: [id] } : { action, idsToUpdate: [id] };
 
             const apiUrl = new URL(endpoint, window.location.origin);
             if (impersonatedOwnerId) apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
@@ -319,8 +319,8 @@ export default function OrderHistoryPage() {
             if (!res.ok) throw new Error(data.message || 'Operation failed');
 
             // Optimistic update
-            if (type === 'custom') {
-                setCustomBills(prev => prev.map(bill => bill.id === id ? { ...bill, isSettled: !isCurrentlySettled } : bill));
+            if (type === 'manual-history') {
+                setManualOrderHistory(prev => prev.map(bill => bill.id === id ? { ...bill, isSettled: !isCurrentlySettled } : bill));
             } else {
                 setOrders(prev => prev.map(order => order.id === id ? { ...order, isSettled: !isCurrentlySettled } : order));
             }
@@ -339,8 +339,7 @@ export default function OrderHistoryPage() {
     const filteredData = useMemo(() => {
         let items = [];
         if (activeTab === 'online') items = orders.filter(o => !o.isManualCallOrder && o.orderSource !== 'manual_call');
-        else if (activeTab === 'manual') items = orders.filter(o => o.isManualCallOrder || o.orderSource === 'manual_call');
-        else if (activeTab === 'custom') items = customBills;
+        else if (activeTab === 'manual-history') items = manualOrderHistory;
 
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
@@ -360,15 +359,27 @@ export default function OrderHistoryPage() {
             const dateB = b.orderDate?.seconds ? b.orderDate.seconds * 1000 : new Date(b.printedAt || b.createdAt).getTime();
             return dateB - dateA;
         });
-    }, [orders, customBills, activeTab, searchQuery, settlementFilter]);
+    }, [orders, manualOrderHistory, activeTab, searchQuery, settlementFilter]);
 
     const renderTableDate = (item) => {
-        if (activeTab === 'custom') return item.printedAt ? format(new Date(item.printedAt), 'PPp') : 'N/A';
+        if (activeTab === 'manual-history') return item.printedAt ? format(new Date(item.printedAt), 'PPp') : 'N/A';
         return item.orderDate?.seconds ? format(new Date(item.orderDate.seconds * 1000), 'PPp') : 'N/A';
     };
 
     // ── Status Badge Helper ─────────────────────────────────────────────────
-    const getStatusBadge = (status) => {
+    const getStatusBadge = (status, orderType = '') => {
+        if (activeTab === 'manual-history') {
+            const type = String(orderType || '').toLowerCase();
+            const typeMap = {
+                delivery: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+                pickup: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'dine-in': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+            };
+            const typeCls = typeMap[type] || 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+            const typeLabel = type ? type.replace(/_/g, ' ') : 'Manual Order';
+            return <span className={`px-2 py-0.5 text-xs font-medium rounded-full border capitalize ${typeCls}`}>{typeLabel}</span>;
+        }
+
         const s = (status || '').toLowerCase();
         const map = {
             delivered:       'bg-green-500/10 text-green-400 border-green-500/20',
@@ -376,12 +387,10 @@ export default function OrderHistoryPage() {
             rejected:        'bg-red-500/10 text-red-400 border-red-500/20',
             cancelled:       'bg-red-500/10 text-red-400 border-red-500/20',
             failed_delivery: 'bg-red-500/10 text-red-400 border-red-500/20',
-            custom_bill:     'bg-purple-500/10 text-purple-400 border-purple-500/20',
         };
         const cls = map[s] || 'bg-muted text-muted-foreground border-border';
         const label = s === 'picked_up' ? 'Picked Up'
             : s === 'failed_delivery' ? 'Failed'
-            : s === 'custom_bill' ? 'Custom Bill'
             : s.charAt(0).toUpperCase() + s.slice(1);
         return <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${cls}`}>{label}</span>;
     };
@@ -400,7 +409,7 @@ export default function OrderHistoryPage() {
             return <span className="px-3 py-1 bg-blue-500/10 text-blue-500 text-xs font-medium rounded-full border border-blue-500/20">Online Paid</span>;
         }
         // Rejected/Cancelled orders cannot be settled
-        if (activeTab !== 'custom' && isNonPayableStatus(item.status)) {
+        if (activeTab === 'online' && isNonPayableStatus(item.status)) {
             return <span className="px-2 py-1 text-xs text-muted-foreground">—</span>;
         }
         if (isSettled) {
@@ -431,7 +440,7 @@ export default function OrderHistoryPage() {
             return <span className="px-3 py-1.5 bg-blue-500/10 text-blue-500 text-xs font-medium rounded-md border border-blue-500/20">Online Paid</span>;
         }
         // Rejected/Cancelled orders cannot be settled
-        if (activeTab !== 'custom' && isNonPayableStatus(item.status)) {
+        if (activeTab === 'online' && isNonPayableStatus(item.status)) {
             return <span className="text-xs text-muted-foreground px-1">—</span>;
         }
         if (isSettled) {
@@ -540,10 +549,9 @@ export default function OrderHistoryPage() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setSettlementFilter('all'); }} className="w-full mb-6">
-                <TabsList className="grid w-full grid-cols-3 h-auto p-1 bg-muted rounded-xl">
+                <TabsList className="grid w-full grid-cols-2 h-auto p-1 bg-muted rounded-xl">
                     <TabsTrigger value="online" className="rounded-lg py-2 text-xs sm:text-sm">Online Orders</TabsTrigger>
-                    <TabsTrigger value="manual" className="rounded-lg py-2 text-xs sm:text-sm">Manual Call</TabsTrigger>
-                    <TabsTrigger value="custom" className="rounded-lg py-2 text-xs sm:text-sm">Custom Bills</TabsTrigger>
+                    <TabsTrigger value="manual-history" className="rounded-lg py-2 text-xs sm:text-sm">Manual Orders</TabsTrigger>
                 </TabsList>
             </Tabs>
 
@@ -557,7 +565,9 @@ export default function OrderHistoryPage() {
                                 <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Customer</th>
                                 <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Amount</th>
                                 <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date & Time</th>
-                                {activeTab !== 'custom' && <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>}
+                                <th className="p-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                    {activeTab === 'manual-history' ? 'Type' : 'Status'}
+                                </th>
                                 <th className="p-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Settlement</th>
                             </tr>
                         </thead>
@@ -572,7 +582,7 @@ export default function OrderHistoryPage() {
                                 ))
                             ) : filteredData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-12 text-center text-muted-foreground">
+                                    <td colSpan={6} className="p-12 text-center text-muted-foreground">
                                         No {settlementFilter !== 'all' ? settlementFilter : ''} entries found.
                                     </td>
                                 </tr>
@@ -591,7 +601,7 @@ export default function OrderHistoryPage() {
                                         <td className="p-4 text-sm">{item.customer || item.customerName || 'Guest'}</td>
                                         <td className="p-4 text-sm font-semibold">₹{(item.totalAmount || 0).toFixed(0)}</td>
                                         <td className="p-4 text-sm text-muted-foreground">{renderTableDate(item)}</td>
-                                        {activeTab !== 'custom' && <td className="p-4">{getStatusBadge(item.status)}</td>}
+                                        <td className="p-4">{getStatusBadge(item.status, item.orderType)}</td>
                                         <td className="p-4 text-center">{renderSettlementCell(item, isOnlinePrepaid)}</td>
                                     </tr>
                                 );
@@ -635,14 +645,14 @@ export default function OrderHistoryPage() {
                                     </p>
                                     <p className="font-semibold text-base mt-0.5">{item.customer || item.customerName || 'Guest'}</p>
                                     <p className="text-xs text-muted-foreground mt-0.5">{renderTableDate(item)}</p>
-                                    {activeTab !== 'custom' && <div className="mt-1.5">{getStatusBadge(item.status)}</div>}
+                                    <div className="mt-1.5">{getStatusBadge(item.status, item.orderType)}</div>
                                 </div>
                                 <p className="font-bold text-lg">₹{(item.totalAmount || 0).toFixed(0)}</p>
                             </div>
 
                             <div className="flex justify-between items-center pt-3 border-t border-border" onClick={e => e.stopPropagation()}>
                                 <span className="text-[10px] text-muted-foreground capitalize bg-muted px-2 py-1 rounded truncate max-w-[45%]">
-                                    {pm.replace(/_/g, ' ') || (activeTab === 'custom' ? 'Counter' : 'Online')}
+                                    {pm.replace(/_/g, ' ') || (activeTab === 'manual-history' ? 'Counter' : 'Online')}
                                 </span>
                                 {renderMobileSettlementCell(item, isOnlinePrepaid)}
                             </div>
