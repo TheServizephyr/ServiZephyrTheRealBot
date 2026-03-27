@@ -5,6 +5,14 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
+const toIsoString = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value?.toDate === 'function') return value.toDate().toISOString();
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
 export async function GET(req) {
     try {
         const context = await verifyOwnerWithAudit(
@@ -28,13 +36,18 @@ export async function GET(req) {
         
         snapshot.forEach(doc => {
             const data = doc.data();
+            const currentOrder = data.currentOrder || null;
             tables.push({
                 id: doc.id,
                 name: data.name || doc.id,
                 status: data.status || 'available',
-                currentOrder: data.currentOrder || null,
-                createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
-                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
+                currentOrder: currentOrder ? {
+                    ...currentOrder,
+                    occupiedAt: toIsoString(currentOrder.occupiedAt),
+                    orderDate: toIsoString(currentOrder.orderDate),
+                } : null,
+                createdAt: toIsoString(data.createdAt),
+                updatedAt: toIsoString(data.updatedAt),
             });
         });
 

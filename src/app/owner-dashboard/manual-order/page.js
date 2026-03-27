@@ -22,6 +22,26 @@ import { connectSerialPrinter, printSerialData } from '@/services/printer/webSer
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const createBillDraftId = () => `cb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 const formatCategoryLabel = (categoryId = '') => String(categoryId).replace(/-/g, ' ').trim();
+const getTableCustomerName = (table = {}) => {
+    const customerName = table?.currentOrder?.customerDetails?.name;
+    return String(customerName || '').trim();
+};
+const formatElapsedTableTime = (value) => {
+    if (!value) return '';
+
+    const startedAt = new Date(value);
+    if (Number.isNaN(startedAt.getTime())) return '';
+
+    const diffMs = Date.now() - startedAt.getTime();
+    if (diffMs < 0) return '';
+
+    const totalMinutes = Math.max(0, Math.floor(diffMs / 60000));
+    if (totalMinutes < 60) return `${totalMinutes} min`;
+
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes === 0 ? `${hours} hr` : `${hours} hr ${minutes} min`;
+};
 const dedupeOpenItems = (items = []) => {
     if (!Array.isArray(items)) return [];
     const seen = new Set();
@@ -106,6 +126,7 @@ function ManualOrderPage() {
     const isResizingBill = useRef(false);
     const [billSidebarWidth, setBillSidebarWidth] = useState(340);
     const [isCustomerDetailsOpen, setIsCustomerDetailsOpen] = useState(true);
+    const [, setTableTimeTick] = useState(0);
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
@@ -186,6 +207,16 @@ function ManualOrderPage() {
             return () => clearTimeout(timer);
         }
     }, [tableToPrint, handleTablePrint]);
+
+    useEffect(() => {
+        if (orderType !== 'dine-in') return undefined;
+
+        const timer = setInterval(() => {
+            setTableTimeTick((tick) => tick + 1);
+        }, 60000);
+
+        return () => clearInterval(timer);
+    }, [orderType]);
 
     useEffect(() => {
         if (hasHydratedFromCacheRef.current) return;
@@ -1083,7 +1114,9 @@ function ManualOrderPage() {
                 items: cart,
                 customerDetails,
                 subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal,
-                orderType: 'dine-in'
+                orderType: 'dine-in',
+                orderDate: activeTable?.currentOrder?.orderDate || new Date().toISOString(),
+                occupiedAt: activeTable?.currentOrder?.occupiedAt || new Date().toISOString(),
             };
 
             const res = await fetch(buildScopedUrl(`/api/owner/manual-tables/${activeTable.id}`), {
@@ -1674,13 +1707,15 @@ function ManualOrderPage() {
                                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                                     {manualTables.map(table => {
                                         if (table.status === 'occupied') {
+                                            const customerName = getTableCustomerName(table);
+                                            const occupiedTime = formatElapsedTableTime(table.currentOrder?.occupiedAt || table.currentOrder?.orderDate);
                                             return (
                                                 <div
                                                     key={table.id}
-                                                    className="relative flex flex-col p-2.5 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[110px] text-center overflow-hidden cursor-pointer group"
+                                                    className="relative flex flex-col p-3 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[132px] min-w-[120px] text-center overflow-hidden cursor-pointer group"
                                                     onClick={() => setSelectedOccupiedTable(table)}
                                                 >
                                                     <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
@@ -1691,10 +1726,26 @@ function ManualOrderPage() {
                                                             <Edit size={12} />
                                                         </button>
                                                     </div>
-                                                    <h3 className="font-bold text-xl mb-0.5 text-white">{table.name}</h3>
-                                                    <div className="flex flex-col items-center mb-1">
-                                                        <span className="text-base font-bold text-amber-500">{formatCurrency(table.currentOrder?.grandTotal || 0)}</span>
-                                                        <span className="text-[10px] text-gray-400 mt-0.5">{table.currentOrder?.items?.length || 0} {table.currentOrder?.items?.length === 1 ? 'item' : 'items'}</span>
+                                                    {occupiedTime ? (
+                                                        <span className="text-sm font-semibold text-amber-200/90 mb-1">
+                                                            {occupiedTime}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="mb-1 block h-5" />
+                                                    )}
+                                                    <h3 className="font-bold text-2xl leading-none mb-2 text-white">{table.name}</h3>
+                                                    <div className="flex flex-col items-center gap-1 mb-2">
+                                                        {customerName && (
+                                                            <span className="max-w-full truncate text-sm font-semibold text-white/90">
+                                                                {customerName}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-sm text-gray-300">{table.currentOrder?.items?.length || 0} {table.currentOrder?.items?.length === 1 ? 'item' : 'items'}</span>
+                                                    </div>
+                                                    <div className="mt-auto mb-2">
+                                                        <span className="text-3xl font-bold leading-none text-amber-500">
+                                                            {formatCurrency(table.currentOrder?.grandTotal || 0)}
+                                                        </span>
                                                     </div>
 
                                                     <div className="mt-auto pt-2 border-t border-white/10 flex items-center justify-between gap-1.5">
@@ -1745,7 +1796,7 @@ function ManualOrderPage() {
                                                     setActiveTable(table);
                                                     handleClear(); // Reset cart for new table safely
                                                 }}
-                                                className="cursor-pointer relative p-2.5 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[100px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md group"
+                                                className="cursor-pointer relative p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[120px] min-w-[120px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md group"
                                             >
                                                 <div className="absolute top-1.5 right-1.5 flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
@@ -1770,7 +1821,7 @@ function ManualOrderPage() {
                                     {/* Create Table Card */}
                                     <div
                                         onClick={() => setIsCreateTableModalOpen(true)}
-                                        className="cursor-pointer p-2 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:bg-muted/30 hover:border-primary/50 transition-all flex flex-col items-center justify-center min-h-[90px] text-center text-muted-foreground hover:text-foreground"
+                                        className="cursor-pointer p-3 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:bg-muted/30 hover:border-primary/50 transition-all flex flex-col items-center justify-center min-h-[120px] min-w-[120px] text-center text-muted-foreground hover:text-foreground"
                                     >
                                         <PlusCircle className="w-6 h-6 mb-1.5" />
                                         <span className="font-semibold text-xs">Create Table</span>
