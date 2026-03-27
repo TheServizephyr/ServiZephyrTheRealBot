@@ -233,6 +233,7 @@ export async function POST(req) {
                 email,
                 role,
                 roleDisplay: role === 'custom' ? customRoleName : getRoleDisplayName(role, outletBusinessType),
+                customAllowedPages: role === 'custom' ? customAllowedPages : null,
                 inviteLink,
                 expiresAt: invitationData.expiresAt,
             }
@@ -329,6 +330,7 @@ export async function GET(req) {
                 email: data.email,
                 name: data.name,
                 role: data.role,
+                customAllowedPages: Array.isArray(data.customAllowedPages) ? data.customAllowedPages : [],
                 roleDisplay: data.role === 'custom'
                     ? (data.customRoleName || 'Custom')
                     : getRoleDisplayName(data.role, outletBusinessType),
@@ -351,6 +353,7 @@ export async function GET(req) {
             pendingInvites,
             invitableRoles,
             currentUserId,
+            businessType: outletBusinessType,
             canInvite: accessContext.permissions.includes(PERMISSIONS.INVITE_EMPLOYEE),
             canManage: accessContext.permissions.includes(PERMISSIONS.MANAGE_EMPLOYEES),
         }, { status: 200 });

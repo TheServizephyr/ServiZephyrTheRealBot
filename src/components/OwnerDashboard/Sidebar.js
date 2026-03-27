@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Banknote,
   Package as PackageIcon,
+  Boxes,
   ConciergeBell,
   CalendarClock,
   MapPin,
@@ -67,7 +68,7 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
     isStoreBusiness
       ? { name: "Items", icon: PackageIcon, href: appendParam("/owner-dashboard/menu"), featureId: "menu" }
       : { name: "Menu", icon: Salad, href: appendParam("/owner-dashboard/menu"), featureId: "menu" },
-    { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" },
+    ...(isStoreBusiness ? [{ name: "Inventory", icon: Boxes, href: appendParam("/owner-dashboard/inventory"), featureId: "inventory" }] : []),
     { name: "Team", icon: Users, href: appendParam("/owner-dashboard/employees"), featureId: "employees" },
     { name: "Customers", icon: Users, href: appendParam("/owner-dashboard/customers"), featureId: "customers" },
     { name: "WhatsApp Direct", icon: MessageSquare, href: appendParam("/owner-dashboard/whatsapp-direct"), featureId: "whatsapp-direct" },
@@ -78,6 +79,7 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
 
   if (!isStoreBusiness) {
     items.splice(3, 0, { name: "Dine-In", icon: ConciergeBell, href: appendParam("/owner-dashboard/dine-in"), featureId: "dine-in" });
+    items.splice(5, 0, { name: "Bookings", icon: CalendarClock, href: appendParam("/owner-dashboard/bookings"), featureId: "bookings" });
   }
 
   return items;

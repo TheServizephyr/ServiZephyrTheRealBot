@@ -728,6 +728,18 @@ export default function CustomBillHistoryPage() {
                                         <span>{formatCurrency(selectedBill.deliveryCharge || 0)}</span>
                                     </div>
                                 )}
+                                {Number(selectedBill.discount || 0) > 0 && (
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Discount</span>
+                                        <span>-{formatCurrency(selectedBill.discount || 0)}</span>
+                                    </div>
+                                )}
+                                {selectedBill.paymentMode && (
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Payment</span>
+                                        <span className="uppercase">{selectedBill.paymentMode}</span>
+                                    </div>
+                                )}
                                 <div className="flex justify-between font-bold text-base border-t pt-2">
                                     <span>Total</span>
                                     <span>{formatCurrency(selectedBill.totalAmount || 0)}</span>
@@ -749,7 +761,8 @@ export default function CustomBillHistoryPage() {
                                 cgst: Number(printBillData.cgst || 0),
                                 sgst: Number(printBillData.sgst || 0),
                                 grandTotal: Number(printBillData.totalAmount || 0),
-                                discount: 0,
+                                discount: Number(printBillData.discount || 0),
+                                paymentMode: printBillData.paymentMode || null,
                                 deliveryCharge: Number(printBillData.deliveryCharge || 0),
                                 serviceFee: Number(printBillData.serviceFee || 0),
                                 serviceFeeLabel: printBillData.serviceFeeLabel || 'Additional Charge',

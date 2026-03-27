@@ -59,6 +59,13 @@ const toFiniteNumber = (value, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
 };
+const normalizeOptionalText = (value) => String(value || '').trim();
+const normalizeOptionalNumberInput = (value) => {
+    const normalized = String(value ?? '').trim();
+    if (normalized === '') return '';
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : '';
+};
 const isStoreBusinessType = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
     return normalized === 'shop' || normalized === 'store';
@@ -128,6 +135,18 @@ const MenuItem = ({
                         <div className="flex-grow text-left">
                             <p className="font-semibold text-foreground">{item.name}</p>
                             {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+                            {(item.brand || item.productType || item.sku || item.barcode || item.packSize || item.unit || item.taxClass || item.supplierSku) && (
+                                <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
+                                    {item.brand && <span className="rounded-full border border-border bg-muted px-2 py-0.5">Brand: {item.brand}</span>}
+                                    {item.productType && <span className="rounded-full border border-border bg-muted px-2 py-0.5">Type: {item.productType}</span>}
+                                    {item.sku && <span className="rounded-full border border-border bg-muted px-2 py-0.5">SKU: {item.sku}</span>}
+                                    {item.barcode && <span className="rounded-full border border-border bg-muted px-2 py-0.5">Barcode: {item.barcode}</span>}
+                                    {item.packSize && <span className="rounded-full border border-border bg-muted px-2 py-0.5">Pack: {item.packSize}</span>}
+                                    {item.unit && <span className="rounded-full border border-border bg-muted px-2 py-0.5">Unit: {item.unit}</span>}
+                                    {item.taxClass && <span className="rounded-full border border-border bg-muted px-2 py-0.5">Tax: {item.taxClass}</span>}
+                                    {item.supplierSku && <span className="rounded-full border border-border bg-muted px-2 py-0.5">Supplier SKU: {item.supplierSku}</span>}
+                                </div>
+                            )}
                             {item.isDineInExclusive === true && (
                                 <span className="mt-1 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                                     Dine-In Only
@@ -442,8 +461,17 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
-                    brand: String(editingItem.brand || '').trim(),
-                    productType: String(editingItem.productType || editingItem.type || '').trim(),
+                    brand: normalizeOptionalText(editingItem.brand),
+                    productType: normalizeOptionalText(editingItem.productType || editingItem.type),
+                    sku: normalizeOptionalText(editingItem.sku),
+                    barcode: normalizeOptionalText(editingItem.barcode),
+                    unit: normalizeOptionalText(editingItem.unit),
+                    packSize: normalizeOptionalText(editingItem.packSize),
+                    taxClass: normalizeOptionalText(editingItem.taxClass),
+                    supplierSku: normalizeOptionalText(editingItem.supplierSku),
+                    reorderLevel: normalizeOptionalNumberInput(editingItem.reorderLevel),
+                    reorderQty: normalizeOptionalNumberInput(editingItem.reorderQty),
+                    safetyStock: normalizeOptionalNumberInput(editingItem.safetyStock),
                     addOnGroups: isShop ? [] : (editingItem.addOnGroups || []),
                     isDineInExclusive: editingItem.isDineInExclusive === true,
                 });
@@ -460,6 +488,15 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     tags: "",
                     brand: "",
                     productType: "",
+                    sku: "",
+                    barcode: "",
+                    unit: "",
+                    packSize: "",
+                    taxClass: "",
+                    supplierSku: "",
+                    reorderLevel: "",
+                    reorderQty: "",
+                    safetyStock: "",
                     addOnGroups: isShop ? [] : [],
                     isDineInExclusive: false,
                 });
@@ -612,10 +649,17 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         setIsSaving(true);
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
-            const normalizedBrand = isShop ? String(item.brand || '').trim() : '';
-            const normalizedProductType = isShop
-                ? String(item.productType || item.type || '').trim()
-                : '';
+            const normalizedBrand = isShop ? normalizeOptionalText(item.brand) : '';
+            const normalizedProductType = isShop ? normalizeOptionalText(item.productType || item.type) : '';
+            const normalizedSku = isShop ? normalizeOptionalText(item.sku) : '';
+            const normalizedBarcode = isShop ? normalizeOptionalText(item.barcode) : '';
+            const normalizedUnit = isShop ? normalizeOptionalText(item.unit) : '';
+            const normalizedPackSize = isShop ? normalizeOptionalText(item.packSize) : '';
+            const normalizedTaxClass = isShop ? normalizeOptionalText(item.taxClass) : '';
+            const normalizedSupplierSku = isShop ? normalizeOptionalText(item.supplierSku) : '';
+            const normalizedReorderLevel = isShop ? toFiniteNumber(item.reorderLevel, 0) : 0;
+            const normalizedReorderQty = isShop ? toFiniteNumber(item.reorderQty, 0) : 0;
+            const normalizedSafetyStock = isShop ? toFiniteNumber(item.safetyStock, 0) : 0;
 
             let finalPortions;
             if (isShop || pricingType === 'single') {
@@ -674,6 +718,15 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     brand: normalizedBrand,
                     productType: normalizedProductType,
                     type: normalizedProductType,
+                    sku: normalizedSku,
+                    barcode: normalizedBarcode,
+                    unit: normalizedUnit,
+                    packSize: normalizedPackSize,
+                    taxClass: normalizedTaxClass,
+                    supplierSku: normalizedSupplierSku,
+                    reorderLevel: normalizedReorderLevel,
+                    reorderQty: normalizedReorderQty,
+                    safetyStock: normalizedSafetyStock,
                 } : {}),
             };
 
@@ -735,6 +788,102 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                             value={item.productType || ''}
                                             onChange={e => handleChange('productType', e.target.value)}
                                             placeholder="e.g., Soap, Shampoo, Biscuit"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="sku" className="text-right">SKU</Label>
+                                        <input
+                                            id="sku"
+                                            value={item.sku || ''}
+                                            onChange={e => handleChange('sku', e.target.value)}
+                                            placeholder="e.g., DOVE-100-SOAP"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="barcode" className="text-right">Barcode</Label>
+                                        <input
+                                            id="barcode"
+                                            value={item.barcode || ''}
+                                            onChange={e => handleChange('barcode', e.target.value)}
+                                            placeholder="e.g., 8901030892211"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="unit" className="text-right">Unit</Label>
+                                        <input
+                                            id="unit"
+                                            value={item.unit || ''}
+                                            onChange={e => handleChange('unit', e.target.value)}
+                                            placeholder="e.g., pcs, bottle, kg"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="packSize" className="text-right">Pack Size</Label>
+                                        <input
+                                            id="packSize"
+                                            value={item.packSize || ''}
+                                            onChange={e => handleChange('packSize', e.target.value)}
+                                            placeholder="e.g., 100g, 1L, Pack of 6"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="taxClass" className="text-right">Tax Class</Label>
+                                        <input
+                                            id="taxClass"
+                                            value={item.taxClass || ''}
+                                            onChange={e => handleChange('taxClass', e.target.value)}
+                                            placeholder="e.g., GST12, HSN-3401"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="supplierSku" className="text-right">Supplier SKU</Label>
+                                        <input
+                                            id="supplierSku"
+                                            value={item.supplierSku || ''}
+                                            onChange={e => handleChange('supplierSku', e.target.value)}
+                                            placeholder="e.g., SUP-9981"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="reorderLevel" className="text-right">Reorder Level</Label>
+                                        <input
+                                            id="reorderLevel"
+                                            type="number"
+                                            min="0"
+                                            value={item.reorderLevel ?? ''}
+                                            onChange={e => handleChange('reorderLevel', e.target.value)}
+                                            placeholder="e.g., 10"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="reorderQty" className="text-right">Reorder Qty</Label>
+                                        <input
+                                            id="reorderQty"
+                                            type="number"
+                                            min="0"
+                                            value={item.reorderQty ?? ''}
+                                            onChange={e => handleChange('reorderQty', e.target.value)}
+                                            placeholder="e.g., 24"
+                                            className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="safetyStock" className="text-right">Safety Stock</Label>
+                                        <input
+                                            id="safetyStock"
+                                            type="number"
+                                            min="0"
+                                            value={item.safetyStock ?? ''}
+                                            onChange={e => handleChange('safetyStock', e.target.value)}
+                                            placeholder="e.g., 5"
                                             className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                         />
                                     </div>

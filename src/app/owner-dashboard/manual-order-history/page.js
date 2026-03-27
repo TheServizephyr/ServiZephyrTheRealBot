@@ -92,6 +92,8 @@ const normalizeHistoryEntry = (doc) => {
         deliveryCharge: toAmount(data.deliveryCharge),
         serviceFee: toAmount(data.serviceFee),
         serviceFeeLabel: String(data.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge',
+        discount: toAmount(data.discount),
+        paymentMode: data.paymentMode || null,
         totalAmount: toAmount(data.totalAmount),
         itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 0)),
         items: Array.isArray(data.items) ? data.items : [],
@@ -124,6 +126,7 @@ const resolveBillBreakdown = (bill, restaurant = null) => {
     const deliveryCharge = toAmount(bill?.deliveryCharge);
     const storedServiceFee = toAmount(bill?.serviceFee);
     const grandTotal = toAmount(bill?.totalAmount);
+    const discount = toAmount(bill?.discount);
     const inferredServiceFee = Math.max(0, grandTotal - subtotal - cgst - sgst - deliveryCharge);
     const serviceFee = storedServiceFee > 0 ? storedServiceFee : inferredServiceFee;
     const serviceFeeLabel = String(
@@ -139,6 +142,8 @@ const resolveBillBreakdown = (bill, restaurant = null) => {
         deliveryCharge,
         serviceFee,
         serviceFeeLabel,
+        discount,
+        paymentMode: bill?.paymentMode || null,
         grandTotal,
     };
 };
@@ -504,7 +509,8 @@ export default function ManualOrderHistoryPage() {
                                 restaurant={restaurant}
                                 billDetails={{
                                     ...billBreakdown,
-                                    discount: 0,
+                                    discount: billBreakdown.discount || 0,
+                                    paymentMode: billBreakdown.paymentMode || null,
                                 }}
                                 items={Array.isArray(printBillData.items) ? printBillData.items : []}
                                 customerDetails={{
@@ -547,6 +553,8 @@ export default function ManualOrderHistoryPage() {
                             {selectedBillBreakdown.sgst > 0 && <div className="flex justify-between"><span className="text-muted-foreground">SGST</span><span>{formatCurrency(selectedBillBreakdown.sgst)}</span></div>}
                             {selectedBillBreakdown.deliveryCharge > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Delivery Charge</span><span>{formatCurrency(selectedBillBreakdown.deliveryCharge)}</span></div>}
                             {selectedBillBreakdown.serviceFee > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{selectedBillBreakdown.serviceFeeLabel}</span><span>{formatCurrency(selectedBillBreakdown.serviceFee)}</span></div>}
+                            {selectedBillBreakdown.discount > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>-{formatCurrency(selectedBillBreakdown.discount)}</span></div>}
+                            {selectedBillBreakdown.paymentMode && <div className="flex justify-between"><span className="text-muted-foreground">Payment</span><span className="uppercase">{selectedBillBreakdown.paymentMode}</span></div>}
                             <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(selectedBillBreakdown.grandTotal)}</span></div>
                             <hr className="border-border" />
                             {Array.isArray(selectedBill.items) && selectedBill.items.length > 0 && (

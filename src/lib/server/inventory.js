@@ -76,6 +76,10 @@ export function createInventoryPayloadFromMenuItem(menuItemDoc, existingInventor
     const sellPrice = toFiniteNumber(current.sellPrice, deriveSellPrice(menuItem));
     const sku = String(current.sku || menuItem.sku || createFallbackSku(menuItem.name, itemId)).trim();
     const barcode = String(current.barcode || menuItem.barcode || '').trim();
+    const brand = String(current.brand || menuItem.brand || '').trim();
+    const productType = String(current.productType || menuItem.productType || menuItem.type || '').trim();
+    const taxClass = String(current.taxClass || menuItem.taxClass || '').trim();
+    const supplierSku = String(current.supplierSku || menuItem.supplierSku || '').trim();
     const now = FieldValue.serverTimestamp();
 
     const payload = {
@@ -85,6 +89,10 @@ export function createInventoryPayloadFromMenuItem(menuItemDoc, existingInventor
         categoryId: String(menuItem.categoryId || 'general').trim(),
         sku,
         barcode,
+        brand,
+        productType,
+        taxClass,
+        supplierSku,
         extraBarcodes: Array.isArray(current.extraBarcodes)
             ? current.extraBarcodes
             : (Array.isArray(menuItem.extraBarcodes) ? menuItem.extraBarcodes : []),
@@ -106,6 +114,10 @@ export function createInventoryPayloadFromMenuItem(menuItemDoc, existingInventor
         searchTokens: buildSearchTokens(
             menuItem.name,
             current.name,
+            brand,
+            productType,
+            taxClass,
+            supplierSku,
             sku,
             barcode,
             menuItem.categoryId
@@ -135,4 +147,262 @@ export function normalizeAdjustmentReason(reason) {
     ]);
 
     return allowed.has(normalized) ? normalized : 'manual_adjustment';
+}
+
+export function isInventoryManagedBusinessType(value) {
+    const normalized = normalizeSearchValue(value);
+    return normalized === 'shop' || normalized === 'store';
+}
+
+export function normalizeInventoryOrderItems(items = []) {
+    const aggregated = new Map();
+
+    (Array.isArray(items) ? items : []).forEach((item, index) => {
+        const itemId = String(item?.id || item?.itemId || '').trim();
+        if (!itemId || itemId.startsWith('manual-item-')) return;
+
+        const quantity = Math.max(1, parseInt(item?.quantity ?? item?.qty ?? 1, 10) || 1);
+        const existing = aggregated.get(itemId) || {
+            itemId,
+            name: String(item?.name || `Item ${index + 1}`).trim() || `Item ${index + 1}`,
+            quantity: 0,
+        };
+
+        existing.quantity += quantity;
+        if (!existing.name && item?.name) {
+            existing.name = String(item.name).trim();
+        }
+
+        aggregated.set(itemId, existing);
+    });
+
+    return Array.from(aggregated.values());
+}
+
+function buildInventoryRestorePayload({ itemId, itemName, quantity, actorId }) {
+    const stockOnHand = Math.max(0, toFiniteNumber(quantity, 0));
+    const reserved = 0;
+    const available = calculateAvailable(stockOnHand, reserved);
+    const sku = createFallbackSku(itemName, itemId);
+
+    return {
+        itemId,
+        sourceMenuItemId: itemId,
+        name: itemName || 'Restored Item',
+        categoryId: 'general',
+        sku,
+        barcode: '',
+        extraBarcodes: [],
+        sellPrice: 0,
+        menuPrice: 0,
+        unit: 'unit',
+        packSize: '',
+        isActive: true,
+        isDeleted: false,
+        trackInventory: true,
+        stockOnHand,
+        reserved,
+        available,
+        reorderLevel: 0,
+        reorderQty: 0,
+        safetyStock: 0,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        restoredAt: FieldValue.serverTimestamp(),
+        lastAdjustedBy: actorId || null,
+        searchTokens: buildSearchTokens(itemName, sku, itemId),
+    };
+}
+
+export async function applyInventoryMovementTransaction({
+    transaction,
+    businessRef,
+    items = [],
+    mode = 'sale',
+    actorId = null,
+    actorRole = 'system',
+    referenceId = null,
+    referenceType = 'order',
+    note = '',
+}) {
+    const normalizedItems = normalizeInventoryOrderItems(items);
+    if (normalizedItems.length === 0) {
+        return { processedItems: [], totalQuantity: 0 };
+    }
+
+    const inventoryCollection = businessRef.collection(INVENTORY_COLLECTION);
+    const ledgerCollection = businessRef.collection(INVENTORY_LEDGER_COLLECTION);
+    const processedItems = [];
+
+    for (const lineItem of normalizedItems) {
+        const inventoryRef = inventoryCollection.doc(lineItem.itemId);
+        const inventorySnap = await transaction.get(inventoryRef);
+        const current = inventorySnap.exists ? (inventorySnap.data() || {}) : null;
+
+        if (mode === 'sale') {
+            if (!inventorySnap.exists) {
+                throw {
+                    status: 409,
+                    message: `Inventory item "${lineItem.name}" is not ready yet. Open Inventory once and import existing items before taking orders.`,
+                };
+            }
+
+            if (current.trackInventory === false) {
+                continue;
+            }
+
+            const beforeOnHand = toFiniteNumber(current.stockOnHand, 0);
+            const reserved = toFiniteNumber(current.reserved, 0);
+            const available = toFiniteNumber(current.available, calculateAvailable(beforeOnHand, reserved));
+
+            if (available < lineItem.quantity) {
+                throw {
+                    status: 409,
+                    message: `Only ${available} unit(s) of "${current.name || lineItem.name}" are available right now.`,
+                };
+            }
+
+            const afterOnHand = beforeOnHand - lineItem.quantity;
+            const afterAvailable = calculateAvailable(afterOnHand, reserved);
+
+            transaction.update(inventoryRef, {
+                stockOnHand: afterOnHand,
+                available: afterAvailable,
+                updatedAt: FieldValue.serverTimestamp(),
+                lastSoldAt: FieldValue.serverTimestamp(),
+                lastAdjustedBy: actorId || null,
+            });
+
+            transaction.set(ledgerCollection.doc(), {
+                itemId: lineItem.itemId,
+                sku: current.sku || null,
+                name: current.name || lineItem.name || null,
+                type: 'sale',
+                qtyDelta: -lineItem.quantity,
+                before: {
+                    stockOnHand: beforeOnHand,
+                    reserved,
+                    available,
+                },
+                after: {
+                    stockOnHand: afterOnHand,
+                    reserved,
+                    available: afterAvailable,
+                },
+                note: note || null,
+                actorId: actorId || null,
+                actorRole: actorRole || 'system',
+                referenceId: referenceId || null,
+                referenceType: referenceType || 'order',
+                createdAt: FieldValue.serverTimestamp(),
+            });
+
+            processedItems.push({
+                itemId: lineItem.itemId,
+                name: current.name || lineItem.name,
+                quantity: lineItem.quantity,
+                beforeOnHand,
+                afterOnHand,
+            });
+            continue;
+        }
+
+        const restoreName = current?.name || lineItem.name || 'Restored Item';
+        if (!inventorySnap.exists) {
+            transaction.set(inventoryRef, buildInventoryRestorePayload({
+                itemId: lineItem.itemId,
+                itemName: restoreName,
+                quantity: lineItem.quantity,
+                actorId,
+            }));
+
+            transaction.set(ledgerCollection.doc(), {
+                itemId: lineItem.itemId,
+                sku: createFallbackSku(restoreName, lineItem.itemId),
+                name: restoreName,
+                type: 'return_in',
+                qtyDelta: lineItem.quantity,
+                before: {
+                    stockOnHand: 0,
+                    reserved: 0,
+                    available: 0,
+                },
+                after: {
+                    stockOnHand: lineItem.quantity,
+                    reserved: 0,
+                    available: lineItem.quantity,
+                },
+                note: note || null,
+                actorId: actorId || null,
+                actorRole: actorRole || 'system',
+                referenceId: referenceId || null,
+                referenceType: referenceType || 'order',
+                createdAt: FieldValue.serverTimestamp(),
+            });
+
+            processedItems.push({
+                itemId: lineItem.itemId,
+                name: restoreName,
+                quantity: lineItem.quantity,
+                beforeOnHand: 0,
+                afterOnHand: lineItem.quantity,
+            });
+            continue;
+        }
+
+        if (current.trackInventory === false) {
+            continue;
+        }
+
+        const beforeOnHand = toFiniteNumber(current.stockOnHand, 0);
+        const reserved = toFiniteNumber(current.reserved, 0);
+        const available = toFiniteNumber(current.available, calculateAvailable(beforeOnHand, reserved));
+        const afterOnHand = beforeOnHand + lineItem.quantity;
+        const afterAvailable = calculateAvailable(afterOnHand, reserved);
+
+        transaction.update(inventoryRef, {
+            stockOnHand: afterOnHand,
+            available: afterAvailable,
+            updatedAt: FieldValue.serverTimestamp(),
+            lastAdjustedBy: actorId || null,
+            lastRestoredAt: FieldValue.serverTimestamp(),
+        });
+
+        transaction.set(ledgerCollection.doc(), {
+            itemId: lineItem.itemId,
+            sku: current.sku || null,
+            name: restoreName,
+            type: 'return_in',
+            qtyDelta: lineItem.quantity,
+            before: {
+                stockOnHand: beforeOnHand,
+                reserved,
+                available,
+            },
+            after: {
+                stockOnHand: afterOnHand,
+                reserved,
+                available: afterAvailable,
+            },
+            note: note || null,
+            actorId: actorId || null,
+            actorRole: actorRole || 'system',
+            referenceId: referenceId || null,
+            referenceType: referenceType || 'order',
+            createdAt: FieldValue.serverTimestamp(),
+        });
+
+        processedItems.push({
+            itemId: lineItem.itemId,
+            name: restoreName,
+            quantity: lineItem.quantity,
+            beforeOnHand,
+            afterOnHand,
+        });
+    }
+
+    return {
+        processedItems,
+        totalQuantity: processedItems.reduce((sum, item) => sum + toFiniteNumber(item.quantity, 0), 0),
+    };
 }

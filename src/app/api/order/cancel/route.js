@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { kv } from '@vercel/kv'; // ✅ For cache invalidation
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +115,41 @@ export async function POST(req) {
         // Owner can cancel at any status (no restriction)
         console.log(`[API /order/cancel] Cancellation permitted for ${cancelledBy}`);
 
+        const businessRef = await getBusinessRef(firestore, effectiveRestaurantId);
+        const businessSnap = businessRef ? await businessRef.get() : null;
+        const businessType = orderData.businessType || businessSnap?.data()?.businessType || (businessRef?.parent?.id === 'shops' ? 'store' : 'restaurant');
+        const shouldRestoreInventory =
+            businessRef &&
+            isInventoryManagedBusinessType(businessType) &&
+            orderData.inventoryState === 'deducted' &&
+            !orderData.inventoryRestoredAt;
+
+        if (shouldRestoreInventory) {
+            await firestore.runTransaction(async (transaction) => {
+                await applyInventoryMovementTransaction({
+                    transaction,
+                    businessRef,
+                    items: orderData.items || [],
+                    mode: 'restore',
+                    actorId: uid,
+                    actorRole: cancelledBy,
+                    referenceId: orderId,
+                    referenceType: 'order_cancel',
+                    note: `Order cancelled by ${cancelledBy}`,
+                });
+
+                transaction.update(orderRef, {
+                    status: 'cancelled',
+                    paymentStatus: 'cancelled',
+                    cancelledAt: FieldValue.serverTimestamp(),
+                    cancelledBy: cancelledBy,
+                    cancellationReason: reason,
+                    inventoryState: 'restored',
+                    inventoryRestoredAt: FieldValue.serverTimestamp(),
+                });
+            });
+        } else {
+
         // Start batch update
         const batch = firestore.batch();
 
@@ -146,6 +182,7 @@ export async function POST(req) {
 
         // Commit batch
         await batch.commit();
+        }
 
         // If this was the last active order on a dine-in tab, auto-close stale tab + sync table occupancy.
         if (effectiveRestaurantId && effectiveDineInTabId && orderData.deliveryType === 'dine-in') {

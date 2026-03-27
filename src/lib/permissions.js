@@ -198,6 +198,7 @@ export function getRoleDisplayName(role, businessType = 'restaurant') {
 // Owner/Restaurant Dashboard Pages (matches Sidebar getMenuItems + getSettingsItems)
 export const OWNER_DASHBOARD_PAGES = [
     { id: 'dashboard', label: 'Dashboard', description: 'Overview and quick stats' },
+    { id: 'manual-order', label: 'Manual Order', description: 'Create owner-side manual orders and POS bills' },
     { id: 'live-orders', label: 'Live Orders', description: 'View and manage incoming orders' },
     { id: 'menu', label: 'Menu Management', description: 'Edit menu items and categories' },
     { id: 'dine-in', label: 'Dine-in Tables', description: 'Manage tables and tabs' },
@@ -208,10 +209,24 @@ export const OWNER_DASHBOARD_PAGES = [
     { id: 'analytics', label: 'Analytics', description: 'Sales and order analytics' },
     { id: 'delivery', label: 'Delivery', description: 'Delivery settings and riders' },
     { id: 'coupons', label: 'Coupons & Offers', description: 'Manage discounts' },
-    { id: 'location', label: 'Location', description: 'Outlet location settings' },
-    { id: 'connections', label: 'Connections', description: 'Integrations and bots' },
-    { id: 'payouts', label: 'Payouts', description: 'Payment settings' },
+    { id: 'my-profile', label: 'My Profile', description: 'Owner profile and outlet identity' },
     { id: 'settings', label: 'Settings', description: 'Outlet settings' },
+];
+
+export const STORE_DASHBOARD_PAGES = [
+    { id: 'dashboard', label: 'Dashboard', description: 'Overview and quick stats' },
+    { id: 'manual-order', label: 'POS Billing', description: 'Create owner-side counter or manual orders' },
+    { id: 'live-orders', label: 'Live Orders', description: 'View and manage active store orders' },
+    { id: 'menu', label: 'Items Catalog', description: 'Manage products, categories, and availability' },
+    { id: 'inventory', label: 'Inventory', description: 'Track stock, low-stock items, and adjustments' },
+    { id: 'employees', label: 'Team/Employees', description: 'View team members' },
+    { id: 'customers', label: 'Customers', description: 'Customer list and purchase history' },
+    { id: 'whatsapp-direct', label: 'WhatsApp Direct', description: 'WhatsApp ordering and support inbox' },
+    { id: 'analytics', label: 'Analytics', description: 'Sales and item analytics' },
+    { id: 'delivery', label: 'Delivery', description: 'Delivery settings and dispatch controls' },
+    { id: 'coupons', label: 'Coupons & Offers', description: 'Manage discounts and promos' },
+    { id: 'my-profile', label: 'My Profile', description: 'Owner profile and store identity' },
+    { id: 'settings', label: 'Settings', description: 'Store settings' },
 ];
 
 // Street Vendor Dashboard Pages (matches street-vendor Sidebar)
@@ -228,6 +243,130 @@ export const STREET_VENDOR_DASHBOARD_PAGES = [
 
 // Legacy export for backward compatibility (use OWNER_DASHBOARD_PAGES by default)
 export const ALL_DASHBOARD_PAGES = OWNER_DASHBOARD_PAGES;
+
+export function getDashboardPagesForBusinessType(businessType = 'restaurant') {
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    if (normalizedBusinessType === 'store') return STORE_DASHBOARD_PAGES;
+    if (normalizedBusinessType === 'street-vendor') return STREET_VENDOR_DASHBOARD_PAGES;
+    return OWNER_DASHBOARD_PAGES;
+}
+
+export function getDashboardPageLabelMap(businessType = 'restaurant') {
+    return getDashboardPagesForBusinessType(businessType).reduce((acc, page) => {
+        acc[page.id] = page.label;
+        return acc;
+    }, {});
+}
+
+const ROLE_HELPER_TEXT = {
+    restaurant: {
+        [ROLES.MANAGER]: 'Best for supervisors who need broad dashboard access across orders, menu, staff, and operations.',
+        [ROLES.CHEF]: 'Best for kitchen staff focused on preparing and marking orders ready.',
+        [ROLES.WAITER]: 'Best for dine-in staff handling tables, tabs, and guest service.',
+        [ROLES.CASHIER]: 'Best for billing counter staff handling payments and walk-in orders.',
+        [ROLES.ORDER_TAKER]: 'Best for staff who only need to create and view orders.',
+        [ROLES.CUSTOM]: 'Create a tailored access set when the built-in restaurant roles are too broad.',
+        [ROLES.INVENTORY_MANAGER]: 'Best for staff who only manage stock and item availability.',
+    },
+    store: {
+        [ROLES.MANAGER]: 'Best for store leads who need operations, catalog, inventory, customers, and order visibility.',
+        [ROLES.CHEF]: 'Best for packing staff who only need item availability and order processing access.',
+        [ROLES.WAITER]: 'Best for counter staff helping customers, creating orders, and coordinating fulfillment.',
+        [ROLES.CASHIER]: 'Best for billing desk staff handling POS orders, payments, and customer lookup.',
+        [ROLES.ORDER_TAKER]: 'Best for sales staff who only need to create or monitor store orders.',
+        [ROLES.CUSTOM]: 'Create a store-specific access bundle for cashier, picker, packer, or shift workflows.',
+        [ROLES.INVENTORY_MANAGER]: 'Best for store staff focused on stock levels, replenishment, and item sync.',
+    },
+    'street-vendor': {
+        [ROLES.MANAGER]: 'Best for stall leads who oversee daily operations and active orders.',
+        [ROLES.CHEF]: 'Best for cooking staff focused on preparation and order readiness.',
+        [ROLES.WAITER]: 'Best for service staff helping customers and handoffs.',
+        [ROLES.CASHIER]: 'Best for staff handling billing, payments, and order coordination.',
+        [ROLES.ORDER_TAKER]: 'Best for staff who only need to capture new orders.',
+        [ROLES.CUSTOM]: 'Create a tailored access set for mixed stall responsibilities.',
+        [ROLES.INVENTORY_MANAGER]: 'Best for stock and replenishment-only access.',
+    },
+};
+
+export function getRoleHelperText(role, businessType = 'restaurant') {
+    const effectiveRole = normalizeRole(role);
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    const businessRoleCopy = ROLE_HELPER_TEXT[normalizedBusinessType] || ROLE_HELPER_TEXT.restaurant;
+    return businessRoleCopy[effectiveRole] || ROLE_HELPER_TEXT.restaurant[effectiveRole] || '';
+}
+
+const RESTAURANT_CUSTOM_ROLE_PRESETS = [
+    {
+        id: 'billing-desk',
+        roleName: 'Billing Desk',
+        description: 'Take counter orders and handle billing without broader admin access.',
+        pages: ['manual-order', 'live-orders', 'customers', 'my-profile'],
+    },
+    {
+        id: 'service-captain',
+        roleName: 'Service Captain',
+        description: 'Manage dine-in, bookings, and live guest orders.',
+        pages: ['live-orders', 'dine-in', 'bookings', 'customers', 'my-profile'],
+    },
+];
+
+const STORE_CUSTOM_ROLE_PRESETS = [
+    {
+        id: 'cashier',
+        roleName: 'Store Cashier',
+        description: 'Counter billing, walk-in checkout, and customer lookup.',
+        pages: ['dashboard', 'manual-order', 'live-orders', 'customers', 'my-profile'],
+    },
+    {
+        id: 'picker',
+        roleName: 'Picker',
+        description: 'Pick incoming orders with access to live orders, item details, and stock context.',
+        pages: ['live-orders', 'menu', 'inventory', 'my-profile'],
+    },
+    {
+        id: 'packer',
+        roleName: 'Packer',
+        description: 'Pack and verify orders with live order and item visibility.',
+        pages: ['live-orders', 'menu', 'my-profile'],
+    },
+    {
+        id: 'shift-manager',
+        roleName: 'Shift Manager',
+        description: 'Run day-to-day store operations without full owner settings access.',
+        pages: ['dashboard', 'manual-order', 'live-orders', 'menu', 'inventory', 'customers', 'analytics', 'delivery', 'my-profile'],
+    },
+];
+
+const STREET_VENDOR_CUSTOM_ROLE_PRESETS = [
+    {
+        id: 'stall-billing',
+        roleName: 'Billing Staff',
+        description: 'Handle customer orders and billing at the stall.',
+        pages: ['live-orders', 'menu', 'profile'],
+    },
+];
+
+const RESTAURANT_DEFAULT_CUSTOM_ROLE_PAGES = ['live-orders', 'my-profile'];
+const STORE_DEFAULT_CUSTOM_ROLE_PAGES = ['manual-order', 'live-orders', 'my-profile'];
+const STREET_VENDOR_DEFAULT_CUSTOM_ROLE_PAGES = ['live-orders', 'profile'];
+
+export function getCustomRolePresetsForBusinessType(businessType = 'restaurant') {
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    if (normalizedBusinessType === 'store') return STORE_CUSTOM_ROLE_PRESETS;
+    if (normalizedBusinessType === 'street-vendor') return STREET_VENDOR_CUSTOM_ROLE_PRESETS;
+    return RESTAURANT_CUSTOM_ROLE_PRESETS;
+}
+
+export function getDefaultCustomRolePagesForBusinessType(businessType = 'restaurant') {
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    if (normalizedBusinessType === 'store') {
+        return STORE_DEFAULT_CUSTOM_ROLE_PAGES;
+    }
+    if (normalizedBusinessType === 'street-vendor') {
+        return STREET_VENDOR_DEFAULT_CUSTOM_ROLE_PAGES;
+    }
+    return RESTAURANT_DEFAULT_CUSTOM_ROLE_PAGES;
+}
 
 // ============================================
 // ROLE → PERMISSIONS MAPPING
@@ -471,8 +610,10 @@ export const ROLE_ALLOWED_PAGES = {
     // Manager - almost everything EXCEPT payouts (financial info is owner-only)
     [ROLES.MANAGER]: [
         'dashboard',
+        'manual-order',
         'live-orders',
         'menu',
+        'inventory',
         'dine-in',
         'bookings',
         'employees',
@@ -494,6 +635,7 @@ export const ROLE_ALLOWED_PAGES = {
     [ROLES.CHEF]: [
         'live-orders',  // Main dashboard shows live orders for street-vendor
         'menu',
+        'inventory',
         'my-profile',
     ],
 
@@ -509,8 +651,15 @@ export const ROLE_ALLOWED_PAGES = {
     // Cashier - live orders and billing
     [ROLES.CASHIER]: [
         'live-orders',
+        'manual-order',
         'menu',
         'dine-in',
+        'my-profile',
+    ],
+
+    [ROLES.INVENTORY_MANAGER]: [
+        'menu',
+        'inventory',
         'my-profile',
     ],
 

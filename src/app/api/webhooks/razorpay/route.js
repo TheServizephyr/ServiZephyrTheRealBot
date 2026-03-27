@@ -6,6 +6,7 @@ import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import crypto from 'crypto';
 import https from 'https';
 import { nanoid } from 'nanoid';
+import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 
 function timingSafeEqualHex(a, b) {
     if (typeof a !== 'string' || typeof b !== 'string') return false;
@@ -266,6 +267,53 @@ export async function POST(req) {
 
         const eventData = JSON.parse(body);
         console.log(`[Webhook RZP] Event received: ${eventData.event}`);
+
+        if (eventData.event === 'payment.failed') {
+            const paymentEntity = eventData.payload?.payment?.entity;
+            const receiptOrderId = paymentEntity?.notes?.firestore_order_id || paymentEntity?.notes?.orderId || paymentEntity?.notes?.order_id;
+
+            if (receiptOrderId) {
+                const firestore = await getFirestore();
+                const orderRef = firestore.collection('orders').doc(receiptOrderId);
+                const orderSnap = await orderRef.get();
+
+                if (orderSnap.exists) {
+                    const orderData = orderSnap.data() || {};
+                    if (
+                        orderData.restaurantId &&
+                        isInventoryManagedBusinessType(orderData.businessType) &&
+                        orderData.inventoryState === 'deducted' &&
+                        !orderData.inventoryRestoredAt
+                    ) {
+                        const businessCollection = isInventoryManagedBusinessType(orderData.businessType) ? 'shops' : 'restaurants';
+                        const businessRef = firestore.collection(businessCollection).doc(orderData.restaurantId);
+
+                        await firestore.runTransaction(async (transaction) => {
+                            await applyInventoryMovementTransaction({
+                                transaction,
+                                businessRef,
+                                items: orderData.items || [],
+                                mode: 'restore',
+                                actorId: 'razorpay_webhook',
+                                actorRole: 'system',
+                                referenceId: receiptOrderId,
+                                referenceType: 'payment_failed',
+                                note: 'Razorpay payment failed',
+                            });
+
+                            transaction.update(orderRef, {
+                                paymentStatus: 'failed',
+                                inventoryState: 'restored',
+                                inventoryRestoredAt: FieldValue.serverTimestamp(),
+                                updatedAt: FieldValue.serverTimestamp(),
+                            });
+                        });
+                    }
+                }
+            }
+
+            return NextResponse.json({ status: 'ok', message: 'Payment failure recorded.' });
+        }
 
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;

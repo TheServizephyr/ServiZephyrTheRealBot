@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
+import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 
 // PhonePe Webhook Credentials
 const WEBHOOK_USERNAME = process.env.PHONEPE_WEBHOOK_USERNAME;
@@ -252,14 +253,53 @@ async function handleOrderFailed(payload) {
     const orderDoc = await orderRef.get();
 
     if (orderDoc.exists) {
-        await orderRef.update({
-            paymentStatus: 'failed',
-            paymentMethod: 'phonepe',
-            phonePeOrderId: orderId,
-            paymentFailureReason: errorCode || 'Unknown error',
-            paymentFailureDetails: detailedErrorCode || '',
-            updatedAt: new Date()
-        });
+        const orderData = orderDoc.data() || {};
+        const businessCollection =
+            isInventoryManagedBusinessType(orderData.businessType)
+                ? 'shops'
+                : (orderData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
+        const businessRef = adminDb.collection(businessCollection).doc(orderData.restaurantId);
+
+        if (
+            orderData.restaurantId &&
+            isInventoryManagedBusinessType(orderData.businessType) &&
+            orderData.inventoryState === 'deducted' &&
+            !orderData.inventoryRestoredAt
+        ) {
+            await adminDb.runTransaction(async (transaction) => {
+                await applyInventoryMovementTransaction({
+                    transaction,
+                    businessRef,
+                    items: orderData.items || [],
+                    mode: 'restore',
+                    actorId: 'phonepe_webhook',
+                    actorRole: 'system',
+                    referenceId: merchantOrderId,
+                    referenceType: 'payment_failed',
+                    note: 'PhonePe payment failed',
+                });
+
+                transaction.update(orderRef, {
+                    paymentStatus: 'failed',
+                    paymentMethod: 'phonepe',
+                    phonePeOrderId: orderId,
+                    paymentFailureReason: errorCode || 'Unknown error',
+                    paymentFailureDetails: detailedErrorCode || '',
+                    inventoryState: 'restored',
+                    inventoryRestoredAt: FieldValue.serverTimestamp(),
+                    updatedAt: new Date()
+                });
+            });
+        } else {
+            await orderRef.update({
+                paymentStatus: 'failed',
+                paymentMethod: 'phonepe',
+                phonePeOrderId: orderId,
+                paymentFailureReason: errorCode || 'Unknown error',
+                paymentFailureDetails: detailedErrorCode || '',
+                updatedAt: new Date()
+            });
+        }
         console.log(`[PhonePe Webhook] Order ${merchantOrderId} marked as FAILED`);
     }
 }

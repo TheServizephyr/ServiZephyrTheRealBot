@@ -17,6 +17,13 @@ export const dynamic = 'force-dynamic';
 // Helper function to format currency
 const formatCurrency = (value) => `₹${Number(value).toLocaleString('en-IN')}`;
 
+const normalizeBusinessType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'shop' || normalized === 'store') return 'store';
+  if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street-vendor';
+  return 'restaurant';
+};
+
 // --- Individual Components Defined in One File ---
 
 // 1. Summary Stat Card Component
@@ -63,7 +70,7 @@ const StatCard = ({ title, value, icon: Icon, change, isCurrency = false, isLoad
 
 
 // 2. Live Order Feed Component (REBUILT)
-const LiveOrderFeed = ({ orders, isLoading }) => {
+const LiveOrderFeed = ({ orders, isLoading, title = 'Live Order Feed', emptyLabel = 'No active orders right now.' }) => {
   const router = useRouter();
 
   if (isLoading) {
@@ -82,7 +89,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 h-[380px] flex flex-col">
-      <h3 className="text-lg font-semibold text-foreground mb-4">🔥 Live Order Feed</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-4">{title}</h3>
       <div className="overflow-y-auto pr-2 flex-grow">
 
         {orders && orders.length > 0 ? orders.map((order, index) => (
@@ -116,7 +123,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
           </motion.div>
         )) : (
           <div className="flex items-center justify-center h-full text-muted-foreground">
-            No live orders right now.
+            {emptyLabel}
           </div>
         )}
 
@@ -128,7 +135,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
 
 
 // 3. Sales Bar Chart Component
-const SalesChart = ({ salesData, isLoading }) => {
+const SalesChart = ({ salesData, isLoading, title = 'Weekly Sales' }) => {
   if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-xl p-5 h-[380px] animate-pulse">
@@ -140,7 +147,7 @@ const SalesChart = ({ salesData, isLoading }) => {
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 h-[380px] flex flex-col">
-      <h3 className="text-lg font-semibold text-foreground mb-4">📈 Weekly Sales</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-4">{title}</h3>
       <div className="flex-grow">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={salesData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
@@ -163,13 +170,13 @@ const SalesChart = ({ salesData, isLoading }) => {
 
 
 // 4. Top Selling Item Component
-const TopSellingItem = ({ name, count, imageUrl }) => (
+const TopSellingItem = ({ name, count, imageUrl, soldLabel = 'sold in this period' }) => (
   <div className="flex-shrink-0 w-36 sm:w-48 mr-4 text-center">
     <div className="relative w-full h-28 sm:h-32 rounded-lg overflow-hidden border-2 border-border">
       <Image src={imageUrl} alt={name} layout="fill" objectFit="cover" />
     </div>
     <p className="mt-2 font-semibold text-foreground truncate text-sm sm:text-base">{name}</p>
-    <p className="text-xs text-primary">{count} times today</p>
+    <p className="text-xs text-primary">{count} {soldLabel}</p>
   </div>
 );
 
@@ -184,10 +191,23 @@ function PageContent() {
   const [loading, setLoading] = useState(true);
   const [botCount, setBotCount] = useState(0);
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+  const [businessType, setBusinessType] = useState('restaurant');
   const router = useRouter();
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
   const employeeOfOwnerId = searchParams.get('employee_of');
+  const isStoreBusiness = businessType === 'store';
+  const addItemLabel = isStoreBusiness ? 'Add New Product' : 'Add New Item';
+  const stockActionLabel = isStoreBusiness ? 'Update Product Stock' : 'Mark Item Out of Stock';
+  const liveFeedTitle = isStoreBusiness ? 'Live Store Orders' : 'Live Order Feed';
+  const liveFeedEmptyLabel = isStoreBusiness ? 'No active store orders right now.' : 'No active orders right now.';
+  const salesChartTitle = isStoreBusiness ? 'Sales Trend' : 'Weekly Sales';
+  const topItemsTitle = isStoreBusiness ? 'Top Selling Products' : 'Top Selling Items';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setBusinessType(normalizeBusinessType(localStorage.getItem('businessType')));
+  }, []);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -301,7 +321,7 @@ function PageContent() {
           <button
             onClick={() => router.push(`/owner-dashboard/menu?${searchParams.toString()}`)}
             className="flex items-center justify-center p-3 bg-primary hover:bg-primary/90 rounded-lg font-semibold transition-colors text-sm sm:text-base text-primary-foreground">
-            <Plus size={18} className="mr-2" /> Add New Item
+            <Plus size={18} className="mr-2" /> {addItemLabel}
           </button>
           <button
             onClick={() => router.push(`/owner-dashboard/coupons?${searchParams.toString()}`)}
@@ -311,7 +331,7 @@ function PageContent() {
           <button
             onClick={() => router.push(`/owner-dashboard/menu?${searchParams.toString()}`)}
             className="flex items-center justify-center p-3 bg-secondary hover:bg-secondary/90 rounded-lg font-semibold transition-colors text-sm sm:text-base text-secondary-foreground">
-            <XCircle size={18} className="mr-2" /> Mark Item Out of Stock
+            <XCircle size={18} className="mr-2" /> {stockActionLabel}
           </button>
         </div>
 
@@ -342,13 +362,13 @@ function PageContent() {
 
         {/* Live Feed and Sales Chart */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <LiveOrderFeed orders={dashboardData?.liveOrders} isLoading={loading} />
-          <SalesChart salesData={dashboardData?.salesChart} isLoading={loading} />
+          <LiveOrderFeed orders={dashboardData?.liveOrders} isLoading={loading} title={liveFeedTitle} emptyLabel={liveFeedEmptyLabel} />
+          <SalesChart salesData={dashboardData?.salesChart} isLoading={loading} title={salesChartTitle} />
         </div>
 
         {/* Top Selling Items */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-lg font-semibold text-foreground mb-4">⭐ Top Selling Items</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">{topItemsTitle}</h3>
           {loading ? (
             <div className="flex animate-pulse space-x-4">
               <div className="w-48 h-40 bg-muted/50 rounded-lg"></div>

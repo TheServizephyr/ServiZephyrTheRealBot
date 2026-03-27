@@ -5,6 +5,7 @@ import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
+import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 
 const toAmount = (value, fallback = 0) => {
     const amount = Number(value);
@@ -102,7 +103,7 @@ export async function POST(req) {
             [PERMISSIONS.CREATE_ORDER]
         );
 
-        const { businessId, collectionName, uid, adminId = null } = context;
+        const { businessId, collectionName, uid, adminId = null, businessSnap } = context;
         const firestore = await getFirestore();
         const body = await req.json();
 
@@ -164,7 +165,7 @@ export async function POST(req) {
 
         const customerOrderId = generateCustomerOrderId();
         const docRef = historyRef.doc();
-        await docRef.set({
+        const historyPayload = {
             historyId: docRef.id,
             customerOrderId,
             billDraftId: billDraftId || null,
@@ -198,7 +199,32 @@ export async function POST(req) {
             settlementBatchId: null,
             createdAt: FieldValue.serverTimestamp(),
             printedAt: FieldValue.serverTimestamp(),
-        });
+        };
+
+        const businessType = businessSnap?.data()?.businessType || (collectionName === 'shops' ? 'store' : 'restaurant');
+        if (isInventoryManagedBusinessType(businessType)) {
+            await firestore.runTransaction(async (transaction) => {
+                await applyInventoryMovementTransaction({
+                    transaction,
+                    businessRef: businessSnap.ref,
+                    items,
+                    mode: 'sale',
+                    actorId: adminId || uid,
+                    actorRole: 'owner',
+                    referenceId: docRef.id,
+                    referenceType: 'custom_bill_history',
+                    note: `Offline bill saved (${printedVia})`,
+                });
+
+                transaction.set(docRef, {
+                    ...historyPayload,
+                    inventoryState: 'deducted',
+                    inventoryLastSyncedAt: FieldValue.serverTimestamp(),
+                });
+            });
+        } else {
+            await docRef.set(historyPayload);
+        }
 
         return NextResponse.json({
             message: 'Bill history saved successfully.',

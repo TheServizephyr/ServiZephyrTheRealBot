@@ -59,6 +59,15 @@ const getOrderTypeLabel = (order = {}) => {
     return '';
 };
 
+const getPaymentModeLabel = (value) => {
+    const rawValue = String(value || '').trim().toLowerCase();
+    if (!rawValue) return '';
+    if (rawValue === 'upi') return 'UPI';
+    if (rawValue === 'cod' || rawValue === 'cash') return 'Cash';
+    if (rawValue === 'card') return 'Card';
+    return rawValue.charAt(0).toUpperCase() + rawValue.slice(1);
+};
+
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
     if (!order) return null;
 
@@ -79,6 +88,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         address: order.customerAddress,
     };
     const orderTypeLabel = getOrderTypeLabel(order);
+    const paymentModeLabel = getPaymentModeLabel(order.paymentMode || finalBillDetails.paymentMode);
 
     const getItemPrice = (item) => {
         if (typeof item.price === 'number') return item.price;
@@ -176,6 +186,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     <p><strong>Date:</strong> {formatSafeDate(order.orderDate || order.createdAt)}</p>
                     {orderTypeLabel && <p><strong>{orderTypeLabel}</strong></p>}
                 </div>
+                {paymentModeLabel && <p><strong>Payment:</strong> {paymentModeLabel}</p>}
                 {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 

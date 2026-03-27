@@ -10,6 +10,7 @@ import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-
 import Razorpay from 'razorpay';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
+import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 
 
 // (Redundant verifyOwnerAndGetBusiness removed in favor of verifyOwnerWithAudit)
@@ -1003,6 +1004,34 @@ export async function PATCH(req) {
                                     vendorId: businessId
                                 }));
                             }
+                        }
+
+                        if (
+                            (newStatus === 'rejected' || newStatus === 'cancelled') &&
+                            isInventoryManagedBusinessType(orderData.businessType || businessData.businessType) &&
+                            orderData.inventoryState === 'deducted' &&
+                            !orderData.inventoryRestoredAt
+                        ) {
+                            effects.push(
+                                firestore.runTransaction(async (transaction) => {
+                                    await applyInventoryMovementTransaction({
+                                        transaction,
+                                        businessRef: businessSnap.ref,
+                                        items: orderData.items || [],
+                                        mode: 'restore',
+                                        actorId: uid,
+                                        actorRole: callerRole || 'owner',
+                                        referenceId: id,
+                                        referenceType: 'owner_order_status',
+                                        note: `Order ${newStatus} from owner dashboard`,
+                                    });
+
+                                    transaction.update(orderSnap.ref, {
+                                        inventoryState: 'restored',
+                                        inventoryRestoredAt: FieldValue.serverTimestamp(),
+                                    });
+                                })
+                            );
                         }
 
                         // D. RTDB Sync

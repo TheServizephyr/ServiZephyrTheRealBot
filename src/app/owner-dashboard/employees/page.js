@@ -7,14 +7,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Users,
     UserPlus,
-    Mail,
     Shield,
     MoreVertical,
     Check,
     X,
     Clock,
     Trash2,
-    Edit,
     Copy,
     CheckCircle,
     RefreshCw,
@@ -22,11 +20,55 @@ import {
     Link as LinkIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { OWNER_DASHBOARD_PAGES } from '@/lib/permissions';
+import {
+    getCustomRolePresetsForBusinessType,
+    getDashboardPageLabelMap,
+    getDashboardPagesForBusinessType,
+    getDefaultCustomRolePagesForBusinessType,
+    getRoleHelperText,
+} from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
+function getTeamCopy(businessType) {
+    if (businessType === 'store') {
+        return {
+            heading: 'Store Team',
+            emptyHeading: 'No Store Staff Yet',
+            subtitle: 'Invite billing, inventory, and fulfillment staff to help run daily store operations.',
+            addButton: 'Add Team Member',
+            firstAddButton: 'Add Your First Team Member',
+            inviteTitle: 'Add Team Member',
+            inviteSubtitle: 'Send an invitation to join your store team',
+            inviteHint: 'An email invite will be sent so this team member can join your store team using Google sign-in.',
+            pagesLabel: 'Dashboard Access * (Select what this team member can open)',
+        };
+    }
+
+    return {
+        heading: 'Team Members',
+        emptyHeading: 'No Team Members Yet',
+        subtitle: 'Add employees to help manage your business.',
+        addButton: 'Add Employee',
+        firstAddButton: 'Add Your First Employee',
+        inviteTitle: 'Add Employee',
+        inviteSubtitle: 'Send an invitation to join your team',
+        inviteHint: 'An email invite will be sent with a link to join your team. The employee will sign in with Google using this email.',
+        pagesLabel: 'Page Access * (Select pages this employee can view)',
+    };
+}
+
+function summarizeAllowedPages(pageIds, pageLabelMap) {
+    const labels = (Array.isArray(pageIds) ? pageIds : [])
+        .map((pageId) => pageLabelMap[pageId] || pageId)
+        .filter(Boolean);
+
+    if (labels.length === 0) return 'No page access selected';
+    if (labels.length <= 3) return labels.join(', ');
+    return `${labels.slice(0, 3).join(', ')} +${labels.length - 3} more`;
+}
+
 // Invite Link Dialog Component
-function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role }) {
+function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role, accessSummary }) {
     const [copied, setCopied] = useState(false);
 
     if (!isOpen) return null;
@@ -87,6 +129,11 @@ function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role }) {
                     <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-4">
                         They will join as <span className="text-blue-600 dark:text-blue-400 font-semibold capitalize">{role}</span> using Google login
                     </p>
+                    {accessSummary ? (
+                        <div className="mb-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-3 text-sm text-slate-600 dark:text-slate-300">
+                            Access: <span className="font-medium text-slate-900 dark:text-white">{accessSummary}</span>
+                        </div>
+                    ) : null}
 
                     {/* Action Buttons */}
                     <div className="grid grid-cols-2 gap-3">
@@ -133,13 +180,17 @@ function InviteLinkDialog({ isOpen, onClose, inviteLink, email, role }) {
 }
 
 // Add Employee Modal
-function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, allDashboardPages }) {
+function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, allDashboardPages, businessType }) {
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [role, setRole] = useState('');
     const [customRoleName, setCustomRoleName] = useState('');
     const [selectedPages, setSelectedPages] = useState([]);
+    const teamCopy = getTeamCopy(businessType);
+    const roleHelperText = getRoleHelperText(role, businessType);
+    const customRolePresets = getCustomRolePresetsForBusinessType(businessType);
+    const defaultCustomRolePages = getDefaultCustomRolePagesForBusinessType(businessType);
 
     // Reset custom fields when role changes
     useEffect(() => {
@@ -147,10 +198,9 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
             setCustomRoleName('');
             setSelectedPages([]);
         } else {
-            // Default to live-orders for custom role
-            setSelectedPages(['live-orders', 'my-profile']);
+            setSelectedPages(defaultCustomRolePages);
         }
-    }, [role]);
+    }, [defaultCustomRolePages, role]);
 
     if (!isOpen) return null;
 
@@ -179,12 +229,17 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
 
     const isCustomRole = role === 'custom';
 
+    const applyPreset = (preset) => {
+        setCustomRoleName(preset.roleName);
+        setSelectedPages(preset.pages);
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
             <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] flex flex-col my-auto overflow-hidden">
                 <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Add Employee</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">Send an invitation to join your team</p>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">{teamCopy.inviteTitle}</h2>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">{teamCopy.inviteSubtitle}</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
@@ -245,6 +300,11 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
                                 </option>
                             ))}
                         </select>
+                        {roleHelperText ? (
+                            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                {roleHelperText}
+                            </p>
+                        ) : null}
                     </div>
 
                     {/* Custom Role Options */}
@@ -262,15 +322,36 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
                                     type="text"
                                     value={customRoleName}
                                     onChange={(e) => setCustomRoleName(e.target.value)}
-                                    placeholder="e.g., Supervisor, Kitchen Helper"
+                                    placeholder={businessType === 'store' ? 'e.g., Picker, Packer, Shift Lead' : 'e.g., Supervisor, Kitchen Helper'}
                                     required={isCustomRole}
                                     className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                                 />
                             </div>
 
+                            {customRolePresets.length > 0 && (
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                        Quick Presets
+                                    </label>
+                                    <div className="grid gap-2">
+                                        {customRolePresets.map((preset) => (
+                                            <button
+                                                key={preset.id}
+                                                type="button"
+                                                onClick={() => applyPreset(preset)}
+                                                className="rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 px-3 py-3 text-left hover:border-purple-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                            >
+                                                <p className="text-sm font-semibold text-slate-900 dark:text-white">{preset.roleName}</p>
+                                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{preset.description}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                                    Page Access * (Select pages this employee can view)
+                                    {teamCopy.pagesLabel}
                                 </label>
                                 <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
                                     {allDashboardPages?.map((page) => (
@@ -300,7 +381,7 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
 
                     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
                         <p className="text-blue-700 dark:text-blue-300 text-sm">
-                            📧 An email will be sent with a link to join your team. The employee will sign in with Google using this email.
+                            {teamCopy.inviteHint}
                         </p>
                     </div>
 
@@ -330,9 +411,13 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
 
 
 // Employee Card
-function EmployeeCard({ employee, onAction, isPending }) {
+function EmployeeCard({ employee, onAction, isPending, businessType, pageLabelMap }) {
     const [showMenu, setShowMenu] = useState(false);
     const [copied, setCopied] = useState(false);
+    const roleHelperText = getRoleHelperText(employee.role, businessType);
+    const customAccessSummary = employee.role === 'custom'
+        ? summarizeAllowedPages(employee.customAllowedPages, pageLabelMap)
+        : '';
 
     const roleColors = {
         owner: 'bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-700 dark:from-yellow-900/40 dark:to-orange-900/40 dark:text-yellow-300',
@@ -400,6 +485,15 @@ function EmployeeCard({ employee, onAction, isPending }) {
                             {employee.roleDisplay || employee.role}
                         </span>
                     </div>
+                    {customAccessSummary ? (
+                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            Access: {customAccessSummary}
+                        </p>
+                    ) : roleHelperText ? (
+                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            {roleHelperText}
+                        </p>
+                    ) : null}
                 </div>
 
                 {/* Actions */}
@@ -493,7 +587,8 @@ export default function EmployeesPage() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
-    const [inviteDialog, setInviteDialog] = useState({ isOpen: false, link: '', email: '', role: '' });
+    const [inviteDialog, setInviteDialog] = useState({ isOpen: false, link: '', email: '', role: '', accessSummary: '' });
+    const [businessType, setBusinessType] = useState('restaurant');
 
     // Fetch employees
     const fetchEmployees = useCallback(async () => {
@@ -516,6 +611,7 @@ export default function EmployeesPage() {
                 setEmployees(employeesWithYou);
                 setPendingInvites(data.pendingInvites || []);
                 setInvitableRoles(data.invitableRoles || []);
+                setBusinessType(data.businessType || 'restaurant');
             }
         } catch (error) {
             console.error('Error fetching employees:', error);
@@ -567,6 +663,9 @@ export default function EmployeesPage() {
                     link: inviteLink,
                     email,
                     role: data.invitation?.roleDisplay || role,
+                    accessSummary: Array.isArray(data.invitation?.customAllowedPages) && data.invitation.customAllowedPages.length > 0
+                        ? summarizeAllowedPages(data.invitation.customAllowedPages, pageLabelMap)
+                        : '',
                 });
             }
 
@@ -579,6 +678,7 @@ export default function EmployeesPage() {
                 name,
                 role,
                 roleDisplay: data.invitation?.roleDisplay || (role === 'custom' ? customRoleName : role),
+                customAllowedPages: data.invitation?.customAllowedPages || customAllowedPages || [],
                 status: 'pending',
                 inviteLink: inviteLink,
             }]);
@@ -645,8 +745,10 @@ export default function EmployeesPage() {
         );
     }
 
-    const totalEmployees = employees.length;
     const activeEmployees = employees.filter(e => e.status === 'active').length;
+    const allDashboardPages = getDashboardPagesForBusinessType(businessType);
+    const pageLabelMap = getDashboardPageLabelMap(businessType);
+    const teamCopy = getTeamCopy(businessType);
 
     return (
         <div className="p-6">
@@ -665,7 +767,7 @@ export default function EmployeesPage() {
                         <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Team Members</h1>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{teamCopy.heading}</h1>
                         <p className="text-slate-500 dark:text-slate-400 text-sm">
                             {activeEmployees} active • {pendingInvites.length} pending
                         </p>
@@ -686,7 +788,7 @@ export default function EmployeesPage() {
                         className="bg-blue-500 hover:bg-blue-600 text-white"
                     >
                         <UserPlus className="w-4 h-4 mr-2" />
-                        Add Employee
+                        {teamCopy.addButton}
                     </Button>
                 </div>
             </div>
@@ -697,16 +799,16 @@ export default function EmployeesPage() {
                     <div className="w-16 h-16 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Users className="w-8 h-8 text-slate-400" />
                     </div>
-                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">No Team Members Yet</h2>
+                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">{teamCopy.emptyHeading}</h2>
                     <p className="text-slate-500 dark:text-slate-400 mb-6">
-                        Add employees to help manage your business
+                        {teamCopy.subtitle}
                     </p>
                     <Button
                         onClick={() => setShowAddModal(true)}
                         className="bg-blue-500 hover:bg-blue-600 text-white"
                     >
                         <UserPlus className="w-4 h-4 mr-2" />
-                        Add Your First Employee
+                        {teamCopy.firstAddButton}
                     </Button>
                 </div>
             )}
@@ -725,6 +827,8 @@ export default function EmployeesPage() {
                                 employee={invite}
                                 isPending={true}
                                 onAction={handleEmployeeAction}
+                                businessType={businessType}
+                                pageLabelMap={pageLabelMap}
                             />
                         ))}
                     </div>
@@ -745,6 +849,8 @@ export default function EmployeesPage() {
                                 employee={employee}
                                 isPending={false}
                                 onAction={handleEmployeeAction}
+                                businessType={businessType}
+                                pageLabelMap={pageLabelMap}
                             />
                         ))}
                     </div>
@@ -758,7 +864,8 @@ export default function EmployeesPage() {
                 onSubmit={handleAddEmployee}
                 invitableRoles={invitableRoles}
                 loading={actionLoading}
-                allDashboardPages={OWNER_DASHBOARD_PAGES}
+                allDashboardPages={allDashboardPages}
+                businessType={businessType}
             />
 
             {/* Invite Link Dialog */}
@@ -766,10 +873,11 @@ export default function EmployeesPage() {
                 {inviteDialog.isOpen && (
                     <InviteLinkDialog
                         isOpen={inviteDialog.isOpen}
-                        onClose={() => setInviteDialog({ isOpen: false, link: '', email: '', role: '' })}
+                        onClose={() => setInviteDialog({ isOpen: false, link: '', email: '', role: '', accessSummary: '' })}
                         inviteLink={inviteDialog.link}
                         email={inviteDialog.email}
                         role={inviteDialog.role}
+                        accessSummary={inviteDialog.accessSummary}
                     />
                 )}
             </AnimatePresence>

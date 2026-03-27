@@ -28,6 +28,8 @@ import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/dista
 import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
+import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
@@ -945,7 +947,14 @@ export async function createOrderV2(req, options = {}) {
             };
 
             // Create order in Firestore
-            await orderRepository.create(orderData, firestoreOrderId);
+            await persistOrderWithInventory({
+                firestore,
+                orderId: firestoreOrderId,
+                orderData,
+                business,
+                actorId: userId || normalizedPhone || 'customer',
+                actorRole: 'customer',
+            });
             console.log(`[createOrderV2] Firestore order created: ${firestoreOrderId}`);
 
             // Build servizephyr_payload for webhook (V1 parity)
@@ -1133,7 +1142,14 @@ export async function createOrderV2(req, options = {}) {
         const orderId = firestore.collection('orders').doc().id;
         console.log(`[createOrderV2] Order ID reserved: ${orderId}`);
 
-        const saveOrderPromise = orderRepository.create(orderData, orderId);
+        const saveOrderPromise = persistOrderWithInventory({
+            firestore,
+            orderId,
+            orderData,
+            business,
+            actorId: userId || normalizedPhone || 'customer',
+            actorRole: 'customer',
+        });
 
         // Keep tracking-token persistence on the critical path so redirects can track immediately.
         const tokenPersistPromise = needsTokenPersist ? (async () => {
@@ -1287,6 +1303,50 @@ async function generateSecureToken(firestore, userId) {
     await firestore.collection('auth_tokens').doc(token).set(tokenData);
 
     return token;
+}
+
+async function persistOrderWithInventory({
+    firestore,
+    orderId,
+    orderData,
+    business,
+    actorId,
+    actorRole = 'customer',
+}) {
+    if (!isInventoryManagedBusinessType(business?.type)) {
+        return orderRepository.create(orderData, orderId);
+    }
+
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const businessRef = firestore.collection(business.collection).doc(business.id);
+    const customerOrderId = generateCustomerOrderId();
+
+    await firestore.runTransaction(async (transaction) => {
+        await applyInventoryMovementTransaction({
+            transaction,
+            businessRef,
+            items: orderData.items || [],
+            mode: 'sale',
+            actorId,
+            actorRole,
+            referenceId: orderId,
+            referenceType: 'order',
+            note: `Order created (${orderData.deliveryType || 'sale'})`,
+        });
+
+        transaction.set(orderRef, {
+            ...orderData,
+            customerOrderId,
+            inventoryState: 'deducted',
+            inventoryLastSyncedAt: FieldValue.serverTimestamp(),
+            inventorySyncSource: 'order_create',
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+    });
+
+    console.log(`[createOrderV2] Inventory deducted atomically for store order ${orderId}`);
+    return orderId;
 }
 
 

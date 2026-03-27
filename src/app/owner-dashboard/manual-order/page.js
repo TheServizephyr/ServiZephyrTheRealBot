@@ -66,6 +66,58 @@ const isEditableTarget = (target) => {
     if (target.isContentEditable) return true;
     return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
 };
+const isStoreBusinessType = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === 'shop' || normalized === 'store';
+};
+const getItemAvailableStock = (item = {}) => {
+    const raw = item?.availableStock ?? item?.available;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+const mergeMenuWithInventory = (menu = {}, inventoryMap = {}) => (
+    Object.fromEntries(
+        Object.entries(menu || {}).map(([categoryId, items]) => [
+            categoryId,
+            Array.isArray(items)
+                ? items.map((menuItem) => {
+                    const stockInfo = inventoryMap[menuItem?.id] || null;
+                    return {
+                        ...menuItem,
+                        availableStock: stockInfo ? getItemAvailableStock(stockInfo) : getItemAvailableStock(menuItem),
+                        stockOnHand: stockInfo?.stockOnHand ?? menuItem?.stockOnHand,
+                        reservedStock: stockInfo?.reserved ?? menuItem?.reservedStock,
+                    };
+                })
+                : [],
+        ])
+    )
+);
+const getItemSearchTokens = (item = {}) => [
+    item?.name,
+    item?.sku,
+    item?.barcode,
+    ...(Array.isArray(item?.extraBarcodes) ? item.extraBarcodes : []),
+].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+const itemMatchesSearch = (item = {}, normalizedQuery = '') => {
+    if (!normalizedQuery) return true;
+    return getItemSearchTokens(item).some((token) => token.includes(normalizedQuery));
+};
+const buildSaleOption = (name, price, label = name) => ({
+    name,
+    label,
+    price: Number(price || 0),
+});
+const getItemSaleOptions = (item = {}, isStoreOutlet = false) => {
+    if (isStoreOutlet) {
+        const fallbackPrice = Number(item?.price ?? item?.portions?.[0]?.price ?? 0);
+        return [buildSaleOption('unit', fallbackPrice, 'Add')];
+    }
+    if (Array.isArray(item?.portions) && item.portions.length > 0) {
+        return item.portions.map((portion) => buildSaleOption(portion.name, portion.price, portion.name));
+    }
+    return [buildSaleOption('regular', item?.price, 'Add')];
+};
 
 function ManualOrderPage() {
     const { toast } = useToast();
@@ -102,6 +154,8 @@ function ManualOrderPage() {
     const [deliveryChargeInput, setDeliveryChargeInput] = useState('0');
     const [additionalChargeNameInput, setAdditionalChargeNameInput] = useState('');
     const [additionalChargeInput, setAdditionalChargeInput] = useState('0');
+    const [discountInput, setDiscountInput] = useState('0');
+    const [paymentMode, setPaymentMode] = useState('cash');
 
     // State to control modal visibility
     const [isBillModalOpen, setIsBillModalOpen] = useState(false);
@@ -115,8 +169,11 @@ function ManualOrderPage() {
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
+    const [inventoryByItemId, setInventoryByItemId] = useState({});
     const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
     const [cacheStatus, setCacheStatus] = useState('checking');
+    const [businessType, setBusinessType] = useState('restaurant');
+    const [isBusinessTypeResolved, setIsBusinessTypeResolved] = useState(false);
     const [isCustomOpenItemModalOpen, setIsCustomOpenItemModalOpen] = useState(false);
     const [customOpenItemName, setCustomOpenItemName] = useState('');
     const [customOpenItemPrice, setCustomOpenItemPrice] = useState('');
@@ -237,9 +294,38 @@ function ManualOrderPage() {
         if (payload.menu && typeof payload.menu === 'object') setMenu(payload.menu);
         if (Array.isArray(payload.openItems)) setOpenItems(dedupeOpenItems(payload.openItems));
         if (payload.restaurant) setRestaurant(payload.restaurant);
+        if (payload.businessType) {
+            setBusinessType(payload.businessType);
+            setIsBusinessTypeResolved(true);
+        }
+
+        if (isStoreBusinessType(payload.businessType)) {
+            (async () => {
+                try {
+                    const user = auth.currentUser;
+                    if (!user) return;
+                    const idToken = await user.getIdToken();
+                    const inventoryRes = await fetch(buildScopedUrl('/api/owner/inventory?limit=500'), {
+                        headers: { Authorization: `Bearer ${idToken}` },
+                    });
+                    if (!inventoryRes.ok) return;
+                    const inventoryData = await inventoryRes.json();
+                    const inventoryMap = Array.isArray(inventoryData?.items)
+                        ? inventoryData.items.reduce((acc, inventoryItem) => {
+                            if (inventoryItem?.id) acc[inventoryItem.id] = inventoryItem;
+                            return acc;
+                        }, {})
+                        : {};
+                    setInventoryByItemId(inventoryMap);
+                    setMenu((prev) => mergeMenuWithInventory(prev, inventoryMap));
+                } catch {
+                    // Non-blocking
+                }
+            })();
+        }
         setCacheStatus('local-hit');
         setLoading(false);
-    }, [readCachedPayload]);
+    }, [buildScopedUrl, readCachedPayload]);
 
     useEffect(() => {
         let isMounted = true;
@@ -253,6 +339,7 @@ function ManualOrderPage() {
 
                 const headers = { 'Authorization': `Bearer ${idToken}` };
                 const menuUrl = buildScopedUrl('/api/owner/menu?compact=1&includeOpenItems=1');
+                const inventoryUrl = buildScopedUrl('/api/owner/inventory?limit=500');
                 const settingsUrl = buildScopedUrl('/api/owner/settings');
                 const versionUrl = buildScopedUrl('/api/owner/menu?versionOnly=1');
 
@@ -273,6 +360,10 @@ function ManualOrderPage() {
                             setMenu(cached.data.menu || {});
                             setOpenItems(Array.isArray(cached.data.openItems) ? dedupeOpenItems(cached.data.openItems) : []);
                             if (cached?.data?.restaurant) setRestaurant(cached.data.restaurant);
+                            if (cached?.data?.businessType) {
+                                setBusinessType(cached.data.businessType);
+                                setIsBusinessTypeResolved(true);
+                            }
                             setCacheStatus('version-hit');
                             setLoading(false);
                             shouldFetchFullMenu = false;
@@ -284,12 +375,34 @@ function ManualOrderPage() {
                 }
 
                 if (!shouldFetchFullMenu) {
+                    if (isStoreBusinessType(cached?.data?.businessType)) {
+                        try {
+                            const inventoryRes = await fetch(inventoryUrl, { headers });
+                            if (inventoryRes.ok && isMounted) {
+                                const inventoryData = await inventoryRes.json();
+                                const inventoryMap = Array.isArray(inventoryData?.items)
+                                    ? inventoryData.items.reduce((acc, inventoryItem) => {
+                                        if (inventoryItem?.id) acc[inventoryItem.id] = inventoryItem;
+                                        return acc;
+                                    }, {})
+                                    : {};
+                                setInventoryByItemId(inventoryMap);
+                                setMenu(mergeMenuWithInventory(cached?.data?.menu || {}, inventoryMap));
+                            }
+                        } catch {
+                            // Non-blocking
+                        }
+                    }
+
                     const settingsPromise = fetch(settingsUrl, { headers });
                     // Keep settings fresh in background when menu version is unchanged.
                     try {
                         const settingsRes = await settingsPromise;
                         if (settingsRes.ok && isMounted) {
                             const settingsData = await settingsRes.json();
+                            const resolvedBusinessType = settingsData.businessType || cached?.data?.businessType || 'restaurant';
+                            setBusinessType(resolvedBusinessType);
+                            setIsBusinessTypeResolved(true);
                             const nextRestaurantPayload = {
                                 name: settingsData.restaurantName,
                                 address: settingsData.address,
@@ -309,6 +422,7 @@ function ManualOrderPage() {
                             writeCachedPayload({
                                 ...(cached?.data || {}),
                                 restaurant: nextRestaurantPayload,
+                                businessType: resolvedBusinessType,
                             });
                         }
                     } catch {
@@ -319,6 +433,7 @@ function ManualOrderPage() {
 
                 const menuPromise = fetch(menuUrl, { headers });
                 const settingsPromise = fetch(settingsUrl, { headers });
+                const inventoryPromise = fetch(inventoryUrl, { headers });
                 const menuRes = await menuPromise;
 
                 if (!menuRes.ok) {
@@ -327,13 +442,40 @@ function ManualOrderPage() {
                 }
 
                 const menuData = await menuRes.json();
+                const resolvedBusinessType = menuData?.businessType || 'restaurant';
+                const isStoreOutlet = isStoreBusinessType(resolvedBusinessType);
                 const restaurantPayload = null;
 
                 const openItemsData = { items: Array.isArray(menuData.openItems) ? menuData.openItems : [] };
+                let inventoryMap = {};
+
+                if (isStoreOutlet) {
+                    try {
+                        const inventoryRes = await inventoryPromise;
+                        if (inventoryRes.ok) {
+                            const inventoryData = await inventoryRes.json();
+                            inventoryMap = Array.isArray(inventoryData?.items)
+                                ? inventoryData.items.reduce((acc, inventoryItem) => {
+                                    if (inventoryItem?.id) acc[inventoryItem.id] = inventoryItem;
+                                    return acc;
+                                }, {})
+                                : {};
+                        }
+                    } catch {
+                        inventoryMap = {};
+                    }
+                }
+
+                const menuWithInventory = isStoreOutlet
+                    ? mergeMenuWithInventory(menuData.menu || {}, inventoryMap)
+                    : (menuData.menu || {});
 
                 if (isMounted) {
-                    setMenu(menuData.menu || {});
+                    setMenu(menuWithInventory);
                     setOpenItems(dedupeOpenItems(openItemsData.items || []));
+                    setInventoryByItemId(inventoryMap);
+                    setBusinessType(resolvedBusinessType);
+                    setIsBusinessTypeResolved(true);
                     // Unblock UI as soon as menu is ready; settings can hydrate in background.
                     setCacheStatus('network-refresh');
                     setLoading(false);
@@ -343,9 +485,10 @@ function ManualOrderPage() {
                 }
 
                 writeCachedPayload({
-                    menu: menuData.menu || {},
+                    menu: menuWithInventory,
                     openItems: dedupeOpenItems(openItemsData.items || []),
                     restaurant: restaurantPayload,
+                    businessType: resolvedBusinessType,
                     menuVersion: Number(menuData?.menuVersion || 0),
                 });
 
@@ -364,6 +507,9 @@ function ManualOrderPage() {
                     }
 
                     const settingsData = await settingsRes.json();
+                    const settingsBusinessType = settingsData.businessType || resolvedBusinessType;
+                    setBusinessType(settingsBusinessType);
+                    setIsBusinessTypeResolved(true);
                     const nextRestaurantPayload = {
                         name: settingsData.restaurantName,
                         address: settingsData.address,
@@ -383,9 +529,10 @@ function ManualOrderPage() {
 
                     writeCachedPayload({
                         ...(readCachedPayload()?.data || {}),
-                        menu: menuData.menu || {},
+                        menu: menuWithInventory,
                         openItems: dedupeOpenItems(openItemsData.items || []),
                         restaurant: nextRestaurantPayload,
+                        businessType: settingsBusinessType,
                         menuVersion: Number(menuData?.menuVersion || 0),
                     });
                 } catch {
@@ -413,6 +560,26 @@ function ManualOrderPage() {
             unsubscribe();
         };
     }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload, toast]);
+
+    const enforceCartStockLimit = useCallback((candidateItem, nextQuantity) => {
+        const availableStock = getItemAvailableStock(candidateItem);
+        if (availableStock === null) return true;
+        if (nextQuantity <= availableStock) return true;
+
+        toast({
+            title: 'Stock Limit Reached',
+            description: `Only ${availableStock} unit(s) of "${candidateItem?.name || 'this item'}" are available right now.`,
+            variant: 'destructive',
+        });
+        return false;
+    }, [toast]);
+
+    useEffect(() => {
+        if (isStoreBusinessType(businessType) && orderType === 'dine-in') {
+            setOrderType('delivery');
+            setActiveTable(null);
+        }
+    }, [businessType, orderType]);
 
     const fetchManualTables = useCallback(async () => {
         setIsLoadingTables(true);
@@ -459,7 +626,7 @@ function ManualOrderPage() {
             const items = menu[categoryId];
             if (!Array.isArray(items) || items.length === 0) continue;
             const filteredItems = normalizedSearchQuery
-                ? items.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery))
+                ? items.filter((item) => itemMatchesSearch(item, normalizedSearchQuery))
                 : items;
             if (filteredItems.length > 0) {
                 const sortedItems = [...filteredItems].sort((a, b) => {
@@ -472,7 +639,7 @@ function ManualOrderPage() {
         }
 
         const filteredOpenItems = normalizedSearchQuery
-            ? openItems.filter((item) => String(item?.name || '').toLowerCase().includes(normalizedSearchQuery))
+            ? openItems.filter((item) => itemMatchesSearch(item, normalizedSearchQuery))
             : openItems;
         const sortedOpenItems = [...filteredOpenItems].sort((a, b) => {
             const nameA = String(a?.name || '').toLowerCase();
@@ -682,12 +849,17 @@ function ManualOrderPage() {
 
 
     const addToCart = (item, portion) => {
-        const cartItemId = `${item.id}-${portion.name}`;
-        setItemHistory(prev => [...prev, cartItemId]); // Record history
+        const normalizedOption = portion || buildSaleOption('regular', item?.price, 'Add');
+        const cartItemId = `${item.id}-${normalizedOption.name}`;
         const existingItem = cart.find(i => i.cartItemId === cartItemId);
         if (existingItem) {
-            setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1, totalPrice: (i.totalPrice / i.quantity) * (i.quantity + 1) } : i));
+            const nextQuantity = existingItem.quantity + 1;
+            if (!enforceCartStockLimit(item, nextQuantity)) return;
+            setItemHistory(prev => [...prev, cartItemId]); // Record history
+            setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, quantity: nextQuantity, totalPrice: (i.totalPrice / i.quantity) * nextQuantity } : i));
         } else {
+            if (!enforceCartStockLimit(item, 1)) return;
+            setItemHistory(prev => [...prev, cartItemId]); // Record history
             // Check if item has multiple portions
             const hasMultiplePortions = item.portions && item.portions.length > 1;
 
@@ -698,8 +870,8 @@ function ManualOrderPage() {
                 ...itemWithoutPortions,
                 quantity: 1,
                 cartItemId,
-                price: portion.price,
-                totalPrice: portion.price
+                price: normalizedOption.price,
+                totalPrice: normalizedOption.price
             };
 
             const portionCount = Array.isArray(portions) ? portions.length : 0;
@@ -709,7 +881,7 @@ function ManualOrderPage() {
 
             // Only add portion data if there are multiple portions
             if (hasMultiplePortions) {
-                cartItem.portion = portion;
+                cartItem.portion = normalizedOption;
             }
 
             setCart([...cart, cartItem]);
@@ -764,6 +936,8 @@ function ManualOrderPage() {
         setBillDraftId(createBillDraftId());
         setCustomerDetails({ name: '', phone: '', address: '' });
         setPhoneError(false);
+        setDiscountInput('0');
+        setPaymentMode('cash');
     };
 
     const handleClear = () => {
@@ -865,6 +1039,9 @@ function ManualOrderPage() {
             if (newQuantity <= 0) {
                 return newCart.filter(i => i.cartItemId !== cartItemId);
             } else {
+                if (!enforceCartStockLimit(item, newQuantity)) {
+                    return currentCart;
+                }
                 newCart[itemIndex] = { ...item, quantity: newQuantity, totalPrice: item.price * newQuantity };
                 return newCart;
             }
@@ -902,10 +1079,11 @@ function ManualOrderPage() {
         handleCustomOpenItemModalChange(false);
     }, [customOpenItemName, customOpenItemPrice, handleCustomOpenItemModalChange, toast]);
 
-    const { subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal } = useMemo(() => {
+    const { subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, discount, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
 
         const normalizedDeliveryCharge = orderType === 'delivery' ? Math.max(0, Number(deliveryChargeInput) || 0) : 0;
+        const normalizedDiscount = Math.max(0, Number(discountInput) || 0);
 
         let normalizedAdditionalCharge = 0;
         let normalizedAdditionalChargeLabel = 'Additional Charge';
@@ -935,7 +1113,8 @@ function ManualOrderPage() {
                 deliveryCharge: normalizedDeliveryCharge,
                 additionalCharge: normalizedAdditionalCharge,
                 additionalChargeLabel: normalizedAdditionalChargeLabel,
-                grandTotal: sub + normalizedDeliveryCharge + normalizedAdditionalCharge
+                discount: normalizedDiscount,
+                grandTotal: Math.max(0, sub + normalizedDeliveryCharge + normalizedAdditionalCharge - normalizedDiscount)
             };
         }
 
@@ -963,9 +1142,10 @@ function ManualOrderPage() {
             deliveryCharge: normalizedDeliveryCharge,
             additionalCharge: normalizedAdditionalCharge,
             additionalChargeLabel: normalizedAdditionalChargeLabel,
-            grandTotal: total
+            discount: normalizedDiscount,
+            grandTotal: Math.max(0, total - normalizedDiscount)
         };
-    }, [cart, restaurant, deliveryChargeInput, orderType]);
+    }, [cart, restaurant, deliveryChargeInput, orderType, discountInput]);
 
     const printReceiptToUsb = async ({
         items,
@@ -1016,7 +1196,8 @@ function ManualOrderPage() {
         const safeDeliveryCharge = Number(billDetails?.deliveryCharge || 0);
         const safeServiceFee = Number(billDetails?.serviceFee || 0);
         const safeServiceFeeLabel = String(billDetails?.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge';
-        const safeGrandTotal = Number(billDetails?.grandTotal || safeSubtotal + safeCgst + safeSgst + safeDeliveryCharge + safeServiceFee);
+        const safeDiscount = Number(billDetails?.discount || 0);
+        const safeGrandTotal = Number(billDetails?.grandTotal || safeSubtotal + safeCgst + safeSgst + safeDeliveryCharge + safeServiceFee - safeDiscount);
 
         // Totals
         encoder.text('--------------------------------').newline()
@@ -1027,6 +1208,8 @@ function ManualOrderPage() {
         if (safeSgst > 0) encoder.text(`SGST: ${safeSgst.toFixed(0)}`).newline();
         if (safeDeliveryCharge > 0) encoder.text(`Delivery: ${safeDeliveryCharge.toFixed(0)}`).newline();
         if (safeServiceFee > 0) encoder.text(`${safeServiceFeeLabel}: ${safeServiceFee.toFixed(0)}`).newline();
+        if (safeDiscount > 0) encoder.text(`Discount: -${safeDiscount.toFixed(0)}`).newline();
+        if (billDetails?.paymentMode) encoder.text(`Payment: ${String(billDetails.paymentMode).toUpperCase()}`).newline();
 
         encoder.bold(true).size('large')
             .text(`TOTAL: ${safeGrandTotal.toFixed(0)}`).newline()
@@ -1134,6 +1317,8 @@ function ManualOrderPage() {
                     deliveryCharge,
                     serviceFee: additionalCharge,
                     serviceFeeLabel: additionalChargeLabel,
+                    discount,
+                    paymentMode,
                     grandTotal,
                 },
             }),
@@ -1337,7 +1522,7 @@ function ManualOrderPage() {
             const printResult = await printReceiptToUsb({
                 items: cart,
                 customer: customerDetails,
-                billDetails: { subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal },
+                billDetails: { subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, discount, paymentMode, grandTotal },
                 orderDate: new Date(),
                 closeBillModalOnSuccess: true,
                 notifyUser: false,
@@ -1407,7 +1592,7 @@ function ManualOrderPage() {
                         <BillToPrint
                             order={{ orderDate: new Date(), orderType }}
                             restaurant={restaurant}
-                            billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
+                            billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, discount, paymentMode, grandTotal }}
                             items={cart}
                             customerDetails={customerDetails}
                         />
@@ -1709,10 +1894,12 @@ function ManualOrderPage() {
                 <div className="flex-1 min-w-0 bg-card border border-border rounded-xl p-3 flex flex-col h-full lg:min-h-0">
                     <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center flex-wrap gap-2">
-                            <h1 className="text-lg font-bold tracking-tight">Manual Billing</h1>
+                            <h1 className="text-lg font-bold tracking-tight">
+                                {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
+                            </h1>
 
                             <div className="flex bg-muted p-1 rounded-lg ml-0 sm:ml-2">
-                                {['delivery', 'dine-in', 'pickup'].map(mode => (
+                                {(isStoreBusinessType(businessType) ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']).map(mode => (
                                     <button
                                         key={mode}
                                         onClick={() => {
@@ -1748,7 +1935,7 @@ function ManualOrderPage() {
                                     <input
                                         ref={searchInputRef}
                                         type="text"
-                                        placeholder="Search menu..."
+                                        placeholder={isStoreBusinessType(businessType) ? 'Search item, SKU, or barcode...' : 'Search menu...'}
                                         value={searchQuery}
                                         onChange={e => setSearchQuery(e.target.value)}
                                         className="w-full min-w-0 pl-9 pr-4 py-2 h-10 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
@@ -1999,6 +2186,11 @@ function ManualOrderPage() {
                                                                     <p className="font-bold text-foreground text-base leading-tight">
                                                                         {item.name}
                                                                     </p>
+                                                                    {getItemAvailableStock(item) !== null && (
+                                                                        <p className="mt-2 text-xs text-muted-foreground">
+                                                                            In stock: {getItemAvailableStock(item)}
+                                                                        </p>
+                                                                    )}
                                                                 </div>
                                                                 <motion.button
                                                                     whileHover={{ scale: 1.05 }}
@@ -2025,7 +2217,8 @@ function ManualOrderPage() {
                                         ) : (
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 {filteredItems.map(item => {
-                                                    if (!item.portions) {
+                                                    const saleOptions = getItemSaleOptions(item, isStoreBusinessType(businessType));
+                                                    if (!item.portions || isStoreBusinessType(businessType)) {
                                                         return (
                                                             <motion.div
                                                                 key={item.id}
@@ -2037,16 +2230,31 @@ function ManualOrderPage() {
                                                                     <p className="font-bold text-foreground text-base leading-tight">
                                                                         {item.name}
                                                                     </p>
+                                                                    {isStoreBusinessType(businessType) && (item?.sku || item?.barcode) && (
+                                                                        <p className="mt-1 text-[11px] text-muted-foreground">
+                                                                            {[item?.sku ? `SKU: ${item.sku}` : '', item?.barcode ? `Barcode: ${item.barcode}` : ''].filter(Boolean).join(' • ')}
+                                                                        </p>
+                                                                    )}
+                                                                    {getItemAvailableStock(item) !== null && (
+                                                                        <p className="mt-2 text-xs text-muted-foreground">
+                                                                            In stock: {getItemAvailableStock(item)}
+                                                                        </p>
+                                                                    )}
                                                                 </div>
                                                                 <motion.button
                                                                     whileHover={{ scale: 1.05 }}
                                                                     whileTap={{ scale: 0.95 }}
-                                                                    onClick={() => addToCart(item, { name: 'Regular', price: item.price })}
+                                                                    onClick={() => addToCart(item, saleOptions[0])}
                                                                     className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
                                                                 >
                                                                     <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+                                                                    {isStoreBusinessType(businessType) && (
+                                                                        <span className="text-[10px] uppercase tracking-[0.18em] opacity-70 relative z-10">
+                                                                            {saleOptions[0].label}
+                                                                        </span>
+                                                                    )}
                                                                     <span className="text-base font-black relative z-10">
-                                                                        {formatCurrency(item.price)}
+                                                                        {formatCurrency(saleOptions[0].price)}
                                                                     </span>
                                                                 </motion.button>
                                                             </motion.div>
@@ -2065,12 +2273,17 @@ function ManualOrderPage() {
                                                                 <p className="font-bold text-foreground text-base leading-tight">
                                                                     {item.name}
                                                                 </p>
+                                                                {getItemAvailableStock(item) !== null && (
+                                                                    <p className="mt-2 text-xs text-muted-foreground">
+                                                                        In stock: {getItemAvailableStock(item)}
+                                                                    </p>
+                                                                )}
                                                             </div>
-                                                            <div className={`grid gap-2.5 mt-auto ${item.portions.length === 1 ? 'grid-cols-1' :
-                                                                item.portions.length === 2 ? 'grid-cols-2' :
+                                                            <div className={`grid gap-2.5 mt-auto ${saleOptions.length === 1 ? 'grid-cols-1' :
+                                                                saleOptions.length === 2 ? 'grid-cols-2' :
                                                                     'grid-cols-3'
                                                                 }`}>
-                                                                {item.portions.map(portion => (
+                                                                {saleOptions.map(portion => (
                                                                     <motion.button
                                                                         key={portion.name}
                                                                         whileHover={{ scale: 1.05 }}
@@ -2081,9 +2294,9 @@ function ManualOrderPage() {
                                                                         {/* Subtle gradient overlay on hover */}
                                                                         <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
 
-                                                                        {item.portions.length > 1 && (
+                                                                        {saleOptions.length > 1 && (
                                                                             <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
-                                                                                {portion.name}
+                                                                                {portion.label}
                                                                             </span>
                                                                         )}
                                                                         <div className="flex items-center justify-center relative z-10">
@@ -2177,6 +2390,22 @@ function ManualOrderPage() {
                                             </div>
                                         </>
                                     )}
+                                    {isStoreBusinessType(businessType) && (
+                                        <>
+                                            <div className="space-y-1 col-span-1">
+                                                <Label className="text-xs">Discount</Label>
+                                                <input type="number" min="0" step="1" value={discountInput} onChange={(e) => setDiscountInput(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="0" />
+                                            </div>
+                                            <div className="space-y-1 col-span-1">
+                                                <Label className="text-xs">Payment Mode</Label>
+                                                <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border">
+                                                    <option value="cash">Cash</option>
+                                                    <option value="upi">UPI</option>
+                                                    <option value="card">Card</option>
+                                                </select>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -2188,7 +2417,7 @@ function ManualOrderPage() {
                             <BillToPrint
                                 order={{ orderDate: new Date(), orderType }}
                                 restaurant={restaurant}
-                                billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
+                                billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, discount, paymentMode, grandTotal }}
                                 items={cart}
                                 customerDetails={customerDetails}
                             />
@@ -2301,6 +2530,18 @@ function ManualOrderPage() {
                                 <div className="flex justify-between text-muted-foreground text-xs">
                                     <span>{additionalChargeLabel || 'Additional Charge'}</span>
                                     <span>{formatCurrency(additionalCharge)}</span>
+                                </div>
+                            )}
+                            {discount > 0 && (
+                                <div className="flex justify-between text-emerald-600 text-xs">
+                                    <span>Discount</span>
+                                    <span>-{formatCurrency(discount)}</span>
+                                </div>
+                            )}
+                            {isStoreBusinessType(businessType) && (
+                                <div className="flex justify-between text-muted-foreground text-xs">
+                                    <span>Payment Mode</span>
+                                    <span className="uppercase">{paymentMode}</span>
                                 </div>
                             )}
                             <div className="flex justify-between font-bold text-base pt-1 border-t border-border">

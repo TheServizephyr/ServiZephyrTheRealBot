@@ -1399,6 +1399,28 @@ function BookingsPageContent() {
         const getT = v => v?._seconds ? v._seconds * 1000 : new Date(v).getTime();
         return getT(b.bookingDateTime) - getT(a.bookingDateTime);
     }), [filtered]);
+    const isRestaurantBusiness = businessInfo?.collection === 'restaurants';
+
+    if (!loading && businessInfo && !isRestaurantBusiness) {
+        return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 md:p-6">
+                <Card className="border-amber-500/30 bg-amber-500/5">
+                    <CardContent className="p-6 md:p-8 flex items-start gap-4">
+                        <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-amber-500" />
+                        <div className="space-y-2">
+                            <h1 className="text-xl md:text-2xl font-bold tracking-tight">Bookings & Waitlist</h1>
+                            <p className="text-sm md:text-base text-muted-foreground">
+                                This feature is only available for restaurant outlets. Your current business type does not use table bookings or waitlist management.
+                            </p>
+                            <p className="text-xs md:text-sm text-muted-foreground">
+                                For shop onboarding, we will keep store owners focused on catalog, inventory, POS/manual billing, live orders, delivery, and analytics.
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            </motion.div>
+        );
+    }
 
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 md:p-6 space-y-3 md:space-y-6">
