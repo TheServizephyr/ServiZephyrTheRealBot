@@ -15,6 +15,7 @@ import { trackApiTelemetry } from '@/lib/opsTelemetry';
 // (Redundant verifyOwnerAndGetBusiness removed in favor of verifyOwnerWithAudit)
 
 const OWNER_LIKE_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
+const STATUS_NOTIFICATION_MAX_AGE_MS = 90 * 60 * 1000;
 
 function callerHasPermission(callerRole, callerPermissions, permission) {
     if (!permission) return false;
@@ -450,6 +451,28 @@ export async function GET(req) {
             errorMessage: telemetryError,
         });
     }
+}
+
+function toJsDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value?.toDate === 'function') {
+        try {
+            const converted = value.toDate();
+            return converted instanceof Date && !Number.isNaN(converted.getTime()) ? converted : null;
+        } catch {
+            return null;
+        }
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isStatusNotificationStale(orderData = {}) {
+    const createdAt = toJsDate(orderData.orderDate || orderData.createdAt);
+    if (!createdAt) return false;
+    return (Date.now() - createdAt.getTime()) > STATUS_NOTIFICATION_MAX_AGE_MS;
 }
 
 
@@ -899,7 +922,8 @@ export async function PATCH(req) {
 
                         // A. Notifications
                         const customerPhoneForNotification = resolveCustomerPhoneForNotification(orderData);
-                        if (businessData.botPhoneNumberId && customerPhoneForNotification) {
+                        const shouldSkipLateStatusNotification = isStatusNotificationStale(orderData);
+                        if (businessData.botPhoneNumberId && customerPhoneForNotification && !shouldSkipLateStatusNotification) {
                             const riderIdForNotification = resolvedDeliveryBoyId || orderData.deliveryBoyId || null;
                             const riderForNotification = await resolveRiderForNotification(
                                 firestore,
@@ -924,6 +948,10 @@ export async function PATCH(req) {
                                 amount: orderData.totalAmount || 0,
                                 orderDate: orderData.orderDate
                             }));
+                        } else if (shouldSkipLateStatusNotification) {
+                            console.log(
+                                `[Owner Orders] Skipping late status WhatsApp for ${id}. Order is older than 90 minutes.`
+                            );
                         } else {
                             console.warn(
                                 `[Owner Orders] Skipping status notification for ${id}. Missing ${!businessData.botPhoneNumberId ? 'botPhoneNumberId' : 'customerPhone'
