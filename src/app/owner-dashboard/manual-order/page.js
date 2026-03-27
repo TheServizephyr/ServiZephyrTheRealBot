@@ -1294,7 +1294,7 @@ function ManualOrderPage() {
                 <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
                     <div>
                         <BillToPrint
-                            order={{ orderDate: new Date() }}
+                            order={{ orderDate: new Date(), orderType }}
                             restaurant={restaurant}
                             billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
                             items={cart}
@@ -2057,7 +2057,7 @@ function ManualOrderPage() {
                     <div className="hidden">
                         <div ref={billPrintRef} className="preview-bill">
                             <BillToPrint
-                                order={{ orderDate: new Date() }}
+                                order={{ orderDate: new Date(), orderType }}
                                 restaurant={restaurant}
                                 billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, grandTotal, discount: 0 }}
                                 items={cart}
@@ -2209,7 +2209,7 @@ function ManualOrderPage() {
                 <div ref={tablePrintRef} className="preview-bill">
                     {tableToPrint && tableToPrint.currentOrder && (
                         <BillToPrint
-                            order={{ orderDate: new Date() }}
+                            order={{ orderDate: new Date(), orderType: tableToPrint.currentOrder.orderType || 'dine-in' }}
                             restaurant={restaurant}
                             billDetails={{
                                 subtotal: tableToPrint.currentOrder.subtotal,

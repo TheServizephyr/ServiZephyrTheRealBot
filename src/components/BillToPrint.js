@@ -45,6 +45,19 @@ const getBillVariantLabel = (item = {}, allItems = []) => {
     return hasSiblingVariant ? ' (Full)' : '';
 };
 
+const getOrderTypeLabel = (order = {}) => {
+    const rawType = String(
+        order?.orderType ||
+        order?.deliveryType ||
+        order?.diningPreference ||
+        ''
+    ).trim().toLowerCase();
+
+    if (rawType === 'dine_in' || rawType === 'dine-in') return 'Dine In';
+    if (rawType === 'pickup' || rawType === 'takeaway') return 'Pickup';
+    if (rawType === 'delivery') return 'Delivery';
+    return '';
+};
 
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
     if (!order) return null;
@@ -65,6 +78,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         phone: order.customerPhone,
         address: order.customerAddress,
     };
+    const orderTypeLabel = getOrderTypeLabel(order);
 
     const getItemPrice = (item) => {
         if (typeof item.price === 'number') return item.price;
@@ -158,7 +172,10 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         }
                     </p>
                 )}
-                <p><strong>Date:</strong> {formatSafeDate(order.orderDate || order.createdAt)}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <p><strong>Date:</strong> {formatSafeDate(order.orderDate || order.createdAt)}</p>
+                    {orderTypeLabel && <p><strong>{orderTypeLabel}</strong></p>}
+                </div>
                 {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 
