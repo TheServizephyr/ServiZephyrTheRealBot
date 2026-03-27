@@ -899,8 +899,8 @@ function CustomBillPage() {
         if (saveError) {
             setInfoDialog({
                 isOpen: true,
-                title: 'Printed (History Pending)',
-                message: `Bill print ho gaya, lekin history save nahi hui: ${saveError.message}`,
+                title: 'Partial Success',
+                message: `Bill printed successfully, but history could not be saved: ${saveError.message}`,
             });
         }
     };
@@ -934,8 +934,8 @@ function CustomBillPage() {
                 console.error('[Custom Bill] Failed to save direct-print history:', historyError);
                 setInfoDialog({
                     isOpen: true,
-                    title: 'Printed (History Pending)',
-                    message: `Receipt print ho gaya, lekin history save nahi hui: ${historyError.message}`,
+                    title: 'Partial Success',
+                    message: `Receipt printed successfully, but history could not be saved: ${historyError.message}`,
                 });
             }
         } catch (error) {
@@ -959,7 +959,7 @@ function CustomBillPage() {
                     <DialogHeader>
                         <DialogTitle>Address Not Added</DialogTitle>
                         <DialogDescription>
-                            Owner ko customer address manually dalna zaroori nahi hai. Order create karne par customer ko WhatsApp par location add karne ka link chala jayega.
+                            The owner does not need to manually enter the customer address. Upon creating the order, a link to add the location will be sent to the customer via WhatsApp.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="flex gap-2">
@@ -997,7 +997,7 @@ function CustomBillPage() {
                     </div>
                     {isKioskPrintMode(preferredPrintMode) && (
                         <div className="px-4 py-2 text-xs text-emerald-700 bg-emerald-50 border-t border-emerald-200 no-print">
-                            Silent print mode active. Kiosk browser se print karne par system popup nahi aayega.
+                            Silent print mode active. System popups will not appear when printing from the Kiosk browser.
                         </div>
                     )}
                     <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">

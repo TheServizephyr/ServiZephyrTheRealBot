@@ -767,12 +767,12 @@ function ManualOrderPage() {
         const normalizedPrice = Math.round((Number(customOpenItemPrice) || 0) * 100) / 100;
 
         if (!trimmedName) {
-            toast({ title: 'Item Name Required', description: 'One-time item ka naam likho.', variant: 'destructive' });
+            toast({ title: 'Item Name Required', description: 'Please enter the name of the one-time item.', variant: 'destructive' });
             return;
         }
 
         if (!(normalizedPrice > 0)) {
-            toast({ title: 'Valid Price Required', description: 'One-time item ka valid price likho.', variant: 'destructive' });
+            toast({ title: 'Valid Price Required', description: 'Please enter a valid price for the one-time item.', variant: 'destructive' });
             return;
         }
 
@@ -1246,8 +1246,8 @@ function ManualOrderPage() {
             } catch (historyError) {
                 console.error('[Custom Bill] Failed to save direct-print history:', historyError);
                 toast({
-                    title: 'Printed (History Pending)',
-                    description: `Receipt print ho gaya, lekin history save nahi hui: ${historyError.message}`,
+                    title: 'Partial Success',
+                    description: `Receipt printed successfully, but history could not be saved: ${historyError.message}`,
                     variant: 'warning'
                 });
             }
@@ -1265,7 +1265,7 @@ function ManualOrderPage() {
                     <DialogHeader>
                         <DialogTitle>Address Not Added</DialogTitle>
                         <DialogDescription>
-                            Owner ko customer address manually dalna zaroori nahi hai. Order create karne par customer ko WhatsApp par location add karne ka link chala jayega.
+                            The owner does not need to manually enter the customer address. Upon creating the order, a link to add the location will be sent to the customer via WhatsApp.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="flex gap-2">
@@ -1303,7 +1303,7 @@ function ManualOrderPage() {
                     </div>
                     {isKioskPrintMode(preferredPrintMode) && (
                         <div className="px-4 py-2 text-xs text-emerald-700 bg-emerald-50 border-t border-emerald-200 no-print">
-                            Silent print mode active. Kiosk browser se print karne par system popup nahi aayega.
+                            Silent print mode active. System popups will not appear when printing from the Kiosk browser.
                         </div>
                     )}
                     <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">
@@ -1397,7 +1397,7 @@ function ManualOrderPage() {
                     <DialogHeader>
                         <DialogTitle>Add One-Time Item</DialogTitle>
                         <DialogDescription>
-                            Ye item sirf current bill me add hoga. Menu me save nahi hoga.
+                            This item will only be added to the current bill. It will not be saved in the menu.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
@@ -1853,7 +1853,7 @@ function ManualOrderPage() {
                                                                 Add One-Time Item
                                                             </p>
                                                             <p className="text-sm text-muted-foreground mt-2 leading-snug max-w-[16rem]">
-                                                                Sirf naam aur price likho. Item direct current bill me add hoga, menu me save nahi hoga.
+                                                                Just enter the name and price. The item will be added directly to the current bill and will not be saved in the menu.
                                                             </p>
                                                         </div>
                                                     </motion.button>
@@ -1889,7 +1889,7 @@ function ManualOrderPage() {
 
                                                 {filteredItems.length === 0 && (
                                                     <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-900/10 text-sm text-muted-foreground">
-                                                        Search me koi saved open item nahi mila. Zarurat ho to one-time item direct bill me add kar sakte ho.
+                                                        No saved open items found in search. You can add a one-time item directly to the bill if needed.
                                                     </div>
                                                 )}
                                             </div>
