@@ -91,6 +91,9 @@ function ManualOrderPage() {
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
     const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
     const [cacheStatus, setCacheStatus] = useState('checking');
+    const [isCustomOpenItemModalOpen, setIsCustomOpenItemModalOpen] = useState(false);
+    const [customOpenItemName, setCustomOpenItemName] = useState('');
+    const [customOpenItemPrice, setCustomOpenItemPrice] = useState('');
     const hasHydratedFromCacheRef = useRef(false);
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
@@ -729,6 +732,18 @@ function ManualOrderPage() {
         resetCurrentBill();
     };
 
+    const resetCustomOpenItemForm = useCallback(() => {
+        setCustomOpenItemName('');
+        setCustomOpenItemPrice('');
+    }, []);
+
+    const handleCustomOpenItemModalChange = useCallback((open) => {
+        setIsCustomOpenItemModalOpen(open);
+        if (!open) {
+            resetCustomOpenItemForm();
+        }
+    }, [resetCustomOpenItemForm]);
+
     const updateQuantity = (cartItemId, change) => {
         setCart(currentCart => {
             const itemIndex = currentCart.findIndex(i => i.cartItemId === cartItemId);
@@ -746,6 +761,37 @@ function ManualOrderPage() {
             }
         });
     };
+
+    const addCustomOpenItemToCart = useCallback(() => {
+        const trimmedName = customOpenItemName.trim();
+        const normalizedPrice = Math.round((Number(customOpenItemPrice) || 0) * 100) / 100;
+
+        if (!trimmedName) {
+            toast({ title: 'Item Name Required', description: 'One-time item ka naam likho.', variant: 'destructive' });
+            return;
+        }
+
+        if (!(normalizedPrice > 0)) {
+            toast({ title: 'Valid Price Required', description: 'One-time item ka valid price likho.', variant: 'destructive' });
+            return;
+        }
+
+        const cartItemId = `custom-open-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const cartItem = {
+            id: cartItemId,
+            name: trimmedName,
+            categoryId: 'open-items',
+            quantity: 1,
+            cartItemId,
+            price: normalizedPrice,
+            totalPrice: normalizedPrice,
+            isCustomOpenItem: true,
+        };
+
+        setItemHistory(prev => [...prev, cartItemId]);
+        setCart(currentCart => [...currentCart, cartItem]);
+        handleCustomOpenItemModalChange(false);
+    }, [customOpenItemName, customOpenItemPrice, handleCustomOpenItemModalChange, toast]);
 
     const { subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal } = useMemo(() => {
         const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
@@ -1346,6 +1392,53 @@ function ManualOrderPage() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={isCustomOpenItemModalOpen} onOpenChange={handleCustomOpenItemModalChange}>
+                <DialogContent className="bg-card border-border text-foreground max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Add One-Time Item</DialogTitle>
+                        <DialogDescription>
+                            Ye item sirf current bill me add hoga. Menu me save nahi hoga.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div>
+                            <Label htmlFor="custom-open-item-name">Item Name</Label>
+                            <input
+                                id="custom-open-item-name"
+                                type="text"
+                                value={customOpenItemName}
+                                onChange={(e) => setCustomOpenItemName(e.target.value)}
+                                placeholder="e.g. Special Packing Charge"
+                                className="w-full mt-2 p-2 border rounded-md bg-input border-border focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="custom-open-item-price">Price</Label>
+                            <input
+                                id="custom-open-item-price"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                inputMode="decimal"
+                                value={customOpenItemPrice}
+                                onChange={(e) => setCustomOpenItemPrice(e.target.value)}
+                                placeholder="e.g. 120"
+                                className="w-full mt-2 p-2 border rounded-md bg-input border-border focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => handleCustomOpenItemModalChange(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={addCustomOpenItemToCart} className="bg-primary hover:bg-primary/90">
+                            Add to Bill
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Create Table Modal */}
             <Dialog open={isCreateTableModalOpen} onOpenChange={setIsCreateTableModalOpen}>
                 <DialogContent className="bg-card border-border max-w-sm">
@@ -1736,15 +1829,74 @@ function ManualOrderPage() {
                                         <h3 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
                                             {formatCategoryLabel(categoryId)}
                                         </h3>
-                                        {categoryId === 'open-items' && filteredItems.length === 0 ? (
-                                            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-900/10 text-sm text-muted-foreground">
-                                                No open items yet. Add them from Menu Management to use in manual billing.
+                                        {categoryId === 'open-items' ? (
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                    <motion.button
+                                                        type="button"
+                                                        whileHover={{ y: -4, scale: 1.02 }}
+                                                        whileTap={{ scale: 0.98 }}
+                                                        onClick={() => setIsCustomOpenItemModalOpen(true)}
+                                                        className="group relative overflow-hidden p-4 text-left bg-gradient-to-br from-emerald-950/30 via-emerald-900/15 to-emerald-900/5 hover:from-emerald-900/35 hover:via-emerald-800/20 hover:to-emerald-900/10 rounded-2xl border border-emerald-500/35 hover:border-emerald-400/70 transition-all shadow-md hover:shadow-xl hover:shadow-emerald-950/20 min-h-[130px] flex flex-col justify-between"
+                                                    >
+                                                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.14),transparent_55%)] pointer-events-none"></div>
+                                                        <div className="relative flex items-start justify-between gap-3">
+                                                            <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                                                                <PlusCircle size={22} className="text-emerald-400" />
+                                                            </div>
+                                                            <span className="text-[10px] uppercase tracking-[0.22em] font-bold text-emerald-300/80">
+                                                                Quick Add
+                                                            </span>
+                                                        </div>
+                                                        <div className="relative flex-1 mt-4">
+                                                            <p className="font-bold text-foreground text-lg leading-tight">
+                                                                Add One-Time Item
+                                                            </p>
+                                                            <p className="text-sm text-muted-foreground mt-2 leading-snug max-w-[16rem]">
+                                                                Sirf naam aur price likho. Item direct current bill me add hoga, menu me save nahi hoga.
+                                                            </p>
+                                                        </div>
+                                                    </motion.button>
+
+                                                    {filteredItems.map(item => {
+                                                        return (
+                                                            <motion.div
+                                                                key={item.id}
+                                                                whileHover={{ y: -4, scale: 1.02 }}
+                                                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                                className="p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 rounded-2xl border-2 border-amber-600/30 hover:border-amber-500/60 transition-all shadow-md hover:shadow-xl hover:shadow-amber-900/20 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                            >
+                                                                <div className="flex-1 mb-3">
+                                                                    <p className="font-bold text-foreground text-base leading-tight">
+                                                                        {item.name}
+                                                                    </p>
+                                                                </div>
+                                                                <motion.button
+                                                                    whileHover={{ scale: 1.05 }}
+                                                                    whileTap={{ scale: 0.95 }}
+                                                                    onClick={() => addToCart(item, { name: 'Regular', price: item.price })}
+                                                                    className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
+                                                                >
+                                                                    <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+                                                                    <span className="text-base font-black relative z-10">
+                                                                        {formatCurrency(item.price)}
+                                                                    </span>
+                                                                </motion.button>
+                                                            </motion.div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {filteredItems.length === 0 && (
+                                                    <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-900/10 text-sm text-muted-foreground">
+                                                        Search me koi saved open item nahi mila. Zarurat ho to one-time item direct bill me add kar sakte ho.
+                                                    </div>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 {filteredItems.map(item => {
-                                                    // Handle Open Items (no portions)
-                                                    if (categoryId === 'open-items' || !item.portions) {
+                                                    if (!item.portions) {
                                                         return (
                                                             <motion.div
                                                                 key={item.id}

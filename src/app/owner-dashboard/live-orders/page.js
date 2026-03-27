@@ -22,6 +22,7 @@ import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import PrintOrderDialog from '@/components/PrintOrderDialog';
+import BillToPrint from '@/components/BillToPrint';
 import { useReactToPrint } from 'react-to-print';
 import { usePolling } from '@/lib/usePolling';
 import { emitAppNotification } from '@/lib/appNotifications';
@@ -1333,6 +1334,7 @@ export default function LiveOrdersPage() {
     // Print Modal State
     const [printModalData, setPrintModalData] = useState({ isOpen: false, order: null });
     const [restaurantData, setRestaurantData] = useState(null);
+    const [autoPrintOrder, setAutoPrintOrder] = useState(null);
     const hasBootstrappedNotificationRef = useRef(false);
     const prevRelevantOrderIdsRef = useRef(new Set());
     const hasBootstrappedPendingNotificationRef = useRef(false);
@@ -1346,6 +1348,7 @@ export default function LiveOrdersPage() {
     }, [impersonatedOwnerId, employeeOfOwnerId]);
     const staticCacheKey = useMemo(() => `live_orders_static_v1_${cacheScope}`, [cacheScope]);
     const ordersCacheKey = useMemo(() => `live_orders_orders_v1_${cacheScope}`, [cacheScope]);
+    const autoPrintRef = useRef(null);
 
     const persistOrdersToCache = useCallback((nextOrders = []) => {
         try {
@@ -1407,6 +1410,22 @@ export default function LiveOrdersPage() {
     const handlePrintClick = (order) => {
         setPrintModalData({ isOpen: true, order });
     };
+
+    const handleAutoBrowserPrint = useReactToPrint({
+        content: () => autoPrintRef.current,
+        documentTitle: autoPrintOrder?.customerOrderId || autoPrintOrder?.id || `Order-${Date.now()}`,
+        onAfterPrint: () => setAutoPrintOrder(null),
+    });
+
+    useEffect(() => {
+        if (!autoPrintOrder || !restaurantData || !handleAutoBrowserPrint) return;
+
+        const timer = setTimeout(() => {
+            handleAutoBrowserPrint();
+        }, 150);
+
+        return () => clearTimeout(timer);
+    }, [autoPrintOrder, restaurantData, handleAutoBrowserPrint]);
 
     useEffect(() => {
         if (staticDataHydratedRef.current) return;
@@ -1873,6 +1892,12 @@ export default function LiveOrdersPage() {
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);
             }
+            if (previousStatus === 'pending' && newStatus === 'confirmed') {
+                const sourceOrder = previousOrders.find((order) => order.id === orderId);
+                if (sourceOrder) {
+                    setAutoPrintOrder({ ...sourceOrder, status: newStatus });
+                }
+            }
             if (
                 (previousStatus === 'pending' && newStatus !== 'pending') ||
                 (previousStatus === 'confirmed' && newStatus !== 'confirmed')
@@ -2134,6 +2159,17 @@ export default function LiveOrdersPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
+
+            <div className="hidden">
+                <div ref={autoPrintRef}>
+                    {autoPrintOrder && restaurantData && (
+                        <BillToPrint
+                            order={autoPrintOrder}
+                            restaurant={restaurantData}
+                        />
+                    )}
+                </div>
+            </div>
 
             {printModalData.isOpen && (
                 <PrintOrderDialog
