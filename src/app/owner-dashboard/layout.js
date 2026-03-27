@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, Suspense, useMemo } from "react";
+import { useState, useEffect, Suspense, useMemo, useCallback, useRef } from "react";
 import Sidebar from "@/components/OwnerDashboard/Sidebar";
 import Navbar from "@/components/OwnerDashboard/Navbar";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
@@ -19,6 +19,12 @@ import { doc, getDoc } from "firebase/firestore";
 import GoldenCoinSpinner from "@/components/GoldenCoinSpinner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import EmployeeBanner from "@/components/EmployeeBanner";
+import {
+  buildOwnerDashboardShortcutPath,
+  navigateToShortcutPath,
+  OwnerDashboardShortcutsDialog,
+  useOwnerDashboardShortcuts,
+} from "@/lib/ownerDashboardShortcuts";
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +96,7 @@ function OwnerDashboardContent({ children }) {
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
   const employeeOfOwnerId = searchParams.get('employee_of'); // Employee accessing owner's data
+  const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
 
   // Use either impersonation or employee context for fetching owner's data
   const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
@@ -97,6 +104,8 @@ function OwnerDashboardContent({ children }) {
   const { user, isUserLoading } = useUser();
   const [isRecoveringSession, setIsRecoveringSession] = useState(false);
   const [hasAttemptedSessionRecovery, setHasAttemptedSessionRecovery] = useState(false);
+  const pendingHistoryNavigationRef = useRef(null);
+  const pendingHistoryTimerRef = useRef(null);
 
   const hasOwnerSessionHint = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -104,6 +113,157 @@ function OwnerDashboardContent({ children }) {
     const justLoggedIn = sessionStorage.getItem('justLoggedIn');
     return ['owner', 'restaurant-owner', 'shop-owner'].includes(role) || !!justLoggedIn;
   }, []);
+
+  const navigateWithShortcut = useCallback((basePath) => {
+    const path = buildOwnerDashboardShortcutPath(basePath, {
+      impersonatedOwnerId,
+      employeeOfOwnerId,
+    });
+    navigateToShortcutPath(path);
+  }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+  const historyCapableShortcuts = useMemo(() => ({
+    m: {
+      label: 'Manual billing',
+      pagePath: '/owner-dashboard/manual-order',
+      historyPath: '/owner-dashboard/manual-order-history',
+    },
+    o: {
+      label: 'Live orders',
+      pagePath: '/owner-dashboard/live-orders',
+      historyPath: '/owner-dashboard/order-history',
+    },
+    d: {
+      label: 'Dine in',
+      pagePath: '/owner-dashboard/dine-in',
+      historyPath: '/owner-dashboard/dine-in-history',
+    },
+    c: {
+      label: 'Custom bill',
+      pagePath: '/owner-dashboard/custom-bill',
+      historyPath: '/owner-dashboard/custom-bill-history',
+    },
+  }), []);
+
+  const currentHistoryShortcut = useMemo(() => (
+    Object.values(historyCapableShortcuts).find((shortcut) => shortcut.pagePath === pathname) || null
+  ), [historyCapableShortcuts, pathname]);
+
+  const clearPendingHistoryNavigation = useCallback(() => {
+    if (pendingHistoryTimerRef.current) {
+      clearTimeout(pendingHistoryTimerRef.current);
+      pendingHistoryTimerRef.current = null;
+    }
+    pendingHistoryNavigationRef.current = null;
+  }, []);
+
+  const queueHistoryAwareNavigation = useCallback((shortcutConfig) => {
+    clearPendingHistoryNavigation();
+    pendingHistoryNavigationRef.current = shortcutConfig;
+    pendingHistoryTimerRef.current = setTimeout(() => {
+      const pendingShortcut = pendingHistoryNavigationRef.current;
+      clearPendingHistoryNavigation();
+      if (pendingShortcut?.pagePath) {
+        navigateWithShortcut(pendingShortcut.pagePath);
+      }
+    }, 1200);
+  }, [clearPendingHistoryNavigation, navigateWithShortcut]);
+
+  const ownerDashboardShortcuts = useMemo(() => ([
+    { key: 'a', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/analytics') },
+    { key: 'w', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/whatsapp-direct') },
+  ]), [navigateWithShortcut]);
+
+  useEffect(() => {
+    const handleHistoryShortcut = (event) => {
+      if (event.defaultPrevented) return;
+
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        if (target.isContentEditable) return;
+        const tagName = String(target.tagName || '').toUpperCase();
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return;
+        const role = String(target.getAttribute?.('role') || '').toLowerCase();
+        if (role === 'textbox' || role === 'combobox' || role === 'searchbox') return;
+      }
+
+      const key = String(event.key || '').trim().toLowerCase();
+      const isAltOnly = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+
+      if (!event.ctrlKey && !event.metaKey && !event.shiftKey && key === 'h' && pendingHistoryNavigationRef.current?.historyPath) {
+        event.preventDefault();
+        event.stopPropagation();
+        const pendingShortcut = pendingHistoryNavigationRef.current;
+        clearPendingHistoryNavigation();
+        navigateWithShortcut(pendingShortcut.historyPath);
+        return;
+      }
+
+      if (isAltOnly && key === 'h' && currentHistoryShortcut?.historyPath) {
+        event.preventDefault();
+        event.stopPropagation();
+        clearPendingHistoryNavigation();
+        navigateWithShortcut(currentHistoryShortcut.historyPath);
+        return;
+      }
+
+      if (isAltOnly && historyCapableShortcuts[key]) {
+        event.preventDefault();
+        event.stopPropagation();
+        queueHistoryAwareNavigation(historyCapableShortcuts[key]);
+      }
+    };
+
+    window.addEventListener('keydown', handleHistoryShortcut, true);
+    return () => {
+      window.removeEventListener('keydown', handleHistoryShortcut, true);
+      clearPendingHistoryNavigation();
+    };
+  }, [clearPendingHistoryNavigation, currentHistoryShortcut, historyCapableShortcuts, navigateWithShortcut, queueHistoryAwareNavigation]);
+
+  const shortcutSections = useMemo(() => {
+    const sections = [
+      {
+        title: 'Dashboard Navigation',
+        shortcuts: [
+          { combo: 'Alt + M', description: 'Open manual billing' },
+          { combo: 'Alt + O', description: 'Open live orders' },
+          { combo: 'Alt + A', description: 'Open analytics' },
+          { combo: 'Alt + D', description: 'Open dine in' },
+          { combo: 'Alt + C', description: 'Open custom bill' },
+          { combo: 'Alt + W', description: 'Open WhatsApp direct' },
+          { combo: 'Alt + H', description: currentHistoryShortcut ? `Open ${currentHistoryShortcut.label.toLowerCase()} history` : 'Open current page history when available' },
+          { combo: 'Alt + M then H', description: 'Open manual billing history' },
+          { combo: 'Alt + O then H', description: 'Open live order history' },
+          { combo: 'Alt + D then H', description: 'Open dine in history' },
+          { combo: 'Alt + C then H', description: 'Open custom bill history' },
+          { combo: '?', description: 'Show keyboard shortcuts' },
+        ],
+      },
+    ];
+
+    if (pathname === '/owner-dashboard/manual-order') {
+      sections.push({
+        title: 'Manual Billing',
+        shortcuts: [
+          { combo: 'Alt + 1', description: 'Switch to delivery' },
+          { combo: 'Alt + 2', description: 'Switch to dine in' },
+          { combo: 'Alt + 3', description: 'Switch to pickup' },
+          { combo: '/', description: 'Focus search' },
+          { combo: 'Alt + Z', description: 'Undo last item' },
+          { combo: 'Alt + X', description: 'Clear current bill' },
+          { combo: 'Alt + P', description: 'Open print bill' },
+        ],
+      });
+    }
+
+    return sections;
+  }, [pathname]);
+
+  useOwnerDashboardShortcuts({
+    shortcuts: ownerDashboardShortcuts,
+    onOpenHelp: () => setIsShortcutHelpOpen(true),
+  });
 
   // CRITICAL: Role detection - prevent owner from being blocked
   useEffect(() => {
@@ -543,6 +703,11 @@ function OwnerDashboardContent({ children }) {
             {blockedContent || children}
           </main>
         </div>
+        <OwnerDashboardShortcutsDialog
+          open={isShortcutHelpOpen}
+          onOpenChange={setIsShortcutHelpOpen}
+          sections={shortcutSections}
+        />
       </div>
     </>
   );

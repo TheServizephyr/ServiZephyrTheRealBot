@@ -55,6 +55,8 @@ export function useOwnerDashboardShortcuts({
         if (!enabled) return undefined;
 
         const handleKeyDown = (event) => {
+            if (event.defaultPrevented) return;
+
             const isEditableTarget = isEditableShortcutTarget(event.target);
             const wantsHelp = !event.altKey && !event.ctrlKey && !event.metaKey && (event.key === '?' || (event.key === '/' && event.shiftKey));
 
