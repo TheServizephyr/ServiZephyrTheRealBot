@@ -58,6 +58,17 @@ const decodeUrlComponentRecursively = (value, maxPasses = 3) => {
 const encodePathSegment = (value) => encodeURIComponent(decodeUrlComponentRecursively(value));
 const encodeQueryParam = (value) => encodeURIComponent(String(value || ''));
 const encodeRestaurantIdParam = (value) => encodeURIComponent(decodeUrlComponentRecursively(value));
+const TIME_VALUE_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const formatScheduleTimeLabel = (value) => {
+    const match = String(value || '').trim().match(TIME_VALUE_REGEX);
+    if (!match) return '';
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const suffix = hours >= 12 ? 'PM' : 'AM';
+    const normalizedHour = hours % 12 || 12;
+    return `${normalizedHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+};
 
 const STORE_SUPER_CATEGORY_PRIORITY = [
     'Grocery & Kitchen',
@@ -1840,6 +1851,7 @@ const OrderPageInternal = () => {
         deliveryCharge: 0, menu: {}, coupons: [], deliveryEnabled: true,
         pickupEnabled: false, dineInEnabled: true, businessAddress: null,
         customCategories: [],
+        autoScheduleEnabled: false, openingTime: '09:00', closingTime: '22:00', timeZone: 'Asia/Kolkata',
         dineInModel: 'post-paid',
         dineInOnlinePaymentEnabled: true,
         dineInPayAtCounterEnabled: true,
@@ -2349,6 +2361,10 @@ const OrderPageInternal = () => {
                     businessAddress: menuData.businessAddress || null,
                     businessType: menuData.businessType || 'restaurant',
                     customCategories: menuData.customCategories || [],
+                    autoScheduleEnabled: settingsData.autoScheduleEnabled ?? menuData.autoScheduleEnabled ?? false,
+                    openingTime: settingsData.openingTime || menuData.openingTime || '09:00',
+                    closingTime: settingsData.closingTime || menuData.closingTime || '22:00',
+                    timeZone: settingsData.timeZone || menuData.timeZone || 'Asia/Kolkata',
                     dineInModel: menuData.dineInModel || 'post-paid',
 
                     // Detailed Payment Settings
@@ -3184,8 +3200,30 @@ const OrderPageInternal = () => {
     }
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
+    const isBusinessClosed = restaurantData.isOpen === false;
+    const nextOpeningTimeLabel = useMemo(() => {
+        if (!isBusinessClosed || restaurantData.autoScheduleEnabled !== true) return '';
+        return formatScheduleTimeLabel(restaurantData.openingTime);
+    }, [isBusinessClosed, restaurantData.autoScheduleEnabled, restaurantData.openingTime]);
+    const closedOrderingMessage = useMemo(() => {
+        if (!isBusinessClosed) return '';
+        if (nextOpeningTimeLabel) {
+            return `${restaurantData.name} is currently not available. It will open again at ${nextOpeningTimeLabel}.`;
+        }
+        return `${restaurantData.name} is currently not available. Please check back later or contact this ${businessLabel} for more information.`;
+    }, [businessLabel, isBusinessClosed, nextOpeningTimeLabel, restaurantData.name]);
 
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
+        if (restaurantData.isOpen === false) {
+            setInfoDialog({
+                isOpen: true,
+                title: `${businessLabelTitle} Currently Closed`,
+                message: closedOrderingMessage || `${restaurantData.name} is currently not available.`,
+                type: 'warning'
+            });
+            return;
+        }
+
         // 🚨 CRITICAL: Block adding to cart if delivery not allowed
         if (deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
             setInfoDialog({
@@ -3229,9 +3267,19 @@ const OrderPageInternal = () => {
                 ];
             }
         });
-    }, [deliveryType, deliveryValidation]);
+    }, [businessLabelTitle, closedOrderingMessage, deliveryType, deliveryValidation, restaurantData.isOpen, restaurantData.name]);
 
     const handleIncrement = (item) => {
+        if (restaurantData.isOpen === false) {
+            setInfoDialog({
+                isOpen: true,
+                title: `${businessLabelTitle} Currently Closed`,
+                message: closedOrderingMessage || `${restaurantData.name} is currently not available.`,
+                type: 'warning'
+            });
+            return;
+        }
+
         // NEW: Block item selection for dine-in if details not provided
         if (deliveryType === 'dine-in' && tableIdFromUrl && !detailsProvided) {
             setInfoDialog({
@@ -3427,6 +3475,16 @@ const OrderPageInternal = () => {
     };
 
     const handleCheckout = () => {
+        if (restaurantData.isOpen === false) {
+            setInfoDialog({
+                isOpen: true,
+                title: `${businessLabelTitle} Currently Closed`,
+                message: closedOrderingMessage || `${restaurantData.name} is currently not available.`,
+                type: 'warning'
+            });
+            return;
+        }
+
         const effectiveDeliveryType = tableIdFromUrl ? 'dine-in' : deliveryType;
 
         // Force persist car-order type to localStorage before navigation
@@ -4196,16 +4254,6 @@ const OrderPageInternal = () => {
                         </div>
 
                         <div className="container mx-auto px-4 mt-4 space-y-5 pb-44">
-                            {restaurantData.isOpen === false && (
-                                <Alert className="border-red-500 bg-red-500/10">
-                                    <AlertCircle className="h-4 w-4 text-red-500" />
-                                    <AlertTitle className="text-red-500 font-bold">Store Currently Closed</AlertTitle>
-                                    <AlertDescription className="text-red-400">
-                                        {restaurantData.name} is currently closed and not accepting orders.
-                                    </AlertDescription>
-                                </Alert>
-                            )}
-
                             {restaurantData.isOpen ? (
                                 <>
                                     <section className="space-y-4">
@@ -4303,7 +4351,11 @@ const OrderPageInternal = () => {
                                             <AlertCircle className="w-9 h-9 text-red-500" />
                                         </div>
                                         <h2 className="text-xl font-bold text-foreground">Store Closed Right Now</h2>
-                                        <p className="text-sm text-muted-foreground">Please check again after some time.</p>
+                                        <p className="text-sm text-muted-foreground">{closedOrderingMessage}</p>
+                                        <div className="pt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Clock className="w-4 h-4" />
+                                            <span>{nextOpeningTimeLabel ? `Next opening time: ${nextOpeningTimeLabel}` : `We'll be back soon!`}</span>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -4351,17 +4403,6 @@ const OrderPageInternal = () => {
                 ) : (
                     <>
                         <div className="container mx-auto px-4 mt-6 space-y-4">
-
-                            {/* Restaurant Closed Warning */}
-                            {restaurantData.isOpen === false && (
-                                <Alert className="border-red-500 bg-red-500/10">
-                                    <AlertCircle className="h-4 w-4 text-red-500" />
-                                    <AlertTitle className="text-red-500 font-bold">{businessLabelTitle} Currently Closed</AlertTitle>
-                                    <AlertDescription className="text-red-400">
-                                        Sorry, {restaurantData.name} is currently closed and not accepting orders. Please check back later or contact the {businessLabel} for more information.
-                                    </AlertDescription>
-                                </Alert>
-                            )}
 
                             {/* ✅ NEW: Delivery Distance Validation Status - HIDDEN AS PER USER REQUEST
                     {deliveryType === 'delivery' && deliveryValidation && (
@@ -4664,15 +4705,12 @@ const OrderPageInternal = () => {
                                                 </h2>
 
                                                 {/* Message */}
-                                                <p className="text-muted-foreground text-base leading-relaxed">
-                                                    {restaurantData.name} is not accepting orders at the moment.
-                                                    Please check back later or contact this {businessLabel} for more information.
-                                                </p>
+                                                <p className="text-muted-foreground text-base leading-relaxed">{closedOrderingMessage}</p>
 
                                                 {/* Decorative element */}
                                                 <div className="pt-4 flex items-center gap-2 text-sm text-muted-foreground">
                                                     <Clock className="w-4 h-4" />
-                                                    <span>We&apos;ll be back soon!</span>
+                                                    <span>{nextOpeningTimeLabel ? `Next opening time: ${nextOpeningTimeLabel}` : `We'll be back soon!`}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -4728,10 +4766,10 @@ const OrderPageInternal = () => {
                             exit={{ y: 100, opacity: 0 }}
                         >
                             <div className="bg-background/80 backdrop-blur-sm border-t border-border">
-                                <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
+                                <Button onClick={handleCheckout} disabled={isBusinessClosed} className="h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
                                     <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
                                     <span className="flex items-center">
-                                        {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5" />
+                                        {isBusinessClosed ? 'Currently Closed' : ((liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart')} <ArrowRight className="ml-2 h-5 w-5" />
                                     </span>
                                 </Button>
                             </div>

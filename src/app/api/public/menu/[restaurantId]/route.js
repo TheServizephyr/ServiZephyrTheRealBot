@@ -308,7 +308,14 @@ export async function GET(req, { params }) {
             const l1CacheData = readMenuFromMemoryCache(cacheKey);
             if (l1CacheData) {
                 debugLog(`%c[Menu API] ✅ L1 CACHE HIT`, 'color: #22c55e; font-weight: bold');
-                const payload = { ...l1CacheData, isOpen: effectiveIsOpen };
+                const payload = {
+                    ...l1CacheData,
+                    isOpen: effectiveIsOpen,
+                    autoScheduleEnabled: businessData.autoScheduleEnabled === true,
+                    openingTime: businessData.openingTime || '09:00',
+                    closingTime: businessData.closingTime || '22:00',
+                    timeZone: businessData.timeZone || businessData.timezone || 'Asia/Kolkata',
+                };
                 await trackEndpointRead(telemetryEndpoint, 1);
                 return respond(payload, 200, {
                     'X-Cache': 'L1-HIT',
@@ -326,7 +333,14 @@ export async function GET(req, { params }) {
                     debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
                     debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
                     writeMenuToMemoryCache(cacheKey, cachedData);
-                    const payload = { ...cachedData, isOpen: effectiveIsOpen };
+                    const payload = {
+                        ...cachedData,
+                        isOpen: effectiveIsOpen,
+                        autoScheduleEnabled: businessData.autoScheduleEnabled === true,
+                        openingTime: businessData.openingTime || '09:00',
+                        closingTime: businessData.closingTime || '22:00',
+                        timeZone: businessData.timeZone || businessData.timezone || 'Asia/Kolkata',
+                    };
                     await trackEndpointRead(telemetryEndpoint, 1);
 
                     return respond(payload, 200, {
@@ -490,6 +504,10 @@ export async function GET(req, { params }) {
             collectionName: collectionName,
             dineInModel: businessData.dineInModel,
             isOpen: effectiveIsOpen,
+            autoScheduleEnabled: businessData.autoScheduleEnabled === true,
+            openingTime: businessData.openingTime || '09:00',
+            closingTime: businessData.closingTime || '22:00',
+            timeZone: businessData.timeZone || businessData.timezone || 'Asia/Kolkata',
         };
 
         // STEP 5: Cache with version-based key and 12-hour TTL

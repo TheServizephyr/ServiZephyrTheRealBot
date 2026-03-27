@@ -1,3 +1,4 @@
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { findBusinessById } from '@/services/business/businessService';
 
 const PUBLIC_RESTAURANT_OVERVIEW_CACHE_TTL_MS = 60 * 1000;
@@ -261,6 +262,7 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
     const address = businessData.address || businessData.businessAddress || {};
     const rawBusinessType = businessData.businessType || business.type || 'restaurant';
     const normalizedBusinessType = rawBusinessType === 'shop' ? 'store' : rawBusinessType;
+    const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
 
     const response = {
         restaurant: {
@@ -270,7 +272,7 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
             bannerUrl: Array.isArray(businessData.bannerUrls) ? businessData.bannerUrls[0] : '',
             address: getAddressText(businessData),
             city: address.city || '',
-            isOpen: businessData.isOpen !== false,
+            isOpen: effectiveIsOpen,
             businessType: normalizedBusinessType,
             services: {
                 delivery: businessData.deliveryEnabled !== false,

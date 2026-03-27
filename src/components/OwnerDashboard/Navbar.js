@@ -49,7 +49,10 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
 
   const normalizeTime = (value, fallback) => {
     const timeValue = String(value || '').trim();
-    return /^([01]\d|2[0-3]):([0-5]\d)$/.test(timeValue) ? timeValue : fallback;
+    const match = timeValue.match(/^([0-1]?\d|2[0-3]):([0-5]\d)$/);
+    if (!match) return fallback;
+    const hours = String(Number(match[1])).padStart(2, '0');
+    return `${hours}:${match[2]}`;
   };
 
   const fetchOwnerSettings = useCallback(async () => {
