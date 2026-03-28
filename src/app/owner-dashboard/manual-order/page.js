@@ -1870,12 +1870,18 @@ function ManualOrderPage() {
                                 <Button
                                     onClick={() => {
                                         setTableToPrint(selectedOccupiedTable); // Triggers print
-                                        handleSettleTable();
                                     }}
+                                    className="w-full bg-slate-800 hover:bg-slate-700 font-bold"
+                                    disabled={tableActionLoading}
+                                >
+                                    <Printer className="w-4 h-4 mr-2" /> Print Bill
+                                </Button>
+                                <Button
+                                    onClick={() => handleSettleTable()}
                                     className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold"
                                     disabled={tableActionLoading}
                                 >
-                                    <Printer className="w-4 h-4 mr-2" /> Settle, Print & Free
+                                    <CheckCircle className="w-4 h-4 mr-2" /> Settle & Free
                                 </Button>
                             </DialogFooter>
                         </>
@@ -1982,7 +1988,7 @@ function ManualOrderPage() {
                                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3 auto-rows-fr">
                                     {manualTables.map(table => {
                                         if (table.status === 'occupied') {
                                             const customerName = getTableCustomerName(table);
@@ -1990,7 +1996,7 @@ function ManualOrderPage() {
                                             return (
                                                 <div
                                                     key={table.id}
-                                                    className="relative flex flex-col p-3 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[132px] min-w-[120px] text-center overflow-hidden cursor-pointer group"
+                                                    className="relative flex flex-col p-3 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[132px] text-center overflow-hidden cursor-pointer group"
                                                     onClick={() => setSelectedOccupiedTable(table)}
                                                 >
                                                     <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
@@ -2044,20 +2050,15 @@ function ManualOrderPage() {
                                                             <Plus size={15} />
                                                         </button>
                                                         <button
-                                                            onClick={async (e) => {
+                                                            onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setTableToPrint(table); // Triggers direct browser print via useEffect
-                                                                await handleSettleTable(table);
                                                             }}
                                                             disabled={tableActionLoading}
                                                             className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-white hover:bg-[#333] transition-colors"
-                                                            title="Settle & Free Table"
+                                                            title="Print Bill"
                                                         >
-                                                            {tableActionLoading ? (
-                                                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                            ) : (
-                                                                <Printer size={15} />
-                                                            )}
+                                                            <Printer size={15} />
                                                         </button>
                                                     </div>
                                                 </div>
@@ -2071,7 +2072,7 @@ function ManualOrderPage() {
                                                     setActiveTable(table);
                                                     handleClear(); // Reset cart for new table safely
                                                 }}
-                                                className="cursor-pointer relative p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[120px] min-w-[120px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md group"
+                                                className="cursor-pointer relative p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center min-h-[120px] text-center bg-card border-border hover:border-primary/50 hover:shadow-md group"
                                             >
                                                 <div className="absolute top-1.5 right-1.5 flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
@@ -2096,7 +2097,7 @@ function ManualOrderPage() {
                                     {/* Create Table Card */}
                                     <div
                                         onClick={() => setIsCreateTableModalOpen(true)}
-                                        className="cursor-pointer p-3 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:bg-muted/30 hover:border-primary/50 transition-all flex flex-col items-center justify-center min-h-[120px] min-w-[120px] text-center text-muted-foreground hover:text-foreground"
+                                        className="cursor-pointer p-3 rounded-xl border-2 border-dashed border-border bg-muted/10 hover:bg-muted/30 hover:border-primary/50 transition-all flex flex-col items-center justify-center min-h-[120px] text-center text-muted-foreground hover:text-foreground"
                                     >
                                         <PlusCircle className="w-6 h-6 mb-1.5" />
                                         <span className="font-semibold text-xs">Create Table</span>
