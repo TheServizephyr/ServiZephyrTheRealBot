@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
-import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { format } from 'date-fns';
 
@@ -244,8 +244,9 @@ export async function GET(req) {
     try {
         const firestore = await getFirestore();
 
-        const { businessId: restaurantId, businessSnap, collectionName } = await verifyOwnerWithAudit(
+        const { businessId: restaurantId, businessSnap, collectionName } = await verifyOwnerFeatureAccess(
             req,
+            'analytics',
             'view_analytics',
             {},
             false,
@@ -597,12 +598,20 @@ export async function GET(req) {
 
         const menuPerformance = menuItems.map((item) => {
             const unitsSold = itemSales[item.name] || 0;
-            const price = toAmount(item?.portions?.[0]?.price || 0);
+            const fallbackPrice = toAmount(item?.price || 0);
+            const price = toAmount(item?.portions?.[0]?.price || fallbackPrice);
             const foodCost = price * 0.4;
             const revenue = unitsSold * price;
             const totalCost = unitsSold * foodCost;
             const totalProfit = revenue - totalCost;
             const profitMargin = revenue > 0 ? (totalProfit / revenue) * 100 : 0;
+            const stockOnHand = Math.max(
+                0,
+                toAmount(item?.stockOnHand, toAmount(item?.stockQuantity, toAmount(item?.available, 0)))
+            );
+            const reorderLevel = Math.max(0, toAmount(item?.reorderLevel, 0));
+            const reorderQty = Math.max(0, toAmount(item?.reorderQty, 0));
+            const safetyStock = Math.max(0, toAmount(item?.safetyStock, 0));
             return {
                 ...item,
                 unitsSold,
@@ -612,8 +621,69 @@ export async function GET(req) {
                 profitMargin,
                 popularity: unitsSold,
                 profitability: profitMargin,
+                stockOnHand,
+                reorderLevel,
+                reorderQty,
+                safetyStock,
+                isOutOfStock: stockOnHand <= 0,
+                isLowStock: reorderLevel > 0 && stockOnHand > 0 && stockOnHand <= reorderLevel,
+                isSafetyRisk: safetyStock > 0 && stockOnHand <= safetyStock,
+                needsReorder: reorderLevel > 0 && reorderQty > 0 && stockOnHand <= reorderLevel,
             };
         });
+
+        const inventoryHealth = {
+            totalProducts: menuPerformance.length,
+            activeProducts: menuPerformance.filter((item) => item.unitsSold > 0).length,
+            deadStockCount: menuPerformance.filter((item) => item.unitsSold === 0 && item.stockOnHand > 0).length,
+            outOfStockCount: menuPerformance.filter((item) => item.isOutOfStock).length,
+            lowStockCount: menuPerformance.filter((item) => item.isLowStock).length,
+            safetyRiskCount: menuPerformance.filter((item) => item.isSafetyRisk).length,
+            reorderSuggestedCount: menuPerformance.filter((item) => item.needsReorder).length,
+        };
+
+        const brandPerformanceMap = new Map();
+        menuPerformance.forEach((item) => {
+            const brandName = String(item.brand || 'Unbranded').trim() || 'Unbranded';
+            if (!brandPerformanceMap.has(brandName)) {
+                brandPerformanceMap.set(brandName, {
+                    brand: brandName,
+                    skuCount: 0,
+                    unitsSold: 0,
+                    revenue: 0,
+                    lowStockCount: 0,
+                    outOfStockCount: 0,
+                });
+            }
+            const bucket = brandPerformanceMap.get(brandName);
+            bucket.skuCount += 1;
+            bucket.unitsSold += item.unitsSold || 0;
+            bucket.revenue += item.revenue || 0;
+            bucket.lowStockCount += item.isLowStock ? 1 : 0;
+            bucket.outOfStockCount += item.isOutOfStock ? 1 : 0;
+        });
+
+        const brandPerformance = Array.from(brandPerformanceMap.values())
+            .sort((a, b) => {
+                if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+                return b.unitsSold - a.unitsSold;
+            })
+            .slice(0, 8);
+
+        const storeInsights = {
+            inventoryHealth,
+            brandPerformance,
+            topMovers: [...menuPerformance]
+                .sort((a, b) => {
+                    if (b.unitsSold !== a.unitsSold) return b.unitsSold - a.unitsSold;
+                    return b.revenue - a.revenue;
+                })
+                .slice(0, 8),
+            deadStock: menuPerformance
+                .filter((item) => item.unitsSold === 0 && item.stockOnHand > 0)
+                .sort((a, b) => b.stockOnHand - a.stockOnHand)
+                .slice(0, 8),
+        };
 
         // ---- CUSTOMER STATS ----
         const allCustomers = allCustomersSnap.docs.map((doc) => ({ phone: doc.id, ...doc.data() }));
@@ -851,6 +921,7 @@ export async function GET(req) {
             {
                 salesData,
                 menuPerformance,
+                storeInsights,
                 customerStats,
                 riderAnalytics,
                 aiInsights,

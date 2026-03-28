@@ -1,70 +1,16 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { logAuditEvent, AUDIT_ACTIONS } from '@/lib/security/audit-log';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { couponLimiter } from '@/lib/security/rate-limiter';
-
-
-// Helper to verify owner and get their first business ID
-async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const uid = await verifyAndGetUid(req); // Use central helper
-
-    // --- ADMIN IMPERSONATION & EMPLOYEE ACCESS LOGIC ---
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-
-    let targetOwnerId = uid;
-
-    // Admin impersonation
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is managing coupons for owner ${impersonatedOwnerId}.`);
-        targetOwnerId = impersonatedOwnerId;
-    }
-    // Employee access
-    else if (employeeOfOwnerId) {
-        const linkedOutlets = userData.linkedOutlets || [];
-        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
-
-        if (!hasAccess) {
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-
-        console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s coupons`);
-        targetOwnerId = employeeOfOwnerId;
-    }
-    // Owner access
-    else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
-
-    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-    for (const collectionName of collectionsToTry) {
-        const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
-        if (!query.empty) {
-            const doc = query.docs[0];
-            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin', businessData: doc.data(), userRole };
-        }
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 
 
 export async function GET(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerFeatureAccess(req, 'coupons', 'view_coupons');
 
         const couponsRef = firestore.collection(collectionName).doc(businessId).collection('coupons');
         const couponsSnap = await couponsRef.orderBy('expiryDate', 'desc').get();
@@ -82,9 +28,9 @@ export async function GET(req) {
 
 export async function POST(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName, uid, userRole, businessData } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, uid, businessSnap, callerRole: userRole } = await verifyOwnerFeatureAccess(req, 'coupons', 'create_coupon');
+        const businessData = businessSnap.data() || {};
         const { coupon } = await req.json();
 
         // 🔒 Rate limit check (15 coupon operations per minute)
@@ -194,9 +140,8 @@ export async function POST(req) {
 
 export async function PATCH(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerFeatureAccess(req, 'coupons', 'update_coupon');
         const { coupon } = await req.json();
 
         if (!coupon || !coupon.id) {
@@ -238,9 +183,8 @@ export async function PATCH(req) {
 
 export async function DELETE(req) {
     try {
-        const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName, uid, userRole } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, uid, callerRole: userRole } = await verifyOwnerFeatureAccess(req, 'coupons', 'delete_coupon');
         const { couponId } = await req.json();
 
         if (!couponId) {

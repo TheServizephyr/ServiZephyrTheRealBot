@@ -2,6 +2,13 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
+function assertRestaurantBusinessSnapshot(businessSnap) {
+    const businessType = String(businessSnap?.data()?.businessType || 'restaurant').trim().toLowerCase();
+    if (businessType === 'shop' || businessType === 'store' || businessType === 'street-vendor' || businessType === 'street_vendor') {
+        throw { message: 'Service requests are only available for restaurant businesses.', status: 403 };
+    }
+}
+
 // Helper to verify owner and get their first business Ref
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
@@ -33,6 +40,8 @@ async function verifyOwnerAndGetBusinessRef(req) {
 export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
+        const businessSnap = await businessRef.get();
+        assertRestaurantBusinessSnapshot(businessSnap);
 
         const requestsSnap = await businessRef.collection('serviceRequests')
             .where('status', '==', 'pending')
@@ -77,6 +86,7 @@ export async function POST(req) {
         if (!businessSnap.exists) {
             return NextResponse.json({ message: `Business with ID ${restaurantId} not found.`}, { status: 404 });
         }
+        assertRestaurantBusinessSnapshot(businessSnap);
         
         const newRequestRef = businessRef.collection('serviceRequests').doc();
         
@@ -102,6 +112,8 @@ export async function POST(req) {
 export async function PATCH(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
+        const businessSnap = await businessRef.get();
+        assertRestaurantBusinessSnapshot(businessSnap);
         const { requestId, status } = await req.json();
 
         if (!requestId || !status) {

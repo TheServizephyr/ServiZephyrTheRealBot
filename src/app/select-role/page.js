@@ -36,6 +36,11 @@ export default function SelectRolePage() {
 
                 const data = await res.json();
 
+                if (res.status === 404) {
+                    router.push('/complete-profile');
+                    return;
+                }
+
                 if (!res.ok) {
                     router.push('/');
                     return;

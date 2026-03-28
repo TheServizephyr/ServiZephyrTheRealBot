@@ -45,6 +45,39 @@ const normalizeBusinessType = (value) => {
   return 'restaurant';
 };
 
+const getCollectionsForBusinessType = (businessType = 'restaurant') => {
+  const normalized = normalizeBusinessType(businessType) || 'restaurant';
+  const primary =
+    normalized === 'store'
+      ? 'shops'
+      : normalized === 'street-vendor'
+        ? 'street_vendors'
+        : 'restaurants';
+  return [primary, ...['restaurants', 'shops', 'street_vendors'].filter((name) => name !== primary)];
+};
+
+const resolveOwnedBusiness = async (uid, businessType = 'restaurant') => {
+  const collectionsToTry = getCollectionsForBusinessType(businessType);
+
+  for (const collectionName of collectionsToTry) {
+    const businessQuery = query(
+      collection(db, collectionName),
+      where('ownerId', '==', uid),
+      limit(1)
+    );
+    const businessSnapshot = await getDocs(businessQuery);
+    if (!businessSnapshot.empty) {
+      return {
+        id: businessSnapshot.docs[0].id,
+        collectionName,
+        data: businessSnapshot.docs[0].data() || {},
+      };
+    }
+  }
+
+  return null;
+};
+
 const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_owner_id') => {
   // Use the appropriate param name based on context (impersonate or employee access)
   const appendParam = (href) => effectiveOwnerId ? `${href}?${paramName}=${effectiveOwnerId}` : href;
@@ -104,7 +137,7 @@ const getSettingsItems = (businessType, effectiveOwnerId, paramName = 'impersona
 };
 
 
-export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status, userRole = null }) {
+export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], lockedFeatures = [], status, userRole = null }) {
   const [businessType, setBusinessType] = useState('restaurant');
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -178,6 +211,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
 
   const getIsDisabled = (featureId) => {
+    if (lockedFeatures.includes(featureId)) {
+      return true;
+    }
+
     // 1. If suspended, explicitly check restricted features first
     if (status === 'suspended') {
       return restrictedFeatures.includes(featureId);
@@ -248,8 +285,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   }, [userRole]);
 
   // If role is still pending for employee, show empty menus to prevent flash
-  const menuItems = isRolePending ? [] : allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
-  const settingsItems = isRolePending ? [] : allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages));
+  const menuItems = isRolePending ? [] : allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages, businessType));
+  const settingsItems = isRolePending ? [] : allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages, businessType));
 
 
   // Fetch WhatsApp Unread Count
@@ -280,40 +317,12 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       try {
         const user = auth.currentUser;
         if (!user) return;
-
-        // 1. Resolve Business ID (Restaurant or Shop)
-        // Try Restaurant first
-        let businessId = null;
-        let businessCollection = 'restaurants';
-
-        const restaurantsQuery = query(
-          collection(db, 'restaurants'),
-          where('ownerId', '==', user.uid),
-          limit(1)
-        );
-        const restaurantSnapshot = await getDocs(restaurantsQuery);
-
-        if (!restaurantSnapshot.empty) {
-          businessId = restaurantSnapshot.docs[0].id;
-        } else {
-          // Try Shop
-          const shopsQuery = query(
-            collection(db, 'shops'),
-            where('ownerId', '==', user.uid),
-            limit(1)
-          );
-          const shopSnapshot = await getDocs(shopsQuery);
-          if (!shopSnapshot.empty) {
-            businessId = shopSnapshot.docs[0].id;
-            businessCollection = 'shops';
-          }
-        }
-
-        if (!businessId) return;
+        const business = await resolveOwnedBusiness(user.uid, businessType);
+        if (!business?.id) return;
 
         // 2. Listen to Conversations with unreadCount > 0
         const q = query(
-          collection(db, businessCollection, businessId, 'conversations'),
+          collection(db, business.collectionName, business.id, 'conversations'),
           where('unreadCount', '>', 0)
         );
 
@@ -337,7 +346,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage]);
+  }, [businessType, impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage]);
 
   // Fetch Pending Orders Count (Real-time)
   useEffect(() => {
@@ -353,22 +362,13 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       try {
         const user = auth.currentUser;
         if (!user) return;
-
-        // 1. Get Restaurant ID
-        const restaurantsQuery = query(
-          collection(db, 'restaurants'),
-          where('ownerId', '==', user.uid),
-          limit(1)
-        );
-        const restaurantSnapshot = await getDocs(restaurantsQuery);
-
-        if (restaurantSnapshot.empty) return;
-        const restaurantId = restaurantSnapshot.docs[0].id;
+        const business = await resolveOwnedBusiness(user.uid, businessType);
+        if (!business?.id) return;
 
         // 2. Listen for Pending Orders
         const ordersQuery = query(
           collection(db, 'orders'),
-          where('restaurantId', '==', restaurantId),
+          where('restaurantId', '==', business.id),
           where('status', '==', 'pending')
         );
 
@@ -421,7 +421,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
   // Dine-In badge counts (pending dine-in orders + pending service requests)
   useEffect(() => {
-    if (businessType === 'street-vendor') return;
+    if ((normalizeBusinessType(businessType) || 'restaurant') !== 'restaurant') {
+      setDineInPendingOrdersCount(0);
+      return;
+    }
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
 
     let unsubscribeOrders = () => { };
@@ -430,19 +433,12 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       try {
         const user = auth.currentUser;
         if (!user) return;
-
-        const restaurantsQuery = query(
-          collection(db, 'restaurants'),
-          where('ownerId', '==', user.uid),
-          limit(1)
-        );
-        const restaurantSnapshot = await getDocs(restaurantsQuery);
-        if (restaurantSnapshot.empty) return;
-        const restaurantId = restaurantSnapshot.docs[0].id;
+        const business = await resolveOwnedBusiness(user.uid, 'restaurant');
+        if (!business?.id) return;
 
         const dineInOrdersQuery = query(
           collection(db, 'orders'),
-          where('restaurantId', '==', restaurantId),
+          where('restaurantId', '==', business.id),
           where('deliveryType', '==', 'dine-in'),
           where('status', '==', 'pending')
         );
@@ -465,7 +461,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
   // Fetch Waitlist Count (Real-time)
   useEffect(() => {
-    if (businessType === 'street-vendor') return;
+    if ((normalizeBusinessType(businessType) || 'restaurant') !== 'restaurant') {
+      setWaitlistEntriesCount(0);
+      return;
+    }
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
 
     let unsubscribe = () => { };
@@ -474,19 +473,11 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       try {
         const user = auth.currentUser;
         if (!user) return;
-
-        const restaurantsQuery = query(
-          collection(db, 'restaurants'),
-          where('ownerId', '==', user.uid),
-          limit(1)
-        );
-        const restaurantSnapshot = await getDocs(restaurantsQuery);
-
-        if (restaurantSnapshot.empty) return;
-        const restaurantId = restaurantSnapshot.docs[0].id;
+        const business = await resolveOwnedBusiness(user.uid, 'restaurant');
+        if (!business?.id) return;
 
         const waitlistQuery = query(
-          collection(db, 'restaurants', restaurantId, 'waitlist'),
+          collection(db, 'restaurants', business.id, 'waitlist'),
           where('status', 'in', ['pending', 'notified'])
         );
 
@@ -508,7 +499,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
   // Service request count via API (more reliable with Firestore security rules)
   useEffect(() => {
-    if (businessType === 'street-vendor') return;
+    if ((normalizeBusinessType(businessType) || 'restaurant') !== 'restaurant') {
+      setDineInServiceRequestsCount(0);
+      return;
+    }
     if (employeeOfOwnerId || !auth.currentUser) return;
 
     let intervalId = null;
@@ -612,6 +606,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                 isCollapsed={isCollapsed}
                 isDisabled={getIsDisabled(item.featureId)}
                 disabledIcon={Lock}
+                disabledMessage={`${item.name} is not available for your account. Please contact support for more information.`}
               />
             </div>
           ))}
@@ -625,6 +620,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                 isCollapsed={isCollapsed}
                 isDisabled={getIsDisabled(item.featureId)}
                 disabledIcon={Lock}
+                disabledMessage={`${item.name} is not available for your account. Please contact support for more information.`}
               />
             </div>
           ))}

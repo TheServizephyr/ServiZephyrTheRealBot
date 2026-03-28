@@ -17,6 +17,79 @@ const debugLog = (...args) => {
 
 const OWNER_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
 const DEFAULT_COLLECTION_ORDER = ['restaurants', 'shops', 'street_vendors'];
+const ACTION_FEATURE_MAP = {
+    view_dashboard_data: 'dashboard',
+    view_menu: 'menu',
+    manage_menu_post: 'menu',
+    delete_menu_item: 'menu',
+    update_menu_patch: 'menu',
+    bulk_create_menu_items: 'menu',
+    read_open_items: 'menu',
+    create_open_item: 'menu',
+    delete_open_item: 'menu',
+    view_orders: 'live-orders',
+    view_order_details: 'live-orders',
+    update_orders_patch: 'live-orders',
+    refund_order: 'live-orders',
+    refund_order_post: 'live-orders',
+    view_analytics: 'analytics',
+    view_settings: 'settings',
+    update_settings: 'settings',
+    view_connections: 'connections',
+    create_linked_account: 'connections',
+    view_owner_locations: 'location',
+    save_owner_location: 'location',
+    view_delivery_settings: 'delivery',
+    update_delivery_settings: 'delivery',
+    view_employees: 'employees',
+    invite_employee: 'employees',
+    update_employee_permissions: 'employees',
+    remove_employee: 'employees',
+    view_customers: 'customers',
+    update_customer: 'customers',
+    view_coupons: 'coupons',
+    create_coupon: 'coupons',
+    update_coupon: 'coupons',
+    delete_coupon: 'coupons',
+    view_whatsapp_direct_customer_details: 'whatsapp-direct',
+    upsert_whatsapp_direct_customer_details: 'whatsapp-direct',
+    view_whatsapp_direct_conversations: 'whatsapp-direct',
+    view_whatsapp_direct_messages: 'whatsapp-direct',
+    send_whatsapp_direct_message: 'whatsapp-direct',
+    upload_whatsapp_direct_media: 'whatsapp-direct',
+    onboarding_whatsapp_direct: 'whatsapp-direct',
+    custom_bill_create_order: 'manual-order',
+    get_custom_bill_history: 'manual-order',
+    get_custom_bill_history_analytics: 'manual-order',
+    delete_custom_bill_history: 'manual-order',
+    manual_tables_get: 'manual-order',
+    manual_tables_create: 'manual-order',
+    manual_tables_delete: 'manual-order',
+    manual_tables_edit: 'manual-order',
+    view_delivery_dashboard: 'delivery',
+    assign_delivery_boy: 'delivery',
+    create_delivery_boy: 'delivery',
+    delete_delivery_boy: 'delivery',
+    get_dine_in_tables: 'dine-in',
+    update_dine_in_tables: 'dine-in',
+    view_car_spots: 'dine-in',
+    view_service_requests: 'dine-in',
+    update_service_requests: 'dine-in',
+    view_tables: 'dine-in',
+    create_table: 'dine-in',
+    update_table: 'dine-in',
+    cleanup_stale_tabs: 'dine-in',
+    view_dine_in_history: 'dine-in',
+    owner_waitlist_get: 'bookings',
+    owner_waitlist_post: 'bookings',
+    view_waitlist_analytics: 'bookings',
+    view_payouts: 'payouts',
+    view_inventory: 'inventory',
+    adjust_inventory: 'inventory',
+    view_inventory_ledger: 'inventory',
+    bulk_update_inventory: 'inventory',
+    sync_inventory_from_menu: 'inventory',
+};
 
 function normalizeBusinessType(type) {
     const normalized = String(type || '').trim().toLowerCase();
@@ -244,6 +317,11 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
         }
     }
 
+    const inferredFeatureId = inferFeatureIdFromAction(action, req);
+    if (inferredFeatureId) {
+        assertFeatureUnlocked(context, inferredFeatureId);
+    }
+
     // 3. AUDIT LOGGING (Always run per check if impersonating)
     if (context.isImpersonating && action) {
         await logImpersonation({
@@ -258,5 +336,56 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
     }
 
     return context;
+}
+
+export function assertFeatureUnlocked(context, featureId) {
+    const lockedFeatures = Array.isArray(context?.businessSnap?.data?.()?.lockedFeatures)
+        ? context.businessSnap.data().lockedFeatures
+        : Array.isArray(context?.businessData?.lockedFeatures)
+            ? context.businessData.lockedFeatures
+            : [];
+
+    if (lockedFeatures.includes(featureId)) {
+        throw {
+            message: 'This feature is locked for your account. Please contact support for more information.',
+            status: 423,
+        };
+    }
+}
+
+export async function verifyOwnerFeatureAccess(req, featureId, action, metadata = {}, checkRevoked = true, requiredPermissions = null) {
+    const context = await verifyOwnerWithAudit(req, action, metadata, checkRevoked, requiredPermissions);
+    assertFeatureUnlocked(context, featureId);
+    return context;
+}
+
+function inferFeatureIdFromAction(action, req) {
+    if (ACTION_FEATURE_MAP[action]) {
+        return ACTION_FEATURE_MAP[action];
+    }
+
+    const pathname = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`).pathname;
+    if (pathname.includes('/api/owner/inventory/')) return 'inventory';
+    if (pathname.includes('/api/owner/inventory')) return 'inventory';
+    if (pathname.includes('/api/owner/waitlist')) return 'bookings';
+    if (pathname.includes('/api/owner/bookings')) return 'bookings';
+    if (pathname.includes('/api/owner/dine-in-tables') || pathname.includes('/api/owner/car-spots')) return 'dine-in';
+    if (pathname.includes('/api/owner/service-requests') || pathname.includes('/api/owner/tables') || pathname.includes('/api/owner/cleanup-stale-tabs') || pathname.includes('/api/owner/dine-in-history')) return 'dine-in';
+    if (pathname.includes('/api/owner/manual-tables') || pathname.includes('/api/owner/custom-bill')) return 'manual-order';
+    if (pathname.includes('/api/owner/menu') || pathname.includes('/api/owner/open-items')) return 'menu';
+    if (pathname.includes('/api/owner/menu-bulk')) return 'menu';
+    if (pathname.includes('/api/owner/orders') || pathname.includes('/api/owner/refund')) return 'live-orders';
+    if (pathname.includes('/api/owner/analytics')) return 'analytics';
+    if (pathname.includes('/api/owner/dashboard-data')) return 'dashboard';
+    if (pathname.includes('/api/owner/delivery') || pathname.includes('/api/owner/delivery-settings')) return 'delivery';
+    if (pathname.includes('/api/owner/employees')) return 'employees';
+    if (pathname.includes('/api/owner/customers')) return 'customers';
+    if (pathname.includes('/api/owner/coupons')) return 'coupons';
+    if (pathname.includes('/api/owner/whatsapp-direct') || pathname.includes('/api/owner/whatsapp-onboarding')) return 'whatsapp-direct';
+    if (pathname.includes('/api/owner/connections') || pathname.includes('/api/owner/create-linked-account')) return 'connections';
+    if (pathname.includes('/api/owner/locations')) return 'location';
+    if (pathname.includes('/api/owner/settings')) return 'settings';
+    if (pathname.includes('/api/owner/payouts')) return 'payouts';
+    return null;
 }
 

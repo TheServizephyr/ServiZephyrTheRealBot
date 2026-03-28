@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import admin from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
-import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 
@@ -15,8 +15,9 @@ export async function GET(req) {
     };
 
     try {
-        const { businessSnap } = await verifyOwnerWithAudit(
+        const { businessSnap } = await verifyOwnerFeatureAccess(
             req,
+            'menu',
             'read_open_items',
             { resource: 'manual_billing' },
             false,
@@ -49,8 +50,9 @@ export async function GET(req) {
 
 export async function POST(req) {
     try {
-        const { businessId, collectionName } = await verifyOwnerWithAudit(
+        const { businessId, collectionName } = await verifyOwnerFeatureAccess(
             req,
+            'menu',
             'create_open_item',
             { resource: 'manual_billing' },
             false,
@@ -123,8 +125,9 @@ export async function POST(req) {
 
 export async function DELETE(req) {
     try {
-        const { businessId, collectionName } = await verifyOwnerWithAudit(
+        const { businessId, collectionName } = await verifyOwnerFeatureAccess(
             req,
+            'menu',
             'delete_open_item',
             { resource: 'manual_billing' },
             false,

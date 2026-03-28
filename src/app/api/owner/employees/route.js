@@ -26,6 +26,19 @@ import { logAuditEvent, AUDIT_ACTIONS, createRoleChangeMetadata } from '@/lib/se
 import { employeeInviteLimiter, employeeRemoveLimiter, roleChangeLimiter } from '@/lib/security/rate-limiter';
 import crypto from 'crypto';
 
+function assertEmployeesFeatureUnlocked(accessContext) {
+    const lockedFeatures = Array.isArray(accessContext?.outletData?.lockedFeatures)
+        ? accessContext.outletData.lockedFeatures
+        : [];
+
+    if (lockedFeatures.includes('employees')) {
+        throw {
+            message: 'This feature is locked for your account. Please contact support for more information.',
+            status: 423,
+        };
+    }
+}
+
 // ============================================
 // HELPER: Generate unique invite code
 // ============================================
@@ -57,6 +70,7 @@ export async function POST(req) {
 
         // Verify owner/manager access with permission to invite
         const accessContext = await verifyAccessWithRBAC(req, PERMISSIONS.INVITE_EMPLOYEE);
+        assertEmployeesFeatureUnlocked(accessContext);
 
         const body = await req.json();
         const { email, role, name, phone, customPermissions, customRoleName, customAllowedPages } = body;
@@ -257,6 +271,7 @@ export async function GET(req) {
 
         // Verify access with permission to view employees
         const accessContext = await verifyAccessWithRBAC(req, PERMISSIONS.VIEW_EMPLOYEES);
+        assertEmployeesFeatureUnlocked(accessContext);
 
         const outletData = accessContext.outletData;
         const outletId = accessContext.outletId;
@@ -376,6 +391,7 @@ export async function PATCH(req) {
 
         // Verify access with permission to manage employees
         const accessContext = await verifyAccessWithRBAC(req, PERMISSIONS.MANAGE_EMPLOYEES);
+        assertEmployeesFeatureUnlocked(accessContext);
 
         const body = await req.json();
         const {
@@ -553,6 +569,7 @@ export async function DELETE(req) {
 
         // Only owner can permanently remove employees
         const accessContext = await verifyAccessWithRBAC(req, PERMISSIONS.REMOVE_EMPLOYEE);
+        assertEmployeesFeatureUnlocked(accessContext);
 
         const { searchParams } = new URL(req.url);
         const employeeId = searchParams.get('employeeId');

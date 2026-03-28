@@ -27,7 +27,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import InfoDialog from '@/components/InfoDialog';
 import { format } from 'date-fns';
-import { OWNER_DASHBOARD_PAGES, STREET_VENDOR_DASHBOARD_PAGES } from '@/lib/permissions';
+import { getLockableSidebarFeaturesForBusinessType } from '@/lib/permissions';
 
 const AnalyticsModal = ({ isOpen, onOpenChange, restaurant }) => {
   const [analytics, setAnalytics] = useState(null);
@@ -188,28 +188,94 @@ const normalizeBusinessType = (value) => {
 };
 
 const getSuspensionFeatures = (businessType) => {
-  const normalizedType = normalizeBusinessType(businessType);
-
-  if (normalizedType === 'street-vendor') {
-    const order = ['live-orders', 'menu', 'employees', 'analytics', 'qr', 'coupons', 'profile', 'payouts'];
-    return order
-      .map((id) => STREET_VENDOR_DASHBOARD_PAGES.find((page) => page.id === id))
-      .filter(Boolean)
-      .map((page) => ({ id: page.id, label: page.label }));
-  }
-
-  const order = ['dashboard', 'live-orders', 'menu', 'dine-in', 'bookings', 'employees', 'customers', 'whatsapp-direct', 'analytics', 'delivery', 'coupons', 'settings', 'location', 'connections'];
-  const allowedIds = normalizedType === 'store'
-    ? order.filter((id) => id !== 'dine-in')
-    : order;
-
-  return allowedIds
-    .map((id) => OWNER_DASHBOARD_PAGES.find((page) => page.id === id))
-    .filter(Boolean)
-    .map((page) => ({ id: page.id, label: page.label }));
+  return getLockableSidebarFeaturesForBusinessType(businessType).map((feature) => ({
+    id: feature.id,
+    label: feature.label,
+  }));
 };
 
-const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, businessType, initialRestrictedFeatures = [] }) => {
+const ApprovalFeaturesModal = ({ isOpen, onOpenChange, onConfirm, businessName, businessType, initialLockedFeatures = [] }) => {
+  const features = useMemo(() => getLockableSidebarFeaturesForBusinessType(businessType), [businessType]);
+  const [selectedFeatures, setSelectedFeatures] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const lockedSet = new Set(initialLockedFeatures || []);
+    setSelectedFeatures(features.filter((feature) => !lockedSet.has(feature.id)).map((feature) => feature.id));
+  }, [isOpen, initialLockedFeatures, features]);
+
+  const allSelected = features.length > 0 && selectedFeatures.length === features.length;
+  const partiallySelected = selectedFeatures.length > 0 && selectedFeatures.length < features.length;
+
+  const toggleFeature = (featureId) => {
+    setSelectedFeatures((prev) => (
+      prev.includes(featureId)
+        ? prev.filter((id) => id !== featureId)
+        : [...prev, featureId]
+    ));
+  };
+
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedFeatures(features.map((feature) => feature.id));
+      return;
+    }
+    setSelectedFeatures([]);
+  };
+
+  const handleConfirm = () => {
+    const selectedSet = new Set(selectedFeatures);
+    const lockedFeatures = features
+      .filter((feature) => !selectedSet.has(feature.id))
+      .map((feature) => feature.id);
+
+    onConfirm(lockedFeatures);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-card border-border text-foreground">
+        <DialogHeader>
+          <DialogTitle>Approve & Configure Features: {businessName}</DialogTitle>
+          <DialogDescription>
+            Select only the sidebar features you want to unlock for this {normalizeBusinessType(businessType) === 'store' ? 'store' : normalizeBusinessType(businessType) === 'street-vendor' ? 'street vendor' : 'restaurant'}.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+          <div className="flex items-center space-x-3 p-3 rounded-md bg-muted border border-border">
+            <Checkbox
+              id="unlock-all"
+              onCheckedChange={handleSelectAll}
+              checked={partiallySelected ? 'indeterminate' : allSelected}
+            />
+            <Label htmlFor="unlock-all" className="flex-grow cursor-pointer text-sm font-bold">Unlock All Features</Label>
+          </div>
+          {features.map((feature) => (
+            <div key={feature.id} className="flex items-start space-x-3 p-3 rounded-md hover:bg-muted">
+              <Checkbox
+                id={`unlock-${feature.id}`}
+                onCheckedChange={() => toggleFeature(feature.id)}
+                checked={selectedFeatures.includes(feature.id)}
+              />
+              <Label htmlFor={`unlock-${feature.id}`} className="flex-grow cursor-pointer">
+                <div className="text-sm font-medium">{feature.label}</div>
+                {feature.description ? (
+                  <p className="text-xs text-muted-foreground mt-1">{feature.description}</p>
+                ) : null}
+              </Label>
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+          <Button onClick={handleConfirm}>Approve With Selected Features</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, businessType, initialRestrictedFeatures = [], initialRemark = '' }) => {
   const features = useMemo(() => getSuspensionFeatures(businessType), [businessType]);
   const [selectedFeatures, setSelectedFeatures] = useState([]);
   const [remark, setRemark] = useState("");
@@ -218,9 +284,9 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, busi
     if (isOpen) {
       const allowedIds = new Set(features.map((feature) => feature.id));
       setSelectedFeatures((initialRestrictedFeatures || []).filter((id) => allowedIds.has(id)));
-      setRemark(""); // Reset remark every time it opens
+      setRemark(initialRemark || '');
     }
-  }, [isOpen, initialRestrictedFeatures, features]);
+  }, [isOpen, initialRestrictedFeatures, features, initialRemark]);
 
   const handleSelect = (featureId) => {
     setSelectedFeatures(prev =>
@@ -295,6 +361,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, busi
 
 const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
   const [isSuspensionModalOpen, setIsSuspensionModalOpen] = useState(false);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
 
   const statusClasses = {
     Approved: 'bg-green-500/10 text-green-400',
@@ -316,9 +383,22 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
     setIsSuspensionModalOpen(false);
   };
 
+  const handleApprovalConfirm = (lockedFeatures) => {
+    onUpdateStatus(restaurant.id, restaurant.businessType, 'Approved', { lockedFeatures });
+    setIsApprovalModalOpen(false);
+  };
+
 
   return (
     <>
+      <ApprovalFeaturesModal
+        isOpen={isApprovalModalOpen}
+        onOpenChange={setIsApprovalModalOpen}
+        onConfirm={handleApprovalConfirm}
+        businessName={restaurant.name}
+        businessType={restaurant.businessType}
+        initialLockedFeatures={restaurant.lockedFeatures || []}
+      />
       <SuspensionModal
         isOpen={isSuspensionModalOpen}
         onOpenChange={setIsSuspensionModalOpen}
@@ -326,6 +406,7 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
         restaurantName={restaurant.name}
         businessType={restaurant.businessType}
         initialRestrictedFeatures={restaurant.restrictedFeatures || []}
+        initialRemark={restaurant.suspensionRemark || ''}
       />
       <TableRow>
         <TableCell className="font-medium">
@@ -346,7 +427,7 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
         <TableCell className="text-right">
           {restaurant.status === 'Pending' && (
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, restaurant.businessType, 'Approved')}>
+              <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => setIsApprovalModalOpen(true)}>
                 <Check className="mr-2 h-4 w-4" /> Approve
               </Button>
               <Button variant="outline" size="sm" className="border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-500" onClick={() => onUpdateStatus(restaurant.id, restaurant.businessType, 'Rejected')}>
@@ -380,6 +461,9 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
                 <DropdownMenuItem onClick={() => onShowAnalytics(restaurant)}>
                   <BarChart3 className="mr-2 h-4 w-4" /> Analytics
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsApprovalModalOpen(true)}>
+                  <Edit className="mr-2 h-4 w-4" /> Feature Access
+                </DropdownMenuItem>
                 <DropdownMenuItem className="text-red-500" onClick={() => setIsSuspensionModalOpen(true)}><Pause className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -395,7 +479,7 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
             </div>
           )}
           {restaurant.status === 'Rejected' && (
-            <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, restaurant.businessType, 'Approved')}>
+            <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => setIsApprovalModalOpen(true)}>
               <ShieldCheck className="mr-2 h-4 w-4" /> Re-consider
             </Button>
           )}

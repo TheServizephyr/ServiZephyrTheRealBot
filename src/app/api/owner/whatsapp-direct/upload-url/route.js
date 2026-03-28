@@ -1,8 +1,8 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { nanoid } from 'nanoid';
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 
 // ✅ ALLOWED FILE TYPES (Images, Videos, Documents, Audio)
 const ALLOWED_MIME_TYPES = {
@@ -32,38 +32,10 @@ function getMediaType(mimeType) {
     return 'unknown';
 }
 
-async function verifyOwnerAndGetBusinessRef(req) {
-    const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req); // Use central helper
-
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    let targetOwnerId = uid;
-    if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
-        targetOwnerId = impersonatedOwnerId;
-    } else if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
-        throw { message: 'Access Denied', status: 403 };
-    }
-
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        return restaurantsQuery.docs[0].id;
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-        return shopsQuery.docs[0].id;
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
-
 
 export async function POST(req) {
     try {
-        const businessId = await verifyOwnerAndGetBusinessRef(req);
+        const { businessId } = await verifyOwnerFeatureAccess(req, 'whatsapp-direct', 'upload_whatsapp_direct_media');
         const { fileName, fileType, fileSize } = await req.json();
 
         if (!fileName || !fileType) {

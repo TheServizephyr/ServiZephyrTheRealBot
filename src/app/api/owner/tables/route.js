@@ -22,6 +22,13 @@ async function getBusinessRef(firestore, restaurantId) {
     return null;
 }
 
+async function getRestaurantBusinessRef(firestore, restaurantId) {
+    const businessRef = firestore.collection('restaurants').doc(restaurantId);
+    const businessSnap = await businessRef.get();
+    if (!businessSnap.exists) return null;
+    return businessRef;
+}
+
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -33,7 +40,7 @@ export async function GET(req) {
         }
 
         const firestore = await getFirestore();
-        const businessInfo = await getBusinessRef(firestore, restaurantId);
+        const businessInfo = await getRestaurantBusinessRef(firestore, restaurantId);
 
         if (!businessInfo) {
             return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
@@ -190,9 +197,9 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Table ID, Restaurant ID, pax count, and tab name are required.' }, { status: 400 });
         }
 
-        const businessRef = await getBusinessRef(firestore, restaurantId);
+        const businessRef = await getRestaurantBusinessRef(firestore, restaurantId);
         if (!businessRef) {
-            return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
+            return NextResponse.json({ message: 'Tables are only available for restaurant businesses.' }, { status: 403 });
         }
 
         // Case-insensitive table lookup
@@ -372,9 +379,9 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Restaurant ID and Table ID are required.' }, { status: 400 });
         }
 
-        const businessRef = await getBusinessRef(firestore, restaurantId);
+        const businessRef = await getRestaurantBusinessRef(firestore, restaurantId);
         if (!businessRef) {
-            return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
+            return NextResponse.json({ message: 'Tables are only available for restaurant businesses.' }, { status: 403 });
         }
 
         // Case-insensitive table lookup

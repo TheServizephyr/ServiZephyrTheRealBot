@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
-import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 import { kv } from '@vercel/kv';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 import { logAuditEvent, AUDIT_ACTIONS, createPriceChangeMetadata } from '@/lib/security/audit-log';
@@ -54,7 +54,7 @@ export async function GET(req) {
 
     try {
         const firestore = await getFirestore();
-        const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(req, 'view_menu');
+        const { businessId, businessSnap, collectionName } = await verifyOwnerFeatureAccess(req, 'menu', 'view_menu');
         const requestUrl = new URL(req.url);
         const versionOnly = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('versionOnly') || '').toLowerCase());
         const compactMode = ['1', 'true', 'yes'].includes(String(requestUrl.searchParams.get('compact') || '').toLowerCase());
@@ -222,7 +222,7 @@ export async function POST(req) {
         const firestore = await getFirestore();
 
 
-        const { businessId, collectionName, uid, callerRole } = await verifyOwnerWithAudit(req, 'manage_menu_post', {}, true);
+        const { businessId, collectionName, uid, callerRole } = await verifyOwnerFeatureAccess(req, 'menu', 'manage_menu_post', {}, true);
         const userRole = callerRole; // Use the actual role of the caller (owner/manager/etc)
         console.log(`[API LOG] POST /api/owner/menu: Owner verified for business ID: ${businessId} in collection ${collectionName}. Caller role: ${userRole}`);
 
@@ -449,7 +449,7 @@ export async function DELETE(req) {
     console.log("[API LOG] DELETE /api/owner/menu: Request received.");
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName, callerRole } = await verifyOwnerWithAudit(req, 'delete_menu_item', {}, true);
+        const { businessId, collectionName, callerRole } = await verifyOwnerFeatureAccess(req, 'menu', 'delete_menu_item', {}, true);
         const userRole = callerRole;
 
         // 🔐 RBAC: Only owner-like roles can delete menu items
@@ -494,7 +494,7 @@ export async function PATCH(req) {
     console.log("[API LOG] PATCH /api/owner/menu: Request received.");
     try {
         const firestore = await getFirestore();
-        const { businessId, collectionName, callerRole, uid } = await verifyOwnerWithAudit(req, 'update_menu_patch', {}, true);
+        const { businessId, collectionName, callerRole, uid } = await verifyOwnerFeatureAccess(req, 'menu', 'update_menu_patch', {}, true);
         const userRole = callerRole;
         const { itemIds, action, updates } = await req.json();
         console.log("[API LOG] PATCH /api/owner/menu: Body:", { itemIds, action, updates, userRole });

@@ -27,6 +27,18 @@ const toDateInput = (date) => {
 };
 
 const toAmount = (v, fallback = 0) => { const n = Number(v); return Number.isFinite(n) ? n : fallback; };
+const OWNER_COLLECTIONS = ['restaurants', 'shops', 'street_vendors'];
+
+async function resolveOwnerBusinessId(ownerId) {
+    for (const collectionName of OWNER_COLLECTIONS) {
+        const businessQuery = query(collection(db, collectionName), where('ownerId', '==', ownerId), limit(1));
+        const businessSnapshot = await getDocs(businessQuery);
+        if (!businessSnapshot.empty) {
+            return businessSnapshot.docs[0].id;
+        }
+    }
+    return null;
+}
 
 // ─── Order Detail Modal ──────────────────────────────────────────────────────
 function OrderDetailModal({ order, activeTab, onClose }) {
@@ -236,10 +248,8 @@ export default function OrderHistoryPage() {
             const user = auth.currentUser;
             if (!user) return;
             const ownerId = user.uid;
-            const restaurantsQuery = query(collection(db, 'restaurants'), where('ownerId', '==', ownerId), limit(1));
-            const restaurantSnapshot = await getDocs(restaurantsQuery);
-            if (restaurantSnapshot.empty) return;
-            const restaurantId = restaurantSnapshot.docs[0].id;
+            const restaurantId = await resolveOwnerBusinessId(ownerId);
+            if (!restaurantId) return;
 
             const ordersQuery = query(
                 collection(db, 'orders'),

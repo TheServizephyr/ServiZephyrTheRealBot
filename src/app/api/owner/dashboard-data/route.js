@@ -5,6 +5,13 @@ import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeBusinessType(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'shop' || normalized === 'store') return 'store';
+    if (normalized === 'street_vendor' || normalized === 'street-vendor') return 'street-vendor';
+    return 'restaurant';
+}
+
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
@@ -173,6 +180,8 @@ export async function GET(req) {
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         const menuSnap = await menuRef.get();
         const menuItems = menuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const businessSnap = await firestore.collection(collectionName).doc(businessId).get();
+        const resolvedBusinessType = normalizeBusinessType(businessSnap.data()?.businessType || collectionName.slice(0, -1));
 
         const topSellingNames = Object.entries(itemCounts)
             .sort(([, a], [, b]) => b - a)
@@ -188,12 +197,20 @@ export async function GET(req) {
             }));
 
 
-        return NextResponse.json({ stats, liveOrders, salesChart: salesChartData, topItems }, { status: 200 });
+        return NextResponse.json({
+            stats,
+            liveOrders,
+            salesChart: salesChartData,
+            topItems,
+            businessInfo: {
+                businessType: resolvedBusinessType,
+            },
+        }, { status: 200 });
 
     } catch (error) {
         console.error("DASHBOARD DATA FETCH ERROR:", error);
         const zeroStats = { sales: 0, salesChange: 0, orders: 0, ordersChange: 0, newCustomers: 0, newCustomersChange: 0, avgOrderValue: 0, avgOrderValueChange: 0, todayRejections: 0 };
-        return NextResponse.json({ message: `Backend Error: ${error.message}`, stats: zeroStats, liveOrders: [], salesChart: [], topItems: [] }, { status: error.status || 500 });
+        return NextResponse.json({ message: `Backend Error: ${error.message}`, stats: zeroStats, liveOrders: [], salesChart: [], topItems: [], businessInfo: { businessType: 'restaurant' } }, { status: error.status || 500 });
     }
 }
 

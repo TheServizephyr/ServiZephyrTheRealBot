@@ -17,6 +17,15 @@ const ACTIVE_SEATED_WINDOW_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 
+function assertRestaurantBusiness(context) {
+    if (context.collectionName !== 'restaurants') {
+        throw {
+            message: 'Waitlist is only available for restaurant businesses.',
+            status: 403,
+        };
+    }
+}
+
 function normalizeWaitlistSeatingMode(value) {
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized === 'manual_seat') return 'manual_seat';
@@ -314,6 +323,7 @@ export async function GET(req) {
             false,
             PERMISSIONS.VIEW_DINE_IN // Assuming same permission level as dine-in
         );
+        assertRestaurantBusiness(context);
         const { businessId, businessSnap } = context;
         const firestore = await getFirestore();
         const url = new URL(req.url);
@@ -408,6 +418,7 @@ export async function PATCH(req) {
             false,
             PERMISSIONS.MANAGE_DINE_IN
         );
+        assertRestaurantBusiness(context);
         const { businessId, businessSnap } = context;
         const firestore = await getFirestore();
         const { entryId, status } = await req.json();

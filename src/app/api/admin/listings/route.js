@@ -55,6 +55,8 @@ async function fetchCollection(firestore, collectionName) {
             onboarded: onboardedDate,
             status: capitalizedStatus,
             restrictedFeatures: data.restrictedFeatures || [],
+            lockedFeatures: data.lockedFeatures || [],
+            suspensionRemark: data.suspensionRemark || '',
             businessType: (data.businessType === 'shop' ? 'store' : (data.businessType || businessType)),
         };
 
@@ -145,7 +147,16 @@ export async function PATCH(req) {
         const { verifyAdmin } = await import('@/lib/verify-admin');
         await verifyAdmin(req);
 
-        const { restaurantId, businessType, status, restrictedFeatures, suspensionRemark } = await req.json();
+        const body = await req.json();
+        const {
+            restaurantId,
+            businessType,
+            status,
+            restrictedFeatures,
+            suspensionRemark,
+        } = body;
+        const hasLockedFeaturesPayload = Array.isArray(body?.lockedFeatures);
+        const lockedFeatures = hasLockedFeaturesPayload ? body.lockedFeatures : [];
 
         if (!restaurantId || !businessType || !status) {
             return NextResponse.json({ message: 'Missing required fields: restaurantId, businessType, status' }, { status: 400 });
@@ -181,6 +192,10 @@ export async function PATCH(req) {
             // Clear suspension details when moving to another status
             updateData.restrictedFeatures = [];
             updateData.suspensionRemark = '';
+        }
+
+        if (hasLockedFeaturesPayload) {
+            updateData.lockedFeatures = lockedFeatures;
         }
 
         await restaurantRef.set(updateData, { merge: true });

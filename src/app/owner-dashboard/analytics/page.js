@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, Suspense, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, Sector, ScatterChart, Scatter, Legend, ReferenceLine, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IndianRupee, Hash, Phone, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban } from 'lucide-react';
+import { IndianRupee, Hash, Phone, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NextImage from 'next/image';
 import { cn } from "@/lib/utils";
@@ -47,7 +47,7 @@ const normalizeBusinessType = (value) => {
 
 
 // --- SALES OVERVIEW COMPONENTS ---
-const SalesOverview = ({ data, loading }) => {
+const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
     const [modalData, setModalData] = useState({ isOpen: false, title: '', data: [], type: '' });
 
     const openModal = (title, data, type) => {
@@ -358,22 +358,24 @@ const SalesOverview = ({ data, loading }) => {
             <ModalContent />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
                 <KpiCard title="Total Revenue" value={data?.kpis?.totalRevenue || 0} change={data?.kpis?.revenueChange || 0} icon={IndianRupee} isCurrency={true} modalTitle="Revenue Details" modalType="revenue" loading={loading} />
-                <KpiCard title="Total Orders" value={data?.kpis?.totalOrders || 0} change={data?.kpis?.ordersChange || 0} icon={ShoppingBasket} modalTitle="Order Details" modalType="orders" loading={loading} />
+                <KpiCard title={isStoreBusiness ? "Total Sales" : "Total Orders"} value={data?.kpis?.totalOrders || 0} change={data?.kpis?.ordersChange || 0} icon={ShoppingBasket} modalTitle="Order Details" modalType="orders" loading={loading} />
                 <KpiCard title="Average Order Value" value={data?.kpis?.avgOrderValue || 0} change={data?.kpis?.avgValueChange || 0} icon={FileBarChart} isCurrency={true} modalTitle="Order Value Details" modalType="orders" loading={loading} />
-                <KpiCard title="Dine-In Orders" value={data?.kpis?.dineInOrders || 0} icon={ChefHat} loading={loading} />
+                {!isStoreBusiness && <KpiCard title="Dine-In Orders" value={data?.kpis?.dineInOrders || 0} icon={ChefHat} loading={loading} />}
                 <KpiCard title="Online Orders" value={data?.kpis?.onlineOrders || 0} icon={TrendingUp} loading={loading} />
-                <KpiCard title="Call Orders" value={data?.kpis?.manualCallOrders || 0} icon={Phone} loading={loading} />
-                <KpiCard title="Total Rejections" value={data?.kpis?.totalRejections || 0} icon={Ban} isRejection={true} loading={loading} />
+                <KpiCard title={isStoreBusiness ? "Counter Orders" : "Call Orders"} value={data?.kpis?.manualCallOrders || 0} icon={Phone} loading={loading} />
+                <KpiCard title={isStoreBusiness ? "Cancelled / Failed" : "Total Rejections"} value={data?.kpis?.totalRejections || 0} icon={Ban} isRejection={true} loading={loading} />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <SourceSplitCard
-                    title="Dine-In Orders"
-                    count={data?.kpis?.dineInOrders || 0}
-                    revenue={data?.kpis?.dineInRevenue || 0}
-                    icon={ChefHat}
-                    tone="yellow"
-                />
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${isStoreBusiness ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
+                {!isStoreBusiness && (
+                    <SourceSplitCard
+                        title="Dine-In Orders"
+                        count={data?.kpis?.dineInOrders || 0}
+                        revenue={data?.kpis?.dineInRevenue || 0}
+                        icon={ChefHat}
+                        tone="yellow"
+                    />
+                )}
                 <SourceSplitCard
                     title="Online Orders"
                     count={data?.kpis?.onlineOrders || 0}
@@ -382,14 +384,14 @@ const SalesOverview = ({ data, loading }) => {
                     tone="green"
                 />
                 <SourceSplitCard
-                    title="Manual Call Orders"
+                    title={isStoreBusiness ? "Counter Orders" : "Manual Call Orders"}
                     count={data?.kpis?.manualCallOrders || 0}
                     revenue={data?.kpis?.manualCallRevenue || 0}
                     icon={Phone}
                     tone="blue"
                 />
                 <SourceSplitCard
-                    title="Offline Counter Bills"
+                    title={isStoreBusiness ? "POS Bills" : "Offline Counter Bills"}
                     count={data?.kpis?.counterBills || 0}
                     revenue={data?.kpis?.counterBillRevenue || 0}
                     icon={Hash}
@@ -413,7 +415,7 @@ const SalesOverview = ({ data, loading }) => {
 };
 
 
-const MenuAnalytics = ({ data, loading }) => {
+const MenuAnalytics = ({ data, loading, isStoreBusiness = false }) => {
 
     const PerformanceList = ({ data, metric, ascending = false, title, icon: Icon, isProfit = false }) => {
         const sortedData = useMemo(() => {
@@ -498,6 +500,140 @@ const MenuAnalytics = ({ data, loading }) => {
             </div>
         );
     };
+
+    if (isStoreBusiness) {
+        const inventoryHealth = data?.storeInsights?.inventoryHealth || {};
+        const brandPerformance = data?.storeInsights?.brandPerformance || [];
+        const topMovers = data?.storeInsights?.topMovers || [];
+        const deadStock = data?.storeInsights?.deadStock || [];
+
+        const StoreStatCard = ({ title, value, icon: Icon, detail }) => (
+            <div className="bg-card border border-border p-5 rounded-xl">
+                {loading ? (
+                    <div className="animate-pulse">
+                        <div className="h-4 bg-muted w-3/4 rounded mb-2"></div>
+                        <div className="h-8 bg-muted w-1/2 rounded"></div>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex items-center justify-between">
+                            <p className="text-sm text-muted-foreground">{title}</p>
+                            <Icon className="text-muted-foreground" size={18} />
+                        </div>
+                        <p className="text-3xl font-bold mt-2 text-foreground">{value}</p>
+                        {detail && <p className="text-xs text-muted-foreground mt-1">{detail}</p>}
+                    </>
+                )}
+            </div>
+        );
+
+        const StoreList = ({ title, rows, emptyLabel, valueRenderer, metaRenderer }) => (
+            <div className="bg-card border border-border p-5 rounded-xl">
+                <h3 className="font-semibold text-card-foreground mb-4">{title}</h3>
+                {loading ? (
+                    <div className="space-y-3 animate-pulse">
+                        <div className="h-14 bg-muted rounded-lg"></div>
+                        <div className="h-14 bg-muted rounded-lg"></div>
+                        <div className="h-14 bg-muted rounded-lg"></div>
+                    </div>
+                ) : rows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+                ) : (
+                    <div className="space-y-3">
+                        {rows.map((row) => (
+                            <div key={row.id || row.name || row.brand} className="rounded-lg border border-border bg-background px-4 py-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-sm text-foreground truncate">{row.name || row.brand}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{metaRenderer(row)}</p>
+                                    </div>
+                                    <div className="text-right text-sm font-semibold text-foreground whitespace-nowrap">
+                                        {valueRenderer(row)}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+
+        return (
+            <div className="space-y-6">
+                <div>
+                    <h3 className="text-xl font-bold mb-4">Inventory Health</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <StoreStatCard title="Catalog Products" value={inventoryHealth.totalProducts || 0} icon={ShoppingBasket} detail="Products in current catalog" />
+                        <StoreStatCard title="Low Stock Risk" value={inventoryHealth.lowStockCount || 0} icon={AlertTriangle} detail="At or below reorder level" />
+                        <StoreStatCard title="Out of Stock" value={inventoryHealth.outOfStockCount || 0} icon={Ban} detail="Need replenishment now" />
+                        <StoreStatCard title="Safety Stock Risk" value={inventoryHealth.safetyRiskCount || 0} icon={ShieldAlert} detail="Below safety stock threshold" />
+                        <StoreStatCard title="Reorder Suggested" value={inventoryHealth.reorderSuggestedCount || 0} icon={Wand2} detail="Has reorder qty configured" />
+                        <StoreStatCard title="Dead Stock" value={inventoryHealth.deadStockCount || 0} icon={TrendingDown} detail="No sales in selected range" />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <StoreList
+                        title="Top Movers"
+                        rows={topMovers}
+                        emptyLabel="No product movement in selected range."
+                        metaRenderer={(row) => `Stock: ${row.stockOnHand || 0} • Brand: ${row.brand || 'Unbranded'}`}
+                        valueRenderer={(row) => `${row.unitsSold || 0} sold`}
+                    />
+                    <StoreList
+                        title="Dead Stock"
+                        rows={deadStock}
+                        emptyLabel="No dead stock detected in selected range."
+                        metaRenderer={(row) => `On hand: ${row.stockOnHand || 0} • Reorder level: ${row.reorderLevel || 0}`}
+                        valueRenderer={(row) => formatCurrency(row.revenue || 0)}
+                    />
+                </div>
+
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="p-5 border-b border-border">
+                        <h3 className="font-semibold text-card-foreground">Brand Performance</h3>
+                        <p className="text-sm text-muted-foreground mt-1">Top brands by revenue in the selected period.</p>
+                    </div>
+                    {loading ? (
+                        <div className="p-5 space-y-3 animate-pulse">
+                            <div className="h-12 bg-muted rounded-lg"></div>
+                            <div className="h-12 bg-muted rounded-lg"></div>
+                            <div className="h-12 bg-muted rounded-lg"></div>
+                        </div>
+                    ) : brandPerformance.length === 0 ? (
+                        <div className="p-5 text-sm text-muted-foreground">No brand data available yet.</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/40 border-b border-border">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left font-semibold">Brand</th>
+                                        <th className="px-4 py-3 text-right font-semibold">SKUs</th>
+                                        <th className="px-4 py-3 text-right font-semibold">Units Sold</th>
+                                        <th className="px-4 py-3 text-right font-semibold">Revenue</th>
+                                        <th className="px-4 py-3 text-right font-semibold">Low Stock</th>
+                                        <th className="px-4 py-3 text-right font-semibold">Out of Stock</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {brandPerformance.map((row) => (
+                                        <tr key={row.brand} className="border-b border-border/60">
+                                            <td className="px-4 py-3 font-medium">{row.brand}</td>
+                                            <td className="px-4 py-3 text-right">{row.skuCount || 0}</td>
+                                            <td className="px-4 py-3 text-right">{row.unitsSold || 0}</td>
+                                            <td className="px-4 py-3 text-right font-semibold">{formatCurrency(row.revenue || 0)}</td>
+                                            <td className="px-4 py-3 text-right">{row.lowStockCount || 0}</td>
+                                            <td className="px-4 py-3 text-right">{row.outOfStockCount || 0}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -813,7 +949,7 @@ const RiderAnalyticsHub = ({ data, loading }) => {
 };
 
 // --- MANUAL ORDER ANALYTICS COMPONENT ---
-const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, employeeOfOwnerId, onlineRevenue }) => {
+const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, employeeOfOwnerId, onlineRevenue, isStoreBusiness = false }) => {
     const [manualHistory, setManualHistory] = useState([]);
     const [manualLoading, setManualLoading] = useState(true);
 
@@ -869,9 +1005,13 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
     }, [activeDateFilter, date, impersonatedOwnerId, employeeOfOwnerId]);
 
     // Only count manual order types (delivery, dine-in, pickup) — exclude custom-bill types
+    const allowedManualTypes = useMemo(() => (
+        isStoreBusiness ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']
+    ), [isStoreBusiness]);
+
     const manualOrders = useMemo(() =>
-        manualHistory.filter(b => ['delivery', 'dine-in', 'pickup'].includes(b.orderType)),
-        [manualHistory]
+        manualHistory.filter((bill) => allowedManualTypes.includes(bill.orderType)),
+        [allowedManualTypes, manualHistory]
     );
 
     const compute = (bills) => ({
@@ -890,9 +1030,9 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
     const combinedRevenue = (Number(onlineRevenue) || 0) + overall.revenue;
 
     const typeConfig = [
-        { key: 'delivery', label: '📦 Delivery',  color: 'border-blue-500/30 bg-blue-500/5 text-blue-400' },
-        { key: 'dine-in',  label: '🍽️ Dine-In',   color: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-400' },
-        { key: 'pickup',   label: '🛍️ Pickup',    color: 'border-green-500/30 bg-green-500/5 text-green-400' },
+        { key: 'delivery', label: '📦 Delivery', color: 'border-blue-500/30 bg-blue-500/5 text-blue-400' },
+        ...(!isStoreBusiness ? [{ key: 'dine-in', label: '🍽️ Dine-In', color: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-400' }] : []),
+        { key: 'pickup', label: '🛍️ Pickup', color: 'border-green-500/30 bg-green-500/5 text-green-400' },
     ];
 
     if (manualLoading) {
@@ -1145,9 +1285,9 @@ function AnalyticsPageContent() {
     const renderActiveTab = () => {
         switch (activeTab) {
             case 'sales':
-                return <SalesOverview data={analyticsData?.salesData} loading={loading} />;
+                return <SalesOverview data={analyticsData?.salesData} loading={loading} isStoreBusiness={isStoreBusiness} />;
             case 'menu':
-                return <MenuAnalytics data={analyticsData} loading={loading} />;
+                return <MenuAnalytics data={analyticsData} loading={loading} isStoreBusiness={isStoreBusiness} />;
             case 'customers':
                 return <CustomerRelationshipHub data={analyticsData} loading={loading} />;
             case 'riders':
@@ -1160,6 +1300,7 @@ function AnalyticsPageContent() {
                         impersonatedOwnerId={impersonatedOwnerId}
                         employeeOfOwnerId={employeeOfOwnerId}
                         onlineRevenue={analyticsData?.salesData?.kpis?.totalRevenue || 0}
+                        isStoreBusiness={isStoreBusiness}
                     />
                 );
             default:
@@ -1179,7 +1320,9 @@ function AnalyticsPageContent() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Growth Engine: Analytics</h1>
-                    <p className="text-muted-foreground mt-1 text-sm md:text-base">Your personal business advisor, now with deeper insights.</p>
+                    <p className="text-muted-foreground mt-1 text-sm md:text-base">
+                        {isStoreBusiness ? 'Store performance, demand, and product movement in one place.' : 'Your personal business advisor, now with deeper insights.'}
+                    </p>
                 </div>
                 <div className="bg-card p-1 rounded-lg flex items-center gap-2 w-full md:w-auto overflow-x-auto border border-border">
                     <div className="flex gap-1 whitespace-nowrap">

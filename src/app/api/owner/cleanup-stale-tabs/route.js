@@ -14,17 +14,11 @@ export async function POST(req) {
 
         const firestore = await getFirestore();
 
-        // Try restaurants first, then shops
-        let businessRef = firestore.collection('restaurants').doc(restaurantId);
-        let businessSnap = await businessRef.get();
+        const businessRef = firestore.collection('restaurants').doc(restaurantId);
+        const businessSnap = await businessRef.get();
 
         if (!businessSnap.exists) {
-            businessRef = firestore.collection('shops').doc(restaurantId);
-            businessSnap = await businessRef.get();
-        }
-
-        if (!businessSnap.exists) {
-            return NextResponse.json({ message: 'Business not found' }, { status: 404 });
+            return NextResponse.json({ message: 'Stale tab cleanup is only available for restaurant businesses.' }, { status: 403 });
         }
 
         const results = {

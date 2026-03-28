@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { mirrorWhatsAppMessageToRealtime } from '@/lib/whatsapp-realtime';
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,55 +51,11 @@ function getDirectChatTimeoutMinutes(value) {
     return parsed;
 }
 
-async function verifyOwnerAndGetBusinessRef(req) {
-    const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req);
-
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-
-    let targetOwnerId = uid;
-
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        targetOwnerId = impersonatedOwnerId;
-    } else if (employeeOfOwnerId) {
-        const linkedOutlets = userData.linkedOutlets || [];
-        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
-
-        if (!hasAccess) {
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-        targetOwnerId = employeeOfOwnerId;
-    } else if (!['owner', 'restaurant-owner', 'shop-owner'].includes(userRole)) {
-        throw { message: 'Access Denied', status: 403 };
-    }
-
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        return restaurantsQuery.docs[0].ref;
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-        return shopsQuery.docs[0].ref;
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
-
 export async function GET(req) {
     try {
         const firestore = await getFirestore();
-        const businessRef = await verifyOwnerAndGetBusinessRef(req);
+        const { businessSnap } = await verifyOwnerFeatureAccess(req, 'whatsapp-direct', 'view_whatsapp_direct_conversations');
+        const businessRef = businessSnap.ref;
 
         const conversationsSnap = await businessRef.collection('conversations')
             .orderBy('lastMessageTimestamp', 'desc')
@@ -168,7 +125,8 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const businessRef = await verifyOwnerAndGetBusinessRef(req);
+        const { businessSnap } = await verifyOwnerFeatureAccess(req, 'whatsapp-direct', 'view_whatsapp_direct_conversations');
+        const businessRef = businessSnap.ref;
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
 

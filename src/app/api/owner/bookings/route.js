@@ -2,6 +2,15 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
+function assertRestaurantCollection(collectionName) {
+    if (collectionName !== 'restaurants') {
+        throw {
+            message: 'Bookings are only available for restaurant businesses.',
+            status: 403,
+        };
+    }
+}
+
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
@@ -62,6 +71,7 @@ export async function GET(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        assertRestaurantCollection(collectionName);
 
         const bookingsRef = firestore.collection(collectionName).doc(businessId).collection('bookings');
         const bookingsSnap = await bookingsRef.orderBy('bookingDateTime', 'desc').get();
@@ -116,6 +126,10 @@ export async function POST(req) {
             return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
         }
         const businessData = businessSnap.data();
+        const businessType = String(businessData?.businessType || 'restaurant').trim().toLowerCase();
+        if (businessType === 'shop' || businessType === 'store' || businessType === 'street-vendor' || businessType === 'street_vendor') {
+            return NextResponse.json({ message: 'Bookings are only available for restaurant businesses.' }, { status: 403 });
+        }
 
         // Prevent duplicate active booking request for same phone and slot.
         const duplicateSnap = await businessRef.collection('bookings')
@@ -161,6 +175,7 @@ export async function PATCH(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        assertRestaurantCollection(collectionName);
         const { bookingId, status } = await req.json();
 
         if (!bookingId || !status) {

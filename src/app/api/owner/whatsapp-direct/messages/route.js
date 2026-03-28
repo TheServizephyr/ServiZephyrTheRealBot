@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { sendWhatsAppMessage, markWhatsAppMessageAsRead } from '@/lib/whatsapp';
 import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime } from '@/lib/whatsapp-realtime';
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 
 const DEFAULT_DIRECT_CHAT_TIMEOUT_MINUTES = 30;
 
@@ -49,51 +50,6 @@ function getTimeoutMinutes(value) {
     return parsed;
 }
 
-async function verifyOwnerAndGetBusinessRef(req) {
-    const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req);
-
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const employeeOfOwnerId = url.searchParams.get('employee_of');
-    const userDoc = await firestore.collection('users').doc(uid).get();
-
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
-
-    const userData = userDoc.data();
-    const userRole = userData.role;
-
-    let targetOwnerId = uid;
-
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        targetOwnerId = impersonatedOwnerId;
-    } else if (employeeOfOwnerId) {
-        const linkedOutlets = userData.linkedOutlets || [];
-        const hasAccess = linkedOutlets.some(o => o.ownerId === employeeOfOwnerId && o.status === 'active');
-
-        if (!hasAccess) {
-            throw { message: 'Access Denied: You are not an employee of this outlet.', status: 403 };
-        }
-        targetOwnerId = employeeOfOwnerId;
-    } else if (!['owner', 'restaurant-owner', 'shop-owner'].includes(userRole)) {
-        throw { message: 'Access Denied', status: 403 };
-    }
-
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        return restaurantsQuery.docs[0];
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-        return shopsQuery.docs[0];
-    }
-
-    throw { message: 'No business associated with this owner.', status: 404 };
-}
-
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -105,7 +61,7 @@ export async function GET(req) {
             return NextResponse.json({ message: 'Conversation ID is required.' }, { status: 400 });
         }
 
-        const businessDoc = await verifyOwnerAndGetBusinessRef(req);
+        const { businessSnap: businessDoc } = await verifyOwnerFeatureAccess(req, 'whatsapp-direct', 'view_whatsapp_direct_messages');
         const messagesCollection = businessDoc.ref.collection('conversations').doc(conversationId).collection('messages');
         let messagesQuery = messagesCollection.orderBy('timestamp', 'asc');
 
@@ -194,7 +150,7 @@ export async function POST(req) {
             );
         }
 
-        const businessDoc = await verifyOwnerAndGetBusinessRef(req);
+        const { businessSnap: businessDoc } = await verifyOwnerFeatureAccess(req, 'whatsapp-direct', 'send_whatsapp_direct_message');
         const businessData = businessDoc.data();
         const botPhoneNumberId = businessData.botPhoneNumberId;
         const businessType = resolveBusinessType(businessData, businessDoc.ref.parent.id);
@@ -415,7 +371,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Conversation ID and Message IDs are required.' }, { status: 400 });
         }
 
-        const businessDoc = await verifyOwnerAndGetBusinessRef(req);
+        const { businessSnap: businessDoc } = await verifyOwnerFeatureAccess(req, 'whatsapp-direct', 'send_whatsapp_direct_message');
         const businessData = businessDoc.data();
         const botPhoneNumberId = businessData.botPhoneNumberId;
 

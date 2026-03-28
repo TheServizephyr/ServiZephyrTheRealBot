@@ -204,8 +204,13 @@ async function verifyEmployeeAccess(firestore, uid, userData, requestedOutletId,
         }
     }
 
+    const outletCollectionName = String(linkedOutlet.collectionName || '').trim();
+    if (!outletCollectionName) {
+        throw { message: 'Employee outlet configuration is incomplete. Missing collection name.', status: 403 };
+    }
+
     // Get outlet document for additional data
-    const outletRef = firestore.collection(linkedOutlet.collectionName || 'restaurants').doc(linkedOutlet.outletId);
+    const outletRef = firestore.collection(outletCollectionName).doc(linkedOutlet.outletId);
     const outletSnap = await outletRef.get();
 
     if (!outletSnap.exists) {
@@ -217,7 +222,7 @@ async function verifyEmployeeAccess(firestore, uid, userData, requestedOutletId,
         outletId: linkedOutlet.outletId,
         outletRef,
         outletData: outletSnap.data(),
-        collectionName: linkedOutlet.collectionName || 'restaurants',
+        collectionName: outletCollectionName,
         role: linkedOutlet.employeeRole,
         permissions,
         isOwner: false,

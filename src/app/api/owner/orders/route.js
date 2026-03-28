@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, getDatabase, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer, sendRestaurantStatusChangeNotification } from '@/lib/notifications';
-import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 import { sendSystemMessage } from '@/lib/whatsapp';
 import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-upi-payment';
@@ -276,8 +276,9 @@ export async function GET(req) {
         const orderId = searchParams.get('id');
         const customerId = searchParams.get('customerId');
 
-        const { uid, businessId, businessSnap, collectionName, callerRole, callerPermissions } = await verifyOwnerWithAudit(
+        const { uid, businessId, businessSnap, collectionName, callerRole, callerPermissions } = await verifyOwnerFeatureAccess(
             req,
+            'live-orders',
             orderId ? 'view_order_details' : 'view_orders',
             orderId ? { orderId, customerId } : { customerId }
         );
@@ -480,7 +481,7 @@ function isStatusNotificationStale(orderData = {}) {
 export async function PATCH(req) {
     try {
         const firestore = await getFirestore();
-        const { businessId, businessSnap, uid, collectionName, callerRole, callerPermissions } = await verifyOwnerWithAudit(req, 'update_orders_patch', {}, true);
+        const { businessId, businessSnap, uid, collectionName, callerRole, callerPermissions } = await verifyOwnerFeatureAccess(req, 'live-orders', 'update_orders_patch', {}, true);
         const requestBaseUrl = new URL(req.url).origin;
         const userRole = callerRole;
 

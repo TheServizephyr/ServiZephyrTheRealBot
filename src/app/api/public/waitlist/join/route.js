@@ -65,6 +65,10 @@ export async function POST(req) {
         }
 
         const restaurantData = restaurantSnap.data();
+        const businessType = String(restaurantData?.businessType || 'restaurant').trim().toLowerCase();
+        if (businessType === 'shop' || businessType === 'store' || businessType === 'street-vendor' || businessType === 'street_vendor') {
+            return NextResponse.json({ message: 'Waitlist is only available for restaurant businesses.' }, { status: 403 });
+        }
         if (restaurantData.isOpen === false) {
             return NextResponse.json({ message: 'Restaurant is currently closed. We are not accepting new waitlist entries.' }, { status: 403 });
         }

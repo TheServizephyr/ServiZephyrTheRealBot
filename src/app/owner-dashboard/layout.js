@@ -41,13 +41,22 @@ const resolveOwnerFeatureIdFromPath = (pathname) => {
   return section || 'dashboard';
 };
 
+const normalizeBusinessType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'shop' || normalized === 'store') return 'store';
+  if (normalized === 'street_vendor') return 'street-vendor';
+  if (normalized === 'street-vendor' || normalized === 'restaurant') return normalized;
+  return 'restaurant';
+};
+
 function FeatureLockScreen({ remark, featureId }) {
   const supportPhone = "919027872803";
   const supportEmail = "contact@servizephyr.com";
 
-  const whatsappText = encodeURIComponent(`Hello ServiZephyr Team,\n\nMy access to the '${featureId}' feature has been restricted. The remark says: "${remark}".\n\nPlease help me resolve this.`);
+  const resolvedRemark = remark || 'This feature is not available for your account. Please contact support for more information.';
+  const whatsappText = encodeURIComponent(`Hello ServiZephyr Team,\n\nMy access to the '${featureId}' feature has been restricted. The remark says: "${resolvedRemark}".\n\nPlease help me resolve this.`);
   const emailSubject = encodeURIComponent(`Issue: Access Restricted for '${featureId}' Feature`);
-  const emailBody = encodeURIComponent(`Hello ServiZephyr Team,\n\nI am writing to you because my access to the '${featureId}' feature on my dashboard has been restricted.\n\nThe remark provided is: "${remark}"\n\nCould you please provide more details or guide me on the steps to resolve this?\n\nThank you.`);
+  const emailBody = encodeURIComponent(`Hello ServiZephyr Team,\n\nI am writing to you because my access to the '${featureId}' feature on my dashboard has been restricted.\n\nThe remark provided is: "${resolvedRemark}"\n\nCould you please provide more details or guide me on the steps to resolve this?\n\nThank you.`);
 
 
   return (
@@ -55,10 +64,10 @@ function FeatureLockScreen({ remark, featureId }) {
       <Lock className="h-16 w-16 text-yellow-400" />
       <h2 className="mt-6 text-2xl font-bold">Feature Restricted</h2>
       <p className="mt-2 max-w-md text-muted-foreground">Access to this feature has been temporarily restricted by the platform administrator.</p>
-      {remark && (
+      {resolvedRemark && (
         <div className="mt-4 p-4 bg-muted/50 rounded-lg w-full max-w-md">
-          <p className="font-semibold">Admin Remark:</p>
-          <p className="text-muted-foreground italic">&quot;{remark}&quot;</p>
+          <p className="font-semibold">Message:</p>
+          <p className="text-muted-foreground italic">&quot;{resolvedRemark}&quot;</p>
         </div>
       )}
       <div className="mt-6 pt-6 border-t border-border w-full max-w-md">
@@ -86,11 +95,16 @@ function OwnerDashboardContent({ children }) {
   const [restaurantStatus, setRestaurantStatus] = useState({
     status: null,
     restrictedFeatures: [],
+    lockedFeatures: [],
     suspensionRemark: ''
   });
   const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const [userRole, setUserRole] = useState(null); // For employee role-based access
+  const [businessType, setBusinessType] = useState(() => {
+    if (typeof window === 'undefined') return 'restaurant';
+    return normalizeBusinessType(localStorage.getItem('businessType')) || 'restaurant';
+  });
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -494,10 +508,9 @@ function OwnerDashboardContent({ children }) {
             hasLogo: !!settingsData.logoUrl
           });
           if (settingsData.businessType) {
-            const normalizedBusinessType = settingsData.businessType === 'street_vendor'
-              ? 'street-vendor'
-              : (settingsData.businessType === 'shop' ? 'store' : settingsData.businessType);
+            const normalizedBusinessType = normalizeBusinessType(settingsData.businessType);
             localStorage.setItem('businessType', normalizedBusinessType);
+            setBusinessType(normalizedBusinessType);
           }
           setRestaurantName(settingsData.restaurantName || 'My Dashboard');
           setRestaurantLogo(settingsData.logoUrl || null);
@@ -509,16 +522,18 @@ function OwnerDashboardContent({ children }) {
           const statusData = await statusRes.json();
           console.log('[Layout] ✅ Status loaded:', {
             status: statusData.status,
-            restrictedFeatures: statusData.restrictedFeatures?.length || 0
+            restrictedFeatures: statusData.restrictedFeatures?.length || 0,
+            lockedFeatures: statusData.lockedFeatures?.length || 0,
           });
           setRestaurantStatus({
             status: statusData.status,
             restrictedFeatures: statusData.restrictedFeatures || [],
+            lockedFeatures: statusData.lockedFeatures || [],
             suspensionRemark: statusData.suspensionRemark || '',
           });
         } else if (statusRes.status === 404) {
           console.log('[Layout] ⚠️ Status 404 - Setting to pending');
-          setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
+          setRestaurantStatus({ status: 'pending', restrictedFeatures: [], lockedFeatures: [], suspensionRemark: '' });
         } else if (statusRes.status === 403) {
           // Unauthorized access - redirect to select-role for employees or homepage
           console.error("[Layout] ❌ User not authorized (403), redirecting to select-role...");
@@ -527,12 +542,12 @@ function OwnerDashboardContent({ children }) {
         } else {
           const errorData = await statusRes.json();
           console.error("[Layout] ❌ Error fetching status:", errorData.message);
-          setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+          setRestaurantStatus({ status: 'error', restrictedFeatures: [], lockedFeatures: [], suspensionRemark: '' });
         }
 
       } catch (e) {
         console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
-        setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+        setRestaurantStatus({ status: 'error', restrictedFeatures: [], lockedFeatures: [], suspensionRemark: '' });
       }
     }
 
@@ -604,6 +619,9 @@ function OwnerDashboardContent({ children }) {
     const featureId = resolveOwnerFeatureIdFromPath(pathname);
 
     if (restaurantStatus.status === 'approved') {
+      if (restaurantStatus.lockedFeatures.includes(featureId)) {
+        return <FeatureLockScreen remark="This feature is not available for your account. Please contact support for more information." featureId={featureId} />;
+      }
       return null;
     }
 
@@ -630,7 +648,19 @@ function OwnerDashboardContent({ children }) {
       );
     }
 
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location'];
+    const normalizedBusinessType = normalizeBusinessType(businessType);
+    const alwaysEnabled = [
+      'menu',
+      'settings',
+      'connections',
+      'payout-settings',
+      'whatsapp-direct',
+      'location',
+    ];
+
+    if (normalizedBusinessType === 'restaurant') {
+      alwaysEnabled.push('dine-in', 'bookings');
+    }
     const isDisabled = !alwaysEnabled.includes(featureId);
 
     if ((restaurantStatus.status === 'pending' || restaurantStatus.status === 'rejected') && isDisabled) {
@@ -676,6 +706,7 @@ function OwnerDashboardContent({ children }) {
             isMobile={isMobile}
             isCollapsed={isCollapsed}
             restrictedFeatures={restaurantStatus.restrictedFeatures}
+            lockedFeatures={restaurantStatus.lockedFeatures}
             status={restaurantStatus.status}
             userRole={userRole}
           />

@@ -16,6 +16,16 @@ export async function POST(req) {
             return NextResponse.json({ message: 'restaurantId, entryId and arrivalCode are required.' }, { status: 400 });
         }
 
+        const restaurantSnap = await firestore.collection('restaurants').doc(safeRestaurantId).get();
+        if (!restaurantSnap.exists) {
+            return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
+        }
+        const restaurantData = restaurantSnap.data() || {};
+        const businessType = String(restaurantData.businessType || 'restaurant').trim().toLowerCase();
+        if (businessType === 'shop' || businessType === 'store' || businessType === 'street-vendor' || businessType === 'street_vendor') {
+            return NextResponse.json({ message: 'Waitlist is only available for restaurant businesses.' }, { status: 403 });
+        }
+
         const entryRef = firestore.collection('restaurants')
             .doc(safeRestaurantId)
             .collection('waitlist')

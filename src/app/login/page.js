@@ -221,9 +221,9 @@ function LoginPageContent() {
             }
 
             if (res.status === 404) {
-                // New user - redirect to role selection
-                console.log("[Login] New user detected, redirecting to select-role");
-                return router.push("/select-role");
+                // New user - redirect to onboarding profile completion
+                console.log("[Login] New user detected, redirecting to complete-profile");
+                return router.push("/complete-profile");
             }
 
             if (data.hasMultipleRoles) {

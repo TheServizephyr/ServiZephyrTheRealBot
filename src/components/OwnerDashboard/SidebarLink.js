@@ -9,7 +9,7 @@ import styles from "./OwnerDashboard.module.css";
 import { cn } from "@/lib/utils";
 
 
-export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIcon: DisabledIcon }) {
+export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIcon: DisabledIcon, disabledMessage }) {
   const pathname = usePathname();
   const isActive = pathname === item.href;
 
@@ -26,8 +26,7 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
         isDisabled && 'opacity-50 cursor-not-allowed',
         isCollapsed && styles.sidebarLinkCollapsed,
       )}
-      title={isDisabled ? `${item.name} is currently restricted` : item.name}
-      onClick={(e) => { if (isDisabled) e.preventDefault(); }}
+      title={isDisabled ? disabledMessage || `${item.name} is currently restricted` : item.name}
     >
       <div className={styles.sidebarLinkInner}>
         <div className={cn(styles.linkIcon, "relative")}>
@@ -54,10 +53,6 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
       </div>
     </a>
   );
-
-  if (isDisabled) {
-    return linkContent;
-  }
 
   return (
     <Link href={item.href} passHref legacyBehavior>

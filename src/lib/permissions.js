@@ -258,6 +258,14 @@ export function getDashboardPageLabelMap(businessType = 'restaurant') {
     }, {});
 }
 
+export function getLockableSidebarFeaturesForBusinessType(businessType = 'restaurant') {
+    return getDashboardPagesForBusinessType(businessType).map((page) => ({
+        id: page.id,
+        label: page.label,
+        description: page.description,
+    }));
+}
+
 const ROLE_HELPER_TEXT = {
     restaurant: {
         [ROLES.MANAGER]: 'Best for supervisors who need broad dashboard access across orders, menu, staff, and operations.',
@@ -670,14 +678,27 @@ export const ROLE_ALLOWED_PAGES = {
     ],
 };
 
+function sanitizeAllowedPagesForBusinessType(allowedPages, businessType = 'restaurant') {
+    if (allowedPages === 'all') return allowedPages;
+
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    const disallowedForStore = new Set(['dine-in', 'bookings']);
+
+    if (normalizedBusinessType === 'store') {
+        return (allowedPages || []).filter((page) => !disallowedForStore.has(page));
+    }
+
+    return allowedPages || [];
+}
+
 /**
  * Get allowed pages for a role
  * @param {string} role - User's role
  * @returns {string[] | 'all'} - Array of allowed feature IDs or 'all'
  */
-export function getAllowedPages(role) {
+export function getAllowedPages(role, businessType = 'restaurant') {
     const effectiveRole = normalizeRole(role);
-    return ROLE_ALLOWED_PAGES[effectiveRole] || [];
+    return sanitizeAllowedPagesForBusinessType(ROLE_ALLOWED_PAGES[effectiveRole] || [], businessType);
 }
 
 /**
@@ -687,17 +708,17 @@ export function getAllowedPages(role) {
  * @param {string[]} customAllowedPages - Optional array of allowed pages for custom roles
  * @returns {boolean}
  */
-export function canAccessPage(role, featureId, customAllowedPages = null) {
+export function canAccessPage(role, featureId, customAllowedPages = null, businessType = 'restaurant') {
     const effectiveRole = normalizeRole(role);
 
     // For custom roles, use the provided customAllowedPages
     if (effectiveRole === ROLES.CUSTOM && customAllowedPages) {
         // Always allow my-profile for all employees
         if (featureId === 'my-profile') return true;
-        return customAllowedPages.includes(featureId);
+        return sanitizeAllowedPagesForBusinessType(customAllowedPages, businessType).includes(featureId);
     }
 
-    const allowedPages = ROLE_ALLOWED_PAGES[effectiveRole];
+    const allowedPages = sanitizeAllowedPagesForBusinessType(ROLE_ALLOWED_PAGES[effectiveRole], businessType);
     if (!allowedPages) return false;
     if (allowedPages === 'all') return true;
     return allowedPages.includes(featureId);

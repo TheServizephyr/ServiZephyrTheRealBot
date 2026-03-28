@@ -199,10 +199,14 @@ function PageContent() {
   const isStoreBusiness = businessType === 'store';
   const addItemLabel = isStoreBusiness ? 'Add New Product' : 'Add New Item';
   const stockActionLabel = isStoreBusiness ? 'Update Product Stock' : 'Mark Item Out of Stock';
+  const couponActionLabel = isStoreBusiness ? 'Create Offer' : 'Create Coupon';
   const liveFeedTitle = isStoreBusiness ? 'Live Store Orders' : 'Live Order Feed';
   const liveFeedEmptyLabel = isStoreBusiness ? 'No active store orders right now.' : 'No active orders right now.';
   const salesChartTitle = isStoreBusiness ? 'Sales Trend' : 'Weekly Sales';
   const topItemsTitle = isStoreBusiness ? 'Top Selling Products' : 'Top Selling Items';
+  const dashboardTitle = isStoreBusiness ? 'Store Command Center' : 'Business Command Center';
+  const orderStatTitle = isStoreBusiness ? 'Total Sales' : 'Total Orders';
+  const rejectionStatTitle = isStoreBusiness ? "Today's Cancelled Sales" : "Today's Rejections";
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -256,6 +260,13 @@ function PageContent() {
 
         const dashboardData = await dashboardRes.json();
         const connectionsData = await connectionsRes.json();
+        const resolvedBusinessType = normalizeBusinessType(dashboardData?.businessInfo?.businessType);
+        if (resolvedBusinessType) {
+          setBusinessType(resolvedBusinessType);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('businessType', resolvedBusinessType);
+          }
+        }
 
         console.log("[Dashboard] Successfully fetched dashboard data:", dashboardData);
         console.log("[Dashboard] Successfully fetched connections data:", connectionsData);
@@ -297,7 +308,7 @@ function PageContent() {
 
         {/* Global Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-4 md:mb-0">Business Command Center</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-4 md:mb-0">{dashboardTitle}</h1>
           <div className="flex items-center bg-card p-1 rounded-lg border border-border">
             {['Today', 'This Week', 'This Month'].map(filter => (
               <button
@@ -326,7 +337,7 @@ function PageContent() {
           <button
             onClick={() => router.push(`/owner-dashboard/coupons?${searchParams.toString()}`)}
             className="flex items-center justify-center p-3 bg-secondary hover:bg-secondary/90 rounded-lg font-semibold transition-colors text-sm sm:text-base text-secondary-foreground">
-            <Tag size={18} className="mr-2" /> Create Coupon
+            <Tag size={18} className="mr-2" /> {couponActionLabel}
           </button>
           <button
             onClick={() => router.push(`/owner-dashboard/menu?${searchParams.toString()}`)}
@@ -354,10 +365,10 @@ function PageContent() {
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
           <StatCard isLoading={loading} title="Sales" value={dashboardData?.stats.sales || 0} icon={IndianRupee} change={dashboardData?.stats.salesChange || 0} isCurrency />
-          <StatCard isLoading={loading} title="Total Orders" value={dashboardData?.stats.orders || 0} icon={Hash} change={dashboardData?.stats.ordersChange || 0} />
+          <StatCard isLoading={loading} title={orderStatTitle} value={dashboardData?.stats.orders || 0} icon={Hash} change={dashboardData?.stats.ordersChange || 0} />
           <StatCard isLoading={loading} title="New Customers" value={dashboardData?.stats.newCustomers || 0} icon={Users} change={dashboardData?.stats.newCustomersChange || 0} />
           <StatCard isLoading={loading} title="Average Order Value" value={dashboardData?.stats.avgOrderValue || 0} icon={ListFilter} change={dashboardData?.stats.avgOrderValueChange || 0} isCurrency />
-          <StatCard isLoading={loading} title="Today&apos;s Rejections" value={dashboardData?.stats.todayRejections || 0} icon={Ban} isRejection={true} />
+          <StatCard isLoading={loading} title={rejectionStatTitle} value={dashboardData?.stats.todayRejections || 0} icon={Ban} isRejection={true} />
         </div>
 
         {/* Live Feed and Sales Chart */}
