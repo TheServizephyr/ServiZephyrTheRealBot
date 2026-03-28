@@ -26,6 +26,39 @@ const normalizeItem = (item, index) => {
     const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
     const unitPrice = toAmount(item?.price ?? item?.portion?.price, 0);
     const totalPrice = toAmount(item?.totalPrice, unitPrice * quantity);
+    const portionName = sanitizeText(
+        item?.portion?.name ||
+        item?.selectedPortion?.name ||
+        item?.variant ||
+        item?.portionName ||
+        '',
+        ''
+    );
+    const selectedPortion = item?.selectedPortion && typeof item.selectedPortion === 'object'
+        ? {
+            name: sanitizeText(item.selectedPortion.name, portionName),
+            price: toAmount(item.selectedPortion.price, unitPrice),
+        }
+        : null;
+    const portion = item?.portion && typeof item.portion === 'object'
+        ? {
+            name: sanitizeText(item.portion.name, portionName),
+            price: toAmount(item.portion.price, unitPrice),
+        }
+        : null;
+    const portions = Array.isArray(item?.portions)
+        ? item.portions
+            .map((candidate) => ({
+                name: sanitizeText(candidate?.name, ''),
+                price: toAmount(candidate?.price, 0),
+            }))
+            .filter((candidate) => candidate.name)
+        : [];
+    const portionCount = Math.max(
+        0,
+        parseInt(item?.portionCount, 10) || 0,
+        portions.length
+    );
 
     return {
         id: item?.id || `manual-item-${index + 1}`,
@@ -34,7 +67,12 @@ const normalizeItem = (item, index) => {
         price: unitPrice,
         totalPrice,
         categoryId: sanitizeText(item?.categoryId, 'manual'),
-        portionName: sanitizeText(item?.portion?.name || item?.portionName || '', ''),
+        portionName,
+        variant: sanitizeText(item?.variant, portionName),
+        portion: portion || (portionName ? { name: portionName, price: unitPrice } : null),
+        selectedPortion: selectedPortion || (portionName ? { name: portionName, price: unitPrice } : null),
+        portionCount,
+        portions,
     };
 };
 
@@ -123,6 +161,8 @@ export async function POST(req) {
         const deliveryCharge = toAmount(billDetails?.deliveryCharge, 0);
         const serviceFee = toAmount(billDetails?.serviceFee, 0);
         const serviceFeeLabel = sanitizeText(billDetails?.serviceFeeLabel, 'Additional Charge') || 'Additional Charge';
+        const discount = toAmount(billDetails?.discount, 0);
+        const paymentMode = sanitizeText(billDetails?.paymentMode, '') || null;
         const totalAmount = toAmount(billDetails?.grandTotal, subtotal + cgst + sgst + deliveryCharge + serviceFee);
 
         const customerName = sanitizeText(customerDetails?.name, 'Walk-in Customer') || 'Walk-in Customer';
@@ -190,6 +230,8 @@ export async function POST(req) {
             deliveryCharge,
             serviceFee,
             serviceFeeLabel,
+            discount,
+            paymentMode,
             totalAmount,
             settlementEligible,
             isSettled: false,
@@ -360,7 +402,7 @@ export async function GET(req) {
                 serviceFeeLabel: sanitizeText(data.serviceFeeLabel, 'Additional Charge') || 'Additional Charge',
                 totalAmount: amount,
                 itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 0)),
-                items: Array.isArray(data.items) ? data.items : [],
+                items: Array.isArray(data.items) ? data.items.map((item, index) => normalizeItem(item, index)) : [],
                 printedAt: printedAt ? printedAt.toISOString() : null,
                 createdAt: timestampToDate(data.createdAt)?.toISOString() || null,
             });

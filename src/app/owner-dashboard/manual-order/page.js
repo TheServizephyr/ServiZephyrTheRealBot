@@ -1296,6 +1296,16 @@ function ManualOrderPage() {
             price: item.price,
             totalPrice: item.totalPrice,
             portion: item.portion || null,
+            portionName: item.portionName || item.portion?.name || '',
+            selectedPortion: item.selectedPortion || null,
+            variant: item.variant || item.portion?.name || '',
+            portionCount: Number(item.portionCount || (Array.isArray(item.portions) ? item.portions.length : 0)) || 0,
+            portions: Array.isArray(item.portions)
+                ? item.portions.map((portion) => ({
+                    name: String(portion?.name || '').trim(),
+                    price: Number(portion?.price || 0),
+                }))
+                : [],
         }));
 
         const endpoint = accessQuery ? `/api/owner/custom-bill/history?${accessQuery}` : '/api/owner/custom-bill/history';

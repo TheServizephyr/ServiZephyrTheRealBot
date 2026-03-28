@@ -59,6 +59,26 @@ const timestampToDate = (value) => {
 
 const isSettlementEligible = (printedVia) => printedVia !== 'create_order';
 
+const normalizeHistoryItem = (item = {}) => {
+    const portionName = String(
+        item?.portion?.name ||
+        item?.selectedPortion?.name ||
+        item?.variant ||
+        item?.portionName ||
+        ''
+    ).trim();
+    const portionPrice = Number(item?.portion?.price ?? item?.selectedPortion?.price ?? item?.price ?? 0);
+
+    return {
+        ...item,
+        portionName,
+        variant: String(item?.variant || portionName).trim(),
+        portion: item?.portion || (portionName ? { name: portionName, price: portionPrice } : null),
+        selectedPortion: item?.selectedPortion || (portionName ? { name: portionName, price: portionPrice } : null),
+        portionCount: Number(item?.portionCount || (Array.isArray(item?.portions) ? item.portions.length : 0)) || 0,
+    };
+};
+
 const normalizeHistoryEntry = (doc) => {
     const data = doc.data() || {};
     const printedAt = timestampToDate(data.printedAt) || timestampToDate(data.createdAt);
@@ -96,7 +116,7 @@ const normalizeHistoryEntry = (doc) => {
         paymentMode: data.paymentMode || null,
         totalAmount: toAmount(data.totalAmount),
         itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 0)),
-        items: Array.isArray(data.items) ? data.items : [],
+        items: Array.isArray(data.items) ? data.items.map(normalizeHistoryItem) : [],
         printedAt: printedAt ? printedAt.toISOString() : null,
         createdAt: timestampToDate(data.createdAt)?.toISOString() || null,
     };
