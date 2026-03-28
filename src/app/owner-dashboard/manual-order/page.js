@@ -75,6 +75,11 @@ const getItemAvailableStock = (item = {}) => {
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
+const isItemOutOfStock = (item = {}) => {
+    if (item?.isAvailable === false) return true;
+    const availableStock = getItemAvailableStock(item);
+    return availableStock !== null && availableStock <= 0;
+};
 const mergeMenuWithInventory = (menu = {}, inventoryMap = {}) => (
     Object.fromEntries(
         Object.entries(menu || {}).map(([categoryId, items]) => [
@@ -562,7 +567,24 @@ function ManualOrderPage() {
     }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload, toast]);
 
     const enforceCartStockLimit = useCallback((candidateItem, nextQuantity) => {
+        if (candidateItem?.isAvailable === false) {
+            toast({
+                title: 'Item Unavailable',
+                description: `"${candidateItem?.name || 'This item'}" is marked out of stock right now.`,
+                variant: 'destructive',
+            });
+            return false;
+        }
+
         const availableStock = getItemAvailableStock(candidateItem);
+        if (availableStock !== null && availableStock <= 0) {
+            toast({
+                title: 'Out of Stock',
+                description: `"${candidateItem?.name || 'This item'}" is not available right now.`,
+                variant: 'destructive',
+            });
+            return false;
+        }
         if (availableStock === null) return true;
         if (nextQuantity <= availableStock) return true;
 
@@ -2185,13 +2207,19 @@ function ManualOrderPage() {
                                                         </div>
                                                     </motion.button>
 
-                                                    {filteredItems.map(item => {
+                                                {filteredItems.map(item => {
+                                                        const isUnavailable = isItemOutOfStock(item);
                                                         return (
                                                             <motion.div
                                                                 key={item.id}
                                                                 whileHover={{ y: -4, scale: 1.02 }}
                                                                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                                className="p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 rounded-2xl border-2 border-amber-600/30 hover:border-amber-500/60 transition-all shadow-md hover:shadow-xl hover:shadow-amber-900/20 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                                className={cn(
+                                                                    "p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 rounded-2xl border-2 border-amber-600/30 transition-all shadow-md min-h-[130px] flex flex-col backdrop-blur-sm",
+                                                                    isUnavailable
+                                                                        ? "opacity-55 grayscale"
+                                                                        : "hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 hover:border-amber-500/60 hover:shadow-xl hover:shadow-amber-900/20"
+                                                                )}
                                                             >
                                                                 <div className="flex-1 mb-3">
                                                                     <p className="font-bold text-foreground text-base leading-tight">
@@ -2203,17 +2231,23 @@ function ManualOrderPage() {
                                                                         </p>
                                                                     )}
                                                                 </div>
-                                                                <motion.button
-                                                                    whileHover={{ scale: 1.05 }}
-                                                                    whileTap={{ scale: 0.95 }}
-                                                                    onClick={() => addToCart(item, { name: 'Regular', price: item.price })}
-                                                                    className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
-                                                                >
-                                                                    <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
-                                                                    <span className="text-base font-black relative z-10">
-                                                                        {formatCurrency(item.price)}
-                                                                    </span>
-                                                                </motion.button>
+                                                                {isUnavailable ? (
+                                                                    <div className="px-3 py-3 rounded-xl border-2 border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-center font-bold min-h-[70px]">
+                                                                        Out of Stock
+                                                                    </div>
+                                                                ) : (
+                                                                    <motion.button
+                                                                        whileHover={{ scale: 1.05 }}
+                                                                        whileTap={{ scale: 0.95 }}
+                                                                        onClick={() => addToCart(item, { name: 'Regular', price: item.price })}
+                                                                        className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
+                                                                    >
+                                                                        <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+                                                                        <span className="text-base font-black relative z-10">
+                                                                            {formatCurrency(item.price)}
+                                                                        </span>
+                                                                    </motion.button>
+                                                                )}
                                                             </motion.div>
                                                         );
                                                     })}
@@ -2228,6 +2262,7 @@ function ManualOrderPage() {
                                         ) : (
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 {filteredItems.map(item => {
+                                                    const isUnavailable = isItemOutOfStock(item);
                                                     const saleOptions = getItemSaleOptions(item, isStoreBusinessType(businessType));
                                                     if (!item.portions || isStoreBusinessType(businessType)) {
                                                         return (
@@ -2235,7 +2270,12 @@ function ManualOrderPage() {
                                                                 key={item.id}
                                                                 whileHover={{ y: -4, scale: 1.02 }}
                                                                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                                className="p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 rounded-2xl border-2 border-amber-600/30 hover:border-amber-500/60 transition-all shadow-md hover:shadow-xl hover:shadow-amber-900/20 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                                className={cn(
+                                                                    "p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 rounded-2xl border-2 border-amber-600/30 transition-all shadow-md min-h-[130px] flex flex-col backdrop-blur-sm",
+                                                                    isUnavailable
+                                                                        ? "opacity-55 grayscale"
+                                                                        : "hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 hover:border-amber-500/60 hover:shadow-xl hover:shadow-amber-900/20"
+                                                                )}
                                                             >
                                                                 <div className="flex-1 mb-3">
                                                                     <p className="font-bold text-foreground text-base leading-tight">
@@ -2252,22 +2292,28 @@ function ManualOrderPage() {
                                                                         </p>
                                                                     )}
                                                                 </div>
-                                                                <motion.button
-                                                                    whileHover={{ scale: 1.05 }}
-                                                                    whileTap={{ scale: 0.95 }}
-                                                                    onClick={() => addToCart(item, saleOptions[0])}
-                                                                    className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
-                                                                >
-                                                                    <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
-                                                                    {isStoreBusinessType(businessType) && (
-                                                                        <span className="text-[10px] uppercase tracking-[0.18em] opacity-70 relative z-10">
-                                                                            {saleOptions[0].label}
+                                                                {isUnavailable ? (
+                                                                    <div className="px-3 py-3 rounded-xl border-2 border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-center font-bold min-h-[70px]">
+                                                                        Out of Stock
+                                                                    </div>
+                                                                ) : (
+                                                                    <motion.button
+                                                                        whileHover={{ scale: 1.05 }}
+                                                                        whileTap={{ scale: 0.95 }}
+                                                                        onClick={() => addToCart(item, saleOptions[0])}
+                                                                        className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
+                                                                    >
+                                                                        <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+                                                                        {isStoreBusinessType(businessType) && (
+                                                                            <span className="text-[10px] uppercase tracking-[0.18em] opacity-70 relative z-10">
+                                                                                {saleOptions[0].label}
+                                                                            </span>
+                                                                        )}
+                                                                        <span className="text-base font-black relative z-10">
+                                                                            {formatCurrency(saleOptions[0].price)}
                                                                         </span>
-                                                                    )}
-                                                                    <span className="text-base font-black relative z-10">
-                                                                        {formatCurrency(saleOptions[0].price)}
-                                                                    </span>
-                                                                </motion.button>
+                                                                    </motion.button>
+                                                                )}
                                                             </motion.div>
                                                         );
                                                     }
@@ -2278,7 +2324,12 @@ function ManualOrderPage() {
                                                             key={item.id}
                                                             whileHover={{ y: -4, scale: 1.02 }}
                                                             transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                            className="p-5 bg-gradient-to-br from-card via-card to-card/90 hover:from-card hover:via-muted/20 hover:to-card rounded-2xl border-2 border-border/40 hover:border-primary/50 transition-all shadow-md hover:shadow-xl hover:shadow-primary/10 min-h-[130px] flex flex-col backdrop-blur-sm"
+                                                            className={cn(
+                                                                "p-5 bg-gradient-to-br from-card via-card to-card/90 rounded-2xl border-2 border-border/40 transition-all shadow-md min-h-[130px] flex flex-col backdrop-blur-sm",
+                                                                isUnavailable
+                                                                    ? "opacity-55 grayscale"
+                                                                    : "hover:from-card hover:via-muted/20 hover:to-card hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10"
+                                                            )}
                                                         >
                                                             <div className="flex-1 mb-3">
                                                                 <p className="font-bold text-foreground text-base leading-tight">
@@ -2294,29 +2345,34 @@ function ManualOrderPage() {
                                                                 saleOptions.length === 2 ? 'grid-cols-2' :
                                                                     'grid-cols-3'
                                                                 }`}>
-                                                                {saleOptions.map(portion => (
-                                                                    <motion.button
-                                                                        key={portion.name}
-                                                                        whileHover={{ scale: 1.05 }}
-                                                                        whileTap={{ scale: 0.95 }}
-                                                                        onClick={() => addToCart(item, portion)}
-                                                                        className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
-                                                                    >
-                                                                        {/* Subtle gradient overlay on hover */}
-                                                                        <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
+                                                                {isUnavailable ? (
+                                                                    <div className="col-span-full px-3 py-3 rounded-xl border-2 border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-center font-bold min-h-[70px]">
+                                                                        Out of Stock
+                                                                    </div>
+                                                                ) : (
+                                                                    saleOptions.map(portion => (
+                                                                        <motion.button
+                                                                            key={portion.name}
+                                                                            whileHover={{ scale: 1.05 }}
+                                                                            whileTap={{ scale: 0.95 }}
+                                                                            onClick={() => addToCart(item, portion)}
+                                                                            className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
+                                                                        >
+                                                                            <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
 
-                                                                        {saleOptions.length > 1 && (
-                                                                            <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
-                                                                                {portion.label}
-                                                                            </span>
-                                                                        )}
-                                                                        <div className="flex items-center justify-center relative z-10">
-                                                                            <span className="text-base font-black">
-                                                                                {formatCurrency(portion.price)}
-                                                                            </span>
-                                                                        </div>
-                                                                    </motion.button>
-                                                                ))}
+                                                                            {saleOptions.length > 1 && (
+                                                                                <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
+                                                                                    {portion.label}
+                                                                                </span>
+                                                                            )}
+                                                                            <div className="flex items-center justify-center relative z-10">
+                                                                                <span className="text-base font-black">
+                                                                                    {formatCurrency(portion.price)}
+                                                                                </span>
+                                                                            </div>
+                                                                        </motion.button>
+                                                                    ))
+                                                                )}
                                                             </div>
                                                         </motion.div>
                                                     );

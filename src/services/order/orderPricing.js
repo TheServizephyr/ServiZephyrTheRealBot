@@ -138,6 +138,9 @@ async function validateAndCalculateItemPrice(item, menuItemMap, deliveryType) {
     if (!menuItem) {
         throw new PricingError(`Item "${item.id}" not found in menu`);
     }
+    if (menuItem?.isAvailable === false) {
+        throw new PricingError(`"${menuItem.name}" is currently out of stock`, 'ITEM_UNAVAILABLE');
+    }
 
     const normalizedDeliveryType = String(deliveryType || '').trim().toLowerCase();
     if (menuItem?.isDineInExclusive === true && normalizedDeliveryType !== 'dine-in') {

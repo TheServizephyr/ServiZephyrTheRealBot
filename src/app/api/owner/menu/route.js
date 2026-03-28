@@ -582,6 +582,13 @@ export async function PATCH(req) {
             console.log(`[API LOG] PATCH /api/owner/menu: Single item availability update for ${updates.id}.`);
             const itemRef = menuRef.doc(updates.id);
             await itemRef.update({ isAvailable: updates.isAvailable });
+            try {
+                const businessRef = firestore.collection(collectionName).doc(businessId);
+                await businessRef.update({ menuVersion: FieldValue.increment(1) });
+                console.log(`[Menu API] ✅ menuVersion incremented for single availability update on ${businessId}`);
+            } catch (versionError) {
+                console.error('[Menu API] ❌ menuVersion increment failed after single availability update:', versionError);
+            }
             console.log(`[API LOG] PATCH /api/owner/menu: Item ${updates.id} updated.`);
             return NextResponse.json({ message: 'Item availability updated.' }, { status: 200 });
         }
