@@ -7,6 +7,116 @@ import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { findBusinessById } from '@/services/business/businessService';
 
+// --- Analytics Badge Thresholds ---
+// Strict thresholds to prevent badge inflation — only truly top-performing items qualify
+const BADGE_LOOKBACK_DAYS = 30;          // Only consider last 30 days of orders
+const BESTSELLER_MIN_UNITS = 10;         // Must have sold at least 10 units
+const BESTSELLER_TOP_PERCENT = 0.10;     // Must be in top 10% by units sold
+const HIGHLY_REORDERED_MIN_ORDERS = 5;  // Must appear in at least 5 separate orders
+const LOST_ORDER_STATUSES_FOR_BADGE = new Set(['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant']);
+
+/**
+ * Compute insightBadge for each menu item based on ALL sales channels:
+ * - Online orders (delivery, pickup, dine-in, car-order, manual call) → `orders` collection
+ * - Walk-in counter bills (offline billing) → `{businessCollection}/{businessId}/custom_bill_history`
+ *
+ * Returns a Map<itemName (lowercase), badge> for O(1) lookup.
+ */
+async function computeInsightBadges(firestore, restaurantId, businessRef) {
+    try {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - BADGE_LOOKBACK_DAYS);
+        cutoff.setHours(0, 0, 0, 0);
+
+        // Fetch both data sources in parallel for speed
+        const [ordersSnap, counterBillsSnap] = await Promise.all([
+            // SOURCE 1: All online & digital orders (delivery, pickup, dine-in, manual call, car-order)
+            firestore
+                .collection('orders')
+                .where('restaurantId', '==', restaurantId)
+                .where('orderDate', '>=', cutoff)
+                .select('status', 'items')
+                .get(),
+
+            // SOURCE 2: Walk-in counter / offline bills (offline billing, dine-in counter)
+            businessRef
+                ? businessRef
+                    .collection('custom_bill_history')
+                    .where('printedAt', '>=', cutoff)
+                    .select('items')
+                    .get()
+                : Promise.resolve(null),
+        ]);
+
+        // unitsSold: name_lower -> total quantity sold (across ALL channels)
+        // orderCount: name_lower -> number of separate sale events this item appeared in
+        const unitsSold = {};
+        const orderCount = {};
+
+        function processItems(items, txnKey) {
+            const seenInThisTxn = new Set();
+            items.forEach((item) => {
+                const rawName = String(item?.name || '').split(' (')[0].trim();
+                if (!rawName) return;
+                const nameKey = rawName.toLowerCase();
+                const qty = Math.max(1, Number(item?.quantity) || 1);
+                unitsSold[nameKey] = (unitsSold[nameKey] || 0) + qty;
+                if (!seenInThisTxn.has(nameKey)) {
+                    seenInThisTxn.add(nameKey);
+                    orderCount[nameKey] = (orderCount[nameKey] || 0) + 1;
+                }
+            });
+        }
+
+        // Process regular orders (skip cancelled/rejected)
+        ordersSnap.forEach((doc) => {
+            const data = doc.data();
+            if (LOST_ORDER_STATUSES_FOR_BADGE.has(String(data.status || '').toLowerCase())) return;
+            const items = Array.isArray(data.items) ? data.items : [];
+            processItems(items, doc.id);
+        });
+
+        // Process counter bills (no status to skip — counter bills are always completed sales)
+        if (counterBillsSnap) {
+            counterBillsSnap.forEach((doc) => {
+                const data = doc.data();
+                const items = Array.isArray(data.items) ? data.items : [];
+                processItems(items, doc.id);
+            });
+        }
+
+        // Compute Bestseller threshold: top BESTSELLER_TOP_PERCENT of items by units, min BESTSELLER_MIN_UNITS
+        const allUnitValues = Object.values(unitsSold).filter(v => v >= BESTSELLER_MIN_UNITS);
+        if (allUnitValues.length === 0) return new Map(); // No item qualifies
+
+        allUnitValues.sort((a, b) => b - a);
+        const topNCount = Math.max(1, Math.ceil(allUnitValues.length * BESTSELLER_TOP_PERCENT));
+        const bestsellerThreshold = allUnitValues[topNCount - 1]; // min units to be in top %
+
+        const badgeMap = new Map();
+
+        // Assign Bestseller first (higher priority)
+        Object.entries(unitsSold).forEach(([nameKey, units]) => {
+            if (units >= BESTSELLER_MIN_UNITS && units >= bestsellerThreshold) {
+                badgeMap.set(nameKey, 'Bestseller');
+            }
+        });
+
+        // Assign Highly Reordered to items not already marked as Bestseller
+        Object.entries(orderCount).forEach(([nameKey, count]) => {
+            if (count >= HIGHLY_REORDERED_MIN_ORDERS && !badgeMap.has(nameKey)) {
+                badgeMap.set(nameKey, 'Highly Reordered');
+            }
+        });
+
+        return badgeMap;
+    } catch (err) {
+        // Non-critical: if badge computation fails, just return empty (no badges shown)
+        console.warn('[Menu API] Badge computation failed (non-critical):', err?.message || err);
+        return new Map();
+    }
+}
+
 export const dynamic = 'force-dynamic';
 // Removed revalidate=0 to allow CDN caching aligned with Cache-Control headers below
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
@@ -290,8 +400,8 @@ export async function GET(req, { params }) {
         const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
 
         // STEP 2: Build version-based cache key
-        // PATCH: Added _patch4 to force cache refresh for new delivery fee engine fields
-        const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch4`;
+        // PATCH: Added _patch5 to force cache refresh for insightBadge analytics field
+        const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch5`;
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
@@ -419,17 +529,24 @@ export async function GET(req, { params }) {
             menuData[key] = [];
         });
 
+        // Compute insight badges from ALL sales channels (online orders + walk-in counter bills)
+        const insightBadgeMap = await computeInsightBadges(firestore, resolvedWinner.businessRef.id || cacheRestaurantId, businessRef);
+
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
             const categoryKey = item.categoryId || 'general';
             if (String(categoryKey).toLowerCase() === RESERVED_OPEN_ITEMS_CATEGORY_ID) {
                 return;
             }
+            // Attach auto-computed insight badge (overwrites manual analytics-type tags visually)
+            const nameKey = String(item.name || '').trim().toLowerCase();
+            const insightBadge = insightBadgeMap.get(nameKey) || null;
+            const itemWithBadge = { id: doc.id, ...item, insightBadge };
             if (menuData[categoryKey]) {
-                menuData[categoryKey].push({ id: doc.id, ...item });
+                menuData[categoryKey].push(itemWithBadge);
             } else {
                 if (!menuData['general']) menuData['general'] = [];
-                menuData['general'].push({ id: doc.id, ...item });
+                menuData['general'].push(itemWithBadge);
             }
         });
 

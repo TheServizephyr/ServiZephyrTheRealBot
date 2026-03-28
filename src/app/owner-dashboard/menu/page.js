@@ -906,8 +906,14 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             )}
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="tags" className="text-right">{isShop ? 'Keywords' : 'Tags'}</Label>
-                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder={isShop ? "e.g., Bestseller, Fast Moving" : "e.g., Spicy, Chef's Special"} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <div className="col-span-3 space-y-1">
+                                    <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder={isShop ? "e.g., Organic, Fast Moving, New Arrival" : "e.g., Spicy, Crispy, Rich Gravy, Dry"} className="w-full p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                    <p className="text-[11px] text-muted-foreground leading-tight">
+                                        🏆 <strong>Bestseller</strong> &amp; <strong>Highly Reordered</strong> badges are auto-computed from sales — no need to add them manually.
+                                    </p>
+                                </div>
                             </div>
+
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Image</Label>
                                 <div className="col-span-3 flex items-center gap-4">

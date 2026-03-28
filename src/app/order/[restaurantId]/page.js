@@ -1,10 +1,21 @@
 
 'use client';
 
+// Tags that are analytics/insight-driven — NOT manually added by owners as food descriptors.
+// These are rendered as a premium corner badge, not a tag pill.
+const ANALYTICS_TAG_KEYS = new Set([
+    'bestseller',
+    'highly reordered',
+    'popular',
+    'trending',
+    'must try',
+    'chef\'s special',
+]);
+
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car, Crown } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -330,33 +341,84 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
 
     const isOutOfStock = item.isAvailable === false;
 
+    // Separate analytics badges from food characteristic tags
+    const foodTags = useMemo(() => {
+        if (!Array.isArray(item.tags)) return [];
+        return item.tags.filter(tag => !ANALYTICS_TAG_KEYS.has(String(tag || '').toLowerCase()));
+    }, [item.tags]);
+
+    // The badge to show: prefer auto-computed API badge, then fall back to manual analytics tag
+    const insightBadge = useMemo(() => {
+        if (item.insightBadge) return item.insightBadge;
+        if (!Array.isArray(item.tags)) return null;
+        const found = item.tags.find(tag => ANALYTICS_TAG_KEYS.has(String(tag || '').toLowerCase()));
+        return found || null;
+    }, [item.insightBadge, item.tags]);
+
+    const badgeGradient = insightBadge === 'Bestseller'
+        ? 'linear-gradient(to right, #f59e0b, #ea580c)'
+        : 'linear-gradient(to right, #6366f1, #8b5cf6)'; // indigo-violet for Highly Reordered / Popular
+
     return (
         <motion.div
             layout
             className={cn(
-                "flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300",
-                "max-w-full overflow-hidden",
+                "flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300 relative overflow-hidden",
+                "max-w-full",
                 isOutOfStock ? "opacity-40 grayscale" : "hover:-translate-y-1 hover:shadow-primary/20"
             )}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
         >
+            {/* Analytics Insight Badge — gradient corner ribbon */}
+            {insightBadge && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        background: badgeGradient,
+                        color: 'white',
+                        fontSize: '9px',
+                        fontWeight: 800,
+                        padding: '2px 10px 2px 8px',
+                        borderBottomRightRadius: '10px',
+                        borderTopLeftRadius: '12px',
+                        zIndex: 10,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                    }}
+                >
+                    <Crown size={9} />
+                    {insightBadge}
+                </div>
+            )}
+
             <div className="flex-grow flex flex-col min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className={cn("flex items-center gap-2 mb-1", insightBadge && "mt-4")}>
                     <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
                         <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
                     </div>
                     <h4 className="font-semibold text-foreground">{item.name}</h4>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mt-1 mb-2 max-w-full">
-                    {item.tags && item.tags.map(tag => (
-                        <span key={tag} className="px-2 py-0.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1 shrink-0">
-                            <TagIcon size={12} /> {tag}
-                        </span>
-                    ))}
-                </div>
+                {/* Food Characteristic Tags — subtle outline pills */}
+                {foodTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2 max-w-full">
+                        {foodTags.map(tag => (
+                            <span
+                                key={tag}
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md border border-slate-200 text-slate-500 bg-white dark:border-slate-700 dark:text-slate-400 dark:bg-transparent shrink-0"
+                            >
+                                {tag}
+                            </span>
+                        ))}
+                    </div>
+                )}
 
                 <p className="font-bold text-md text-foreground">₹{minPricePortion.price}</p>
 
@@ -3076,20 +3138,44 @@ const OrderPageInternal = () => {
                 }
             }
 
-            // --- START FIX: Sort by availability first, then by the selected criteria ---
+            // --- Sort: availability > insight badge > user sort ---
+            const BADGE_RANK = { 'Bestseller': 0, 'Highly Reordered': 1 };
+            const getItemInsightRank = (item) => {
+                // Check auto-computed badge first, then manual tags
+                if (item.insightBadge && BADGE_RANK[item.insightBadge] !== undefined) {
+                    return BADGE_RANK[item.insightBadge];
+                }
+                if (Array.isArray(item.tags)) {
+                    const manualBadge = item.tags.find(tag => ANALYTICS_TAG_KEYS.has(String(tag || '').toLowerCase()));
+                    if (manualBadge) {
+                        const normalized = String(manualBadge).toLowerCase();
+                        if (normalized === 'bestseller') return BADGE_RANK['Bestseller'];
+                        return 2; // Other analytics tags
+                    }
+                }
+                return 9; // No badge
+            };
+
             items.sort((a, b) => {
-                // Out of stock items go to the bottom
+                // 1. Out of stock items always go to the bottom
                 if (a.isAvailable && !b.isAvailable) return -1;
                 if (!a.isAvailable && b.isAvailable) return 1;
 
-                // Then apply the user's selected sort
+                // 2. When default sort: insight badges bubble to top
+                if (sortBy === 'default') {
+                    const rankA = getItemInsightRank(a);
+                    const rankB = getItemInsightRank(b);
+                    if (rankA !== rankB) return rankA - rankB;
+                }
+
+                // 3. Then apply the user's selected sort
                 if (sortBy === 'price-asc') return getItemLowestPrice(a) - getItemLowestPrice(b);
                 if (sortBy === 'price-desc') return getItemLowestPrice(b) - getItemLowestPrice(a);
                 if (sortBy === 'rating-desc') return (b.rating || 0) - (a.rating || 0);
 
-                return 0; // Default order
+                return 0;
             });
-            // --- END FIX ---
+            // --- END SORT ---
 
             newMenu[category] = items;
         }
