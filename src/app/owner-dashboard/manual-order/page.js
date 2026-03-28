@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown } from 'lucide-react';
+import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
@@ -1399,6 +1399,10 @@ function ManualOrderPage() {
 
     const handleOccupyTable = async () => {
         if (!activeTable) return;
+        if (activeTable?.currentOrder?.isFinalized) {
+            toast({ title: 'Order Locked', description: 'This order is finalized and cannot be edited.', variant: 'destructive' });
+            return;
+        }
         if (!validatePhoneNumber()) return;
         setTableActionLoading(true);
         try {
@@ -1461,6 +1465,30 @@ function ManualOrderPage() {
         }
     };
 
+    const handleFinalizeTable = async (tableData = null) => {
+        const tableToFinalize = tableData?.id ? tableData : selectedOccupiedTable;
+        if (!tableToFinalize || !tableToFinalize.currentOrder) return;
+        if (tableToFinalize.currentOrder?.isFinalized) return;
+        setTableActionLoading(true);
+        try {
+            const user = auth.currentUser;
+            const idToken = await user.getIdToken();
+            const res = await fetch(buildScopedUrl(`/api/owner/manual-tables/${tableToFinalize.id}`), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ action: 'finalize' })
+            });
+            if (!res.ok) throw new Error('Failed to lock order');
+            toast({ title: 'Order Locked', description: `${tableToFinalize.name} order is now finalized. No further edits allowed.` });
+            setSelectedOccupiedTable(null);
+            fetchManualTables();
+        } catch (error) {
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        } finally {
+            setTableActionLoading(false);
+        }
+    };
+
     const handleSettleTable = async (tableData = null) => {
         const tableToSettle = tableData?.id ? tableData : selectedOccupiedTable;
         if (!tableToSettle || !tableToSettle.currentOrder) return;
@@ -1495,6 +1523,17 @@ function ManualOrderPage() {
             });
 
             if (!historyRes.ok) throw new Error('Failed to save bill history');
+
+            // Auto-settle the dine-in order right away
+            const historyData = await historyRes.json();
+            const savedHistoryId = historyData?.historyId;
+            if (savedHistoryId) {
+                await fetch(buildScopedUrl('/api/owner/custom-bill/history'), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                    body: JSON.stringify({ action: 'settle', historyIds: [savedHistoryId] }),
+                });
+            }
 
             // 2. Free the table
             const freeRes = await fetch(buildScopedUrl(`/api/owner/manual-tables/${tableToSettle.id}`), {
@@ -1869,42 +1908,68 @@ function ManualOrderPage() {
                                     </div>
                                 </div>
                             </div>
-                            <DialogFooter className="flex-col sm:flex-col gap-2 mt-2" style={{ display: 'flex' }}>
-                                <Button
-                                    onClick={() => {
-                                        const order = selectedOccupiedTable.currentOrder;
-                                        if (order) {
-                                            setCart(order.items || []);
-                                            if (order.customerDetails) setCustomerDetails(order.customerDetails);
-                                            if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
-                                            if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
-                                            if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
-                                        }
-                                        setActiveTable(selectedOccupiedTable);
-                                        setSelectedOccupiedTable(null);
-                                    }}
-                                    variant="outline"
-                                    className="w-full border-2 border-primary/20 hover:bg-primary/10"
-                                    disabled={tableActionLoading}
-                                >
-                                    <Edit className="w-4 h-4 mr-2" /> Add/Edit Items
-                                </Button>
-                                <Button
-                                    onClick={() => {
-                                        setTableToPrint(selectedOccupiedTable); // Triggers print
-                                    }}
-                                    className="w-full bg-slate-800 hover:bg-slate-700 font-bold"
-                                    disabled={tableActionLoading}
-                                >
-                                    <Printer className="w-4 h-4 mr-2" /> Print Bill
-                                </Button>
-                                <Button
-                                    onClick={() => handleSettleTable()}
-                                    className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold"
-                                    disabled={tableActionLoading}
-                                >
-                                    <CheckCircle className="w-4 h-4 mr-2" /> Settle & Free
-                                </Button>
+                            <DialogFooter className="mt-2" style={{ display: 'block' }}>
+                                {(() => {
+                                    const isFinalized = !!selectedOccupiedTable?.currentOrder?.isFinalized;
+                                    return (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {/* Edit — hidden when finalized */}
+                                            {!isFinalized && (
+                                                <Button
+                                                    onClick={() => {
+                                                        const order = selectedOccupiedTable.currentOrder;
+                                                        if (order) {
+                                                            setCart(order.items || []);
+                                                            if (order.customerDetails) setCustomerDetails(order.customerDetails);
+                                                            if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
+                                                            if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
+                                                            if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
+                                                        }
+                                                        setActiveTable(selectedOccupiedTable);
+                                                        setSelectedOccupiedTable(null);
+                                                    }}
+                                                    variant="outline"
+                                                    className="border-2 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+                                                    disabled={tableActionLoading}
+                                                >
+                                                    <Edit className="w-4 h-4 mr-1.5" /> Edit
+                                                </Button>
+                                            )}
+                                            {/* Print Bill */}
+                                            <Button
+                                                onClick={() => setTableToPrint(selectedOccupiedTable)}
+                                                className={cn(
+                                                    "bg-indigo-600 hover:bg-indigo-700 font-semibold",
+                                                    isFinalized && "col-span-1"
+                                                )}
+                                                disabled={tableActionLoading}
+                                            >
+                                                <Printer className="w-4 h-4 mr-1.5" /> Print
+                                            </Button>
+                                            {/* Lock Order  hidden when finalized */}
+                                            {!isFinalized && (
+                                                <Button
+                                                    onClick={() => handleFinalizeTable()}
+                                                    className="bg-orange-500 hover:bg-orange-600 font-semibold"
+                                                    disabled={tableActionLoading}
+                                                >
+                                                    <Lock className="w-4 h-4 mr-1.5" /> Lock Order
+                                                </Button>
+                                            )}
+                                            {/* Settle & Free */}
+                                            <Button
+                                                onClick={() => handleSettleTable()}
+                                                className={cn(
+                                                    "bg-emerald-600 hover:bg-emerald-700 font-bold",
+                                                    isFinalized && "col-span-1"
+                                                )}
+                                                disabled={tableActionLoading}
+                                            >
+                                                <CheckCircle className="w-4 h-4 mr-1.5" /> Settle & Free
+                                            </Button>
+                                        </div>
+                                    );
+                                })()}
                             </DialogFooter>
                         </>
                     )}
@@ -2015,12 +2080,31 @@ function ManualOrderPage() {
                                         if (table.status === 'occupied') {
                                             const customerName = getTableCustomerName(table);
                                             const occupiedTime = formatElapsedTableTime(table.currentOrder?.occupiedAt || table.currentOrder?.orderDate);
+                                            const isFinalized = !!table.currentOrder?.isFinalized;
                                             return (
                                                 <div
                                                     key={table.id}
-                                                    className="relative flex flex-col p-3 rounded-xl border-2 border-amber-500 bg-[#1e1e1e] shadow-md min-h-[132px] text-center overflow-hidden cursor-pointer group"
+                                                    className={cn(
+                                                        "relative flex flex-col p-3 rounded-xl border-2 shadow-md min-h-[132px] text-center overflow-hidden cursor-pointer group",
+                                                        isFinalized
+                                                            ? "border-emerald-500 bg-[#1a2a1e]"
+                                                            : "border-amber-500 bg-[#1e1e1e]"
+                                                    )}
                                                     onClick={() => setSelectedOccupiedTable(table)}
                                                 >
+                                                    {/* Large status dot — centered top, ~half card width */}
+                                                    <div className="flex justify-center mb-2 mt-1">
+                                                        <span
+                                                            className={cn(
+                                                                "block w-1/2 h-4 rounded-full",
+                                                                isFinalized
+                                                                    ? "bg-emerald-400"
+                                                                    : "bg-yellow-400 animate-pulse"
+                                                            )}
+                                                            title={isFinalized ? 'Order Locked' : 'Order Active'}
+                                                        />
+                                                    </div>
+                                                    {/* Rename button (hover) */}
                                                     <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); setTableToEdit(table); setNewTableName(table.name); setIsEditTableModalOpen(true); }}
@@ -2030,7 +2114,7 @@ function ManualOrderPage() {
                                                         </button>
                                                     </div>
                                                     {occupiedTime ? (
-                                                        <span className="text-sm font-semibold text-amber-200/90 mb-1">
+                                                        <span className={cn("text-sm font-semibold mb-1", isFinalized ? "text-emerald-200/90" : "text-amber-200/90")}>
                                                             {occupiedTime}
                                                         </span>
                                                     ) : (
@@ -2039,19 +2123,19 @@ function ManualOrderPage() {
                                                     <h3 className="font-bold text-2xl leading-none mb-2 text-white">{table.name}</h3>
                                                     <div className="flex flex-col items-center gap-1 mb-2">
                                                         {customerName && (
-                                                            <span className="max-w-full truncate text-sm font-semibold text-white/90">
-                                                                {customerName}
-                                                            </span>
+                                                            <span className="max-w-full truncate text-sm font-semibold text-white/90">{customerName}</span>
                                                         )}
                                                         <span className="text-sm text-gray-300">{table.currentOrder?.items?.length || 0} {table.currentOrder?.items?.length === 1 ? 'item' : 'items'}</span>
                                                     </div>
                                                     <div className="mt-auto mb-2">
-                                                        <span className="text-3xl font-bold leading-none text-amber-500">
+                                                        <span className={cn("text-3xl font-bold leading-none", isFinalized ? "text-emerald-400" : "text-amber-500")}>
                                                             {formatCurrency(table.currentOrder?.grandTotal || 0)}
                                                         </span>
                                                     </div>
 
+                                                    {/* 2-button row: Edit + Print */}
                                                     <div className="mt-auto pt-2 border-t border-white/10 flex items-center justify-between gap-1.5">
+                                                        {!isFinalized && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -2069,13 +2153,11 @@ function ManualOrderPage() {
                                                             className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-amber-500 hover:bg-[#333] transition-colors"
                                                             title="Add/Edit Items"
                                                         >
-                                                            <Plus size={15} />
+                                                            <Edit size={15} />
                                                         </button>
+                                                        )}
                                                         <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setTableToPrint(table); // Triggers direct browser print via useEffect
-                                                            }}
+                                                            onClick={(e) => { e.stopPropagation(); setTableToPrint(table); }}
                                                             disabled={tableActionLoading}
                                                             className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-white hover:bg-[#333] transition-colors"
                                                             title="Print Bill"

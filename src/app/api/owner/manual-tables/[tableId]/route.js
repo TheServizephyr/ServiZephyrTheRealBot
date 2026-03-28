@@ -52,6 +52,17 @@ export async function PUT(req, { params }) {
 
                 return NextResponse.json({ message: 'Table occupied/updated successfully.' }, { status: 200 });
 
+            } else if (action === 'finalize') {
+                if (tableData.status !== 'occupied' || !tableData.currentOrder) {
+                    return NextResponse.json({ message: 'Table must be occupied with an active order to finalize.' }, { status: 400 });
+                }
+                transaction.update(tableRef, {
+                    'currentOrder.isFinalized': true,
+                    'currentOrder.finalizedAt': new Date().toISOString(),
+                    updatedAt: FieldValue.serverTimestamp()
+                });
+                return NextResponse.json({ message: 'Order finalized. Table is now locked for edits.' }, { status: 200 });
+
             } else if (action === 'free') {
                 transaction.update(tableRef, {
                     status: 'available',
