@@ -1112,7 +1112,8 @@ export async function POST(request) {
                 const customerNameFromPayload = change.value.contacts?.[0]?.profile?.name || fromPhoneNumber;
 
 
-                // ⚡ 0.5. INSTANT WELCOME FIRE — send before ALL DB writes for max speed
+                // ⚡ 0.5. INSTANT WELCOME FIRE — send before DB writes for max speed
+                // Guards: skip for commands (need help, end chat) and dine-in confirmations
                 let instantWelcomePromise = null;
 
                 if (message.type === 'text' && conversationData.state === 'menu') {
@@ -1121,21 +1122,31 @@ export async function POST(request) {
 
                     const isNeedHelp = textBody.match(/^[\"']?\s*need\s*help\??\s*[\"']?$/i) || textBody.match(/^[\"']?\s*help\s*[\"']?$/i);
                     const isEndChat = textBody.match(/^[\"']?\s*end\s*chat\s*[\"']?$/i);
+                    // Dine-in confirmations contain "order ID:" — these get their own dedicated response,
+                    // so we must NOT send a welcome message for them.
+                    const isDineInMessage = /order\s*ID\s*:/i.test(rawTextBody);
 
-                    // Fire for ANY text in menu state — not just greetings.
-                    // Since QStash is now bypassed and /process is called sync, this fires immediately.
-                    if (!isNeedHelp && !isEndChat) {
-                        console.log(`[Webhook WA] ⚡ Firing INSTANT welcome for ${fromPhoneNumber} before DB writes`);
-                        instantWelcomePromise = sendWelcomeMessageWithOptions(
-                            fromNumber,
-                            business,
-                            botPhoneNumberId,
-                            null,
-                            {
-                                customerName: customerNameFromPayload,
-                                bypassRateLimit: true
-                            }
-                        ).catch(e => console.error('[Webhook WA] Instant welcome error:', e));
+                    if (!isNeedHelp && !isEndChat && !isDineInMessage) {
+                        // Rate-limit: only fire if no welcome was sent in the last 10s
+                        const lastSentRaw = conversationSnap.exists ? conversationSnap.data()?.lastWelcomeSent : null;
+                        const lastSentDate = lastSentRaw?.toDate ? lastSentRaw.toDate() : (lastSentRaw ? new Date(lastSentRaw) : null);
+                        const recentlySent = lastSentDate && (Date.now() - lastSentDate.getTime()) < 10000;
+
+                        if (!recentlySent) {
+                            console.log(`[Webhook WA] ⚡ Firing INSTANT welcome for ${fromPhoneNumber} before DB writes`);
+                            instantWelcomePromise = sendWelcomeMessageWithOptions(
+                                fromNumber,
+                                business,
+                                botPhoneNumberId,
+                                null,
+                                {
+                                    customerName: customerNameFromPayload,
+                                    bypassRateLimit: true // rate limit already checked above
+                                }
+                            ).catch(e => console.error('[Webhook WA] Instant welcome error:', e));
+                        } else {
+                            console.log(`[Webhook WA] Welcome rate-limited for ${fromPhoneNumber} — skipping instant fire`);
+                        }
                     }
                 }
 
