@@ -1357,7 +1357,6 @@ export async function POST(request) {
                         );
                     }
                 }
-                }
             }
             return NextResponse.json({ message: 'Messages processed' }, { status: 200 });
         }
