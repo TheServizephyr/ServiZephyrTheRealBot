@@ -1792,7 +1792,7 @@ export default function LiveOrdersPage() {
                 })
                 .map((order) => order.id)
         );
-        if (relevantOrderIds.size === 0) {
+        if (!loading && relevantOrderIds.size === 0) {
             emitAppNotification({
                 scope: 'owner',
                 action: 'stop_alarm',
@@ -1827,7 +1827,7 @@ export default function LiveOrdersPage() {
         }
 
         prevRelevantOrderIdsRef.current = relevantOrderIds;
-    }, [orders, userRole]);
+    }, [orders, userRole, loading]);
 
     useEffect(() => {
         if (!userRole) return;
@@ -1841,7 +1841,7 @@ export default function LiveOrdersPage() {
                 .map((order) => order.id)
         );
 
-        if (pendingOrderIds.size === 0) {
+        if (!loading && pendingOrderIds.size === 0) {
             emitAppNotification({
                 scope: 'owner',
                 action: 'stop_alarm',
@@ -1873,9 +1873,10 @@ export default function LiveOrdersPage() {
         }
 
         prevPendingOrderIdsRef.current = pendingOrderIds;
-    }, [orders, userRole]);
+    }, [orders, userRole, loading]);
 
     useEffect(() => {
+        if (loading) return;
         const pendingCount = orders.filter((order) => order.status === 'pending').length;
         if (pendingCount === 0) {
             emitAppNotification({
@@ -1884,7 +1885,7 @@ export default function LiveOrdersPage() {
                 alarmId: 'live_orders_pending'
             });
         }
-    }, [orders]);
+    }, [orders, loading]);
 
 
     const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
@@ -1945,10 +1946,7 @@ export default function LiveOrdersPage() {
                 (previousStatus === 'pending' && newStatus !== 'pending') ||
                 (previousStatus === 'confirmed' && newStatus !== 'confirmed')
             ) {
-                emitAppNotification({
-                    scope: 'owner',
-                    action: 'stop_alarm'
-                });
+                // Alarm will be stopped naturally by the orders state listener if no pending orders remain.
             }
         } catch (error) {
             // REVERT optimistic update on error

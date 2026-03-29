@@ -156,6 +156,13 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
 
             if (audioUnlockedRef.current || !audioRef.current) return;
 
+            // If an alarm is already actively playing, do not interrupt it with the silent unlock test.
+            if (!audioRef.current.paused || (fallbackAudioRef.current && !fallbackAudioRef.current.paused)) {
+                audioUnlockedRef.current = true;
+                console.log('[Audio] Unlocked implicitly by active playback');
+                return;
+            }
+
             audioRef.current.volume = 0;
             const playPromise = audioRef.current.play();
 
