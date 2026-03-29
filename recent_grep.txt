@@ -1,0 +1,22 @@
+
+src\app\owner-dashboard\manual-order\page.js:30:const formatCategoryLabel = (categoryId = '') => String(categoryId).replace(/-/g, ' ').trim();
+src\app\owner-dashboard\manual-order\page.js:85:        Object.entries(menu || {}).map(([categoryId, items]) => [
+src\app\owner-dashboard\manual-order\page.js:86:            categoryId,
+src\app\owner-dashboard\manual-order\page.js:169:    const [activeCategory, setActiveCategory] = useState('');
+src\app\owner-dashboard\manual-order\page.js:187:    const categoryRefs = useRef({});
+src\app\owner-dashboard\manual-order\page.js:643:        const sortedCategoryIds = Object.keys(menu || {})
+src\app\owner-dashboard\manual-order\page.js:644:            .filter((categoryId) => categoryId !== 'open-items')
+src\app\owner-dashboard\manual-order\page.js:645:            .sort((a, b) => formatCategoryLabel(a).localeCompare(formatCategoryLabel(b)));
+src\app\owner-dashboard\manual-order\page.js:647:        for (const categoryId of sortedCategoryIds) {
+src\app\owner-dashboard\manual-order\page.js:648:            const items = menu[categoryId];
+src\app\owner-dashboard\manual-order\page.js:659:                entries.push([categoryId, sortedItems]);
+src\app\owner-dashboard\manual-order\page.js:677:    // Calculate dynamic default width based on the longest category name
+src\app\owner-dashboard\manual-order\page.js:681:        for (const [categoryId] of visibleMenuEntries) {
+src\app\owner-dashboard\manual-order\page.js:682:            const label = formatCategoryLabel(categoryId);
+src\app\owner-dashboard\manual-order\page.js:716:            setActiveCategory(current);
+src\app\owner-dashboard\manual-order\page.js:720:        // Set initial active category
+src\app\owner-dashboard\manual-order\page.js:721:        const availableCategoryIds = visibleMenuEntries.map(([categoryId]) => categoryId);
+src\app\owner-dashboard\manual-order\page.js:722:        if (availableCategoryIds.length > 0) {
+src\app\owner-dashboard\manual-order\page.js:723:            setActiveCategory((prev) => (availableCategoryIds.includes(prev) ? prev : availableCategoryIds[0]));
+src\app\owner-dashboard\manual-order\page.js:728:    const scrollToCategory = (catId) => {
+

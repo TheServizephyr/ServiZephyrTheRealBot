@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock } from 'lucide-react';
+import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
@@ -176,6 +177,52 @@ function ManualOrderPage() {
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
     const [inventoryByItemId, setInventoryByItemId] = useState({});
     const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
+
+    // Category Drag & Drop State
+    const [isMounted, setIsMounted] = useState(false);
+    const [categoryOrder, setCategoryOrder] = useState([]);
+    
+    useEffect(() => {
+        setIsMounted(true);
+        if (typeof window === 'undefined') return;
+        const uid = impersonatedOwnerId || employeeOfOwnerId || auth?.currentUser?.uid || 'default';
+        try {
+            const saved = localStorage.getItem(`manual_order_category_order_${uid}`);
+            if (saved) setCategoryOrder(JSON.parse(saved));
+        } catch(e) {}
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const onCategoryDragEnd = (result) => {
+        if (!result.destination) return;
+        const { source, destination } = result;
+        if (source.droppableId !== destination.droppableId) return;
+
+        setCategoryOrder(prev => {
+            // Ensure visibleMenuEntries is defined before using it
+            const currentEntries = typeof visibleMenuEntries !== 'undefined' ? visibleMenuEntries : [];
+            const sortedIds = (
+                prev.length > 0
+                    ? [...currentEntries].sort((a, b) => {
+                        const idxA = prev.indexOf(a[0]);
+                        const idxB = prev.indexOf(b[0]);
+                        if (idxA === -1 && idxB === -1) return 0;
+                        if (idxA === -1) return 1;
+                        if (idxB === -1) return -1;
+                        return idxA - idxB;
+                    })
+                    : currentEntries
+            ).map(e => e[0]);
+
+            const [reorderedItem] = sortedIds.splice(source.index, 1);
+            sortedIds.splice(destination.index, 0, reorderedItem);
+
+            try {
+                const uid = impersonatedOwnerId || employeeOfOwnerId || auth?.currentUser?.uid || 'default';
+                localStorage.setItem(`manual_order_category_order_${uid}`, JSON.stringify(sortedIds));
+            } catch(e) {}
+            return sortedIds;
+        });
+    };
     const [cacheStatus, setCacheStatus] = useState('checking');
     const [businessType, setBusinessType] = useState('restaurant');
     const [isBusinessTypeResolved, setIsBusinessTypeResolved] = useState(false);
@@ -2217,22 +2264,57 @@ function ManualOrderPage() {
                                 style={{ width: `${sidebarWidth}px` }}
                                 className="flex-shrink-0 border-r border-border pr-2 overflow-y-auto overscroll-contain custom-scrollbar hidden md:block"
                             >
-                                <div className="space-y-1">
-                                    {visibleMenuEntries.map(([categoryId]) => (
-                                        <button
-                                            key={categoryId}
-                                            onClick={() => scrollToCategory(categoryId)}
-                                            className={cn(
-                                                "w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all capitalize",
-                                                activeCategory === categoryId
-                                                    ? "bg-primary text-primary-foreground shadow-md scale-[1.02]"
-                                                    : "text-muted-foreground hover:bg-muted"
-                                            )}
-                                        >
-                                            {formatCategoryLabel(categoryId)}
-                                        </button>
-                                    ))}
-                                </div>
+                                <DragDropContext onDragEnd={onCategoryDragEnd}>
+                                    <Droppable droppableId="manual-categories">
+                                        {(provided) => {
+                                            const sortedMenuEntries = [...visibleMenuEntries].sort((a, b) => {
+                                                if (categoryOrder.length === 0) return 0;
+                                                const idxA = categoryOrder.indexOf(a[0]);
+                                                const idxB = categoryOrder.indexOf(b[0]);
+                                                if (idxA === -1 && idxB === -1) return 0;
+                                                if (idxA === -1) return 1;
+                                                if (idxB === -1) return -1;
+                                                return idxA - idxB;
+                                            });
+
+                                            return (
+                                                <div className="space-y-1.5 p-1" ref={provided.innerRef} {...provided.droppableProps}>
+                                                    {isMounted && sortedMenuEntries.map(([categoryId], index) => (
+                                                        <Draggable key={`cat-${categoryId}`} draggableId={`cat-${categoryId}`} index={index}>
+                                                            {(provided, snapshot) => (
+                                                                <div
+                                                                    ref={provided.innerRef}
+                                                                    {...provided.draggableProps}
+                                                                    className="relative flex items-center group mb-1 border-2 border-border/60 rounded-lg overflow-hidden bg-background"
+                                                                    style={{ ...provided.draggableProps.style }}
+                                                                >
+                                                                    <div
+                                                                        {...provided.dragHandleProps}
+                                                                        className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center bg-muted/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing border-r border-border/50 text-muted-foreground z-10"
+                                                                    >
+                                                                        <GripVertical size={16} />
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => scrollToCategory(categoryId)}
+                                                                        className={cn(
+                                                                            "w-full text-left pl-7 pr-3 py-3 text-base font-semibold transition-all capitalize",
+                                                                            activeCategory === categoryId
+                                                                                ? "bg-primary text-primary-foreground shadow-sm"
+                                                                                : "text-muted-foreground hover:bg-muted/50"
+                                                                        )}
+                                                                    >
+                                                                        {formatCategoryLabel(categoryId)}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </Draggable>
+                                                    ))}
+                                                    {provided.placeholder}
+                                                </div>
+                                            );
+                                        }}
+                                    </Droppable>
+                                </DragDropContext>
                             </div>
 
                             {/* RESIZE HANDLE */}

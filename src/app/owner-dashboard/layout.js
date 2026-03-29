@@ -347,12 +347,32 @@ function OwnerDashboardContent({ children }) {
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      setSidebarOpen(!mobile);
+      if (mobile) {
+        setSidebarOpen(false);
+      } else {
+        // Only collapse initially if the current path is manual-order
+        if (typeof window !== 'undefined' && window.location.pathname === '/owner-dashboard/manual-order') {
+          setSidebarOpen(false);
+        } else {
+          setSidebarOpen(true);
+        }
+      }
     };
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Auto-collapse sidebar based on pathname navigation
+  useEffect(() => {
+    if (!isMobile) {
+      if (pathname === '/owner-dashboard/manual-order' || pathname.startsWith('/owner-dashboard/manual-order?')) {
+        setSidebarOpen(false);
+      } else {
+        setSidebarOpen(true);
+      }
+    }
+  }, [pathname, isMobile]);
 
   // Track if we've given auth time to settle
   const [authChecked, setAuthChecked] = useState(false);

@@ -1,0 +1,13 @@
+
+src\app\owner-dashboard\manual-order\page.js:638:    // Define visibleMenuEntries BEFORE the scroll spy effect
+src\app\owner-dashboard\manual-order\page.js:639:    const visibleMenuEntries = useMemo(() => {
+src\app\owner-dashboard\manual-order\page.js:679:        if (!visibleMenuEntries || visibleMenuEntries.length === 0) return 150;
+src\app\owner-dashboard\manual-order\page.js:681:        for (const [categoryId] of visibleMenuEntries) {
+src\app\owner-dashboard\manual-order\page.js:689:    }, [visibleMenuEntries]);
+src\app\owner-dashboard\manual-order\page.js:699:            // Use visibleMenuEntries to get all categories including open-items
+src\app\owner-dashboard\manual-order\page.js:700:            const categories = visibleMenuEntries.map(([catId]) => catId);
+src\app\owner-dashboard\manual-order\page.js:721:        const availableCategoryIds = visibleMenuEntries.map(([categoryId]) => categoryId);
+src\app\owner-dashboard\manual-order\page.js:726:    }, [visibleMenuEntries]);
+src\app\owner-dashboard\manual-order\page.js:2221:                                    {visibleMenuEntries.map(([categoryId]) => (
+src\app\owner-dashboard\manual-order\page.js:2258:                                ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
+

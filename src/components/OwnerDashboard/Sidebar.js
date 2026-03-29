@@ -24,11 +24,13 @@ import {
   QrCode,
   UserCircle,
   FilePlus,
+  GripVertical
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
 import { motion } from 'framer-motion';
 import { useState, useEffect, useRef } from 'react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, getDocs, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import Image from 'next/image';
@@ -284,9 +286,89 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     }
   }, [userRole]);
 
-  // If role is still pending for employee, show empty menus to prevent flash
-  const menuItems = isRolePending ? [] : allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages, businessType));
-  const settingsItems = isRolePending ? [] : allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages, businessType));
+  const [isMounted, setIsMounted] = useState(false);
+  const [menuOrder, setMenuOrder] = useState([]);
+  const [settingsOrder, setSettingsOrder] = useState([]);
+
+  useEffect(() => {
+    setIsMounted(true);
+    if (typeof window === 'undefined') return;
+    const uid = effectiveOwnerId || auth?.currentUser?.uid || 'default';
+    try {
+      const savedMenu = localStorage.getItem(`sidebar_menu_order_${uid}`);
+      if (savedMenu) setMenuOrder(JSON.parse(savedMenu));
+      const savedSettings = localStorage.getItem(`sidebar_settings_order_${uid}`);
+      if (savedSettings) setSettingsOrder(JSON.parse(savedSettings));
+    } catch (e) { }
+  }, [effectiveOwnerId]);
+
+  const onDragEnd = (result) => {
+    if (!result.destination) return;
+    const { source, destination } = result;
+
+    // Only allow sorting within the same list
+    if (source.droppableId !== destination.droppableId) return;
+
+    if (source.droppableId === 'menu') {
+      setMenuOrder(prev => {
+        const sortedIds = getSortedItems(visibleMenuItems, prev).map(i => i.featureId);
+        const [reorderedItem] = sortedIds.splice(source.index, 1);
+        sortedIds.splice(destination.index, 0, reorderedItem);
+        try {
+          const uid = effectiveOwnerId || auth?.currentUser?.uid || 'default';
+          localStorage.setItem(`sidebar_menu_order_${uid}`, JSON.stringify(sortedIds));
+        } catch(e) {}
+        return sortedIds;
+      });
+    } else if (source.droppableId === 'settings') {
+      setSettingsOrder(prev => {
+        const sortedIds = getSortedItems(visibleSettingsItems, prev).map(i => i.featureId);
+        const [reorderedItem] = sortedIds.splice(source.index, 1);
+        sortedIds.splice(destination.index, 0, reorderedItem);
+        try {
+          const uid = effectiveOwnerId || auth?.currentUser?.uid || 'default';
+          localStorage.setItem(`sidebar_settings_order_${uid}`, JSON.stringify(sortedIds));
+        } catch(e) {}
+        return sortedIds;
+      });
+    }
+  };
+
+  const getSortedItems = (items, order) => {
+    if (!order || order.length === 0) return items;
+    return [...items].sort((a, b) => {
+      const indexA = order.indexOf(a.featureId);
+      const indexB = order.indexOf(b.featureId);
+      if (indexA === -1 && indexB === -1) return 0;
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    });
+  };
+
+  // 1. Get all allowed features by role/permissions
+  const allowedMenuItems = isRolePending ? [] : allMenuItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages, businessType));
+  const allowedSettingsItems = isRolePending ? [] : allSettingsItems.filter(item => canAccessPage(effectiveRole, item.featureId, customAllowedPages, businessType));
+
+  // 2. Sort the allowed items based on user preferences
+  const sortedAllowedMenuItems = getSortedItems(allowedMenuItems, menuOrder);
+  const sortedAllowedSettingsItems = getSortedItems(allowedSettingsItems, settingsOrder);
+
+  // 3. Separate unlocked and locked items
+  const unlockedMenuItems = sortedAllowedMenuItems.filter(item => !getIsDisabled(item.featureId));
+  const lockedMenuItems = sortedAllowedMenuItems.filter(item => getIsDisabled(item.featureId));
+
+  const unlockedSettingsItems = sortedAllowedSettingsItems.filter(item => !getIsDisabled(item.featureId));
+  const lockedSettingsItems = sortedAllowedSettingsItems.filter(item => getIsDisabled(item.featureId));
+
+  // 4. Pin locked items strictly to the bottom
+  const sortedMenuItems = [...unlockedMenuItems, ...lockedMenuItems];
+  const sortedSettingsItems = [...unlockedSettingsItems, ...lockedSettingsItems];
+
+  // Using a separate constant to feed drag contexts so locked items are ignored during sort maps explicitly if needed
+  // But since we just sort the *unlocked* in DnD, we only map the full array when rendering
+  const visibleMenuItems = unlockedMenuItems;
+  const visibleSettingsItems = unlockedSettingsItems;
 
 
   // Fetch WhatsApp Unread Count
@@ -586,45 +668,100 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       </div>
 
       <nav className={styles.sidebarNav}>
-        <div className={styles.menuGroup}>
-          <span className={`${styles.menuGroupTitle} ${isCollapsed ? styles.collapsedText : ''}`}>Menu</span>
-          {menuItems.map((item) => (
-            <div key={item.name} onClick={handleLinkClick}>
-              <SidebarLink
-                item={{
-                  ...item,
-                  badge: item.featureId === 'whatsapp-direct'
-                    ? whatsappUnreadCount
-                    : item.featureId === 'live-orders'
-                      ? pendingOrdersCount
-                      : item.featureId === 'dine-in'
-                        ? (dineInPendingOrdersCount + dineInServiceRequestsCount)
-                        : item.featureId === 'bookings'
-                          ? waitlistEntriesCount
-                          : 0
-                }}
-                isCollapsed={isCollapsed}
-                isDisabled={getIsDisabled(item.featureId)}
-                disabledIcon={Lock}
-                disabledMessage={`${item.name} is not available for your account. Please contact support for more information.`}
-              />
-            </div>
-          ))}
-        </div>
-        <div className={styles.menuGroup}>
-          <span className={`${styles.menuGroupTitle} ${isCollapsed ? styles.collapsedText : ''}`}>General</span>
-          {settingsItems.map((item) => (
-            <div key={item.name} onClick={handleLinkClick}>
-              <SidebarLink
-                item={item}
-                isCollapsed={isCollapsed}
-                isDisabled={getIsDisabled(item.featureId)}
-                disabledIcon={Lock}
-                disabledMessage={`${item.name} is not available for your account. Please contact support for more information.`}
-              />
-            </div>
-          ))}
-        </div>
+        <DragDropContext onDragEnd={onDragEnd}>
+          <Droppable droppableId="menu">
+            {(provided) => (
+              <div ref={provided.innerRef} {...provided.droppableProps} className={styles.menuGroup}>
+                <span className={`${styles.menuGroupTitle} ${isCollapsed ? styles.collapsedText : ''}`}>Menu</span>
+                {isMounted && sortedMenuItems.map((item, index) => {
+                  const disabled = getIsDisabled(item.featureId);
+                  return (
+                  <Draggable key={item.featureId} draggableId={`menu-${item.featureId}`} index={index} isDragDisabled={isCollapsed || disabled}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        className="relative flex items-center group cursor-default"
+                        style={{ ...provided.draggableProps.style }}
+                      >
+                        {!disabled && (
+                          <div
+                            {...provided.dragHandleProps}
+                            className={`absolute left-0.5 z-10 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing text-muted-foreground ${isCollapsed ? 'hidden' : 'block'}`}
+                          >
+                            <GripVertical size={16} />
+                          </div>
+                        )}
+                        <div className="flex-1 w-full" onClick={handleLinkClick}>
+                          <SidebarLink
+                            item={{
+                              ...item,
+                              badge: item.featureId === 'whatsapp-direct'
+                                ? whatsappUnreadCount
+                                : item.featureId === 'live-orders'
+                                  ? pendingOrdersCount
+                                  : item.featureId === 'dine-in'
+                                    ? (dineInPendingOrdersCount + dineInServiceRequestsCount)
+                                    : item.featureId === 'bookings'
+                                      ? waitlistEntriesCount
+                                      : 0
+                            }}
+                            isCollapsed={isCollapsed}
+                            isDisabled={disabled}
+                            disabledIcon={Lock}
+                            disabledMessage={`${item.name} is not available for your account. Please contact support for more information.`}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                )})}
+                {provided.placeholder}
+              </div>
+            )}
+          </Droppable>
+
+          <Droppable droppableId="settings">
+            {(provided) => (
+              <div ref={provided.innerRef} {...provided.droppableProps} className={styles.menuGroup}>
+                <span className={`${styles.menuGroupTitle} ${isCollapsed ? styles.collapsedText : ''}`}>General</span>
+                {isMounted && sortedSettingsItems.map((item, index) => {
+                  const disabled = getIsDisabled(item.featureId);
+                  return (
+                  <Draggable key={item.featureId} draggableId={`settings-${item.featureId}`} index={index} isDragDisabled={isCollapsed || disabled}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        className="relative flex items-center group cursor-default"
+                        style={{ ...provided.draggableProps.style }}
+                      >
+                        {!disabled && (
+                          <div
+                            {...provided.dragHandleProps}
+                            className={`absolute left-0.5 z-10 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing text-muted-foreground ${isCollapsed ? 'hidden' : 'block'}`}
+                          >
+                            <GripVertical size={16} />
+                          </div>
+                        )}
+                        <div className="flex-1 w-full" onClick={handleLinkClick}>
+                          <SidebarLink
+                            item={item}
+                            isCollapsed={isCollapsed}
+                            isDisabled={disabled}
+                            disabledIcon={Lock}
+                            disabledMessage={`${item.name} is not available for your account. Please contact support for more information.`}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </Draggable>
+                )})}
+                {provided.placeholder}
+              </div>
+            )}
+          </Droppable>
+        </DragDropContext>
       </nav>
     </>
   );
