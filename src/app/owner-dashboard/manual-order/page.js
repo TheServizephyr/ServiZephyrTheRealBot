@@ -1474,6 +1474,11 @@ function ManualOrderPage() {
             if (!res.ok) throw new Error('Failed to save to table');
 
             toast({ title: 'Saved', description: `Order saved to ${activeTable.name}` });
+
+            // Auto-print bill after saving to table
+            const savedTableData = { ...activeTable, currentOrder };
+            setTableToPrint(savedTableData);
+
             setActiveTable(null);
             handleClear(); // Clear cart
             fetchManualTables();
@@ -2204,10 +2209,18 @@ function ManualOrderPage() {
                                                         </button>
                                                         )}
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); setTableToPrint(table); }}
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                // Print first
+                                                                setTableToPrint(table);
+                                                                // Lock the order if not already locked
+                                                                if (!table?.currentOrder?.isFinalized) {
+                                                                    await handleFinalizeTable(table);
+                                                                }
+                                                            }}
                                                             disabled={tableActionLoading}
                                                             className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-white hover:bg-[#333] transition-colors"
-                                                            title="Print Bill"
+                                                            title={table?.currentOrder?.isFinalized ? 'Reprint Bill' : 'Print & Lock Bill'}
                                                         >
                                                             <Printer size={15} />
                                                         </button>
