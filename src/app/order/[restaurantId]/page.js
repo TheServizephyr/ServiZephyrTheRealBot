@@ -4011,6 +4011,10 @@ const OrderPageInternal = () => {
                                                 } catch (e) { console.error(e) } finally { setAddressLoading(false); }
                                             }
                                         }}
+                                        onEdit={(addr) => {
+                                            const editData = encodeURIComponent(JSON.stringify(addr));
+                                            router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                        }}
                                     />
                                     {/* Drag Handle Indicator - Pull Up to Close */}
                                     <div className="w-full flex flex-col items-center justify-center py-6 opacity-50 space-y-2 pointer-events-none">

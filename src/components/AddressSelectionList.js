@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlusCircle, Home, Building, MapPin, CheckCircle, Trash2, LocateFixed } from 'lucide-react';
+import { PlusCircle, Home, Building, MapPin, CheckCircle, Trash2, LocateFixed, Edit2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const AddressSelectionList = ({
@@ -9,6 +9,7 @@ const AddressSelectionList = ({
     onUseCurrentLocation,
     onAddNewAddress,
     onDelete,
+    onEdit,
     loading = false
 }) => {
     return (
@@ -82,18 +83,31 @@ const AddressSelectionList = ({
                                 </div>
                             </div>
 
-                            {/* Delete Button - Only show if onDelete provided */}
-                            {onDelete && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDelete(addr.id);
-                                    }}
-                                    className="absolute top-2 right-2 p-2 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
-                            )}
+                            {/* Action Buttons */}
+                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {onEdit && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEdit(addr);
+                                        }}
+                                        className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                                    >
+                                        <Edit2 size={14} />
+                                    </button>
+                                )}
+                                {onDelete && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDelete(addr.id);
+                                        }}
+                                        className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     ))
                 ) : (

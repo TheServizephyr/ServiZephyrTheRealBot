@@ -140,6 +140,43 @@ const AddAddressPageInternal = () => {
         verifySessionToken();
     }, [token, phone, ref, tableId]);
 
+    const editId = searchParams.get('editId');
+    const editDataRaw = searchParams.get('editData');
+
+    // Initialize edit data
+    useEffect(() => {
+        if (!editDataRaw || !isTokenValid) return;
+        try {
+            const data = JSON.parse(decodeURIComponent(editDataRaw));
+            setAddressDetails({
+                street: data.street || '',
+                city: data.city || '',
+                state: data.state || '',
+                pincode: data.pincode || '',
+                country: data.country || 'IN',
+                latitude: data.latitude,
+                longitude: data.longitude
+            });
+            setMapCenter({ lat: data.latitude, lng: data.longitude });
+            setFullAddress(data.mapAddress || data.full || '');
+            setSearchQuery(data.mapAddress || data.full || '');
+            setAddressDetail(data.addressDetail || '');
+            setLandmark(data.landmark || '');
+            setRecipientName(data.name || '');
+            setRecipientPhone(data.phone || '');
+            
+            const standardLabels = ['Home', 'Work', 'Other'];
+            if (standardLabels.includes(data.label)) {
+                setAddressLabel(data.label);
+            } else {
+                setAddressLabel('Other');
+                setCustomAddressLabel(data.label || '');
+            }
+            setLoading(false);
+        } catch (e) {
+            console.error('[Add Address] Failed to parse editData:', e);
+        }
+    }, [editDataRaw, isTokenValid]);
     const reverseGeocode = useCallback(async (coords) => {
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
         geocodeTimeoutRef.current = setTimeout(async () => {
@@ -473,7 +510,7 @@ const AddAddressPageInternal = () => {
 
     // Effect for initial location resolution (only once after token validation)
     useEffect(() => {
-        if (!isTokenValid || initialLocationResolvedRef.current) return;
+        if (!isTokenValid || initialLocationResolvedRef.current || editDataRaw) return;
 
         initialLocationResolvedRef.current = true;
         if (useCurrent) {
@@ -481,7 +518,7 @@ const AddAddressPageInternal = () => {
         } else {
             getIpApproximateLocation();
         }
-    }, [isTokenValid, useCurrent, getCurrentGeolocation, getIpApproximateLocation]);
+    }, [isTokenValid, useCurrent, getCurrentGeolocation, getIpApproximateLocation, editDataRaw]);
 
 
     const handleConfirmLocation = async () => {
@@ -503,7 +540,7 @@ const AddAddressPageInternal = () => {
         const combinedAddress = [cleanedAddressDetail, cleanedFullAddress].filter(Boolean).join(', ');
 
         const addressToSave = {
-            id: `addr_${Date.now()}`,
+            id: editId || `addr_${Date.now()}`,
             label: finalLabel,
             name: recipientName.trim(),
             phone: recipientPhone.trim(),

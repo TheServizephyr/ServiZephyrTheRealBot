@@ -2747,6 +2747,10 @@ const CheckoutPageInternal = () => {
                                             }}
                                             onUseCurrentLocation={handleUseCurrentLocation}
                                             onAddNewAddress={handleAddNewAddress}
+                                            onEdit={(addr) => {
+                                                const editData = encodeURIComponent(JSON.stringify(addr));
+                                                router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                            }}
                                         />
 
                                         {/* Drag Handle Indicator - Pull Up to Close */}
