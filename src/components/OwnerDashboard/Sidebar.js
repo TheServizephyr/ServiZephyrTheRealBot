@@ -430,24 +430,83 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     return () => unsubscribe();
   }, [businessType, impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage]);
 
-  // Fetch Pending Orders Count (Real-time)
+  // Fetch Pending Orders Count (Real-time and Fallback)
   useEffect(() => {
     if (businessType === 'street-vendor') return;
-    // Skip if impersonating (too complex to handle multiple listeners properly without context)
-    // or if not owner
-    if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
+    if (!auth.currentUser) return;
     if (isOnLiveOrdersPage) return; // Live Orders page already has direct realtime; avoid duplicate listener
 
     let unsubscribe = () => { };
+    let pollInterval = null;
+
+    const handleCountUpdate = (count) => {
+      setPendingOrdersCount(count);
+
+      if (!hasBootstrappedPendingNotifRef.current) {
+        hasBootstrappedPendingNotifRef.current = true;
+        prevPendingCountRef.current = count;
+        return;
+      }
+
+      if (count > prevPendingCountRef.current) {
+        const delta = count - prevPendingCountRef.current;
+        emitAppNotification({
+          scope: 'owner',
+          title: 'New Live Order',
+          message: delta === 1
+            ? '1 new order is waiting in Live Orders.'
+            : `${delta} new orders are waiting in Live Orders.`,
+          dedupeKey: `sidebar_pending_${count}_${Date.now()}`,
+          alarmId: 'live_orders_pending',
+          disableAutoStop: true,
+          sound: '/notification-owner-manager.mp3',
+          href: '/owner-dashboard/live-orders'
+        });
+      }
+      if (count === 0 && prevPendingCountRef.current > 0) {
+        emitAppNotification({
+          scope: 'owner',
+          action: 'stop_alarm',
+          alarmId: 'live_orders_pending'
+        });
+      }
+      prevPendingCountRef.current = count;
+    };
 
     const setupListener = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
+
+        // Fallback to API polling for impersonate/employee due to Firestore security rules
+        if (impersonatedOwnerId || employeeOfOwnerId) {
+          const pollData = async () => {
+            try {
+              const idToken = await user.getIdToken();
+              let url = new URL('/api/owner/orders', window.location.origin);
+              if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+              else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
+
+              const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+              if (res.ok) {
+                const data = await res.json();
+                const count = (data.orders || []).filter(o => o.status === 'pending').length;
+                handleCountUpdate(count);
+              }
+            } catch (e) {
+              console.error('Sidebar Polling error:', e);
+            }
+          };
+
+          pollData();
+          pollInterval = setInterval(pollData, 60000); // Poll every 60s
+          return;
+        }
+
         const business = await resolveOwnedBusiness(user.uid, businessType);
         if (!business?.id) return;
 
-        // 2. Listen for Pending Orders
+        // Listen for Pending Orders (Realtime via Firestore)
         const ordersQuery = query(
           collection(db, 'orders'),
           where('restaurantId', '==', business.id),
@@ -455,38 +514,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         );
 
         unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
-          const count = snapshot.size;
-          setPendingOrdersCount(count);
-
-          if (!hasBootstrappedPendingNotifRef.current) {
-            hasBootstrappedPendingNotifRef.current = true;
-            prevPendingCountRef.current = count;
-            return;
-          }
-
-          if (count > prevPendingCountRef.current) {
-            const delta = count - prevPendingCountRef.current;
-            emitAppNotification({
-              scope: 'owner',
-              title: 'New Live Order',
-              message: delta === 1
-                ? '1 new order is waiting in Live Orders.'
-                : `${delta} new orders are waiting in Live Orders.`,
-              dedupeKey: `sidebar_pending_${count}`,
-              alarmId: 'live_orders_pending',
-              disableAutoStop: true,
-              sound: '/notification-owner-manager.mp3',
-              href: '/owner-dashboard/live-orders'
-            });
-          }
-          if (count === 0 && prevPendingCountRef.current > 0) {
-            emitAppNotification({
-              scope: 'owner',
-              action: 'stop_alarm',
-              alarmId: 'live_orders_pending'
-            });
-          }
-          prevPendingCountRef.current = count;
+          handleCountUpdate(snapshot.size);
         }, (error) => {
           console.error("Error listening to pending orders:", error);
         });
@@ -498,7 +526,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
     setupListener();
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, [businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
 
   // Dine-In badge counts (pending dine-in orders + pending service requests)
