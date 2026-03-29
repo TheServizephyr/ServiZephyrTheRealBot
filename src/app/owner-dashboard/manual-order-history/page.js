@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -168,6 +171,36 @@ const resolveBillBreakdown = (bill, restaurant = null) => {
     };
 };
 
+const OrderTypeCell = ({ bill, onTypeChange }) => {
+    const [localType, setLocalType] = useState(bill.orderType || 'dine-in');
+
+    useEffect(() => {
+        setLocalType(bill.orderType || 'dine-in');
+    }, [bill.orderType]);
+
+    return (
+        <div onClick={(e) => e.stopPropagation()}>
+            <Select
+                value={localType}
+                onValueChange={(val) => {
+                    const prevType = localType;
+                    setLocalType(val);
+                    onTypeChange(bill, val, () => setLocalType(prevType));
+                }}
+            >
+                <SelectTrigger className="w-[100px] h-8 text-xs font-semibold uppercase border border-border/40 bg-muted/20 hover:bg-muted/40 transition-colors shadow-none focus:ring-0">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="dine-in" className="text-xs font-semibold uppercase cursor-pointer">DINE-IN</SelectItem>
+                    <SelectItem value="delivery" className="text-xs font-semibold uppercase cursor-pointer">DELIVERY</SelectItem>
+                    <SelectItem value="pickup" className="text-xs font-semibold uppercase cursor-pointer">PICKUP</SelectItem>
+                </SelectContent>
+            </Select>
+        </div>
+    );
+};
+
 export default function ManualOrderHistoryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -186,6 +219,7 @@ export default function ManualOrderHistoryPage() {
     const [pendingRebillPrint, setPendingRebillPrint] = useState(false);
     const [restaurant, setRestaurant] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [typeUpdateState, setTypeUpdateState] = useState({ isOpen: false, bill: null, newType: null, phone: '' });
     const rebillPrintRef = useRef(null);
     const pollingIntervalRef = useRef(null);
     const historySignatureRef = useRef('');
@@ -254,6 +288,8 @@ export default function ManualOrderHistoryPage() {
             const nextSignature = JSON.stringify({
                 history: nextHistory.map((bill) => ({
                     id: bill.id,
+                    orderType: bill.orderType,
+                    customerPhone: bill.customerPhone,
                     historyId: bill.historyId,
                     printedAt: bill.printedAt,
                     createdAt: bill.createdAt,
@@ -480,6 +516,58 @@ export default function ManualOrderHistoryPage() {
         return data;
     };
 
+    const updateOrderType = async (historyId, newOrderType, customerPhone = null) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error('Please login first.');
+        const idToken = await user.getIdToken();
+
+        const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
+        if (impersonatedOwnerId) apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+        else if (employeeOfOwnerId) apiUrl.searchParams.set('employee_of', employeeOfOwnerId);
+
+        const res = await fetch(apiUrl.toString(), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ action: 'update-type', historyIds: [historyId], orderType: newOrderType, customerPhone }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.message || 'Update failed.');
+        return data;
+    };
+
+    const handleTypeDropdownChange = async (bill, newType, revertLocal) => {
+        if (bill.orderType === newType) return;
+        
+        if (newType === 'delivery' && !bill.customerPhone) {
+            if (revertLocal) revertLocal();
+            setTypeUpdateState({ isOpen: true, bill, newType, phone: '' });
+            return;
+        }
+
+        try {
+            await updateOrderType(bill.id, newType);
+        } catch (error) {
+            if (revertLocal) revertLocal();
+            setInfoDialog({ isOpen: true, title: 'Update Failed', message: error.message });
+        }
+    };
+
+    const confirmTypeUpdate = async () => {
+        const { bill, newType, phone } = typeUpdateState;
+        if (newType === 'delivery' && (!phone || phone.replace(/\D/g, '').length !== 10)) {
+            setInfoDialog({ isOpen: true, title: 'Validation Error', message: 'A valid 10-digit phone number is required.' });
+            return;
+        }
+
+        setTypeUpdateState({ isOpen: false, bill: null, newType: null, phone: '' });
+
+        try {
+            await updateOrderType(bill.id, newType, phone);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Update Failed', message: error.message });
+        }
+    };
+
     const handleSettleSelected = async () => {
         if (selectedBillIds.length === 0) return;
         try {
@@ -550,6 +638,31 @@ export default function ManualOrderHistoryPage() {
                 message={infoDialog.message}
                 onClose={() => setInfoDialog(prev => ({ ...prev, isOpen: false }))}
             />
+
+            {/* Order Type Change Phone Prompt Dialog */}
+            <Dialog open={typeUpdateState.isOpen} onOpenChange={(open) => !open && setTypeUpdateState(prev => ({ ...prev, isOpen: false }))}>
+                <DialogContent className="bg-card border-border text-foreground max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Phone Number Required</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-2">
+                        <Label htmlFor="type-phone" className="text-sm font-medium mb-1 inline-block">Please enter a valid phone number for delivery.</Label>
+                        <Input 
+                            id="type-phone"
+                            type="tel" 
+                            className="mt-1"
+                            placeholder="e.g. 9876543210"
+                            maxLength={10}
+                            value={typeUpdateState.phone}
+                            onChange={(e) => setTypeUpdateState(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))} 
+                        />
+                    </div>
+                    <div className="flex justify-end gap-2 mt-4">
+                        <Button variant="outline" onClick={() => setTypeUpdateState(prev => ({ ...prev, isOpen: false }))}>Cancel</Button>
+                        <Button className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={confirmTypeUpdate}>Continue</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Bill Detail Modal */}
             {selectedBill && (
@@ -752,7 +865,7 @@ export default function ManualOrderHistoryPage() {
                                                 {bill.customerOrderId || String(bill.historyId || bill.id).slice(0, 12)}
                                             </td>
                                             <td className="p-4 uppercase text-xs font-semibold text-muted-foreground">
-                                                {bill.orderType || '-'}
+                                                <OrderTypeCell bill={bill} onTypeChange={handleTypeDropdownChange} />
                                             </td>
                                             <td className="p-4">
                                                 <div className="font-medium">{bill.customerName || 'Walk-in Customer'}</div>

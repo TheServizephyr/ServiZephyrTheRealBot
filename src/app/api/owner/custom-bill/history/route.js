@@ -448,8 +448,14 @@ export async function PATCH(req) {
             ? [...new Set(body.historyIds.map((id) => sanitizeText(id, '')).filter(Boolean))]
             : [];
 
-        if (action !== 'settle' && action !== 'unsettle') {
+        const newOrderType = sanitizeText(body?.orderType, '').toLowerCase();
+        const newCustomerPhone = sanitizeText(body?.customerPhone, '') || null;
+
+        if (action !== 'settle' && action !== 'unsettle' && action !== 'update-type') {
             return NextResponse.json({ message: 'Unsupported action.' }, { status: 400 });
+        }
+        if (action === 'update-type' && !['delivery', 'pickup', 'dine-in'].includes(newOrderType)) {
+            return NextResponse.json({ message: 'Invalid order type.' }, { status: 400 });
         }
         if (historyIds.length === 0) {
             return NextResponse.json({ message: 'At least one bill ID is required.' }, { status: 400 });
@@ -486,6 +492,16 @@ export async function PATCH(req) {
             const printedVia = data.printedVia || 'browser';
             const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
             
+            if (action === 'update-type') {
+                const updateFields = { orderType: newOrderType };
+                if (newCustomerPhone) {
+                    updateFields.customerPhone = newCustomerPhone;
+                }
+                updatedCount += 1;
+                batch.update(docSnap.ref, updateFields);
+                return;
+            }
+
             if (!settlementEligible) {
                 skippedCount += 1;
                 return;
