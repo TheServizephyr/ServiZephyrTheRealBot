@@ -1932,7 +1932,7 @@ const OrderPageInternal = () => {
     const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('default');
-    const [filters, setFilters] = useState({ veg: false, nonVeg: false, recommended: false });
+    const [filters, setFilters] = useState({ veg: false, nonVeg: false, recommended: false, bestseller: false, highlyReordered: false });
     const [storeFilters, setStoreFilters] = useState(DEFAULT_STORE_FILTERS);
     const [selectedStoreCategoryId, setSelectedStoreCategoryId] = useState('');
     const [customizationItem, setCustomizationItem] = useState(null);
@@ -3120,6 +3120,24 @@ const OrderPageInternal = () => {
             if (!isStoreBusiness && filters.nonVeg) items = items.filter(item => !item.isVeg);
             if ((!isStoreBusiness || isStoreFilterContextActive) && filters.recommended) {
                 items = items.filter(item => item.isRecommended);
+            }
+            if (!isStoreBusiness && filters.bestseller) {
+                items = items.filter(item => {
+                    if (item.insightBadge === 'Bestseller') return true;
+                    if (Array.isArray(item.tags)) {
+                        return item.tags.some(tag => String(tag || '').toLowerCase() === 'bestseller');
+                    }
+                    return false;
+                });
+            }
+            if (!isStoreBusiness && filters.highlyReordered) {
+                items = items.filter(item => {
+                    if (item.insightBadge === 'Highly Reordered') return true;
+                    if (Array.isArray(item.tags)) {
+                        return item.tags.some(tag => String(tag || '').toLowerCase() === 'highly reordered');
+                    }
+                    return false;
+                });
             }
 
             if (isStoreBusiness && isStoreFilterContextActive) {
@@ -4724,6 +4742,32 @@ const OrderPageInternal = () => {
                                                                     <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
                                                                 </div>
                                                             </div>
+                                                            {!isStoreBusiness && (
+                                                                <>
+                                                                    <div className="h-px bg-border w-full"></div>
+                                                                    <div className="space-y-2">
+                                                                        <h4 className="font-medium leading-none">Filter by Tags</h4>
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            <Button 
+                                                                                variant={filters.bestseller ? 'default' : 'outline'} 
+                                                                                size="sm" 
+                                                                                onClick={() => handleFilterChange('bestseller')} 
+                                                                                className={cn(filters.bestseller && 'bg-primary hover:bg-primary/90 text-primary-foreground')}
+                                                                            >
+                                                                                <i className="fas fa-crown text-[10px] mr-1"></i> Bestseller
+                                                                            </Button>
+                                                                            <Button 
+                                                                                variant={filters.highlyReordered ? 'default' : 'outline'} 
+                                                                                size="sm" 
+                                                                                onClick={() => handleFilterChange('highlyReordered')} 
+                                                                                className={cn(filters.highlyReordered && 'bg-primary hover:bg-primary/90 text-primary-foreground')}
+                                                                            >
+                                                                                <i className="fas fa-history text-[10px] mr-1"></i> Highly Reordered
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     </PopoverContent>
                                                 </Popover>
