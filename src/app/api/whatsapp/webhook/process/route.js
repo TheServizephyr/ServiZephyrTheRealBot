@@ -1111,31 +1111,31 @@ export async function POST(request) {
 
                 const customerNameFromPayload = change.value.contacts?.[0]?.profile?.name || fromPhoneNumber;
 
-                // ✅ 0.5. INSTANT WELCOME FIRE (Optimistic execution for max speed)
+
+                // ⚡ 0.5. INSTANT WELCOME FIRE — send before ALL DB writes for max speed
                 let instantWelcomePromise = null;
 
                 if (message.type === 'text' && conversationData.state === 'menu') {
                     const rawTextBody = message.text?.body || '';
                     const textBody = rawTextBody.trim().toLowerCase();
-                    
-                    const isNeedHelp = textBody.match(/^["']?\s*need\s*help\??\s*["']?$/i) || textBody.match(/^["']?\s*help\s*["']?$/i);
-                    const isEndChat = textBody.match(/^["]?\s*end\s*chat\s*["]?$/i);
-                    const greetingMatch = rawTextBody.match(/^\s*(hi+|hii+|hello+|hey+|hlo+)\b[\s!.?]*$/i);
-                    
-                    // If it's a greeting, shoot the welcome message IMMEDIATELY before starting the 5 DB writes
-                    if (greetingMatch && !isNeedHelp && !isEndChat) {
-                        console.log(`[Webhook WA] ⚡ Firing INSTANT welcome message for ${fromPhoneNumber} before DB writes`);
-                        
+
+                    const isNeedHelp = textBody.match(/^[\"']?\s*need\s*help\??\s*[\"']?$/i) || textBody.match(/^[\"']?\s*help\s*[\"']?$/i);
+                    const isEndChat = textBody.match(/^[\"']?\s*end\s*chat\s*[\"']?$/i);
+
+                    // Fire for ANY text in menu state — not just greetings.
+                    // Since QStash is now bypassed and /process is called sync, this fires immediately.
+                    if (!isNeedHelp && !isEndChat) {
+                        console.log(`[Webhook WA] ⚡ Firing INSTANT welcome for ${fromPhoneNumber} before DB writes`);
                         instantWelcomePromise = sendWelcomeMessageWithOptions(
                             fromNumber,
                             business,
                             botPhoneNumberId,
                             null,
-                            { 
+                            {
                                 customerName: customerNameFromPayload,
-                                bypassRateLimit: true // skip rate limit DB check for absolute fastest response
+                                bypassRateLimit: true
                             }
-                        ).catch(e => console.error("[Webhook WA] Instant welcome error:", e));
+                        ).catch(e => console.error('[Webhook WA] Instant welcome error:', e));
                     }
                 }
 
@@ -1340,16 +1340,23 @@ export async function POST(request) {
                     console.log(`[Webhook WA] Media received in Menu mode. Triggering Direct Chat.`);
                     await activateDirectChat(fromNumber, business, botPhoneNumberId);
                 }
-                // Handle text messages in Menu mode (Strict Enforcement)
+                // Handle text messages in Menu mode — welcome already fired via instantWelcomePromise,
+                // just await it to ensure it completes before we return.
                 else if (message.type === 'text') {
-                    // For any text in menu mode, always show the same single Order CTA welcome.
-                    await sendWelcomeMessageWithOptions(
-                        fromNumber,
-                        business,
-                        botPhoneNumberId,
-                        null,
-                        { customerName: customerNameFromPayload }
-                    );
+                    if (instantWelcomePromise) {
+                        await instantWelcomePromise;
+                    } else {
+                        // Fallback: was a command (needHelp/endChat) that already handled separately,
+                        // or welcome was not pre-fired for some reason.
+                        await sendWelcomeMessageWithOptions(
+                            fromNumber,
+                            business,
+                            botPhoneNumberId,
+                            null,
+                            { customerName: customerNameFromPayload }
+                        );
+                    }
+                }
                 }
             }
             return NextResponse.json({ message: 'Messages processed' }, { status: 200 });

@@ -1,26 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Client } from "@upstash/qstash";
 import crypto from 'crypto';
-import { getFirestore } from '@/lib/firebase-admin';
-
-async function getBusinessBrief(firestore, botPhoneNumberId) {
-    // ⚡ Parallel queries instead of sequential — saves ~200-400ms
-    const [rSnap, sSnap, vSnap] = await Promise.all([
-        firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
-        firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
-        firestore.collection('street_vendors').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get(),
-    ]);
-    if (!rSnap.empty) return { id: rSnap.docs[0].id, collection: 'restaurants' };
-    if (!sSnap.empty) return { id: sSnap.docs[0].id, collection: 'shops' };
-    if (!vSnap.empty) return { id: vSnap.docs[0].id, collection: 'street_vendors' };
-    return null;
-}
-
-const normalizePhone = (phone) => {
-    if (!phone) return '';
-    const cleaned = phone.replace(/^\+?91/, '').replace(/\D/g, '');
-    return cleaned.length > 10 ? cleaned.slice(-10) : cleaned;
-};
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
@@ -48,7 +28,7 @@ export async function GET(request) {
 export async function POST(request) {
     console.log("[Webhook WA Receiver] POST request received.");
     try {
-        // ✅ SECURITY: Verify Meta X-Hub-Signature-256 HMAC before Queueing
+        // ✅ SECURITY: Verify Meta X-Hub-Signature-256 HMAC before processing
         const signature = request.headers.get('x-hub-signature-256');
         const appSecret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
         const rawBodyText = await request.text();
@@ -83,62 +63,20 @@ export async function POST(request) {
             return NextResponse.json({ message: 'Not a WhatsApp event' }, { status: 200 });
         }
 
-        // 🛑 OPTIMIZATION: Only queue actual incoming customer messages. 
-        // Bypass QStash for status updates (sent, delivered, read) to save free tier limits.
         const change = body?.entry?.[0]?.changes?.[0];
         const value = change?.value || {};
         const hasMessages = Array.isArray(value.messages) && value.messages.length > 0;
-        
+
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://www.servizephyr.com';
         const processUrl = `${baseUrl.replace(/\/+$/, '')}/api/whatsapp/webhook/process`;
 
-        // Default to bypass if it's not a message event (like status)
-        let shouldBypassQStash = !hasMessages;
-        let bypassReason = !hasMessages ? 'non-message event (status update)' : '';
-
-        // If it is a message, intelligently bypass based on state & type
+        // ⚡ SPEED OPTIMIZATION: Process ALL incoming customer messages synchronously.
+        // Every user (new/old, any conversation state) gets the welcome message — there is no case
+        // where QStash helps response time here. QStash adds 5-10s of queue + cold-start latency.
+        // Only status-update events (sent/delivered/read — no .messages array) still go to QStash
+        // to conserve quota since they don't need a fast human-facing response.
         if (hasMessages) {
-            const message = value.messages[0];
-            if (message.type === 'interactive' || message.type === 'button') {
-                shouldBypassQStash = true;
-                bypassReason = 'interactive button push';
-            } else if (['text', 'image', 'audio', 'video', 'document'].includes(message.type)) {
-                try {
-                    // FAST FIRESTORE CHECK
-                    const firestore = await getFirestore();
-                    const botId = value.metadata?.phone_number_id;
-                    const business = await getBusinessBrief(firestore, botId);
-                    
-                    if (business) {
-                        const customerPhone = normalizePhone(message.from);
-                        const convRef = firestore.collection(business.collection).doc(business.id).collection('conversations').doc(customerPhone);
-                        const convSnap = await convRef.get();
-                        const state = convSnap.exists ? convSnap.data().state : 'menu';
-                        
-                        if (state === 'direct_chat' || state === 'browsing_order') {
-                            shouldBypassQStash = true;
-                            bypassReason = `active conversation state (${state})`;
-                        } else {
-                            // Let's specifically check if it's exactly the tracking greeting/help so we can queue it
-                            const text = (message.text?.body || '').trim().toLowerCase();
-                            const isNeedHelp = text.match(/^["']?\s*need\s*help\??\s*["']?$/i) || text.match(/^["']?\s*help\s*["']?$/i);
-                            const isEndChat = text.match(/^["]?\s*end\s*chat\s*["]?$/i);
-                            
-                            // If it's a lightweight sync command, process it synchronously
-                            if (isNeedHelp || isEndChat) {
-                                shouldBypassQStash = true;
-                                bypassReason = 'lightweight text command';
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.error('[Webhook WA Receiver] ⚠️ Error during fast state check, will fallback to queue', e);
-                }
-            }
-        }
-
-        if (shouldBypassQStash) {
-            console.log(`[Webhook WA Receiver] ⚡ Bypassing QStash for ${bypassReason}. Saving quota.`);
+            console.log(`[Webhook WA Receiver] ⚡ Incoming message — processing synchronously for speed.`);
             const syncResponse = await fetch(processUrl, {
                 method: 'POST',
                 headers: {
@@ -147,14 +85,22 @@ export async function POST(request) {
                 },
                 body: JSON.stringify(body)
             });
-            return NextResponse.json({ message: 'Processed synchronously to save quota' }, { status: syncResponse.status });
+            return NextResponse.json({ message: 'Processed synchronously' }, { status: syncResponse.status });
         }
 
-        // Publish to QStash
+        // Status-only events (sent/delivered/read) → QStash for async processing
         const qstashToken = process.env.QSTASH_TOKEN || process.env.KV_REST_API_TOKEN;
         if (!qstashToken) {
-            console.warn('[Webhook WA Receiver] ⚠️ QSTASH_TOKEN not set. Configure in .env');
-            return NextResponse.json({ message: 'Server configuration error.' }, { status: 500 });
+            console.warn('[Webhook WA Receiver] ⚠️ QSTASH_TOKEN not set. Falling back to sync for status event.');
+            const syncResponse = await fetch(processUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-internal-fallback-bypass': appSecret || 'fallback-secret'
+                },
+                body: JSON.stringify(body)
+            });
+            return NextResponse.json({ message: 'Processed synchronously (no QStash token)' }, { status: syncResponse.status });
         }
 
         const qstashClient = new Client({ token: qstashToken });
@@ -165,12 +111,10 @@ export async function POST(request) {
                 body: body,
                 retries: 3
             });
-            console.log('[Webhook WA Receiver] 🚀 Event queued successfully to QStash');
-            return NextResponse.json({ message: 'Event queued successfully' }, { status: 200 });
+            console.log('[Webhook WA Receiver] 🚀 Status event queued to QStash');
+            return NextResponse.json({ message: 'Status event queued' }, { status: 200 });
         } catch (qstashError) {
-            console.error('[Webhook WA Receiver] ⚠️ QStash queuing failed (Limit Exceeded?). Falling back to synchronous processing.', qstashError.message);
-            
-            // 🔥 FAIL-SAFE FALLBACK: Call the processor synchronously directly
+            console.error('[Webhook WA Receiver] ⚠️ QStash queuing failed. Falling back to sync.', qstashError.message);
             const fallbackResponse = await fetch(processUrl, {
                 method: 'POST',
                 headers: {
@@ -179,9 +123,8 @@ export async function POST(request) {
                 },
                 body: JSON.stringify(body)
             });
-            
-            console.log(`[Webhook WA Receiver] 🔄 Fallback complete. Status: ${fallbackResponse.status}`);
-            return NextResponse.json({ message: 'Processed via synchronous fallback' }, { status: 200 });
+            console.log(`[Webhook WA Receiver] 🔄 Sync fallback complete. Status: ${fallbackResponse.status}`);
+            return NextResponse.json({ message: 'Processed via sync fallback' }, { status: 200 });
         }
 
     } catch (error) {
