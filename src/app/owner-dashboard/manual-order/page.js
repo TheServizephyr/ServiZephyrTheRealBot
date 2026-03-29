@@ -383,7 +383,10 @@ function ManualOrderPage() {
         let isMounted = true;
 
         const fetchMenuAndSettings = async () => {
-            setLoading(true);
+            // Only show loading spinner when there's no local cache yet
+            // This prevents the loading flicker on every re-visit
+            const hasCachedMenu = !!readCachedPayload()?.data?.menu;
+            if (!hasCachedMenu) setLoading(true);
             try {
                 const user = auth.currentUser;
                 if (!user) throw new Error("Authentication required.");
