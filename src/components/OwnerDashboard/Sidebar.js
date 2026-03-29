@@ -382,9 +382,6 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const hasBootstrappedWaNotifRef = useRef(false);
   const prevWaUnreadCountRef = useRef(0);
   const isOnWhatsAppDirectPage = pathname?.includes('/owner-dashboard/whatsapp-direct');
-  const isOnLiveOrdersPage =
-    pathname?.includes('/owner-dashboard/live-orders') ||
-    pathname?.includes('/street-vendor-dashboard');
 
   // Realtime Listener for WhatsApp Unread Count
   useEffect(() => {
@@ -432,9 +429,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
   // Fetch Pending Orders Count (Real-time and Fallback)
   useEffect(() => {
-    if (businessType === 'street-vendor') return;
     if (!auth.currentUser) return;
-    if (isOnLiveOrdersPage) return; // Live Orders page already has direct realtime; avoid duplicate listener
 
     let unsubscribe = () => { };
     let pollInterval = null;
@@ -460,7 +455,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
           alarmId: 'live_orders_pending',
           disableAutoStop: true,
           sound: '/notification-owner-manager.mp3',
-          href: '/owner-dashboard/live-orders'
+          href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders'
         });
       }
       if (count === 0 && prevPendingCountRef.current > 0) {
@@ -530,7 +525,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       unsubscribe();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
+  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
 
   // Dine-In badge counts (pending dine-in orders + pending service requests)
   useEffect(() => {

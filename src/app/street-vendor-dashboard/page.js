@@ -615,67 +615,6 @@ const StreetVendorDashboardContent = () => {
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [rejectModalState, setRejectModalState] = useState({ isOpen: false, order: null });
-    const audioRef = useRef(null);
-    const audioUnlockedRef = useRef(false);
-
-    // Unlock audio on first user interaction (mobile browsers block autoplay)
-    useEffect(() => {
-        const unlockAudio = () => {
-            if (!audioUnlockedRef.current && audioRef.current) {
-                // Create a short silent play to unlock audio context
-                audioRef.current.volume = 0;
-                audioRef.current.play()
-                    .then(() => {
-                        audioRef.current.pause();
-                        audioRef.current.currentTime = 0;
-                        audioRef.current.volume = 1;
-                        audioUnlockedRef.current = true;
-                        console.log('[Audio] Unlocked successfully');
-                    })
-                    .catch(() => console.log('[Audio] Unlock attempt - will try on interaction'));
-            }
-        };
-
-        // Try to unlock on any user interaction
-        const handleInteraction = () => {
-            unlockAudio();
-            // Remove listeners after unlock
-            if (audioUnlockedRef.current) {
-                document.removeEventListener('click', handleInteraction);
-                document.removeEventListener('touchstart', handleInteraction);
-            }
-        };
-
-        document.addEventListener('click', handleInteraction);
-        document.addEventListener('touchstart', handleInteraction);
-
-        return () => {
-            document.removeEventListener('click', handleInteraction);
-            document.removeEventListener('touchstart', handleInteraction);
-        };
-    }, []);
-
-    const playNotificationSound = () => {
-        if (!audioRef.current) return;
-
-        // Vibrate for new order alert (strong pattern)
-        if (navigator.vibrate) {
-            navigator.vibrate([200, 100, 200]); // vibrate-pause-vibrate
-        }
-
-        // Reset to start and play
-        audioRef.current.currentTime = 0;
-        audioRef.current.volume = 1;
-        audioRef.current.play()
-            .then(() => console.log('[Audio] ✅ Notification sound played'))
-            .catch(err => {
-                console.error('[Audio] ❌ Play failed:', err.message);
-                // Try to unlock and retry once
-                if (!audioUnlockedRef.current) {
-                    console.log('[Audio] Attempting to unlock audio...');
-                }
-            });
-    };
 
     // Subtle haptic feedback for button clicks (10ms - smooth)
     const vibrateOnClick = () => {
@@ -848,21 +787,7 @@ const StreetVendorDashboardContent = () => {
         );
 
         const unsubscribe = onSnapshot(ordersQuery, (querySnapshot) => {
-            let hasNewPendingOrder = false;
             const fetchedOrders = [];
-
-            // Only check for new orders AFTER initial load
-            if (!isInitialLoad) {
-                querySnapshot.docChanges().forEach((change) => {
-                    if (change.type === 'added' && change.doc.data().status === 'pending') {
-                        hasNewPendingOrder = true;
-                    }
-                });
-
-                if (hasNewPendingOrder) {
-                    playNotificationSound();
-                }
-            }
 
             querySnapshot.forEach((doc) => {
                 fetchedOrders.push({ id: doc.id, ...doc.data() });
@@ -991,7 +916,6 @@ const StreetVendorDashboardContent = () => {
 
     return (
         <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
-            <audio ref={audioRef} src="/notification.mp3" preload="auto" />
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}

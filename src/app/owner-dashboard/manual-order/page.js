@@ -144,7 +144,7 @@ function ManualOrderPage() {
         phone: '',
         address: ''
     });
-    const [orderType, setOrderType] = useState('delivery'); // 'delivery', 'dine-in', 'pickup'
+    const [orderType, setOrderType] = useState('dine-in'); // 'delivery', 'dine-in', 'pickup'
     const [phoneError, setPhoneError] = useState(false);
     const [activeTable, setActiveTable] = useState(null);
     const [manualTables, setManualTables] = useState([]);
@@ -177,6 +177,14 @@ function ManualOrderPage() {
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
     const [inventoryByItemId, setInventoryByItemId] = useState({});
     const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
+
+    // Parse orderType from URL query params
+    useEffect(() => {
+        const typeParam = searchParams.get('type');
+        if (typeParam && ['delivery', 'dine-in', 'pickup'].includes(typeParam)) {
+            setOrderType(typeParam);
+        }
+    }, [searchParams]);
 
     // Category Drag & Drop State
     const [isMounted, setIsMounted] = useState(false);

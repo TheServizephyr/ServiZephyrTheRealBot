@@ -186,6 +186,7 @@ function OwnerDashboardContent({ children }) {
   const ownerDashboardShortcuts = useMemo(() => ([
     { key: 'a', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/analytics') },
     { key: 'w', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/whatsapp-direct') },
+    { key: 't', altKey: true, action: () => navigateWithShortcut('/owner-dashboard/manual-order') },
   ]), [navigateWithShortcut]);
 
   useEffect(() => {
@@ -246,6 +247,7 @@ function OwnerDashboardContent({ children }) {
           { combo: 'Alt + D', description: 'Open dine in' },
           { combo: 'Alt + C', description: 'Open custom bill' },
           { combo: 'Alt + W', description: 'Open WhatsApp direct' },
+          { combo: 'Alt + T', description: 'Open manual billing (Dine-in)' },
           { combo: 'Alt + H', description: currentHistoryShortcut ? `Open ${currentHistoryShortcut.label.toLowerCase()} history` : 'Open current page history when available' },
           { combo: 'Alt + M then H', description: 'Open manual billing history' },
           { combo: 'Alt + O then H', description: 'Open live order history' },
