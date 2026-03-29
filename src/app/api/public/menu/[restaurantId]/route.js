@@ -97,10 +97,11 @@ async function computeInsightBadges(firestore, restaurantId, businessRef, totalA
         }
         
         // Dynamic volume thresholds based on 30-day activity (minimum floors maintained for small operations)
-        // - Bestseller: Must have sold units equal to at least 15% of total orders (min 15)
-        // - Highly Reordered: Must appear in at least 20% of all separate orders (min 8)
-        const dynamicBestsellerMinUnits = Math.max(BESTSELLER_MIN_UNITS, Math.ceil(totalValidOrders * 0.15));
-        const dynamicHighlyReorderedMinOrders = Math.max(HIGHLY_REORDERED_MIN_ORDERS, Math.ceil(totalValidOrders * 0.20));
+        // Adjusting multipliers down: In a diverse menu, even the top item rarely appears in >10% of ALL orders globally.
+        // - Bestseller: Must have sold units equal to at least 5% of total orders
+        // - Highly Reordered: Must appear in at least 4% of all separate orders
+        const dynamicBestsellerMinUnits = Math.max(BESTSELLER_MIN_UNITS, Math.ceil(totalValidOrders * 0.05));
+        const dynamicHighlyReorderedMinOrders = Math.max(HIGHLY_REORDERED_MIN_ORDERS, Math.ceil(totalValidOrders * 0.04));
 
         // Compute Bestseller threshold: strictly dynamically relative to total active menu items
         const allUnitValues = Object.values(unitsSold).filter(v => v >= dynamicBestsellerMinUnits);
@@ -440,8 +441,8 @@ export async function GET(req, { params }) {
         const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
 
         // STEP 2: Build version-based cache key
-        // PATCH: Added _patch7 to force cache refresh for dynamic relative volume thresholds (Min orders scaled by traffic)
-        const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch7`;
+        // PATCH: Added _patch8 to force cache refresh for dynamic relative volume thresholds (Min orders scaled by traffic)
+        const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch8`;
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
