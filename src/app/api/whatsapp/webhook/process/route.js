@@ -378,14 +378,12 @@ const sendWelcomeMessageWithOptions = async (
 
     const supportLabel = getBusinessSupportLabel(business);
     const defaultWelcomeBody =
-        `Welcome to ${business.data.name} 🥘\n` +
-        `We are ready to serve you.\n\n` +
-        `मेनू देखने और अपना ऑर्डर करने के लिए नीचे दिए गए *Order Now* बटन पर टैप करें। ✨\n\n` +
+        `Welcome to ${business.data.name} 🥘\nWe are ready to serve you.\n\n` +
+        `मेनू देखने और ऑर्डर करने के लिए नीचे दिए गए *Order Now* बटन पर टैप करें। ✨\n\n` +
         `Follow these steps:\n` +
-        `1️⃣ Tap on *Order Now* to view our full menu.\n` +
-        `2️⃣ Type *Need Help* for any assistance.\n\n` +
-        `👇 Click the button below to start 👇\n` +
-        `👇👇👇👇👇👇👇👇👇👇`;
+        `1️⃣ Tap on *Order Now* to view menu.\n` +
+        `2️⃣ Type *Need Help* for assistance.\n\n` +
+        `👇 Click below to start 👇`;
     const welcomeBody = customMessage || defaultWelcomeBody;
     const collectionName = business.ref.parent.id;
 
