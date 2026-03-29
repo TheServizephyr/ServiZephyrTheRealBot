@@ -3197,6 +3197,52 @@ const OrderPageInternal = () => {
 
             newMenu[category] = items;
         }
+
+        // --- NEW: TOP PICKS DYNAMIC CATEGORY ---
+        if (!isStoreBusiness) {
+            const BADGE_RANK = { 'Bestseller': 0, 'Highly Reordered': 1 };
+            const topPicksMap = new Map();
+            Object.values(newMenu).flat().forEach((item) => {
+                const isManualRecommended = item.isRecommended === true;
+                const isAutoBestseller = item.insightBadge === 'Bestseller';
+                const isAutoReordered = item.insightBadge === 'Highly Reordered';
+                let hasManualBadge = false;
+                if (Array.isArray(item.tags)) {
+                    hasManualBadge = item.tags.some(tag => {
+                        const t = String(tag || '').toLowerCase();
+                        return t === 'bestseller' || t === 'highly reordered' || t === 'top picks';
+                    });
+                }
+                if (isManualRecommended || isAutoBestseller || isAutoReordered || hasManualBadge) {
+                    if (!topPicksMap.has(item.id)) {
+                        topPicksMap.set(item.id, item);
+                    }
+                }
+            });
+
+            if (topPicksMap.size > 0) {
+                const recommendedItems = Array.from(topPicksMap.values());
+                // Sort within Top Picks
+                recommendedItems.sort((a, b) => {
+                    // Availability first
+                    if (a.isAvailable && !b.isAvailable) return -1;
+                    if (!a.isAvailable && b.isAvailable) return 1;
+
+                    const getRank = (item) => BADGE_RANK[item.insightBadge] ?? (item.isRecommended ? 2 : 9);
+                    const rankA = getRank(a);
+                    const rankB = getRank(b);
+                    if (rankA !== rankB) return rankA - rankB;
+                    // Then by rating
+                    return (b.rating || 0) - (a.rating || 0);
+                });
+                // Enforce maximum 10% of total active items for Top Picks
+                const totalActiveItemsCount = Object.values(sourceMenu).flat().filter(item => !item.isDineInExclusive || deliveryType === 'dine-in').length;
+                const maxTopPicks = Math.max(1, Math.ceil(totalActiveItemsCount * 0.10));
+                
+                newMenu['top-picks'] = recommendedItems.slice(0, maxTopPicks);
+            }
+        }
+
         return newMenu;
     }, [
         restaurantData.menu,
@@ -3212,13 +3258,23 @@ const OrderPageInternal = () => {
         storeFilters,
     ]);
 
-    const menuCategories = useMemo(() => Object.keys(processedMenu)
-        .map(key => ({
-            key,
-            title: key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' '),
-            count: (processedMenu[key] || []).length
-        }))
-        .filter(category => category.count > 0), [processedMenu]);
+    const menuCategories = useMemo(() => {
+        const cats = Object.keys(processedMenu)
+            .map(key => ({
+                key,
+                title: key === 'top-picks' ? '⭐ Top Picks' : (key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' ')),
+                count: (processedMenu[key] || []).length
+            }))
+            .filter(category => category.count > 0);
+            
+        cats.sort((a, b) => {
+            if (a.key === 'top-picks') return -1;
+            if (b.key === 'top-picks') return 1;
+            return 0; // retain default relative order
+        });
+        
+        return cats;
+    }, [processedMenu]);
 
     const storeCategoryShelves = useMemo(() => (
         menuCategories.map((category) => {

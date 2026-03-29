@@ -10,9 +10,14 @@ import { findBusinessById } from '@/services/business/businessService';
 // --- Analytics Badge Thresholds ---
 // Strict thresholds to prevent badge inflation — only truly top-performing items qualify
 const BADGE_LOOKBACK_DAYS = 30;          // Only consider last 30 days of orders
-const BESTSELLER_MIN_UNITS = 10;         // Must have sold at least 10 units
-const BESTSELLER_TOP_PERCENT = 0.10;     // Must be in top 10% by units sold
-const HIGHLY_REORDERED_MIN_ORDERS = 5;  // Must appear in at least 5 separate orders
+const BESTSELLER_MIN_UNITS = 15;         // Must have sold at least 15 units
+const BESTSELLER_TOP_PERCENT = 0.05;     // Must be in top 5% of TOTAL menu items
+const BESTSELLER_MAX_ITEMS = 5;          // Hard cap: max 5 bestsellers per restaurant
+
+const HIGHLY_REORDERED_MIN_ORDERS = 8;   // Must appear in at least 8 separate orders
+const HIGHLY_REORDERED_TOP_PERCENT = 0.10; // Must be in top 10% of TOTAL menu items
+const HIGHLY_REORDERED_MAX_ITEMS = 10;   // Hard cap: max 10 highly reordered items
+
 const LOST_ORDER_STATUSES_FOR_BADGE = new Set(['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant']);
 
 /**
@@ -22,7 +27,7 @@ const LOST_ORDER_STATUSES_FOR_BADGE = new Set(['rejected', 'cancelled', 'failed_
  *
  * Returns a Map<itemName (lowercase), badge> for O(1) lookup.
  */
-async function computeInsightBadges(firestore, restaurantId, businessRef) {
+async function computeInsightBadges(firestore, restaurantId, businessRef, totalActiveMenuItems = 0) {
     try {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - BADGE_LOOKBACK_DAYS);
@@ -48,6 +53,7 @@ async function computeInsightBadges(firestore, restaurantId, businessRef) {
                 : Promise.resolve(null),
         ]);
 
+        let totalValidOrders = 0;
         // unitsSold: name_lower -> total quantity sold (across ALL channels)
         // orderCount: name_lower -> number of separate sale events this item appeared in
         const unitsSold = {};
@@ -59,6 +65,9 @@ async function computeInsightBadges(firestore, restaurantId, businessRef) {
                 const rawName = String(item?.name || '').split(' (')[0].trim();
                 if (!rawName) return;
                 const nameKey = rawName.toLowerCase();
+                
+                // Exclude staple items like breads and bottled water from dominating analytics badges
+                if (/roti|naan|paratha|kulcha|chapati|bread|papad|water bottle|mineral water/i.test(nameKey)) return;
                 const qty = Math.max(1, Number(item?.quantity) || 1);
                 unitsSold[nameKey] = (unitsSold[nameKey] || 0) + qty;
                 if (!seenInThisTxn.has(nameKey)) {
@@ -72,6 +81,7 @@ async function computeInsightBadges(firestore, restaurantId, businessRef) {
         ordersSnap.forEach((doc) => {
             const data = doc.data();
             if (LOST_ORDER_STATUSES_FOR_BADGE.has(String(data.status || '').toLowerCase())) return;
+            totalValidOrders++;
             const items = Array.isArray(data.items) ? data.items : [];
             processItems(items, doc.id);
         });
@@ -79,35 +89,65 @@ async function computeInsightBadges(firestore, restaurantId, businessRef) {
         // Process counter bills (no status to skip — counter bills are always completed sales)
         if (counterBillsSnap) {
             counterBillsSnap.forEach((doc) => {
+                totalValidOrders++;
                 const data = doc.data();
                 const items = Array.isArray(data.items) ? data.items : [];
                 processItems(items, doc.id);
             });
         }
+        
+        // Dynamic volume thresholds based on 30-day activity (minimum floors maintained for small operations)
+        // - Bestseller: Must have sold units equal to at least 15% of total orders (min 15)
+        // - Highly Reordered: Must appear in at least 20% of all separate orders (min 8)
+        const dynamicBestsellerMinUnits = Math.max(BESTSELLER_MIN_UNITS, Math.ceil(totalValidOrders * 0.15));
+        const dynamicHighlyReorderedMinOrders = Math.max(HIGHLY_REORDERED_MIN_ORDERS, Math.ceil(totalValidOrders * 0.20));
 
-        // Compute Bestseller threshold: top BESTSELLER_TOP_PERCENT of items by units, min BESTSELLER_MIN_UNITS
-        const allUnitValues = Object.values(unitsSold).filter(v => v >= BESTSELLER_MIN_UNITS);
-        if (allUnitValues.length === 0) return new Map(); // No item qualifies
-
+        // Compute Bestseller threshold: strictly dynamically relative to total active menu items
+        const allUnitValues = Object.values(unitsSold).filter(v => v >= dynamicBestsellerMinUnits);
         allUnitValues.sort((a, b) => b - a);
-        const topNCount = Math.max(1, Math.ceil(allUnitValues.length * BESTSELLER_TOP_PERCENT));
-        const bestsellerThreshold = allUnitValues[topNCount - 1]; // min units to be in top %
+
+        let allowedBestsellers = Math.max(1, Math.ceil(totalActiveMenuItems * BESTSELLER_TOP_PERCENT));
+        if (allowedBestsellers > BESTSELLER_MAX_ITEMS) allowedBestsellers = BESTSELLER_MAX_ITEMS;
+        if (totalActiveMenuItems === 0) allowedBestsellers = Math.max(1, Math.ceil(allUnitValues.length * BESTSELLER_TOP_PERCENT));
+
+        const bestsellerThreshold = allUnitValues.length > 0 ? (allUnitValues[allowedBestsellers - 1] || 0) : Infinity;
 
         const badgeMap = new Map();
 
+        // Sort entries by units sold descending so top performers are assigned first
+        const sortedUnitsSold = Object.entries(unitsSold).sort((a, b) => b[1] - a[1]);
+        
         // Assign Bestseller first (higher priority)
-        Object.entries(unitsSold).forEach(([nameKey, units]) => {
-            if (units >= BESTSELLER_MIN_UNITS && units >= bestsellerThreshold) {
-                badgeMap.set(nameKey, 'Bestseller');
+        for (const [nameKey, units] of sortedUnitsSold) {
+            if (units >= dynamicBestsellerMinUnits && units >= bestsellerThreshold) {
+                if (badgeMap.size < allowedBestsellers) {
+                    badgeMap.set(nameKey, 'Bestseller');
+                }
             }
-        });
+        }
+
+        // Compute Highly Reordered threshold explicitly based on total menu items
+        const allOrderValues = Object.values(orderCount).filter(v => v >= dynamicHighlyReorderedMinOrders);
+        allOrderValues.sort((a, b) => b - a);
+        
+        let allowedHighlyReordered = Math.max(1, Math.ceil(totalActiveMenuItems * HIGHLY_REORDERED_TOP_PERCENT));
+        if (allowedHighlyReordered > HIGHLY_REORDERED_MAX_ITEMS) allowedHighlyReordered = HIGHLY_REORDERED_MAX_ITEMS;
+        if (totalActiveMenuItems === 0) allowedHighlyReordered = Math.max(1, Math.ceil(allOrderValues.length * 0.15));
+
+        const highlyReorderedThreshold = allOrderValues.length > 0 ? (allOrderValues[allowedHighlyReordered - 1] || 0) : Infinity;
+
+        let highlyReorderedAssigned = 0;
+        const sortedOrderCount = Object.entries(orderCount).sort((a, b) => b[1] - a[1]);
 
         // Assign Highly Reordered to items not already marked as Bestseller
-        Object.entries(orderCount).forEach(([nameKey, count]) => {
-            if (count >= HIGHLY_REORDERED_MIN_ORDERS && !badgeMap.has(nameKey)) {
-                badgeMap.set(nameKey, 'Highly Reordered');
+        for (const [nameKey, count] of sortedOrderCount) {
+            if (count >= dynamicHighlyReorderedMinOrders && count >= highlyReorderedThreshold && !badgeMap.has(nameKey)) {
+                if (highlyReorderedAssigned < allowedHighlyReordered) {
+                    badgeMap.set(nameKey, 'Highly Reordered');
+                    highlyReorderedAssigned++;
+                }
             }
-        });
+        }
 
         return badgeMap;
     } catch (err) {
@@ -400,8 +440,8 @@ export async function GET(req, { params }) {
         const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
 
         // STEP 2: Build version-based cache key
-        // PATCH: Added _patch5 to force cache refresh for insightBadge analytics field
-        const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch5`;
+        // PATCH: Added _patch7 to force cache refresh for dynamic relative volume thresholds (Min orders scaled by traffic)
+        const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch7`;
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
@@ -530,7 +570,7 @@ export async function GET(req, { params }) {
         });
 
         // Compute insight badges from ALL sales channels (online orders + walk-in counter bills)
-        const insightBadgeMap = await computeInsightBadges(firestore, resolvedWinner.businessRef.id || cacheRestaurantId, businessRef);
+        const insightBadgeMap = await computeInsightBadges(firestore, resolvedWinner.businessRef.id || cacheRestaurantId, businessRef, menuSnap.size);
 
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
@@ -540,7 +580,14 @@ export async function GET(req, { params }) {
             }
             // Attach auto-computed insight badge (overwrites manual analytics-type tags visually)
             const nameKey = String(item.name || '').trim().toLowerCase();
-            const insightBadge = insightBadgeMap.get(nameKey) || null;
+            let insightBadge = insightBadgeMap.get(nameKey) || null;
+            
+            // Explicitly prevent staples / breads from getting Analytics Badges 
+            // even if they somehow bypassed the counting logic
+            if (String(categoryKey).toLowerCase().includes('bread') || /roti|naan|paratha|kulcha|chapati|bread|papad|water/i.test(nameKey)) {
+                insightBadge = null;
+            }
+            
             const itemWithBadge = { id: doc.id, ...item, insightBadge };
             if (menuData[categoryKey]) {
                 menuData[categoryKey].push(itemWithBadge);
