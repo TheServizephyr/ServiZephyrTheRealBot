@@ -181,7 +181,7 @@ function ManualOrderPage() {
     // Category Drag & Drop State
     const [isMounted, setIsMounted] = useState(false);
     const [categoryOrder, setCategoryOrder] = useState([]);
-    
+
     useEffect(() => {
         setIsMounted(true);
         if (typeof window === 'undefined') return;
@@ -189,7 +189,7 @@ function ManualOrderPage() {
         try {
             const saved = localStorage.getItem(`manual_order_category_order_${uid}`);
             if (saved) setCategoryOrder(JSON.parse(saved));
-        } catch(e) {}
+        } catch (e) { }
     }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const onCategoryDragEnd = (result) => {
@@ -219,7 +219,7 @@ function ManualOrderPage() {
             try {
                 const uid = impersonatedOwnerId || employeeOfOwnerId || auth?.currentUser?.uid || 'default';
                 localStorage.setItem(`manual_order_category_order_${uid}`, JSON.stringify(sortedIds));
-            } catch(e) {}
+            } catch (e) { }
             return sortedIds;
         });
     };
@@ -2191,25 +2191,25 @@ function ManualOrderPage() {
                                                     {/* 2-button row: Edit + Print */}
                                                     <div className="mt-auto pt-2 border-t border-white/10 flex items-center justify-between gap-1.5">
                                                         {!isFinalized && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                const order = table.currentOrder;
-                                                                if (order) {
-                                                                    setCart(order.items || []);
-                                                                    if (order.customerDetails) setCustomerDetails(order.customerDetails);
-                                                                    if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
-                                                                    if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
-                                                                    if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
-                                                                }
-                                                                setActiveTable(table);
-                                                                setSelectedOccupiedTable(null);
-                                                            }}
-                                                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-amber-500 hover:bg-[#333] transition-colors"
-                                                            title="Add/Edit Items"
-                                                        >
-                                                            <Edit size={15} />
-                                                        </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const order = table.currentOrder;
+                                                                    if (order) {
+                                                                        setCart(order.items || []);
+                                                                        if (order.customerDetails) setCustomerDetails(order.customerDetails);
+                                                                        if (order.deliveryCharge) setDeliveryChargeInput(order.deliveryCharge.toString());
+                                                                        if (order.additionalCharge) setAdditionalChargeInput(order.additionalCharge.toString());
+                                                                        if (order.additionalChargeLabel) setAdditionalChargeNameInput(order.additionalChargeLabel);
+                                                                    }
+                                                                    setActiveTable(table);
+                                                                    setSelectedOccupiedTable(null);
+                                                                }}
+                                                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#2a2a2a] text-amber-500 hover:bg-[#333] transition-colors"
+                                                                title="Add/Edit Items"
+                                                            >
+                                                                <Edit size={15} />
+                                                            </button>
                                                         )}
                                                         <button
                                                             onClick={async (e) => {
@@ -2273,7 +2273,7 @@ function ManualOrderPage() {
                             )}
                         </div>
                     ) : (
-                        <div className="flex gap-4 flex-1 min-h-0 relative">
+                        <div className="flex flex-1 min-h-0 relative">
                             {/* CATEGORY NAVIGATION SIDEBAR */}
                             <div
                                 ref={sidebarRef}
@@ -2346,7 +2346,7 @@ function ManualOrderPage() {
                             {/* ITEM LIST */}
                             <div
                                 ref={scrollContainerRef}
-                                className="flex-grow min-h-0 overflow-y-auto overscroll-contain px-2 pr-3 custom-scrollbar"
+                                className="flex-grow min-h-0 overflow-y-auto overscroll-contain pl-5 pr-6 lg:pr-8 custom-scrollbar pt-2"
                             >
                                 {loading ? (
                                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
@@ -2387,7 +2387,7 @@ function ManualOrderPage() {
                                                         </div>
                                                     </motion.button>
 
-                                                {filteredItems.map(item => {
+                                                    {filteredItems.map(item => {
                                                         const isUnavailable = isItemOutOfStock(item);
                                                         return (
                                                             <motion.div
@@ -2451,14 +2451,14 @@ function ManualOrderPage() {
                                                                 whileHover={{ y: -2, scale: 1.01 }}
                                                                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
                                                                 className={cn(
-                                                                    "p-2.5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 rounded-xl border border-amber-600/30 transition-all shadow-sm flex flex-col",
+                                                                    "p-2.5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 rounded-xl border-2 border-amber-600/40 transition-all shadow-sm flex flex-col",
                                                                     isUnavailable
                                                                         ? "opacity-55 grayscale"
-                                                                        : "hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 hover:border-amber-500/60 hover:shadow-md hover:shadow-amber-900/20"
+                                                                        : "hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 hover:border-amber-500/80 hover:shadow-md hover:shadow-amber-900/20"
                                                                 )}
                                                             >
                                                                 <div className="flex-1 mb-1.5">
-                                                                    <p className="font-bold text-foreground text-xs leading-tight">
+                                                                    <p className="font-bold text-foreground text-base leading-tight">
                                                                         {item.name}
                                                                     </p>
                                                                     {isStoreBusinessType(businessType) && (item?.sku || item?.barcode) && (
@@ -2505,14 +2505,14 @@ function ManualOrderPage() {
                                                             whileHover={{ y: -2, scale: 1.01 }}
                                                             transition={{ type: "spring", stiffness: 300, damping: 20 }}
                                                             className={cn(
-                                                                "p-2.5 bg-gradient-to-br from-card via-card to-card/90 rounded-xl border border-border/40 transition-all shadow-sm flex flex-col",
+                                                                "p-2.5 bg-gradient-to-br from-card via-card to-card/90 rounded-xl border-2 border-border transition-all shadow-sm flex flex-col",
                                                                 isUnavailable
                                                                     ? "opacity-55 grayscale"
-                                                                    : "hover:from-card hover:via-muted/20 hover:to-card hover:border-primary/50 hover:shadow-md hover:shadow-primary/10"
+                                                                    : "hover:from-card hover:via-muted/20 hover:to-card hover:border-primary/80 hover:shadow-md hover:shadow-primary/20"
                                                             )}
                                                         >
                                                             <div className="flex-1 mb-1.5">
-                                                                <p className="font-bold text-foreground text-xs leading-tight">
+                                                                <p className="font-bold text-foreground text-base leading-tight">
                                                                     {item.name}
                                                                 </p>
                                                                 {getItemAvailableStock(item) !== null && (
