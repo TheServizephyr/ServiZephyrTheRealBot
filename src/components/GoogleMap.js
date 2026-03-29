@@ -58,8 +58,11 @@ const GoogleMap = ({ center, onIdle }) => {
     // This handler will be called *after* the drag (pan) or zoom finishes
     const handleIdle = () => {
         if (mapRef.current && onIdle) {
-            const newCenter = mapRef.current.getCenter().toJSON();
-            onIdle(newCenter);
+            const c = typeof mapRef.current.getCenter === 'function' ? mapRef.current.getCenter() : null;
+            if (c) {
+                if (typeof c.toJSON === 'function') onIdle(c.toJSON());
+                else if (typeof c.lat === 'function') onIdle({ lat: c.lat(), lng: c.lng() });
+            }
         }
     };
 
@@ -70,7 +73,7 @@ const GoogleMap = ({ center, onIdle }) => {
     useEffect(() => {
         if (mapRef.current && center) {
             console.log("Forcing map to new center:", center);
-            mapRef.current.setCenter(center);
+            if (typeof mapRef.current.setCenter === 'function') mapRef.current.setCenter(center);
         }
     }, [center]); // <-- Runs only when 'center' prop changes
 
