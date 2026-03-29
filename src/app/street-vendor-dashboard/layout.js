@@ -38,7 +38,6 @@ function FeatureLockScreen({ remark, featureId }) {
   const emailSubject = encodeURIComponent(`Issue: Access Restricted for '${featureId}' Feature`);
   const emailBody = encodeURIComponent(`Hello ServiZephyr Team,\n\nI am writing to you because my access to the '${featureId}' feature on my dashboard has been restricted.\n\nThe remark provided is: "${remark}"\n\nCould you please provide more details or guide me on the steps to resolve this?\n\nThank you.`);
 
-
   return (
     <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
       <Lock className="h-16 w-16 text-yellow-400" />
@@ -79,7 +78,7 @@ function OwnerDashboardContent({ children }) {
   });
   const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
-  const [userRole, setUserRole] = useState(null); // For RBAC
+  const [userRole, setUserRole] = useState(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -95,12 +94,10 @@ function OwnerDashboardContent({ children }) {
         if (user.uid === employeeOfOwnerId) {
           console.log('[Layout] Owner detected, full access');
           setUserRole(null);
-          // Owner - clear any custom pages
           localStorage.removeItem('customAllowedPages');
           return;
         }
 
-        // Fetch employee role from Firestore linkedOutlets
         console.log('[Layout] Employee detected, checking Firestore...');
         try {
           const userDocRef = doc(db, 'users', user.uid);
@@ -118,12 +115,10 @@ function OwnerDashboardContent({ children }) {
               console.log('[Layout] Employee role found:', outlet.employeeRole);
               setUserRole(outlet.employeeRole);
 
-              // For custom roles, store the allowed pages in localStorage
               if (outlet.employeeRole === 'custom' && outlet.customAllowedPages) {
                 localStorage.setItem('customAllowedPages', JSON.stringify(outlet.customAllowedPages));
                 console.log('[Layout] Custom role pages stored:', outlet.customAllowedPages);
               } else {
-                // Clear custom pages if not a custom role
                 localStorage.removeItem('customAllowedPages');
               }
             } else {
@@ -143,7 +138,6 @@ function OwnerDashboardContent({ children }) {
         }
       } else {
         setUserRole(null);
-        // Owner accessing own dashboard - clear any custom pages
         localStorage.removeItem('customAllowedPages');
       }
     }
@@ -162,7 +156,6 @@ function OwnerDashboardContent({ children }) {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // Track if auth has settled
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
@@ -184,9 +177,6 @@ function OwnerDashboardContent({ children }) {
       return;
     }
 
-    // REMOVED AUTH REDIRECT - Let RedirectHandler handle all auth
-    // Dashboard should always load if user reaches it
-
     // Log impersonation when detected
     if (user && impersonatedOwnerId) {
       user.getIdToken().then(idToken => {
@@ -253,201 +243,6 @@ function OwnerDashboardContent({ children }) {
         } else if (statusRes.status === 404) {
           setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
         } else if (statusRes.status === 403) {
-          // Unauthorized access - redirect to select-role for employees
-          console.error("[Layout] User not authorized, redirecting to select-role...");
-          router.push('/select-role');
-          return;
-        } else {
-          const errorData = await statusRes.json();
-          console.error("Error fetching status:", errorData.message);
-          setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
-        }
-
-      } catch (e) {
-        console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
-        setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
-      }
-    }
-
-    if (user) {
-      fetchRestaurantData();
-    }
-
-  }, [user, isUserLoading, authChecked, impersonatedOwnerId, router, pathname, employeeOfOwnerId]);
-
-  if (isUserLoading || !authChecked) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <GoldenCoinSpinner />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
-
-  const renderStatusScreen = () => {
-    const featureId = resolveStreetVendorFeatureIdFromPath(pathname);
-
-    if (restaurantStatus.status === 'approved') {
-      return null;
-    }
-
-    if (restaurantStatus.status === 'suspended') {
-      if (restaurantStatus.restrictedFeatures.includes(featureId)) {
-        return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} featureId={featureId} />;
-      }
-      return null;
-    }
-
-    if (restaurantStatus.status === 'error') {
-      return (
-        <main className={styles.mainContent} style={{ padding: '1rem' }}>
-          <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
-            <AlertTriangle className="h-16 w-16 text-red-500" />
-            <h2 className="mt-6 text-2xl font-bold">Could Not Verify Status</h2>
-            <p className="mt-2 max-w-md text-muted-foreground">We couldn&apos;t verify your restaurant&apos;s status. This could be a temporary issue. Please refresh or contact support.</p>
-            <div className="mt-6 flex gap-4">
-              <Button onClick={() => window.location.reload()} variant="default">Refresh</Button>
-              <Button variant="default" onClick={() => router.push('/contact')}>Contact Support</Button>
-            </div>
-          </div>
-        </main>
-      );
-    }
-
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr', 'coupons'];
-    const isDisabled = !alwaysEnabled.includes(featureId);
-
-    if ((restaurantStatus.status === 'pending' || restaurantStatus.status === 'rejected') && isDisabled) {
-      return (
-        <main className={styles.mainContent} style={{ padding: '1rem' }}>
-          <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
-            <HardHat className="h-16 w-16 text-yellow-400" />
-            <h2 className="mt-6 text-2xl font-bold">Account {restaurantStatus.status.charAt(0).toUpperCase() + restaurantStatus.status.slice(1)}</h2>
-            <p className="mt-2 max-w-md text-muted-foreground">
-              Your account is currently {restaurantStatus.status}. Full access will be granted upon approval. You can still set up your menu and settings.
-            </p>
-            <div className="mt-6 flex gap-4">
-              <Button onClick={() => router.push('/street-vendor-dashboard/menu')}>
-                <Salad className="mr-2 h-4 w-4" /> Go to Menu
-              </Button>
-              <Button variant="outline" onClick={() => router.push('/contact')}>Contact Support</Button>
-            </div>
-          </div>
-        </main>
-      )
-    }
-
-    return null;
-  }
-
-  const blockedContent = renderStatusScreen();
-  const isCollapsed = !isSidebarOpen && !isMobile;
-
-  return (
-    <>
-      <ImpersonationBanner vendorName={restaurantName} />
-      <div className="flex h-screen bg-background text-foreground">
-        <motion.aside
-          className="fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col"
-          animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
-          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          initial={false}
-        >
-          <Sidebar
-            isOpen={isSidebarOpen}
-            setIsOpen={setSidebarOpen}
-            isMobile={isMobile}
-            isCollapsed={isCollapsed}
-            restrictedFeatures={restaurantStatus.restrictedFeatures}
-    // Simple check - no redirect, just mark as ready
-    const timer = setTimeout(() => {
-      setAuthChecked(true);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [isUserLoading]);
-
-  useEffect(() => {
-    if (!authChecked) return;
-
-    if (!user) {
-      router.replace(buildLoginRedirect(pathname || '/street-vendor-dashboard'));
-      return;
-    }
-
-    // REMOVED AUTH REDIRECT - Let RedirectHandler handle all auth
-    // Dashboard should always load if user reaches it
-
-    // Log impersonation when detected
-    if (user && impersonatedOwnerId) {
-      user.getIdToken().then(idToken => {
-        fetch('/api/admin/log-impersonation', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`
-          },
-          body: JSON.stringify({
-            targetUserId: impersonatedOwnerId,
-            targetUserEmail: user.email,
-            targetUserRole: 'Street Vendor',
-            action: 'start_impersonation_street_vendor'
-          })
-        }).catch(err => console.error('Failed to log impersonation:', err));
-      });
-    }
-
-    const fetchRestaurantData = async () => {
-      try {
-        const idToken = await user.getIdToken();
-
-        let statusUrl = '/api/owner/status';
-        let settingsUrl = '/api/owner/settings';
-
-        if (impersonatedOwnerId) {
-          statusUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
-          settingsUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
-        } else if (employeeOfOwnerId) {
-          statusUrl += `?employee_of=${employeeOfOwnerId}`;
-          settingsUrl += `?employee_of=${employeeOfOwnerId}`;
-        }
-
-        const [statusRes, settingsRes] = await Promise.all([
-          fetch(statusUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
-          fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
-        ]);
-
-        console.log('[Layout] About to fetch settings...');
-        if (settingsRes.ok) {
-          const settingsData = await settingsRes.json();
-          console.log('[Layout] Settings API response:', settingsData);
-          console.log('[Layout] Restaurant name from API:', settingsData.restaurantName);
-          const nameToSet = settingsData.restaurantName || 'My Dashboard';
-          console.log('[Layout] Setting restaurant name to:', nameToSet);
-          const normalizedBusinessType = settingsData.businessType === 'street_vendor'
-            ? 'street-vendor'
-            : (settingsData.businessType || 'street-vendor');
-          localStorage.setItem('businessType', normalizedBusinessType);
-          setRestaurantName(nameToSet);
-          setRestaurantLogo(settingsData.logoUrl || null);
-        } else {
-          console.log('[Layout] Settings API failed with status:', settingsRes.status);
-        }
-
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          setRestaurantStatus({
-            status: statusData.status,
-            restrictedFeatures: statusData.restrictedFeatures || [],
-            suspensionRemark: statusData.suspensionRemark || '',
-          });
-        } else if (statusRes.status === 404) {
-          setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
-        } else if (statusRes.status === 403) {
-          // Unauthorized access - redirect to select-role for employees
           console.error("[Layout] User not authorized, redirecting to select-role...");
           router.push('/select-role');
           return;
@@ -568,7 +363,6 @@ function OwnerDashboardContent({ children }) {
           />
         )}
 
-
         <div className="flex-1 flex flex-col overflow-hidden">
           {pathname !== '/street-vendor-dashboard/manual-order' && (
             <header className="flex items-center justify-between h-[65px] px-4 md:px-6 bg-card border-b border-border shrink-0">
@@ -606,4 +400,3 @@ export default function StreetVendorDashboardLayout({ children }) {
     </ThemeProvider>
   );
 }
-
