@@ -741,16 +741,18 @@ function OwnerDashboardContent({ children }) {
 
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="flex items-center justify-between h-[65px] px-4 md:px-6 bg-card border-b border-border shrink-0">
-            <Navbar
-              isSidebarOpen={isSidebarOpen}
-              setSidebarOpen={setSidebarOpen}
-              restaurantName={restaurantName}
-              restaurantLogo={restaurantLogo}
-              userRole={userRole}
-            />
-          </header>
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {!pathname?.startsWith('/owner-dashboard/manual-order') && (
+            <header className="flex items-center justify-between h-[65px] px-4 md:px-6 bg-card border-b border-border shrink-0">
+              <Navbar
+                isSidebarOpen={isSidebarOpen}
+                setSidebarOpen={setSidebarOpen}
+                restaurantName={restaurantName}
+                restaurantLogo={restaurantLogo}
+                userRole={userRole}
+              />
+            </header>
+          )}
+          <main className={`flex-1 overflow-y-auto ${pathname?.startsWith('/owner-dashboard/manual-order') ? 'p-0' : 'p-4 md:p-6'}`}>
             {blockedContent || children}
           </main>
         </div>

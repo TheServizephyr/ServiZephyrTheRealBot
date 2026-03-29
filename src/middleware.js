@@ -134,12 +134,19 @@ async function consumeBucket(key, limit, now) {
     return consumeMemoryBucket(key, limit, now);
   }
 
-  const windowKey = buildWindowKey(key, now);
-  const count = await kv.incr(windowKey);
-  if (count === 1) {
-    await kv.expire(windowKey, Math.ceil(WINDOW_MS / 1000) + 5);
+  try {
+    const windowKey = buildWindowKey(key, now);
+    const count = await kv.incr(windowKey);
+    if (count === 1) {
+      await kv.expire(windowKey, Math.ceil(WINDOW_MS / 1000) + 5);
+    }
+    return count <= limit;
+  } catch (kvError) {
+    // Redis unavailable or limit exceeded — fall back to in-memory rate limiting
+    // so the site stays up even when Upstash quota is exhausted.
+    console.warn('[middleware] KV error, falling back to memory bucket:', kvError?.message || kvError);
+    return consumeMemoryBucket(key, limit, now);
   }
-  return count <= limit;
 }
 
 function tooManyResponse(kind) {

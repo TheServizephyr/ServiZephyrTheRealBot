@@ -1681,7 +1681,7 @@ function ManualOrderPage() {
     };
 
     return (
-        <div className="text-foreground bg-background min-h-screen overflow-y-auto lg:min-h-0 lg:h-[calc(100dvh-88px)] lg:overflow-hidden">
+        <div className="text-foreground bg-background h-full overflow-hidden flex flex-col">
             <Dialog open={isNoAddressDialogOpen} onOpenChange={setIsNoAddressDialogOpen}>
                 <DialogContent className="bg-card border-border text-foreground max-w-md">
                     <DialogHeader>
@@ -2047,10 +2047,10 @@ function ManualOrderPage() {
                 }
             `}</style>
 
-            <div className="flex flex-col lg:flex-row gap-4 lg:h-full lg:overflow-hidden">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
                 {/* Left Side: Menu Selection (Flexible) */}
-                <div className="flex-1 min-w-0 bg-card border border-border rounded-xl p-3 flex flex-col h-full lg:min-h-0">
-                    <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex-1 min-w-0 min-h-0 bg-card flex flex-col overflow-hidden">
+                    <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-center sm:justify-between px-3 pt-2 pb-2 border-b border-border shrink-0">
                         <div className="flex items-center flex-wrap gap-2">
                             <h1 className="text-lg font-bold tracking-tight">
                                 {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
@@ -2294,14 +2294,14 @@ function ManualOrderPage() {
                                             });
 
                                             return (
-                                                <div className="space-y-1.5 p-1" ref={provided.innerRef} {...provided.droppableProps}>
+                                                <div className="space-y-0.5 p-0.5" ref={provided.innerRef} {...provided.droppableProps}>
                                                     {isMounted && sortedMenuEntries.map(([categoryId], index) => (
                                                         <Draggable key={`cat-${categoryId}`} draggableId={`cat-${categoryId}`} index={index}>
                                                             {(provided, snapshot) => (
                                                                 <div
                                                                     ref={provided.innerRef}
                                                                     {...provided.draggableProps}
-                                                                    className="relative flex items-center group mb-1 border-2 border-border/60 rounded-lg overflow-hidden bg-background"
+                                                                    className="relative flex items-center group border border-border/40 rounded overflow-hidden bg-background"
                                                                     style={{ ...provided.draggableProps.style }}
                                                                 >
                                                                     <div
@@ -2313,7 +2313,7 @@ function ManualOrderPage() {
                                                                     <button
                                                                         onClick={() => scrollToCategory(categoryId)}
                                                                         className={cn(
-                                                                            "w-full text-left pl-7 pr-3 py-3 text-base font-semibold transition-all capitalize",
+                                                                            "w-full text-left pl-6 pr-2 py-1.5 text-base font-medium transition-all capitalize",
                                                                             activeCategory === categoryId
                                                                                 ? "bg-primary text-primary-foreground shadow-sm"
                                                                                 : "text-muted-foreground hover:bg-muted/50"
@@ -2346,7 +2346,7 @@ function ManualOrderPage() {
                             {/* ITEM LIST */}
                             <div
                                 ref={scrollContainerRef}
-                                className="flex-grow min-h-0 overflow-y-auto overscroll-contain pr-2 custom-scrollbar"
+                                className="flex-grow min-h-0 overflow-y-auto overscroll-contain px-2 pr-3 custom-scrollbar"
                             >
                                 {loading ? (
                                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
@@ -2354,13 +2354,13 @@ function ManualOrderPage() {
                                         <p>Loading menu...</p>
                                     </div>
                                 ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
-                                    <div key={categoryId} id={`cat-${categoryId}`} className="mb-5 pt-1">
+                                    <div key={categoryId} id={`cat-${categoryId}`} className="mb-4 pt-1">
                                         <h3 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
                                             {formatCategoryLabel(categoryId)}
                                         </h3>
                                         {categoryId === 'open-items' ? (
                                             <div className="space-y-4">
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                                                     <motion.button
                                                         type="button"
                                                         whileHover={{ y: -4, scale: 1.02 }}
@@ -2440,7 +2440,7 @@ function ManualOrderPage() {
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                                                 {filteredItems.map(item => {
                                                     const isUnavailable = isItemOutOfStock(item);
                                                     const saleOptions = getItemSaleOptions(item, isStoreBusinessType(businessType));
@@ -2448,17 +2448,17 @@ function ManualOrderPage() {
                                                         return (
                                                             <motion.div
                                                                 key={item.id}
-                                                                whileHover={{ y: -4, scale: 1.02 }}
+                                                                whileHover={{ y: -2, scale: 1.01 }}
                                                                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
                                                                 className={cn(
-                                                                    "p-5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 rounded-2xl border-2 border-amber-600/30 transition-all shadow-md min-h-[130px] flex flex-col backdrop-blur-sm",
+                                                                    "p-2.5 bg-gradient-to-br from-amber-900/20 via-amber-800/10 to-amber-900/5 rounded-xl border border-amber-600/30 transition-all shadow-sm flex flex-col",
                                                                     isUnavailable
                                                                         ? "opacity-55 grayscale"
-                                                                        : "hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 hover:border-amber-500/60 hover:shadow-xl hover:shadow-amber-900/20"
+                                                                        : "hover:from-amber-900/30 hover:via-amber-800/15 hover:to-amber-900/10 hover:border-amber-500/60 hover:shadow-md hover:shadow-amber-900/20"
                                                                 )}
                                                             >
-                                                                <div className="flex-1 mb-3">
-                                                                    <p className="font-bold text-foreground text-base leading-tight">
+                                                                <div className="flex-1 mb-1.5">
+                                                                    <p className="font-bold text-foreground text-xs leading-tight">
                                                                         {item.name}
                                                                     </p>
                                                                     {isStoreBusinessType(businessType) && (item?.sku || item?.barcode) && (
@@ -2473,23 +2473,23 @@ function ManualOrderPage() {
                                                                     )}
                                                                 </div>
                                                                 {isUnavailable ? (
-                                                                    <div className="px-3 py-3 rounded-xl border-2 border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-center font-bold min-h-[70px]">
+                                                                    <div className="px-2 py-1.5 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-center font-bold text-xs">
                                                                         Out of Stock
                                                                     </div>
                                                                 ) : (
                                                                     <motion.button
-                                                                        whileHover={{ scale: 1.05 }}
-                                                                        whileTap={{ scale: 0.95 }}
+                                                                        whileHover={{ scale: 1.03 }}
+                                                                        whileTap={{ scale: 0.97 }}
                                                                         onClick={() => addToCart(item, saleOptions[0])}
-                                                                        className="px-3 py-3 rounded-xl bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border-2 border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-amber-900/30 min-h-[70px] relative overflow-hidden"
+                                                                        className="w-full px-2 py-1.5 rounded-lg bg-gradient-to-br from-amber-500/20 via-amber-500/15 to-amber-500/10 border border-amber-500/40 hover:from-amber-500 hover:via-amber-500 hover:to-amber-400 hover:text-white hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-0.5 font-bold group shadow-sm hover:shadow-md hover:shadow-amber-900/30 relative overflow-hidden"
                                                                     >
                                                                         <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
                                                                         {isStoreBusinessType(businessType) && (
-                                                                            <span className="text-[10px] uppercase tracking-[0.18em] opacity-70 relative z-10">
+                                                                            <span className="text-[9px] uppercase tracking-[0.15em] opacity-70 relative z-10">
                                                                                 {saleOptions[0].label}
                                                                             </span>
                                                                         )}
-                                                                        <span className="text-base font-black relative z-10">
+                                                                        <span className="text-sm font-black relative z-10">
                                                                             {formatCurrency(saleOptions[0].price)}
                                                                         </span>
                                                                     </motion.button>
@@ -2502,17 +2502,17 @@ function ManualOrderPage() {
                                                     return (
                                                         <motion.div
                                                             key={item.id}
-                                                            whileHover={{ y: -4, scale: 1.02 }}
+                                                            whileHover={{ y: -2, scale: 1.01 }}
                                                             transition={{ type: "spring", stiffness: 300, damping: 20 }}
                                                             className={cn(
-                                                                "p-5 bg-gradient-to-br from-card via-card to-card/90 rounded-2xl border-2 border-border/40 transition-all shadow-md min-h-[130px] flex flex-col backdrop-blur-sm",
+                                                                "p-2.5 bg-gradient-to-br from-card via-card to-card/90 rounded-xl border border-border/40 transition-all shadow-sm flex flex-col",
                                                                 isUnavailable
                                                                     ? "opacity-55 grayscale"
-                                                                    : "hover:from-card hover:via-muted/20 hover:to-card hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10"
+                                                                    : "hover:from-card hover:via-muted/20 hover:to-card hover:border-primary/50 hover:shadow-md hover:shadow-primary/10"
                                                             )}
                                                         >
-                                                            <div className="flex-1 mb-3">
-                                                                <p className="font-bold text-foreground text-base leading-tight">
+                                                            <div className="flex-1 mb-1.5">
+                                                                <p className="font-bold text-foreground text-xs leading-tight">
                                                                     {item.name}
                                                                 </p>
                                                                 {getItemAvailableStock(item) !== null && (
@@ -2521,32 +2521,32 @@ function ManualOrderPage() {
                                                                     </p>
                                                                 )}
                                                             </div>
-                                                            <div className={`grid gap-2.5 mt-auto ${saleOptions.length === 1 ? 'grid-cols-1' :
+                                                            <div className={`grid gap-1 mt-auto ${saleOptions.length === 1 ? 'grid-cols-1' :
                                                                 saleOptions.length === 2 ? 'grid-cols-2' :
                                                                     'grid-cols-3'
                                                                 }`}>
                                                                 {isUnavailable ? (
-                                                                    <div className="col-span-full px-3 py-3 rounded-xl border-2 border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-center font-bold min-h-[70px]">
+                                                                    <div className="col-span-full px-2 py-1.5 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-center font-bold text-xs">
                                                                         Out of Stock
                                                                     </div>
                                                                 ) : (
                                                                     saleOptions.map(portion => (
                                                                         <motion.button
                                                                             key={portion.name}
-                                                                            whileHover={{ scale: 1.05 }}
-                                                                            whileTap={{ scale: 0.95 }}
+                                                                            whileHover={{ scale: 1.03 }}
+                                                                            whileTap={{ scale: 0.97 }}
                                                                             onClick={() => addToCart(item, portion)}
-                                                                            className="px-3 py-3 rounded-xl bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border-2 border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-1.5 font-bold group shadow-sm hover:shadow-lg hover:shadow-primary/30 min-h-[70px] relative overflow-hidden"
+                                                                            className="px-1.5 py-1.5 rounded-lg bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 border border-primary/40 hover:from-primary hover:via-primary hover:to-primary/90 hover:text-primary-foreground hover:border-primary transition-all flex flex-col items-center justify-center gap-0.5 font-bold group shadow-sm hover:shadow-md hover:shadow-primary/30 relative overflow-hidden"
                                                                         >
                                                                             <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/0 group-hover:from-white/10 group-hover:via-transparent group-hover:to-transparent transition-all pointer-events-none"></div>
 
                                                                             {saleOptions.length > 1 && (
-                                                                                <span className="text-xs opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
+                                                                                <span className="text-[9px] opacity-70 group-hover:opacity-100 uppercase tracking-wider font-black relative z-10">
                                                                                     {portion.label}
                                                                                 </span>
                                                                             )}
                                                                             <div className="flex items-center justify-center relative z-10">
-                                                                                <span className="text-base font-black">
+                                                                                <span className="text-xs font-black">
                                                                                     {formatCurrency(portion.price)}
                                                                                 </span>
                                                                             </div>
