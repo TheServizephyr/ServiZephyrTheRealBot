@@ -103,7 +103,6 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
     const [coupon, setCoupon] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [modalError, setModalError] = useState('');
-
     useEffect(() => {
         if (isOpen && customer) {
             setModalError('');
@@ -118,13 +117,11 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                 expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
                 status: 'active',
                 singleUsePerCustomer: false,
-                customerId: customer.id, // Associate coupon with customer
+                customerId: customer.id,
             });
         }
     }, [isOpen, customer]);
-
     if (!coupon) return null;
-
     const minimumOrderValue = Number(coupon.minOrder) || 0;
     const rewardValue = Number(coupon.value) || 0;
     const maxDiscountValue = Number(coupon.maxDiscount) || 0;
@@ -133,42 +130,43 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
     const effectivePercentageDiscount = maxDiscountValue > 0
         ? Math.min(percentagePreviewDiscount, maxDiscountValue)
         : percentagePreviewDiscount;
-
     const handleChange = (field, value) => {
         setCoupon(prev => {
             if (!prev) return prev;
             const next = { ...prev, [field]: value };
-            if (field === 'type' && value !== 'percentage') {
-                next.maxDiscount = '';
+            if (field === 'type') {
+                if (value !== 'percentage') {
+                    next.maxDiscount = '';
+                }
+                if (value === 'free_delivery') {
+                    next.value = 0;
+                }
             }
             return next;
         });
     };
-
     const generateRandomCode = () => {
-        const code = `VIP-${customer.name.split(' ')[0].toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        const code = VIP--;
         handleChange('code', code);
     };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setModalError('');
-        if (!coupon.code || !coupon.value || !coupon.minOrder) {
-            setModalError("Please fill all fields to create a reward.");
+        const requiresValue = coupon.type !== 'free_delivery';
+        if (!coupon.code || coupon.minOrder === '' || (requiresValue && coupon.value === '')) {
+            setModalError('Please complete coupon code, minimum order, and discount value when required.');
             return;
         }
-
         setIsSaving(true);
         try {
             await onSave(coupon);
             setIsOpen(false);
         } catch (error) {
-            setModalError("Failed to save reward: " + error.message);
+            setModalError(`Failed to save reward: ${error.message}`);
         } finally {
             setIsSaving(false);
         }
     };
-
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border text-foreground">
@@ -179,8 +177,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                         </DialogTitle>
                         <DialogDescription>Sending a special reward to {customer.name}.</DialogDescription>
                     </DialogHeader>
-
-                    <div className="grid gap-y-4 py-6">
+                    <div className="grid gap-y-5 py-6">
                         <div>
                             <Label htmlFor="code">Coupon Code</Label>
                             <div className="flex items-center gap-2 mt-1">
@@ -190,24 +187,80 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                         </div>
                         <div>
                             <Label htmlFor="description">Description</Label>
-                            <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={2} placeholder="e.g., A special thanks for being a loyal customer." className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
+                            <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={3} placeholder="e.g., A special thank-you reward for this customer." className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                         </div>
                         <div>
                             <Label>Reward Type</Label>
-                            <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div className="grid sm:grid-cols-3 gap-2 mt-2">
                                 <Button type="button" variant={coupon.type === 'flat' ? 'default' : 'outline'} onClick={() => handleChange('type', 'flat')}>Flat Amount</Button>
                                 <Button type="button" variant={coupon.type === 'percentage' ? 'default' : 'outline'} onClick={() => handleChange('type', 'percentage')}>Percentage</Button>
+                                <Button type="button" variant={coupon.type === 'free_delivery' ? 'default' : 'outline'} onClick={() => handleChange('type', 'free_delivery')}>Free Delivery</Button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="rounded-lg border border-border bg-muted/40 p-4">
+                            <p className="text-sm font-medium">How this reward will work</p>
+                            {coupon.type === 'free_delivery' ? (
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    Customer gets free delivery when the order total is Rs {minimumOrderValue || 0} or higher.
+                                </p>
+                            ) : coupon.type === 'flat' ? (
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    Customer gets Rs {rewardValue || 0} off when the order total is Rs {minimumOrderValue || 0} or higher.
+                                </p>
+                            ) : (
+                                <>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                        Customer gets {rewardValue || 0}% off when the order total is Rs {minimumOrderValue || 0} or higher.
+                                        {maxDiscountValue > 0 ? ` Maximum discount cap: Rs ${maxDiscountValue}.` : ' No maximum discount cap is set.'}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                        Example: on a Rs {sampleOrderValue} order, discount will be about Rs {effectivePercentageDiscount || 0}.
+                                    </p>
+                                </>
+                            )}
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-4">
                             <div>
-                                <Label htmlFor="value">Discount Value (₹ or %)</Label>
-                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100 or 20" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
+                                <Label htmlFor="value">Discount Value</Label>
+                                <input id="value" type="number" value={coupon.type === 'free_delivery' ? 0 : coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder={coupon.type === 'flat' ? 'e.g., 100' : 'e.g., 20'} disabled={coupon.type === 'free_delivery'} className="mt-1 p-2 border rounded-md bg-input border-border w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {coupon.type === 'flat'
+                                        ? 'Enter the exact rupee discount to apply.'
+                                        : coupon.type === 'percentage'
+                                            ? 'Enter the discount percentage. Example: 20 means 20% off.'
+                                            : 'Free delivery rewards do not need a discount value.'}
+                                </p>
                             </div>
                             <div>
-                                <Label htmlFor="minOrder">Minimum Order (₹)</Label>
+                                <Label htmlFor="minOrder">Minimum Order (Rs)</Label>
                                 <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    This reward can be used only when the order total is Rs {minimumOrderValue || 0} or higher.
+                                </p>
                             </div>
+                        </div>
+                        {coupon.type === 'percentage' && (
+                            <div>
+                                <Label htmlFor="maxDiscount">Maximum Discount Cap (Rs)</Label>
+                                <input id="maxDiscount" type="number" value={coupon.maxDiscount || ''} onChange={e => handleChange('maxDiscount', e.target.value)} placeholder="e.g., 150" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Leave blank if you do not want to cap the percentage discount.
+                                </p>
+                            </div>
+                        )}
+                        <div>
+                            <Label>Customer Usage Rule</Label>
+                            <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                                <Button type="button" variant={coupon.singleUsePerCustomer ? 'default' : 'outline'} onClick={() => handleChange('singleUsePerCustomer', true)}>
+                                    One Time Per Customer
+                                </Button>
+                                <Button type="button" variant={!coupon.singleUsePerCustomer ? 'default' : 'outline'} onClick={() => handleChange('singleUsePerCustomer', false)}>
+                                    Multiple Times Allowed
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                                Choose whether this same customer can redeem the reward once or multiple times.
+                            </p>
                         </div>
                         <div>
                             <Label>Expiry Date</Label>
@@ -234,7 +287,6 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
         </Dialog>
     );
 };
-
 
 const OrderDetailsModal = ({ order, isOpen, onClose }) => {
     if (!order) return null;
@@ -1371,3 +1423,5 @@ export default function CustomersPage() {
         </div>
     );
 }
+
+

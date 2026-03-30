@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { logAuditEvent, AUDIT_ACTIONS } from '@/lib/security/audit-log';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendSystemMessage } from '@/lib/whatsapp';
 import { couponLimiter } from '@/lib/security/rate-limiter';
 import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 
@@ -117,7 +117,18 @@ export async function POST(req) {
                         const discountText = isFreeDelivery ? 'FREE DELIVERY' : (coupon.type === 'percentage' ? `${coupon.value}% OFF` : `₹${coupon.value} OFF`);
                         const message = `High five, ${customerData.name?.split(' ')[0] || 'there'}! 🙌\n\nYou've just unlocked a special reward at ${businessData.name}: *${discountText}*!\n\nUse Code: *${coupon.code}*\n${coupon.description || ''}\n\nMinimum Order: ₹${coupon.minOrder}\nValid until: ${new Date(coupon.expiryDate).toLocaleDateString('en-IN')}\n\nOrder now to redeem! 🍕`;
 
-                        await sendWhatsAppMessage(formattedPhone, message, businessData.botPhoneNumberId);
+                        await sendSystemMessage(
+                            formattedPhone,
+                            message,
+                            businessData.botPhoneNumberId,
+                            businessId,
+                            businessData.name || 'Your Restaurant',
+                            collectionName,
+                            {
+                                customerName: customerData.name || null,
+                                conversationPreview: `Reward sent: ${coupon.code}`,
+                            }
+                        );
                     } else {
                         console.warn(`[Coupon API] Customer ${coupon.customerId} has no phone number. Skipped WhatsApp.`);
                     }
