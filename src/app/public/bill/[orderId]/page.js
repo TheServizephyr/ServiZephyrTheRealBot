@@ -65,7 +65,8 @@ export default function PublicBillPage() {
                     setRestaurant({
                         name: apiRestaurant?.name || 'Restaurant Partner',
                         address: apiRestaurant?.address?.street || apiRestaurant?.address?.full || '',
-                        phone: apiRestaurant?.phone || ''
+                        phone: apiRestaurant?.phone || '',
+                        botDisplayNumber: apiRestaurant?.botDisplayNumber || apiRestaurant?.whatsappNumber || ''
                     });
                     return;
                 }
@@ -85,7 +86,8 @@ export default function PublicBillPage() {
                         setRestaurant({
                             name: orderData.restaurantName,
                             address: orderData.restaurantAddress || '',
-                            phone: orderData.restaurantPhone || ''
+                            phone: orderData.restaurantPhone || '',
+                            botDisplayNumber: orderData.botDisplayNumber || orderData.restaurantBotDisplayNumber || ''
                         });
                     } else {
                         setRestaurant({ name: 'Restaurant Partner', address: '', phone: '' });

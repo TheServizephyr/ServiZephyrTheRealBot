@@ -643,6 +643,8 @@ export async function GET(request, { params }) {
                 address: businessData.address,
                 ownerPhone: restaurantContactPhone,
                 phone: restaurantContactPhone,
+                botDisplayNumber: businessData.botDisplayNumber || businessData.whatsappNumber || null,
+                whatsappNumber: businessData.botDisplayNumber || businessData.whatsappNumber || null,
                 businessType: (businessData.businessType === 'shop'
                     ? 'store'
                     : (businessData.businessType || normalizedBusinessType || 'restaurant')) // CRITICAL: Router needs this!

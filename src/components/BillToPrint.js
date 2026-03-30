@@ -128,6 +128,15 @@ const buildPrintRows = (items = []) =>
         }));
     });
 
+const resolveBotDisplayNumber = (restaurant = {}) =>
+    String(
+        restaurant?.botDisplayNumber ||
+        restaurant?.whatsappDisplayNumber ||
+        restaurant?.whatsappNumber ||
+        restaurant?.botPhone ||
+        ''
+    ).trim();
+
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
     if (!order) return null;
 
@@ -150,7 +159,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     const orderTypeLabel = getOrderTypeLabel(order);
     const orderNote = getOrderNoteText(order, finalBillDetails, finalCustomerDetails);
     const printRows = buildPrintRows(finalItems);
-    const botDisplayNumber = String(restaurant?.botDisplayNumber || '').trim();
+    const botDisplayNumber = resolveBotDisplayNumber(restaurant);
     const botDisplayDigits = botDisplayNumber.replace(/\D/g, '');
     const promoQrValue = botDisplayDigits ? `https://wa.me/${botDisplayDigits}?text=hi` : '';
     const customerNameFallback = String(order?.orderType || order?.deliveryType || '').trim().toLowerCase() === 'delivery'
@@ -366,8 +375,23 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                             <div><strong>Order Online</strong> at</div>
                             <div><strong>No Extra Charges</strong></div>
                         </div>
-                        <div className="shrink-0 bg-white p-1">
-                            <QRCode value={promoQrValue} size={54} level="M" includeMargin={false} />
+                        <div className="shrink-0 bg-white" style={{ width: 68, height: 68 }}>
+                            <QRCode
+                                value={promoQrValue}
+                                size={4096}
+                                level="H"
+                                includeMargin={false}
+                                renderAs="svg"
+                                fgColor="#000000"
+                                bgColor="#FFFFFF"
+                                style={{
+                                    display: 'block',
+                                    width: '68px',
+                                    height: '68px',
+                                    shapeRendering: 'crispEdges',
+                                    imageRendering: 'pixelated',
+                                }}
+                            />
                         </div>
                     </div>
                 </div>

@@ -255,6 +255,7 @@ export default function ManualOrderHistoryPage() {
         setRestaurant({
             name: data.restaurantName || 'Outlet',
             address: data.address || '',
+            botDisplayNumber: data.botDisplayNumber || '',
             gstin: data.gstin || '',
             gstEnabled: !!data.gstEnabled,
             gstPercentage: Number(data.gstPercentage ?? data.gstRate ?? 0),

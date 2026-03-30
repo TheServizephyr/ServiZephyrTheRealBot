@@ -310,6 +310,7 @@ function CustomBillPage() {
                             const nextRestaurantPayload = {
                                 name: settingsData.restaurantName,
                                 address: settingsData.address,
+                                botDisplayNumber: settingsData.botDisplayNumber || '',
                                 gstin: settingsData.gstin,
                                 gstEnabled: !!settingsData.gstEnabled,
                                 gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
@@ -410,6 +411,7 @@ function CustomBillPage() {
                     const nextRestaurantPayload = {
                         name: settingsData.restaurantName,
                         address: settingsData.address,
+                        botDisplayNumber: settingsData.botDisplayNumber || '',
                         gstin: settingsData.gstin,
                         gstEnabled: !!settingsData.gstEnabled,
                         gstPercentage: Number(settingsData.gstPercentage ?? settingsData.gstRate ?? 0),
