@@ -37,7 +37,7 @@ import Image from 'next/image';
 import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
 import { canAccessPage, ROLES } from '@/lib/permissions';
-import { emitAppNotification } from '@/lib/appNotifications';
+import { clearAppNotificationAlarmState, emitAppNotification, setAppNotificationAlarmState } from '@/lib/appNotifications';
 
 const normalizeBusinessType = (value) => {
   if (value === null || value === undefined || value === '') return null;
@@ -437,6 +437,20 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     const handleCountUpdate = (count) => {
       setPendingOrdersCount(count);
 
+      if (count > 0) {
+        setAppNotificationAlarmState('owner', {
+          alarmId: 'live_orders_pending',
+          title: 'New Live Order',
+          message: count === 1
+            ? '1 new order is waiting in Live Orders.'
+            : count + ' new orders are waiting in Live Orders.',
+          sound: '/notification-owner-manager.mp3',
+          href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders',
+          disableAutoStop: true,
+        });
+      } else {
+        clearAppNotificationAlarmState('owner', 'live_orders_pending');
+      }
       if (!hasBootstrappedPendingNotifRef.current) {
         hasBootstrappedPendingNotifRef.current = true;
         prevPendingCountRef.current = count;
@@ -792,3 +806,4 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     </>
   );
 }
+

@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellRing, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { APP_NOTIFICATION_EVENT } from '@/lib/appNotifications';
+import {
+    APP_NOTIFICATION_ALARM_STORAGE_KEY,
+    APP_NOTIFICATION_BROADCAST_KEY,
+    APP_NOTIFICATION_EVENT,
+    APP_NOTIFICATION_SYNC_EVENT,
+    readAppNotificationAlarmState,
+} from '@/lib/appNotifications';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 
@@ -50,7 +56,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
 
         const title = payload.title || 'New Notification';
         const body = payload.message || '';
-        const tag = payload.dedupeKey || `servizephyr_${scope}`;
+        const tag = payload.dedupeKey || payload.alarmId || `servizephyr_${scope}`;
 
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistration().then((reg) => {
@@ -60,7 +66,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                         tag,
                         renotify: true,
                         requireInteraction: true,
-                        vibrate: LONG_VIBRATION_PATTERN
+                        vibrate: LONG_VIBRATION_PATTERN,
                     });
                 } else {
                     new Notification(title, { body, tag });
@@ -108,101 +114,15 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
     };
 
     const startVibrationLoop = () => {
-        if (!canVibrate()) return;
-        if (vibrationIntervalRef.current) return;
+        if (!canVibrate() || vibrationIntervalRef.current) return;
         triggerVibration();
         vibrationIntervalRef.current = setInterval(() => {
             triggerVibration();
         }, 5000);
     };
 
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        try {
-            const raw = localStorage.getItem(storageKey(scope));
-            const parsed = raw ? JSON.parse(raw) : [];
-            const cleaned = pruneNotifications(Array.isArray(parsed) ? parsed : []);
-            setNotifications(cleaned);
-            localStorage.setItem(storageKey(scope), JSON.stringify(cleaned));
-        } catch (_) {
-            setNotifications([]);
-        }
-    }, [scope]);
-
-
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        try {
-            localStorage.setItem(storageKey(scope), JSON.stringify(pruneNotifications(notifications)));
-        } catch (_) {
-            // Ignore storage errors
-        }
-    }, [notifications, scope]);
-
-    useEffect(() => {
-        const unlockAudio = () => {
-            userInteractedRef.current = true;
-
-            // Resume AudioContext if it exists and is suspended
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx && AudioCtx.state === 'suspended') {
-                try {
-                    new AudioCtx().resume().catch(() => { });
-                } catch (e) {
-                    console.warn('[Audio] Failed to resume context:', e);
-                }
-            }
-
-            if (audioUnlockedRef.current || !audioRef.current) return;
-
-            // If an alarm is already actively playing, do not interrupt it with the silent unlock test.
-            if (!audioRef.current.paused || (fallbackAudioRef.current && !fallbackAudioRef.current.paused)) {
-                audioUnlockedRef.current = true;
-                console.log('[Audio] Unlocked implicitly by active playback');
-                return;
-            }
-
-            audioRef.current.volume = 0;
-            const playPromise = audioRef.current.play();
-
-            if (playPromise !== undefined) {
-                playPromise.then(() => {
-                    audioRef.current.pause();
-                    audioRef.current.currentTime = 0;
-                    audioRef.current.volume = 1;
-                    audioUnlockedRef.current = true;
-                    console.log('[Audio] Unlocked successfully');
-                })
-                    .catch((error) => {
-                        console.warn('[Audio] Auto-unlock failed (expected):', error);
-                    });
-            }
-        };
-
-        // Attempt initial silent unlock (works on some browsers if previously interacted)
-        if (!audioUnlockedRef.current && audioRef.current) {
-            audioRef.current.volume = 0;
-            audioRef.current.play().then(() => {
-                audioRef.current.pause();
-                audioRef.current.currentTime = 0;
-                audioRef.current.volume = 1;
-                audioUnlockedRef.current = true;
-            }).catch(() => { });
-        }
-
-        window.addEventListener('click', unlockAudio, { once: true });
-        window.addEventListener('touchstart', unlockAudio, { once: true });
-        window.addEventListener('keydown', unlockAudio, { once: true });
-        return () => {
-            window.removeEventListener('click', unlockAudio);
-            window.removeEventListener('touchstart', unlockAudio);
-            window.removeEventListener('keydown', unlockAudio);
-        };
-    }, []);
-
     const stopAlarm = (targetAlarmId = null) => {
-        if (targetAlarmId && currentAlarmIdRef.current !== targetAlarmId) {
+        if (targetAlarmId && currentAlarmIdRef.current && currentAlarmIdRef.current !== targetAlarmId) {
             return;
         }
         if (stopTimerRef.current) {
@@ -245,9 +165,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
     };
 
     const handleNotificationClick = (notification) => {
-        setNotifications((prev) =>
-            prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
-        );
+        setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)));
         stopAlarm();
         setIsOpen(false);
 
@@ -258,6 +176,196 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         }
         router.push(notification.href);
     };
+
+    const handleSoundToggle = () => {
+        stopAlarm();
+    };
+
+    const playAlarmFromPayload = (payload = {}, options = {}) => {
+        const { skipSystemNotification = false } = options;
+        const soundPath = payload.sound;
+        const isWhatsAppSound = typeof soundPath === 'string' && soundPath.includes('notification-whatsapp-message');
+        const disableAutoStop = payload.disableAutoStop === true;
+        const alarmId = typeof payload.alarmId === 'string' ? payload.alarmId : null;
+
+        if (isWhatsAppSound) {
+            triggerVibration();
+        } else {
+            startVibrationLoop();
+        }
+
+        if (!skipSystemNotification) {
+            const shouldShowSystemNotification = (typeof document !== 'undefined' && document.hidden) || disableAutoStop;
+            if (shouldShowSystemNotification) {
+                showSystemNotification(payload);
+            }
+        }
+
+        if (!soundPath || !audioRef.current) return;
+        if (persistentAlarmRef.current && currentAlarmIdRef.current === alarmId) return;
+        if (persistentAlarmRef.current && !disableAutoStop) return;
+
+        stopAlarm();
+        if (!isWhatsAppSound) {
+            startVibrationLoop();
+        }
+
+        const isPersistentAlarm = disableAutoStop && !isWhatsAppSound;
+        currentAlarmIdRef.current = isPersistentAlarm ? alarmId : null;
+        persistentAlarmRef.current = isPersistentAlarm;
+
+        const scheduleStop = (duration) => {
+            if (disableAutoStop) return;
+            stopTimerRef.current = setTimeout(() => {
+                stopAlarm();
+            }, duration);
+        };
+
+        const playWithFallback = () => {
+            if (isWhatsAppSound) {
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) {
+                        const ctx = new AudioCtx();
+                        const oscillator = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        oscillator.type = 'sine';
+                        oscillator.frequency.value = 880;
+                        gain.gain.value = 0.25;
+                        oscillator.connect(gain);
+                        gain.connect(ctx.destination);
+                        oscillator.start();
+                        setTimeout(() => {
+                            oscillator.stop();
+                            ctx.close();
+                        }, 250);
+                    }
+                } catch (_) {
+                    // ignore
+                }
+                setIsAlarmPlaying(true);
+                scheduleStop(1500);
+                return;
+            }
+
+            startFallbackBeep();
+            setIsAlarmPlaying(true);
+            scheduleStop(MAX_RING_MS);
+        };
+
+        try {
+            audioRef.current.src = soundPath;
+            audioRef.current.load();
+            audioRef.current.muted = false;
+            audioRef.current.volume = 1;
+            audioRef.current.loop = !isWhatsAppSound;
+            audioRef.current.play().then(() => {
+                setIsAlarmPlaying(true);
+                if (isWhatsAppSound) {
+                    audioRef.current.onended = () => {
+                        setIsAlarmPlaying(false);
+                        audioRef.current.onended = null;
+                    };
+                    scheduleStop(1500);
+                } else {
+                    scheduleStop(MAX_RING_MS);
+                }
+            }).catch(() => {
+                try {
+                    const fallbackAudio = new Audio(soundPath);
+                    fallbackAudio.loop = !isWhatsAppSound;
+                    fallbackAudio.volume = 1;
+                    fallbackAudioRef.current = fallbackAudio;
+                    fallbackAudio.play().then(() => {
+                        setIsAlarmPlaying(true);
+                        if (isWhatsAppSound) {
+                            fallbackAudio.onended = () => {
+                                setIsAlarmPlaying(false);
+                                fallbackAudio.onended = null;
+                            };
+                            scheduleStop(1500);
+                        } else {
+                            scheduleStop(MAX_RING_MS);
+                        }
+                    }).catch(playWithFallback);
+                } catch (_) {
+                    playWithFallback();
+                }
+            });
+        } catch (_) {
+            playWithFallback();
+        }
+    };
+
+    const resumePersistentAlarm = () => {
+        const activeAlarm = readAppNotificationAlarmState(scope);
+        if (!activeAlarm?.disableAutoStop || !activeAlarm?.alarmId) return;
+        playAlarmFromPayload(activeAlarm, { skipSystemNotification: true });
+    };
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            const raw = localStorage.getItem(storageKey(scope));
+            const parsed = raw ? JSON.parse(raw) : [];
+            const cleaned = pruneNotifications(Array.isArray(parsed) ? parsed : []);
+            setNotifications(cleaned);
+            localStorage.setItem(storageKey(scope), JSON.stringify(cleaned));
+        } catch (_) {
+            setNotifications([]);
+        }
+    }, [scope]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            localStorage.setItem(storageKey(scope), JSON.stringify(pruneNotifications(notifications)));
+        } catch (_) {
+            // Ignore storage errors
+        }
+    }, [notifications, scope]);
+
+    useEffect(() => {
+        const unlockAudio = () => {
+            userInteractedRef.current = true;
+
+            if (audioUnlockedRef.current || !audioRef.current) return;
+            if (!audioRef.current.paused || (fallbackAudioRef.current && !fallbackAudioRef.current.paused)) {
+                audioUnlockedRef.current = true;
+                return;
+            }
+
+            audioRef.current.volume = 0;
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
+                    audioRef.current.volume = 1;
+                    audioUnlockedRef.current = true;
+                }).catch(() => { });
+            }
+        };
+
+        if (!audioUnlockedRef.current && audioRef.current) {
+            audioRef.current.volume = 0;
+            audioRef.current.play().then(() => {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+                audioRef.current.volume = 1;
+                audioUnlockedRef.current = true;
+            }).catch(() => { });
+        }
+
+        window.addEventListener('click', unlockAudio, { once: true });
+        window.addEventListener('touchstart', unlockAudio, { once: true });
+        window.addEventListener('keydown', unlockAudio, { once: true });
+        return () => {
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('touchstart', unlockAudio);
+            window.removeEventListener('keydown', unlockAudio);
+        };
+    }, []);
 
     useEffect(() => {
         const handleIncoming = (event) => {
@@ -271,15 +379,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             const createdAt = now();
             const dedupeKey = payload.dedupeKey || null;
             const id = `${createdAt}_${Math.random().toString(36).slice(2, 8)}`;
-            const disableAutoStop = payload.disableAutoStop === true;
-            const alarmId = typeof payload.alarmId === 'string' ? payload.alarmId : null;
 
             setNotifications((prev) => {
                 const cleaned = pruneNotifications(prev);
                 if (dedupeKey) {
-                    const duplicate = cleaned.find(
-                        (n) => !n.read && n.dedupeKey === dedupeKey
-                    );
+                    const duplicate = cleaned.find((n) => !n.read && n.dedupeKey === dedupeKey);
                     if (duplicate) return cleaned;
                 }
                 return [
@@ -291,193 +395,13 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                         sound: payload.sound || '',
                         dedupeKey,
                         read: false,
-                        createdAt
+                        createdAt,
                     },
-                    ...cleaned
+                    ...cleaned,
                 ].slice(0, 200);
             });
 
-            const soundPath = payload.sound;
-            const isWhatsAppSound = typeof soundPath === 'string' && soundPath.includes('notification-whatsapp-message');
-            if (isWhatsAppSound) {
-                triggerVibration();
-            } else {
-                startVibrationLoop();
-            }
-
-            // If app is in background OR this is a persistent live-order alarm, raise OS-level local notification.
-            const shouldShowSystemNotification = (typeof document !== 'undefined' && document.hidden) || payload.disableAutoStop === true;
-            if (shouldShowSystemNotification) {
-                showSystemNotification(payload);
-            }
-
-            if (!soundPath || !audioRef.current) return;
-            if (persistentAlarmRef.current && !disableAutoStop) return;
-
-            try {
-                stopAlarm();
-                if (!isWhatsAppSound) {
-                    startVibrationLoop();
-                }
-                const isPersistentAlarm = disableAutoStop && !isWhatsAppSound;
-                currentAlarmIdRef.current = isPersistentAlarm ? alarmId : null;
-                persistentAlarmRef.current = isPersistentAlarm;
-                audioRef.current.src = soundPath;
-                audioRef.current.load();
-                audioRef.current.muted = false;
-                audioRef.current.volume = 1;
-                audioRef.current.loop = !isWhatsAppSound;
-                audioRef.current.play().then(() => {
-                    setIsAlarmPlaying(true);
-                    if (isWhatsAppSound) {
-                        audioRef.current.onended = () => {
-                            setIsAlarmPlaying(false);
-                            audioRef.current.onended = null;
-                        };
-                    } else {
-                        if (!disableAutoStop) {
-                            stopTimerRef.current = setTimeout(() => {
-                                stopAlarm();
-                            }, MAX_RING_MS);
-                        }
-                    }
-                }).catch(() => {
-                    try {
-                        // Second attempt with fresh Audio() instance for stricter autoplay/decode paths.
-                        const fallbackAudio = new Audio(soundPath);
-                        fallbackAudio.loop = !isWhatsAppSound;
-                        fallbackAudio.volume = 1;
-                        fallbackAudioRef.current = fallbackAudio;
-                        fallbackAudio.play().then(() => {
-                            setIsAlarmPlaying(true);
-                            if (isWhatsAppSound) {
-                                fallbackAudio.onended = () => {
-                                    setIsAlarmPlaying(false);
-                                    fallbackAudio.onended = null;
-                                };
-                            } else {
-                                if (!disableAutoStop) {
-                                    stopTimerRef.current = setTimeout(() => {
-                                        stopAlarm();
-                                    }, MAX_RING_MS);
-                                }
-                            }
-                        }).catch(() => {
-                            // Browser blocked autoplay / decode issue -> fallback alarm
-                            if (isWhatsAppSound) {
-                                try {
-                                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                                    if (AudioCtx) {
-                                        const ctx = new AudioCtx();
-                                        const oscillator = ctx.createOscillator();
-                                        const gain = ctx.createGain();
-                                        oscillator.type = 'sine';
-                                        oscillator.frequency.value = 880;
-                                        gain.gain.value = 0.25;
-                                        oscillator.connect(gain);
-                                        gain.connect(ctx.destination);
-                                        oscillator.start();
-                                        setTimeout(() => {
-                                            oscillator.stop();
-                                            ctx.close();
-                                        }, 250);
-                                    }
-                                } catch (_) {
-                                    // ignore
-                                }
-                            } else {
-                                startFallbackBeep();
-                            }
-                            setIsAlarmPlaying(true);
-                            if (isWhatsAppSound) {
-                                stopTimerRef.current = setTimeout(() => {
-                                    stopAlarm();
-                                }, 1500);
-                            } else {
-                                if (!disableAutoStop) {
-                                    stopTimerRef.current = setTimeout(() => {
-                                        stopAlarm();
-                                    }, MAX_RING_MS);
-                                }
-                            }
-                        });
-                    } catch (_) {
-                        if (isWhatsAppSound) {
-                            try {
-                                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                                if (AudioCtx) {
-                                    const ctx = new AudioCtx();
-                                    const oscillator = ctx.createOscillator();
-                                    const gain = ctx.createGain();
-                                    oscillator.type = 'sine';
-                                    oscillator.frequency.value = 880;
-                                    gain.gain.value = 0.25;
-                                    oscillator.connect(gain);
-                                    gain.connect(ctx.destination);
-                                    oscillator.start();
-                                    setTimeout(() => {
-                                        oscillator.stop();
-                                        ctx.close();
-                                    }, 250);
-                                }
-                            } catch (_) {
-                                // ignore
-                            }
-                        } else {
-                            startFallbackBeep();
-                        }
-                        setIsAlarmPlaying(true);
-                        if (isWhatsAppSound) {
-                            stopTimerRef.current = setTimeout(() => {
-                                stopAlarm();
-                            }, 1500);
-                        } else {
-                            if (!disableAutoStop) {
-                                stopTimerRef.current = setTimeout(() => {
-                                    stopAlarm();
-                                }, MAX_RING_MS);
-                            }
-                        }
-                    }
-                });
-            } catch (_) {
-                if (isWhatsAppSound) {
-                    try {
-                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                        if (AudioCtx) {
-                            const ctx = new AudioCtx();
-                            const oscillator = ctx.createOscillator();
-                            const gain = ctx.createGain();
-                            oscillator.type = 'sine';
-                            oscillator.frequency.value = 880;
-                            gain.gain.value = 0.25;
-                            oscillator.connect(gain);
-                            gain.connect(ctx.destination);
-                            oscillator.start();
-                            setTimeout(() => {
-                                oscillator.stop();
-                                ctx.close();
-                            }, 250);
-                        }
-                    } catch (_) {
-                        // ignore
-                    }
-                } else {
-                    startFallbackBeep();
-                }
-                setIsAlarmPlaying(true);
-                if (isWhatsAppSound) {
-                    stopTimerRef.current = setTimeout(() => {
-                        stopAlarm();
-                    }, 1500);
-                } else {
-                    if (!disableAutoStop) {
-                        stopTimerRef.current = setTimeout(() => {
-                            stopAlarm();
-                        }, MAX_RING_MS);
-                    }
-                }
-            }
+            playAlarmFromPayload(payload);
         };
 
         window.addEventListener(APP_NOTIFICATION_EVENT, handleIncoming);
@@ -485,7 +409,63 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             window.removeEventListener(APP_NOTIFICATION_EVENT, handleIncoming);
             stopAlarm();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scope]);
+
+    useEffect(() => {
+        const handleSync = (event) => {
+            const detail = event?.detail || {};
+            if (detail?.scope !== scope) return;
+
+            if (detail?.type === 'alarm_state') {
+                if (!detail.alarmState) {
+                    stopAlarm();
+                    return;
+                }
+                playAlarmFromPayload(detail.alarmState, { skipSystemNotification: true });
+            }
+        };
+
+        const handleStorage = (event) => {
+            if (event.key === APP_NOTIFICATION_ALARM_STORAGE_KEY) {
+                const activeAlarm = readAppNotificationAlarmState(scope);
+                if (!activeAlarm) {
+                    stopAlarm();
+                    return;
+                }
+                resumePersistentAlarm();
+                return;
+            }
+            if (event.key === APP_NOTIFICATION_BROADCAST_KEY) {
+                try {
+                    const payload = event.newValue ? JSON.parse(event.newValue) : null;
+                    if (!payload || payload.scope !== scope) return;
+                    if (payload.type === 'notification') {
+                        window.dispatchEvent(new CustomEvent(APP_NOTIFICATION_EVENT, { detail: payload.payload }));
+                    }
+                } catch {
+                    // Ignore storage sync errors
+                }
+            }
+        };
+
+        const handleVisibilityResume = () => {
+            if (document.hidden) return;
+            resumePersistentAlarm();
+        };
+
+        window.addEventListener(APP_NOTIFICATION_SYNC_EVENT, handleSync);
+        window.addEventListener('storage', handleStorage);
+        window.addEventListener('focus', handleVisibilityResume);
+        document.addEventListener('visibilitychange', handleVisibilityResume);
+
+        resumePersistentAlarm();
+
+        return () => {
+            window.removeEventListener(APP_NOTIFICATION_SYNC_EVENT, handleSync);
+            window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('focus', handleVisibilityResume);
+            document.removeEventListener('visibilitychange', handleVisibilityResume);
+        };
     }, [scope]);
 
     useEffect(() => {
@@ -504,10 +484,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         };
     }, []);
 
-    const unreadCount = useMemo(
-        () => notifications.filter((n) => !n.read).length,
-        [notifications]
-    );
+    const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
     return (
         <div className="relative flex items-center gap-2">
@@ -516,10 +493,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             <Button
                 variant="ghost"
                 size="icon"
-                className={cn(
-                    'relative',
-                    unreadCount > 0 && 'animate-pulse'
-                )}
+                className={cn('relative', unreadCount > 0 && 'animate-pulse')}
                 onClick={handleBellClick}
                 title="Notifications"
             >
@@ -534,8 +508,8 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             <Button
                 variant={isAlarmPlaying ? 'destructive' : 'outline'}
                 size="icon"
-                onClick={stopAlarm}
-                title={isAlarmPlaying ? 'Stop Alarm' : 'Alarm Stopped'}
+                onClick={handleSoundToggle}
+                title={isAlarmPlaying ? 'Stop current alarm' : 'No alarm playing'}
             >
                 {isAlarmPlaying ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </Button>
@@ -572,3 +546,4 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         </div>
     );
 }
+
