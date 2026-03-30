@@ -60,6 +60,7 @@ const CartPageInternal = () => {
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
     const token = searchParams.get('token');
+    const ref = searchParams.get('ref');
 
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
@@ -118,7 +119,15 @@ const CartPageInternal = () => {
                     setOutOfStockItems(unavailableItemIds);
 
                     // Fetch fresh settings
-                    fetch(`/api/owner/settings?restaurantId=${restaurantId}`)
+                    const rewardQuery = new URLSearchParams({
+                        restaurantId,
+                        includeCoupons: 'true'
+                    });
+                    if (parsedData.phone) rewardQuery.set('phone', parsedData.phone);
+                    if (token) rewardQuery.set('token', token);
+                    if (ref) rewardQuery.set('ref', ref);
+
+                    fetch(`/api/owner/settings?${rewardQuery.toString()}`)
                         .then(res => res.json())
                         .then(freshSettings => {
                             const updatedData = {
@@ -127,7 +136,7 @@ const CartPageInternal = () => {
                                 gstRate: freshSettings.gstPercentage || freshSettings.gstRate || 0,
                                 gstMinAmount: freshSettings.gstMinAmount,
                                 gstCalculationMode: freshSettings.gstCalculationMode || (freshSettings.gstIncludedInPrice === false ? 'excluded' : 'included'),
-                                coupons: freshSettings.coupons || [],
+                                coupons: Array.isArray(freshSettings.coupons) ? freshSettings.coupons : (parsedData.coupons || []),
                             };
 
                             setCartData(updatedData);

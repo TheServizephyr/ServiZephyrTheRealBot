@@ -70,6 +70,9 @@ export async function POST(req) {
             id: newCouponRef.id,
             timesUsed: 0,
             value: isFreeDelivery ? 0 : Number(coupon.value),
+            maxDiscount: coupon.type === 'percentage' ? (Number(coupon.maxDiscount) || 0) : 0,
+            singleUsePerCustomer: coupon.singleUsePerCustomer === true,
+            redeemedCustomerIds: [],
             createdAt: FieldValue.serverTimestamp(),
             startDate: new Date(coupon.startDate),
             expiryDate: new Date(coupon.expiryDate),
@@ -154,9 +157,13 @@ export async function PATCH(req) {
 
         if (updateData.type === 'free_delivery') {
             updateData.value = 0;
+            updateData.maxDiscount = 0;
         } else {
             updateData.value = Number(updateData.value);
+            updateData.maxDiscount = updateData.type === 'percentage' ? (Number(updateData.maxDiscount) || 0) : 0;
         }
+
+        updateData.singleUsePerCustomer = updateData.singleUsePerCustomer === true;
 
         if (updateData.startDate) {
             updateData.startDate = new Date(updateData.startDate);

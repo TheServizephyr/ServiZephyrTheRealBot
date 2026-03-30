@@ -164,6 +164,38 @@ async function verifyBearerUid(req) {
     }
 }
 
+async function resolveCouponOwnership({
+    firestore,
+    business,
+    couponCustomerId,
+    userId,
+    normalizedPhone,
+}) {
+    const assignedCustomerId = String(couponCustomerId || '').trim();
+    if (!assignedCustomerId) return true;
+    if (assignedCustomerId === String(userId || '').trim()) return true;
+
+    const safePhone = String(normalizedPhone || '').trim();
+    if (!safePhone) return false;
+
+    try {
+        const customerDoc = await firestore
+            .collection(business.collection)
+            .doc(String(business.id))
+            .collection('customers')
+            .doc(assignedCustomerId)
+            .get();
+
+        if (!customerDoc.exists) return false;
+        const customerData = customerDoc.data() || {};
+        const customerPhone = String(customerData.phone || '').replace(/\D/g, '').slice(-10);
+        return Boolean(customerPhone) && customerPhone === safePhone;
+    } catch (error) {
+        console.warn('[createOrderV2] Coupon ownership lookup failed:', error?.message || error);
+        return false;
+    }
+}
+
 async function resolveDineInLikeToken({
     firestore,
     business,
@@ -592,6 +624,7 @@ export async function createOrderV2(req, options = {}) {
         }
         console.log(`[createOrderV2] ✅ All Discovery & Validation completed in total ${Date.now() - discoveryStart}ms`);
         console.log(`[createOrderV2] ✅ Identity: ${userId}, Phone: ${normalizedPhone}, Name: ${finalCustomerName}`);
+        const couponRedemptionKey = String(userId || normalizedPhone || '').trim();
 
         validatePriceMatch(subtotal, pricingResult.serverSubtotal);
         console.log(`[createOrderV2] Price validation passed: ₹${pricingResult.serverSubtotal}`);
@@ -628,6 +661,8 @@ export async function createOrderV2(req, options = {}) {
                 const couponMaxDiscount = Number(couponData.maxDiscount) || 0;
                 const couponUsageLimit = Number(couponData.usageLimit) || 0;
                 const couponTimesUsed = Number(couponData.timesUsed) || 0;
+                const singleUsePerCustomer = couponData.singleUsePerCustomer === true;
+                const redeemedCustomerIds = Array.isArray(couponData.redeemedCustomerIds) ? couponData.redeemedCustomerIds.map(String) : [];
 
                 const startDate = couponData.startDate?.toDate
                     ? couponData.startDate.toDate()
@@ -674,6 +709,32 @@ export async function createOrderV2(req, options = {}) {
                         message: 'Coupon usage limit reached.',
                         status: 400
                     });
+                }
+
+                if (singleUsePerCustomer && couponRedemptionKey && redeemedCustomerIds.includes(couponRedemptionKey)) {
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Coupon already redeemed by this customer'));
+                    return buildErrorResponse({
+                        message: 'This coupon has already been used by this customer.',
+                        status: 400
+                    });
+                }
+
+                if (couponData.customerId) {
+                    const isCouponOwnedByCurrentCustomer = await resolveCouponOwnership({
+                        firestore,
+                        business,
+                        couponCustomerId: couponData.customerId,
+                        userId,
+                        normalizedPhone,
+                    });
+
+                    if (!isCouponOwnedByCurrentCustomer) {
+                        await idempotencyRepository.fail(idempotencyKey, new Error('Coupon not assigned to current customer'));
+                        return buildErrorResponse({
+                            message: 'This reward is assigned to another customer.',
+                            status: 403
+                        });
+                    }
                 }
 
                 if (!['flat', 'percentage', 'free_delivery'].includes(couponType)) {
@@ -1195,6 +1256,26 @@ export async function createOrderV2(req, options = {}) {
             }
         })();
 
+        const couponUsagePromise = (async () => {
+            if (!verifiedCoupon?.id) return;
+            try {
+                const couponUpdate = {
+                    timesUsed: FieldValue.increment(1),
+                };
+                if (verifiedCoupon.singleUsePerCustomer === true && couponRedemptionKey) {
+                    couponUpdate.redeemedCustomerIds = FieldValue.arrayUnion(couponRedemptionKey);
+                }
+                await firestore
+                    .collection(business.collection)
+                    .doc(String(business.id))
+                    .collection('coupons')
+                    .doc(String(verifiedCoupon.id))
+                    .set(couponUpdate, { merge: true });
+            } catch (couponSyncError) {
+                console.error('[createOrderV2] Coupon usage sync failed:', couponSyncError);
+            }
+        })();
+
         // Token counter already updated atomically in resolveDineInLikeToken transaction
         const tokenCounterPromise = Promise.resolve();
 
@@ -1260,6 +1341,7 @@ export async function createOrderV2(req, options = {}) {
             saveOrderPromise,
             tokenPersistPromise,
             syncProfilePromise,
+            couponUsagePromise,
             idempotencyPromise,
             tokenCounterPromise,
             tabUpdatePromise

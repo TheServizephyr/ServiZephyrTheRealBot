@@ -12,6 +12,60 @@ function normalizeBusinessType(value) {
     return 'restaurant';
 }
 
+const LOST_ORDER_STATUSES = new Set(['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant']);
+
+const toAmount = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+};
+
+const timestampToDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if (typeof value?.toDate === 'function') {
+        const date = value.toDate();
+        return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getRangeDays = (filter, now = new Date()) => {
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+
+    let start;
+    switch (filter) {
+        case 'This Week': {
+            start = new Date(now);
+            start.setDate(now.getDate() - now.getDay());
+            break;
+        }
+        case 'This Month':
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+        case 'Today':
+        default:
+            start = new Date(now);
+            start.setHours(0, 0, 0, 0);
+            break;
+    }
+    start.setHours(0, 0, 0, 0);
+    return { start, end };
+};
+
+const getPreviousRange = (start, end) => {
+    const duration = end.getTime() - start.getTime();
+    const prevEnd = new Date(start.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - duration);
+    return { prevStart, prevEnd };
+};
+
+const calcChange = (current, previous) => {
+    if (!Number.isFinite(previous) || previous === 0) return current > 0 ? 100 : 0;
+    return ((current - previous) / previous) * 100;
+};
+
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
@@ -75,126 +129,153 @@ export async function GET(req) {
 
         const url = new URL(req.url);
         const filter = url.searchParams.get('filter') || 'Today';
-
-        const now = new Date();
-        let startDate, prevStartDate;
-
-        switch (filter) {
-            case 'This Week':
-                startDate = new Date(now.setDate(now.getDate() - now.getDay()));
-                prevStartDate = new Date(new Date().setDate(startDate.getDate() - 7));
-                break;
-            case 'This Month':
-                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                prevStartDate = new Date(new Date().setMonth(startDate.getMonth() - 1));
-                break;
-            case 'Today':
-            default:
-                startDate = new Date(now.setHours(0, 0, 0, 0));
-                prevStartDate = new Date(new Date().setDate(startDate.getDate() - 1));
-                break;
-        }
-
+        const businessRef = firestore.collection(collectionName).doc(businessId);
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
-        const customersRef = firestore.collection(collectionName).doc(businessId).collection('customers');
+        const customersRef = businessRef.collection('customers');
+        const customBillHistoryRef = businessRef.collection('custom_bill_history');
 
-        const [currentOrdersSnap, prevOrdersSnap, newCustomersSnap, topItemsSnap, rejectedOrdersSnap] = await Promise.all([
-            ordersRef.where('orderDate', '>=', startDate).where('status', '!=', 'rejected').get(),
-            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
-            customersRef.where('lastOrderDate', '>=', startDate).get(),
-            ordersRef.where('orderDate', '>=', startDate).limit(50).get(),
-            ordersRef.where('orderDate', '>=', new Date(new Date().setHours(0, 0, 0, 0))).where('status', '==', 'rejected').get()
+        const { start, end } = getRangeDays(filter, new Date());
+        const { prevStart, prevEnd } = getPreviousRange(start, end);
+
+        const [
+            currentOrdersSnap,
+            prevOrdersSnap,
+            currentManualSnap,
+            prevManualSnap,
+            customersSnap,
+            liveOrdersSnap,
+            chartOrdersSnap,
+            chartManualSnap,
+            menuSnap,
+            businessSnap,
+            todayRejectedSnap,
+        ] = await Promise.all([
+            ordersRef.where('orderDate', '>=', start).where('orderDate', '<=', end).get(),
+            ordersRef.where('orderDate', '>=', prevStart).where('orderDate', '<=', prevEnd).get(),
+            customBillHistoryRef.where('printedAt', '>=', start).where('printedAt', '<=', end).get(),
+            customBillHistoryRef.where('printedAt', '>=', prevStart).where('printedAt', '<=', prevEnd).get(),
+            customersRef.get(),
+            ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(6).get(),
+            ordersRef.where('orderDate', '>=', start).where('orderDate', '<=', end).get(),
+            customBillHistoryRef.where('printedAt', '>=', start).where('printedAt', '<=', end).get(),
+            businessRef.collection('menu').get(),
+            businessRef.get(),
+            ordersRef.where('orderDate', '>=', getRangeDays('Today', new Date()).start).where('orderDate', '<=', getRangeDays('Today', new Date()).end).get(),
         ]);
 
-        let sales = 0;
-        const currentOrders = currentOrdersSnap.docs.map(doc => {
-            const data = doc.data();
-            sales += data.totalAmount || 0;
-            return data;
-        });
+        const resolvedBusinessType = normalizeBusinessType(businessSnap.data()?.businessType || collectionName.slice(0, -1));
 
-        let prevSales = 0;
-        prevOrdersSnap.docs.forEach(doc => {
-            prevSales += doc.data().totalAmount || 0;
-        });
+        const acceptedCurrentOrders = currentOrdersSnap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((order) => !LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase()));
+        const acceptedPrevOrders = prevOrdersSnap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((order) => !LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase()));
 
-        const calcChange = (current, previous) => {
-            if (previous === 0) return current > 0 ? 100 : 0;
-            return ((current - previous) / previous) * 100;
-        };
+        const currentManualBills = currentManualSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const prevManualBills = prevManualSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-        const avgOrderValue = currentOrders.length > 0 ? sales / currentOrders.length : 0;
-        const prevAvgOrderValue = prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0;
+        const currentOrderSales = acceptedCurrentOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0);
+        const prevOrderSales = acceptedPrevOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0);
+        const currentManualSales = currentManualBills.reduce((sum, bill) => sum + toAmount(bill.totalAmount || bill.grandTotal), 0);
+        const prevManualSales = prevManualBills.reduce((sum, bill) => sum + toAmount(bill.totalAmount || bill.grandTotal), 0);
+
+        const totalSales = currentOrderSales + currentManualSales;
+        const prevTotalSales = prevOrderSales + prevManualSales;
+        const totalOrders = acceptedCurrentOrders.length + currentManualBills.length;
+        const prevTotalOrders = acceptedPrevOrders.length + prevManualBills.length;
+        const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+        const prevAvgOrderValue = prevTotalOrders > 0 ? prevTotalSales / prevTotalOrders : 0;
+
+        const customers = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const newCustomersCurrent = customers.filter((customer) => {
+            const joinedAt = timestampToDate(customer.joinedAt);
+            return joinedAt && joinedAt >= start && joinedAt <= end;
+        }).length;
+        const newCustomersPrevious = customers.filter((customer) => {
+            const joinedAt = timestampToDate(customer.joinedAt);
+            return joinedAt && joinedAt >= prevStart && joinedAt <= prevEnd;
+        }).length;
+
+        const todayRejections = todayRejectedSnap.docs.filter((doc) =>
+            LOST_ORDER_STATUSES.has(String(doc.data()?.status || '').toLowerCase())
+        ).length;
 
         const stats = {
-            sales,
-            salesChange: calcChange(sales, prevSales),
-            orders: currentOrders.length,
-            ordersChange: calcChange(currentOrders.length, prevOrdersSnap.size),
-            newCustomers: newCustomersSnap.size,
-            newCustomersChange: 0,
-            avgOrderValue: avgOrderValue,
-            avgOrderValueChange: calcChange(avgOrderValue, prevAvgOrderValue),
-            todayRejections: rejectedOrdersSnap.size,
+            sales: totalSales,
+            salesChange: Number(calcChange(totalSales, prevTotalSales).toFixed(1)),
+            orders: totalOrders,
+            ordersChange: Number(calcChange(totalOrders, prevTotalOrders).toFixed(1)),
+            newCustomers: newCustomersCurrent,
+            newCustomersChange: Number(calcChange(newCustomersCurrent, newCustomersPrevious).toFixed(1)),
+            avgOrderValue,
+            avgOrderValueChange: Number(calcChange(avgOrderValue, prevAvgOrderValue).toFixed(1)),
+            todayRejections,
         };
 
-        const liveOrdersSnap = await ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(3).get();
-        const liveOrders = liveOrdersSnap.docs.map(doc => {
-            const orderData = doc.data();
+        const liveOrders = liveOrdersSnap.docs.map((doc) => {
+            const orderData = doc.data() || {};
             return {
                 id: doc.id,
-                customer: orderData.customerName,
-                amount: orderData.totalAmount,
-                items: (orderData.items || []).map(item => ({
+                customer: orderData.customerName || orderData.name || 'Customer',
+                amount: toAmount(orderData.totalAmount),
+                items: (orderData.items || []).map((item) => ({
                     name: item.name,
-                    quantity: item.qty
-                }))
+                    quantity: item.qty || item.quantity || 0,
+                })),
             };
         });
 
-        const salesChartData = [];
-        const sevenDaysAgo = new Date(new Date().setDate(new Date().getDate() - 7));
-        const chartSnap = await ordersRef.where('orderDate', '>=', sevenDaysAgo).orderBy('orderDate').get();
+        const salesByDay = new Map();
+        const addChartSale = (dateValue, amount) => {
+            const date = timestampToDate(dateValue);
+            if (!date) return;
+            const key = date.toISOString().slice(0, 10);
+            const current = salesByDay.get(key) || { day: date.toLocaleDateString('en-US', { weekday: 'short' }), sales: 0, ts: date.getTime() };
+            current.sales += amount;
+            salesByDay.set(key, current);
+        };
 
-        const salesByDay = {};
-        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        daysOfWeek.forEach(day => salesByDay[day] = 0);
-
-        chartSnap.docs.forEach(doc => {
-            const data = doc.data();
-            const day = data.orderDate.toDate().toLocaleDateString('en-US', { weekday: 'short' });
-            salesByDay[day] = (salesByDay[day] || 0) + data.totalAmount;
+        chartOrdersSnap.docs.forEach((doc) => {
+            const order = doc.data() || {};
+            if (LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase())) return;
+            addChartSale(order.orderDate, toAmount(order.totalAmount));
+        });
+        chartManualSnap.docs.forEach((doc) => {
+            const bill = doc.data() || {};
+            addChartSale(bill.printedAt || bill.createdAt, toAmount(bill.totalAmount || bill.grandTotal));
         });
 
-        const todayDayIndex = new Date().getDay();
-        const orderedDays = [...daysOfWeek.slice(todayDayIndex + 1), ...daysOfWeek.slice(0, todayDayIndex + 1)];
-        orderedDays.forEach(day => salesChartData.push({ day: day, sales: salesByDay[day] || 0 }));
+        const salesChartData = Array.from(salesByDay.values())
+            .sort((a, b) => a.ts - b.ts)
+            .map(({ day, sales }) => ({ day, sales }));
 
         const itemCounts = {};
-        topItemsSnap.docs.forEach(doc => {
-            (doc.data().items || []).forEach(item => {
-                itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
+        const addItemCounts = (items = []) => {
+            items.forEach((item) => {
+                const name = String(item?.name || '').trim();
+                if (!name) return;
+                const quantity = toAmount(item?.quantity || item?.qty || 0);
+                itemCounts[name] = (itemCounts[name] || 0) + quantity;
             });
-        });
+        };
+        acceptedCurrentOrders.forEach((order) => addItemCounts(order.items || []));
+        currentManualBills.forEach((bill) => addItemCounts(bill.items || []));
 
-        const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
-        const menuSnap = await menuRef.get();
-        const menuItems = menuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const businessSnap = await firestore.collection(collectionName).doc(businessId).get();
-        const resolvedBusinessType = normalizeBusinessType(businessSnap.data()?.businessType || collectionName.slice(0, -1));
-
+        const menuItems = menuSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         const topSellingNames = Object.entries(itemCounts)
             .sort(([, a], [, b]) => b - a)
-            .slice(0, 3)
+            .slice(0, 6)
             .map(([name]) => name);
 
-        const topItems = menuItems
-            .filter(item => topSellingNames.includes(item.name))
-            .map((item, index) => ({
-                name: item.name,
-                count: itemCounts[item.name],
-                imageUrl: item.imageUrl || `https://picsum.photos/seed/dish${index + 1}/200/200`
-            }));
+        const topItems = topSellingNames.map((name, index) => {
+            const matchedItem = menuItems.find((item) => item.name === name);
+            return {
+                name,
+                count: itemCounts[name],
+                imageUrl: matchedItem?.imageUrl || `https://picsum.photos/seed/dish${index + 1}/200/200`,
+            };
+        });
 
 
         return NextResponse.json({

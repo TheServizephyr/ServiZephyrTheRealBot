@@ -9,6 +9,7 @@ import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { findBusinessById } from '@/services/business/businessService';
+import { resolveGuestAccessRef } from '@/lib/public-auth';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -118,6 +119,59 @@ function normalizeNoShowTimeoutMinutes(value, fallback = 10) {
     return Math.min(120, Math.max(1, parsed));
 }
 
+function normalizePhone(phone) {
+    if (!phone) return '';
+    const digits = String(phone).replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+async function resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams }) {
+    const eligibleIds = new Set();
+    const normalizedPhone = normalizePhone(searchParams.get('phone'));
+    const ref = String(searchParams.get('ref') || '').trim();
+
+    if (ref) {
+        try {
+            const refSession = await resolveGuestAccessRef(firestore, ref, { allowLegacy: true });
+            if (refSession?.subjectId) eligibleIds.add(String(refSession.subjectId));
+            const refPhone = normalizePhone(refSession?.phone);
+            if (refPhone) eligibleIds.add(`phone:${refPhone}`);
+        } catch (error) {
+            console.warn('[Settings API] Reward ref resolution failed:', error?.message || error);
+        }
+    }
+
+    if (normalizedPhone) {
+        eligibleIds.add(`phone:${normalizedPhone}`);
+    }
+
+    if (!businessRef || eligibleIds.size === 0) {
+        return eligibleIds;
+    }
+
+    const phones = [...eligibleIds]
+        .filter((value) => value.startsWith('phone:'))
+        .map((value) => value.slice('phone:'.length));
+
+    for (const phone of phones) {
+        try {
+            const customerSnap = await businessRef.collection('customers').where('phone', '==', phone).limit(10).get();
+            customerSnap.forEach((doc) => {
+                eligibleIds.add(String(doc.id));
+                const customerData = doc.data() || {};
+                if (customerData.customerId) eligibleIds.add(String(customerData.customerId));
+                if (customerData.userId) eligibleIds.add(String(customerData.userId));
+                if (customerData.uid) eligibleIds.add(String(customerData.uid));
+            });
+        } catch (error) {
+            console.warn('[Settings API] Phone based reward lookup failed:', error?.message || error);
+        }
+    }
+
+    return eligibleIds;
+}
+
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -220,6 +274,11 @@ export async function GET(req) {
             // Coupons fetch is optional to avoid unnecessary Firestore reads on high-traffic public pages.
             if (includeCoupons) {
                 try {
+                    const eligibleCustomerIds = await resolveEligibleCouponCustomerIds({
+                        firestore,
+                        businessRef: businessDoc.ref,
+                        searchParams
+                    });
                     const couponsSnap = await businessDoc.ref.collection('coupons')
                         .where('status', '==', 'active')
                         .get();
@@ -235,7 +294,12 @@ export async function GET(req) {
                                 expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
                             };
                         })
-                        .filter(c => new Date(c.expiryDate) > now);
+                        .filter((c) => {
+                            const assignedCustomerId = String(c.customerId || '').trim();
+                            const isPublic = !assignedCustomerId;
+                            const isAssignedToCurrentCustomer = assignedCustomerId && eligibleCustomerIds.has(assignedCustomerId);
+                            return new Date(c.expiryDate) > now && (isPublic || isAssignedToCurrentCustomer);
+                        });
 
                     responsePayload.coupons = coupons;
                 } catch (err) {

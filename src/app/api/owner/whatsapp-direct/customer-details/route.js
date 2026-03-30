@@ -120,6 +120,7 @@ export async function GET(req) {
                 exists: true,
                 id: customerDoc.id,
                 details: {
+                    id: customerDoc.id,
                     customName: data.customName || data.name || '',
                     notes: data.notes || '',
                     totalOrders: totalOrders, // Use calculated value
@@ -133,6 +134,7 @@ export async function GET(req) {
         return NextResponse.json({
             exists: false,
             details: {
+                id: null,
                 customName: '',
                 notes: '',
                 totalOrders: 0,
@@ -297,6 +299,7 @@ async function fetchLatestCustomerDetails(businessRef, phoneNumber, firestore) {
     });
 
     return {
+        id: customerDoc.id,
         customName: data.customName || data.name || '',
         notes: data.notes || '',
         totalOrders: allOrders.size,

@@ -2387,6 +2387,8 @@ const OrderPageInternal = () => {
                 const query = new URLSearchParams();
                 query.set('src', 'order_page');
                 if (phone) query.set('phone', phone);
+                if (token) query.set('token', token);
+                if (ref) query.set('ref', ref);
                 const url = `/api/public/menu/${encodePathSegment(restaurantId)}?${query.toString()}`;
 
                 const [menuRes, settingsRes] = await Promise.all([

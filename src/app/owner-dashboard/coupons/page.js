@@ -46,8 +46,9 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
             } else {
                 setCoupon({
                     id: null, code: '', description: '', type: 'flat', value: '',
+                    maxDiscount: '',
                     minOrder: '', startDate: new Date(), expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-                    status: 'active', timesUsed: 0, customerId: null
+                    status: 'active', timesUsed: 0, customerId: null, singleUsePerCustomer: false
                 });
             }
         }
@@ -58,6 +59,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 
         if (field === 'type' && value === 'free_delivery') {
             newCoupon.value = 0;
+            newCoupon.maxDiscount = '';
         }
 
         setCoupon(newCoupon);
@@ -95,9 +97,18 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 
     if (!coupon) return null;
 
+    const minimumOrderValue = Number(coupon.minOrder) || 0;
+    const rewardValue = Number(coupon.value) || 0;
+    const maxDiscountValue = Number(coupon.maxDiscount) || 0;
+    const sampleOrderValue = Math.max(minimumOrderValue || 500, 500);
+    const percentagePreviewDiscount = Math.round((sampleOrderValue * rewardValue) / 100);
+    const effectivePercentageDiscount = maxDiscountValue > 0
+        ? Math.min(percentagePreviewDiscount, maxDiscountValue)
+        : percentagePreviewDiscount;
+
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-4xl bg-card border-border text-card-foreground">
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-card border-border text-card-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-2xl">
@@ -136,6 +147,58 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                         </div>
 
                         <div className="space-y-6">
+                            {coupon.type === 'percentage' && (
+                                <div>
+                                    <Label htmlFor="maxDiscount">Maximum Discount Cap (Rs)</Label>
+                                    <input
+                                        id="maxDiscount"
+                                        type="number"
+                                        value={coupon.maxDiscount || ''}
+                                        onChange={e => handleChange('maxDiscount', e.target.value)}
+                                        placeholder="e.g., 150"
+                                        className="mt-1 p-2 border rounded-md bg-input border-border w-full"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Example: 20% off up to Rs 150. Leave blank for no cap.
+                                    </p>
+                                </div>
+                            )}
+                            <div>
+                                <Label>Customer Usage Rule</Label>
+                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                    <div onClick={() => handleChange('singleUsePerCustomer', true)} className={cn('p-3 border-2 rounded-lg cursor-pointer text-sm text-center', coupon.singleUsePerCustomer ? 'border-primary bg-primary/10' : 'border-border')}>
+                                        One time per customer
+                                    </div>
+                                    <div onClick={() => handleChange('singleUsePerCustomer', false)} className={cn('p-3 border-2 rounded-lg cursor-pointer text-sm text-center', coupon.singleUsePerCustomer === false ? 'border-primary bg-primary/10' : 'border-border')}>
+                                        Multiple times allowed
+                                    </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    Choose whether the same customer can redeem this coupon only once or multiple times.
+                                </p>
+                            </div>
+                            <div className="rounded-lg border border-border bg-muted/40 p-3">
+                                <p className="text-sm font-medium">How this coupon will work</p>
+                                {coupon.type === 'free_delivery' ? (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Customer gets free delivery on orders of Rs {minimumOrderValue || 0} and above.
+                                    </p>
+                                ) : coupon.type === 'flat' ? (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Customer gets Rs {rewardValue || 0} off when order is Rs {minimumOrderValue || 0} or above.
+                                    </p>
+                                ) : (
+                                    <>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Customer gets {rewardValue || 0}% off on orders of Rs {minimumOrderValue || 0} or above.
+                                            {maxDiscountValue > 0 ? ` Maximum discount Rs ${maxDiscountValue}.` : ' No maximum cap set.'}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                            Example: on a Rs {sampleOrderValue} order, discount will be about Rs {effectivePercentageDiscount || 0}.
+                                        </p>
+                                    </>
+                                )}
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label htmlFor="value">Discount Value</Label>
@@ -147,10 +210,20 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                                         placeholder={coupon.type === 'flat' ? 'e.g., 100' : 'e.g., 20'}
                                         disabled={coupon.type === 'free_delivery'}
                                         className="mt-1 p-2 border rounded-md bg-input border-border w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {coupon.type === 'flat'
+                                            ? 'Customer gets this exact amount off.'
+                                            : coupon.type === 'percentage'
+                                                ? 'For example, 20 means 20% off.'
+                                                : 'Free delivery coupons automatically keep discount value at 0.'}
+                                    </p>
                                 </div>
                                 <div>
                                     <Label htmlFor="minOrder">Minimum Order (₹)</Label>
                                     <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        This coupon applies only when the order total is Rs {minimumOrderValue || 0} or higher.
+                                    </p>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -241,19 +314,20 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
                     <p><span className="font-semibold text-muted-foreground">Min. Order:</span> ₹{coupon.minOrder}</p>
                     <p><span className="font-semibold text-muted-foreground">Expires:</span> {formatDate(expiryDate)}</p>
                     <p><span className="font-semibold text-muted-foreground">Times Used:</span> {coupon.timesUsed}</p>
+                    <p><span className="font-semibold text-muted-foreground">Usage Rule:</span> {coupon.singleUsePerCustomer ? 'One time per customer' : 'Multiple times allowed'}</p>
                 </div>
             </div>
 
             <div className="p-4 bg-muted/30 border-t border-border flex justify-between items-center">
                 <div className="flex items-center gap-2">
                     <Switch
-                        checked={status === 'active'}
-                        onCheckedChange={() => onStatusToggle(coupon, status === 'active' ? 'inactive' : 'active')}
+                        checked={coupon.status === 'active' && !isExpired}
+                        onCheckedChange={(checked) => onStatusToggle(coupon, checked ? 'active' : 'inactive')}
                         disabled={status === 'Expired'}
                         id={`switch-${coupon.id}`}
                     />
                     <Label htmlFor={`switch-${coupon.id}`} className="text-sm text-muted-foreground">
-                        {status === 'active' ? 'Active' : 'Inactive'}
+                        {status === 'Expired' ? 'Expired' : (coupon.status === 'active' ? 'Active' : 'Inactive')}
                     </Label>
                 </div>
                 <div className="flex items-center gap-1">

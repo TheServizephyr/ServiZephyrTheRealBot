@@ -260,13 +260,13 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 </div>
             )}
 
-            <table className="w-full text-[16px] mb-2">
+            <table className="w-full table-fixed text-[15px] mb-2">
                 <thead style={{ borderTop: '2px solid #000000', borderBottom: '2px solid #000000' }}>
                     <tr>
-                        <th className="text-left font-bold py-1">ITEM</th>
-                        <th className="text-center font-bold py-1">QTY</th>
-                        <th className="text-right font-bold py-1">PRICE</th>
-                        <th className="text-right font-bold py-1">TOTAL</th>
+                        <th className="w-[43%] text-left font-bold py-1">ITEM</th>
+                        <th className="w-[12%] text-center font-bold py-1">QTY</th>
+                        <th className="w-[22%] text-right font-bold py-1">PRICE</th>
+                        <th className="w-[23%] text-right font-bold py-1">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -274,63 +274,68 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                         return (
                             <tr key={index}>
                                 <td className="py-1.5 align-top pr-1">
-                                    <div className="text-[16px] leading-snug font-normal">{row.name}</div>
+                                    <div
+                                        className="text-[15px] leading-snug font-normal break-words"
+                                        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                                    >
+                                        {row.name}
+                                    </div>
                                 </td>
                                 <td className="text-center py-1.5 align-top">{row.quantity}</td>
-                                <td className="text-right py-1.5 align-top">{formatCurrency(row.unitPrice)}</td>
-                                <td className="text-right py-1.5 align-top">{formatCurrency(row.totalPrice)}</td>
+                                <td className="text-right py-1.5 align-top whitespace-nowrap">{formatCurrency(row.unitPrice)}</td>
+                                <td className="text-right py-1.5 align-top whitespace-nowrap">{formatCurrency(row.totalPrice)}</td>
                             </tr>
                         )
                     })}                </tbody>
             </table>
 
             <div className="text-[16px] pt-2 mt-2" style={{ borderTop: '2px solid #000000' }}>
-                <div className="font-semibold" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(finalBillDetails.subtotal)}</span>
+                <div className="font-semibold" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                    <span style={{ paddingRight: '6px' }}>Subtotal</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>{formatCurrency(finalBillDetails.subtotal)}</span>
                 </div>
                 {finalBillDetails.discount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span>Discount</span>
-                        <span>- {formatCurrency(finalBillDetails.discount)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ paddingRight: '6px' }}>Discount</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>- {formatCurrency(finalBillDetails.discount)}</span>
                     </div>
                 )}
 
                 {/* NEW: Extra Charges */}
                 {finalBillDetails.packagingCharge > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span>Packaging Charge</span>
-                        <span>+ {formatCurrency(finalBillDetails.packagingCharge)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ paddingRight: '6px' }}>Packaging Charge</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.packagingCharge)}</span>
                     </div>
                 )}
                 {finalBillDetails.platformFee > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span>Platform Fee</span>
-                        <span>+ {formatCurrency(finalBillDetails.platformFee)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ paddingRight: '6px' }}>Platform Fee</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.platformFee)}</span>
                     </div>
                 )}
                 {finalBillDetails.convenienceFee > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span>Convenience Fee</span>
-                        <span>+ {formatCurrency(finalBillDetails.convenienceFee)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ paddingRight: '6px' }}>Convenience Fee</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.convenienceFee)}</span>
                     </div>
                 )}
                 {finalBillDetails.serviceFee > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span>{String(finalBillDetails.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge'}</span>
-                        <span>+ {formatCurrency(finalBillDetails.serviceFee)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ paddingRight: '6px' }}>{String(finalBillDetails.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge'}</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.serviceFee)}</span>
                     </div>
                 )}
                 {finalBillDetails.deliveryCharge > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span>Delivery Charge</span>
-                        <span>+ {formatCurrency(finalBillDetails.deliveryCharge)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ paddingRight: '6px' }}>Delivery Charge</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.deliveryCharge)}</span>
                     </div>
                 )}
                 {finalBillDetails.tip > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span>Tip</span>
-                        <span>+ {formatCurrency(finalBillDetails.tip)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ paddingRight: '6px' }}>Tip</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.tip)}</span>
                     </div>
                 )}
 
@@ -342,15 +347,15 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     return (
                         <>
                             {finalBillDetails.cgst > 0 && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                                    <span>CGST ({halfRate}%)</span>
-                                    <span>+ {formatCurrency(finalBillDetails.cgst)}</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                                    <span style={{ paddingRight: '6px' }}>CGST ({halfRate}%)</span>
+                                    <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.cgst)}</span>
                                 </div>
                             )}
                             {finalBillDetails.sgst > 0 && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                                    <span>SGST ({halfRate}%)</span>
-                                    <span>+ {formatCurrency(finalBillDetails.sgst)}</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
+                                    <span style={{ paddingRight: '6px' }}>SGST ({halfRate}%)</span>
+                                    <span style={{ whiteSpace: 'nowrap' }}>+ {formatCurrency(finalBillDetails.sgst)}</span>
                                 </div>
                             )}
                         </>
@@ -358,9 +363,9 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 })()}
             </div>
 
-            <div className="font-bold text-[16px] pt-1 mt-1" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', borderTop: '2px solid #000000' }}>
+            <div className="font-bold text-[16px] pt-1 mt-1" style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start', borderTop: '2px solid #000000' }}>
                 <span>GRAND TOTAL</span>
-                <span className="grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
+                <span className="grand-total-amount" style={{ whiteSpace: 'nowrap' }}>{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
             <div className="text-center mt-3 pt-1" style={{ borderTop: '1px solid #000000' }}>

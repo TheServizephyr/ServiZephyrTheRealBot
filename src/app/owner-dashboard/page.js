@@ -15,7 +15,7 @@ import InfoDialog from '@/components/InfoDialog';
 export const dynamic = 'force-dynamic';
 
 // Helper function to format currency
-const formatCurrency = (value) => `₹${Number(value).toLocaleString('en-IN')}`;
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 1 })}`;
 
 const normalizeBusinessType = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -55,9 +55,9 @@ const StatCard = ({ title, value, icon: Icon, change, isCurrency = false, isLoad
       </div>
       {!isRejection ? (
         <div className="mt-3 flex items-center text-xs">
-          <span className={cn('flex items-center', change > 0 ? 'text-green-400' : 'text-red-400')}>
+          <span className={cn('flex items-center', change > 0 ? 'text-green-500' : 'text-red-500')}>
             <ArrowUpRight size={14} className={cn('mr-1', change < 0 && 'rotate-180')} />
-            {Math.abs(change)}%
+            {Number(Math.abs(change || 0)).toFixed(1)}%
           </span>
           <span className="text-muted-foreground ml-1">vs last period</span>
         </div>
@@ -205,7 +205,7 @@ function PageContent() {
   const salesChartTitle = isStoreBusiness ? 'Sales Trend' : 'Weekly Sales';
   const topItemsTitle = isStoreBusiness ? 'Top Selling Products' : 'Top Selling Items';
   const dashboardTitle = isStoreBusiness ? 'Store Command Center' : 'Business Command Center';
-  const orderStatTitle = isStoreBusiness ? 'Total Sales' : 'Total Orders';
+  const orderStatTitle = isStoreBusiness ? 'Total Sales' : 'Total Bills / Orders';
   const rejectionStatTitle = isStoreBusiness ? "Today's Cancelled Sales" : "Today's Rejections";
 
   useEffect(() => {
@@ -366,7 +366,7 @@ function PageContent() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
           <StatCard isLoading={loading} title="Sales" value={dashboardData?.stats.sales || 0} icon={IndianRupee} change={dashboardData?.stats.salesChange || 0} isCurrency />
           <StatCard isLoading={loading} title={orderStatTitle} value={dashboardData?.stats.orders || 0} icon={Hash} change={dashboardData?.stats.ordersChange || 0} />
-          <StatCard isLoading={loading} title="New Customers" value={dashboardData?.stats.newCustomers || 0} icon={Users} change={dashboardData?.stats.newCustomersChange || 0} />
+          <StatCard isLoading={loading} title="New CRM Customers" value={dashboardData?.stats.newCustomers || 0} icon={Users} change={dashboardData?.stats.newCustomersChange || 0} />
           <StatCard isLoading={loading} title="Average Order Value" value={dashboardData?.stats.avgOrderValue || 0} icon={ListFilter} change={dashboardData?.stats.avgOrderValueChange || 0} isCurrency />
           <StatCard isLoading={loading} title={rejectionStatTitle} value={dashboardData?.stats.todayRejections || 0} icon={Ban} isRejection={true} />
         </div>

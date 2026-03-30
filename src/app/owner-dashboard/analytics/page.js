@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, Suspense, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, Sector, ScatterChart, Scatter, Legend, ReferenceLine, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IndianRupee, Hash, Phone, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban, ShieldAlert } from 'lucide-react';
+import { IndianRupee, Hash, Phone, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban, ShieldAlert, Bike, Package, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NextImage from 'next/image';
 import { cn } from "@/lib/utils";
@@ -45,6 +45,16 @@ const normalizeBusinessType = (value) => {
     return null;
 };
 
+const normalizeModeKey = (value) => String(value || '').trim().toLowerCase();
+
+const serviceCardToneMap = {
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100',
+    sky: 'border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100',
+    amber: 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100',
+    violet: 'border-violet-200 bg-violet-50 text-violet-950 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100',
+    slate: 'border-slate-200 bg-slate-50 text-slate-950 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-100',
+};
+
 
 // --- SALES OVERVIEW COMPONENTS ---
 const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
@@ -57,28 +67,33 @@ const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
     const KpiCard = ({ title, value, change, icon: Icon, isCurrency = false, data, modalTitle, modalType, isRejection = false }) => {
         if (loading) {
             return (
-                <div className="bg-card border border-border p-5 rounded-xl animate-pulse">
+                <div className="bg-card border border-border p-5 rounded-2xl animate-pulse">
                     <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
                     <div className="h-8 bg-muted rounded w-1/2 mb-2"></div>
                     <div className="h-3 bg-muted rounded w-full"></div>
                 </div>
             )
         }
-        const changeColor = isRejection ? 'text-muted-foreground' : (change > 0 ? 'text-green-400' : 'text-red-400');
+        const changeColor = isRejection ? 'text-muted-foreground' : (change > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400');
         const ChangeIcon = change > 0 ? ArrowUp : ArrowDown;
         return (
             <motion.div
-                className={cn("bg-card border border-border p-5 rounded-xl", data && "cursor-pointer")}
-                whileHover={{ y: -5, boxShadow: "0 4px 15px hsla(var(--primary), 0.2)" }}
+                className={cn("group relative overflow-hidden border border-border/80 bg-card p-5 rounded-2xl shadow-sm", data && "cursor-pointer")}
+                whileHover={{ y: -4, boxShadow: "0 10px 24px hsla(var(--foreground), 0.08)" }}
                 onClick={() => data && openModal(modalTitle, data, modalType)}
             >
-                <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">{title}</p>
-                    <Icon className={cn("text-muted-foreground", isRejection && "text-red-500")} />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/70 via-primary/20 to-transparent" />
+                <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-muted-foreground">{title}</p>
+                    <div className={cn("rounded-full border border-border/80 bg-background/80 p-2 text-muted-foreground", isRejection && "text-rose-500")}>
+                        <Icon className="h-4 w-4" />
+                    </div>
                 </div>
-                <p className="text-3xl font-bold mt-2 text-foreground">{isCurrency ? formatCurrency(value) : Number(value).toLocaleString('en-IN')}</p>
+                <p className="mt-3 max-w-full break-words text-[clamp(1.75rem,3vw,2.45rem)] font-bold leading-tight text-foreground">
+                    {isCurrency ? formatCurrency(value) : Number(value || 0).toLocaleString('en-IN')}
+                </p>
                 {change !== undefined && !isRejection && (
-                    <div className={`flex items-center text-xs mt-1 ${changeColor}`}>
+                    <div className={`mt-2 flex items-center text-xs font-medium ${changeColor}`}>
                         <ChangeIcon size={12} className="mr-1" />
                         {Math.abs(change).toFixed(2)}% vs last period
                     </div>
@@ -89,16 +104,11 @@ const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
     };
 
     const SourceSplitCard = ({ title, count, revenue, icon: Icon, tone }) => {
-        const toneClasses = {
-            green: 'border-green-500/30 bg-green-500/5 text-green-300',
-            blue: 'border-blue-500/30 bg-blue-500/5 text-blue-300',
-            yellow: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-300',
-        };
-        const style = toneClasses[tone] || toneClasses.blue;
+        const style = serviceCardToneMap[tone] || serviceCardToneMap.sky;
 
         if (loading) {
             return (
-                <div className="bg-card border border-border p-4 rounded-xl animate-pulse">
+                <div className="bg-card border border-border p-4 rounded-2xl animate-pulse">
                     <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
                     <div className="h-7 bg-muted rounded w-2/3 mb-2"></div>
                     <div className="h-3 bg-muted rounded w-1/2"></div>
@@ -107,24 +117,24 @@ const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
         }
 
         return (
-            <div className={cn('border p-4 rounded-xl', style)}>
-                <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs uppercase tracking-wide">{title}</p>
-                    <Icon size={16} />
+            <div className={cn('border p-4 rounded-2xl shadow-sm transition-transform hover:-translate-y-0.5', style)}>
+                <div className="mb-2 flex items-start justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-75">{title}</p>
+                    <Icon size={16} className="shrink-0 opacity-80" />
                 </div>
-                <p className="text-2xl font-bold">{Number(count || 0).toLocaleString('en-IN')}</p>
-                <p className="text-xs opacity-80">Revenue: {formatCurrency(revenue || 0)}</p>
+                <p className="text-2xl font-bold leading-tight">{Number(count || 0).toLocaleString('en-IN')}</p>
+                <p className="mt-1 text-xs font-medium opacity-80">Revenue: {formatCurrency(revenue || 0)}</p>
             </div>
         );
     };
 
     const OrderSourceChart = () => {
-        const COLORS = ['#22c55e', '#3b82f6', '#eab308'];
-        const sourceData = data?.orderSourceBreakdown || [];
+        const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#8b5cf6', '#64748b'];
+        const sourceData = data?.serviceModeBreakdown || [];
 
         if (loading) {
             return (
-                <div className="bg-card border border-border p-5 rounded-xl h-[350px] animate-pulse">
+                <div className="bg-card border border-border p-5 rounded-2xl h-[350px] animate-pulse">
                     <div className="h-6 bg-muted w-3/4 mb-4"></div>
                     <div className="flex items-center justify-center h-full">
                         <div className="w-48 h-48 bg-muted rounded-full"></div>
@@ -135,16 +145,17 @@ const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
 
         if (sourceData.length === 0) {
             return (
-                <div className="bg-card border border-border p-5 rounded-xl h-[350px] flex flex-col items-center justify-center">
-                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Source Mix</h3>
-                    <p className="text-muted-foreground text-sm">No source data available.</p>
+                <div className="bg-card border border-border p-5 rounded-2xl h-[350px] flex flex-col items-center justify-center">
+                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Service Mix</h3>
+                    <p className="text-muted-foreground text-sm">No service mode data available.</p>
                 </div>
             );
         }
 
         return (
-            <div className="bg-card border border-border p-5 rounded-xl h-[350px]">
-                <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Source Mix</h3>
+            <div className="bg-card border border-border p-5 rounded-2xl h-[350px] shadow-sm">
+                <h3 className="text-lg font-semibold mb-1 text-card-foreground">Service Mix</h3>
+                <p className="mb-4 text-sm text-muted-foreground">Delivery, pickup, dine-in, call and offline billing split.</p>
                 <ResponsiveContainer width="100%" height="90%">
                     <PieChart>
                         <Pie
@@ -183,7 +194,7 @@ const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
     };
 
     const SalesTrendChart = () => (
-        <div className="bg-card border border-border p-5 rounded-xl h-[400px]">
+        <div className="bg-card border border-border p-5 rounded-2xl h-[400px] shadow-sm">
             <h3 className="text-lg font-semibold mb-4 text-card-foreground">Sales Trend</h3>
             {loading ? (
                 <div className="flex items-center justify-center h-full"><GoldenCoinSpinner /></div>
@@ -352,51 +363,82 @@ const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
         );
     }
 
+    const serviceHighlights = [
+        {
+            key: 'delivery',
+            title: 'Delivery Orders',
+            count: data?.kpis?.deliveryOrders || 0,
+            revenue: data?.kpis?.deliveryRevenue || 0,
+            icon: Bike,
+            tone: 'sky',
+        },
+        {
+            key: 'pickup',
+            title: 'Pickup Orders',
+            count: data?.kpis?.pickupOrders || 0,
+            revenue: data?.kpis?.pickupRevenue || 0,
+            icon: Package,
+            tone: 'emerald',
+        },
+        ...(!isStoreBusiness ? [{
+            key: 'dine-in',
+            title: 'Dine-In Orders',
+            count: data?.kpis?.dineInOrders || 0,
+            revenue: data?.kpis?.dineInRevenue || 0,
+            icon: ChefHat,
+            tone: 'amber',
+        }] : []),
+        {
+            key: 'call',
+            title: 'Call Delivery Orders',
+            count: data?.kpis?.manualCallOrders || 0,
+            revenue: data?.kpis?.manualCallRevenue || 0,
+            icon: Phone,
+            tone: 'violet',
+        },
+        {
+            key: 'counter',
+            title: isStoreBusiness ? 'POS Bills' : 'Offline Counter Bills',
+            count: data?.kpis?.counterBills || 0,
+            revenue: data?.kpis?.counterBillRevenue || 0,
+            icon: Hash,
+            tone: 'slate',
+        },
+    ];
+
 
     return (
         <div className="space-y-6">
             <ModalContent />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
                 <KpiCard title="Total Revenue" value={data?.kpis?.totalRevenue || 0} change={data?.kpis?.revenueChange || 0} icon={IndianRupee} isCurrency={true} modalTitle="Revenue Details" modalType="revenue" loading={loading} />
                 <KpiCard title={isStoreBusiness ? "Total Sales" : "Total Orders"} value={data?.kpis?.totalOrders || 0} change={data?.kpis?.ordersChange || 0} icon={ShoppingBasket} modalTitle="Order Details" modalType="orders" loading={loading} />
                 <KpiCard title="Average Order Value" value={data?.kpis?.avgOrderValue || 0} change={data?.kpis?.avgValueChange || 0} icon={FileBarChart} isCurrency={true} modalTitle="Order Value Details" modalType="orders" loading={loading} />
                 {!isStoreBusiness && <KpiCard title="Dine-In Orders" value={data?.kpis?.dineInOrders || 0} icon={ChefHat} loading={loading} />}
-                <KpiCard title="Online Orders" value={data?.kpis?.onlineOrders || 0} icon={TrendingUp} loading={loading} />
-                <KpiCard title={isStoreBusiness ? "Counter Orders" : "Call Orders"} value={data?.kpis?.manualCallOrders || 0} icon={Phone} loading={loading} />
+                <KpiCard title="App / WhatsApp Online Orders" value={data?.kpis?.onlineOrders || 0} icon={TrendingUp} loading={loading} />
+                <KpiCard title="Call Delivery Orders" value={data?.kpis?.manualCallOrders || 0} icon={Phone} loading={loading} />
                 <KpiCard title={isStoreBusiness ? "Cancelled / Failed" : "Total Rejections"} value={data?.kpis?.totalRejections || 0} icon={Ban} isRejection={true} loading={loading} />
             </div>
 
-            <div className={`grid grid-cols-1 md:grid-cols-2 ${isStoreBusiness ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
-                {!isStoreBusiness && (
-                    <SourceSplitCard
-                        title="Dine-In Orders"
-                        count={data?.kpis?.dineInOrders || 0}
-                        revenue={data?.kpis?.dineInRevenue || 0}
-                        icon={ChefHat}
-                        tone="yellow"
-                    />
-                )}
-                <SourceSplitCard
-                    title="Online Orders"
-                    count={data?.kpis?.onlineOrders || 0}
-                    revenue={data?.kpis?.onlineOrderRevenue || 0}
-                    icon={TrendingUp}
-                    tone="green"
-                />
-                <SourceSplitCard
-                    title={isStoreBusiness ? "Counter Orders" : "Manual Call Orders"}
-                    count={data?.kpis?.manualCallOrders || 0}
-                    revenue={data?.kpis?.manualCallRevenue || 0}
-                    icon={Phone}
-                    tone="blue"
-                />
-                <SourceSplitCard
-                    title={isStoreBusiness ? "POS Bills" : "Offline Counter Bills"}
-                    count={data?.kpis?.counterBills || 0}
-                    revenue={data?.kpis?.counterBillRevenue || 0}
-                    icon={Hash}
-                    tone="yellow"
-                />
+            <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm md:p-5">
+                <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+                    <div>
+                        <h3 className="text-lg font-semibold text-card-foreground">Service And Billing Split</h3>
+                        <p className="text-sm text-muted-foreground">Manual delivery is treated as call order, dine-in is table service, pickup is packed takeaway.</p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-4">
+                    {serviceHighlights.map(({ key, title, count, revenue, icon, tone }) => (
+                        <SourceSplitCard
+                            key={key}
+                            title={title}
+                            count={count}
+                            revenue={revenue}
+                            icon={icon}
+                            tone={tone}
+                        />
+                    ))}
+                </div>
             </div>
 
             {/* Sales Trend - Full Width */}
@@ -416,6 +458,10 @@ const SalesOverview = ({ data, loading, isStoreBusiness = false }) => {
 
 
 const MenuAnalytics = ({ data, loading, isStoreBusiness = false }) => {
+    const topMenuItems = useMemo(
+        () => [...(data?.menuPerformance || [])].sort((a, b) => (b.unitsSold || 0) - (a.unitsSold || 0)).slice(0, 8),
+        [data?.menuPerformance]
+    );
 
     const PerformanceList = ({ data, metric, ascending = false, title, icon: Icon, isProfit = false }) => {
         const sortedData = useMemo(() => {
@@ -637,6 +683,40 @@ const MenuAnalytics = ({ data, loading, isStoreBusiness = false }) => {
 
     return (
         <div className="space-y-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="bg-card border border-border p-5 rounded-xl">
+                    <h3 className="font-semibold text-card-foreground mb-4">Top Selling Items Across All Orders</h3>
+                    {loading ? (
+                        <div className="h-72 animate-pulse bg-muted rounded-xl" />
+                    ) : (
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={topMenuItems} layout="vertical" margin={{ left: 20, right: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                                <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                <YAxis type="category" dataKey="name" width={120} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
+                                <Bar dataKey="unitsSold" fill="#f59e0b" radius={[0, 8, 8, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    )}
+                </div>
+                <div className="bg-card border border-border p-5 rounded-xl">
+                    <h3 className="font-semibold text-card-foreground mb-4">Revenue By Item</h3>
+                    {loading ? (
+                        <div className="h-72 animate-pulse bg-muted rounded-xl" />
+                    ) : (
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={topMenuItems}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                                <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} interval={0} angle={-18} textAnchor="end" height={70} />
+                                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickFormatter={(value) => formatCurrency(value)} />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} formatter={(value) => [formatCurrency(value), 'Revenue']} />
+                                <Bar dataKey="revenue" fill="#22c55e" radius={[8, 8, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    )}
+                </div>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <PerformanceList data={data?.menuPerformance} metric="totalProfit" ascending={false} title="Top Profitable Items" icon={TrendingUp} isProfit={true} loading={loading} />
                 <PerformanceList data={data?.menuPerformance} metric="totalProfit" ascending={true} title="Underperforming Items" icon={TrendingDown} loading={loading} />
@@ -649,8 +729,54 @@ const MenuAnalytics = ({ data, loading, isStoreBusiness = false }) => {
 };
 
 const CustomerRelationshipHub = ({ data, loading }) => {
-    // This component remains largely unchanged as it was already well-structured
-    // We just pass loading state to its children
+    const channelMix = data?.customerStats?.customerChannels || [];
+    const spendBuckets = data?.customerStats?.spendBuckets || [];
+    const callStats = data?.customerStats?.callCustomerStats || {};
+    const customerOrderMix = useMemo(() => data?.customerStats?.customerOrderMix || [], [data?.customerStats?.customerOrderMix]);
+    const customerOrderMixAll = useMemo(() => data?.customerStats?.customerOrderMixAll || customerOrderMix, [data?.customerStats?.customerOrderMixAll, customerOrderMix]);
+
+    const exportCustomerInsights = useCallback(() => {
+        if (!customerOrderMixAll.length) return;
+
+        const headers = [
+            'Customer',
+            'Type',
+            'Phone',
+            'App / WhatsApp Orders',
+            'Call Delivery Orders',
+            'Pickup Orders',
+            'Dine-In Bills',
+            'Counter Bills',
+            'AOV',
+            'Spend',
+        ];
+
+        const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+        const rows = customerOrderMixAll.map((row) => ([
+            row.name || 'Customer',
+            String(row.customerType || 'guest').toUpperCase(),
+            row.phone || '',
+            row.onlineOrders || 0,
+            row.manualCallOrders || 0,
+            row.pickupOrders || 0,
+            row.dineInOrders || 0,
+            row.counterBills || 0,
+            Math.round(row.avgOrderValue || 0),
+            Math.round(row.totalSpent || 0),
+        ].map(escapeCsv).join(',')));
+
+        const csv = [headers.map(escapeCsv).join(','), ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `customer-insights-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, [customerOrderMixAll]);
+
     const CustomerStatCard = ({ title, value, icon: Icon, detail }) => (
         <div className={cn("bg-card border border-border p-5 rounded-xl")}>
             {loading ? (
@@ -675,26 +801,104 @@ const CustomerRelationshipHub = ({ data, loading }) => {
         <div className="space-y-8">
             <section>
                 <h3 className="text-xl font-bold mb-4">Customer Snapshot</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <CustomerStatCard title="Total Customers" value={data?.customerStats?.totalCustomers || 0} icon={Users} loading={loading} />
-                    <CustomerStatCard title="New This Month" value={data?.customerStats?.newThisMonth || 0} icon={UserPlus} loading={loading} />
-                    <CustomerStatCard title="Repeat Rate" value={`${data?.customerStats?.repeatRate || 0}%`} icon={GitCommitHorizontal} loading={loading} />
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                    <CustomerStatCard
+                        title="Unique Customers In Period"
+                        value={data?.customerStats?.totalCustomers || 0}
+                        icon={Users}
+                        detail={`${data?.customerStats?.registeredCustomers || 0} registered in CRM`}
+                        loading={loading}
+                    />
+                    <CustomerStatCard title="New This Month" value={data?.customerStats?.newThisMonth || 0} icon={UserPlus} detail="New CRM customers" loading={loading} />
+                    <CustomerStatCard title="Repeat Rate" value={`${data?.customerStats?.repeatRate || 0}%`} icon={GitCommitHorizontal} detail="Based on registered customers" loading={loading} />
+                    <CustomerStatCard title="Call Delivery Customers" value={callStats?.totalCustomers || 0} icon={Phone} detail={`${callStats?.repeatRate || 0}% repeat rate`} loading={loading} />
                 </div>
             </section>
             <section>
+                <h3 className="text-xl font-bold mb-4">Call Delivery Customer Analytics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                    <CustomerStatCard title="Call Delivery Orders" value={callStats?.totalOrders || 0} icon={Phone} detail="Manual delivery orders taken on call" />
+                    <CustomerStatCard title="Call Delivery Revenue" value={formatCurrency(callStats?.totalRevenue || 0)} icon={IndianRupee} detail="Revenue from phone delivery orders" />
+                    <CustomerStatCard title="Call Delivery AOV" value={formatCurrency(callStats?.avgOrderValue || 0)} icon={FileBarChart} detail="Average call-delivery order value" />
+                    <CustomerStatCard title="Spend Per Caller" value={formatCurrency(callStats?.avgSpendPerCustomer || 0)} icon={Star} detail="Average customer spend from call orders" />
+                </div>
+            </section>
+            <section>
+                <h3 className="text-xl font-bold mb-4">Channel Spend Analysis</h3>
+                {loading ? (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <div className="bg-card border border-border rounded-xl h-72 animate-pulse"></div>
+                        <div className="bg-card border border-border rounded-xl h-72 animate-pulse"></div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <div className="bg-card border border-border rounded-xl p-5">
+                            <h4 className="font-semibold mb-4">Customers By Order Channel</h4>
+                            <ResponsiveContainer width="100%" height={260}>
+                                <BarChart data={channelMix}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                                    <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
+                                    <Bar dataKey="customers" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div className="bg-card border border-border rounded-xl p-5">
+                            <h4 className="font-semibold mb-4">Order Channel AOV</h4>
+                            <ResponsiveContainer width="100%" height={260}>
+                                <BarChart data={channelMix}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                                    <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickFormatter={(value) => formatCurrency(value)} />
+                                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} formatter={(value) => [formatCurrency(value), 'AOV']} />
+                                    <Bar dataKey="aov" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                )}
+            </section>
+            <section>
+                <h3 className="text-xl font-bold mb-4">Spend Distribution</h3>
+                {loading ? (
+                    <div className="bg-card border border-border rounded-xl h-72 animate-pulse"></div>
+                ) : (
+                    <div className="bg-card border border-border rounded-xl p-5">
+                        <ResponsiveContainer width="100%" height={280}>
+                            <BarChart data={spendBuckets}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                                <XAxis dataKey="range" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
+                                <Legend />
+                                <Bar dataKey="allCustomers" name="All Customers" fill="#22c55e" radius={[8, 8, 0, 0]} />
+                                <Bar dataKey="callCustomers" name="Call Customers" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
+            </section>
+            <section>
                 <h3 className="text-xl font-bold mb-4">UID vs Guest Channel Split</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <CustomerStatCard
-                        title="UID Online Orders"
+                        title="UID App / WhatsApp Orders"
                         value={data?.customerStats?.customerTypeMix?.uid?.onlineOrders || 0}
                         icon={Users}
-                        detail="Logged-in users placing online orders"
+                        detail="Logged-in users placing app or WhatsApp orders"
                     />
                     <CustomerStatCard
-                        title="UID Call Orders"
+                        title="UID Call Delivery Orders"
                         value={data?.customerStats?.customerTypeMix?.uid?.manualCallOrders || 0}
                         icon={Phone}
-                        detail="Logged-in users via manual call-create flow"
+                        detail="Logged-in users ordering by phone for delivery"
+                    />
+                    <CustomerStatCard
+                        title="UID Pickup Orders"
+                        value={data?.customerStats?.customerTypeMix?.uid?.pickupOrders || 0}
+                        icon={Package}
+                        detail="Logged-in users taking packed orders"
                     />
                     <CustomerStatCard
                         title="UID Counter Bills"
@@ -703,27 +907,45 @@ const CustomerRelationshipHub = ({ data, loading }) => {
                         detail="Logged-in users billed at counter"
                     />
                     <CustomerStatCard
-                        title="Guest Online Orders"
+                        title="Guest App / WhatsApp Orders"
                         value={data?.customerStats?.customerTypeMix?.guest?.onlineOrders || 0}
                         icon={UserPlus}
-                        detail="Guest users placing online orders"
+                        detail="Guest app or WhatsApp order bills"
                     />
                     <CustomerStatCard
-                        title="Guest Call Orders"
+                        title="Guest Call Delivery Orders"
                         value={data?.customerStats?.customerTypeMix?.guest?.manualCallOrders || 0}
                         icon={Phone}
-                        detail="Guest users via manual call-create flow"
+                        detail="Guest call-delivery order bills"
+                    />
+                    <CustomerStatCard
+                        title="Guest Dine-In Bills"
+                        value={data?.customerStats?.customerTypeMix?.guest?.dineInOrders || 0}
+                        icon={ChefHat}
+                        detail="Dine-in bills, not unique guests"
                     />
                     <CustomerStatCard
                         title="Guest Counter Bills"
                         value={data?.customerStats?.customerTypeMix?.guest?.counterBills || 0}
                         icon={Hash}
-                        detail="Guest users billed at counter"
+                        detail="Counter bills, not unique guests"
                     />
                 </div>
             </section>
             <section>
-                <h3 className="text-xl font-bold mb-4">Customer Channel Mix (Current Filter)</h3>
+                <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <h3 className="text-xl font-bold">Customer Channel Mix (Current Filter)</h3>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full md:w-auto"
+                        onClick={exportCustomerInsights}
+                        disabled={loading || customerOrderMixAll.length === 0}
+                    >
+                        <Download className="mr-2 h-4 w-4" />
+                        Export All To Excel CSV
+                    </Button>
+                </div>
                 {loading ? (
                     <div className="bg-card border border-border rounded-xl h-64 animate-pulse"></div>
                 ) : (
@@ -735,28 +957,34 @@ const CustomerRelationshipHub = ({ data, loading }) => {
                                         <th className="px-4 py-3 font-semibold">Customer</th>
                                         <th className="px-4 py-3 font-semibold">Type</th>
                                         <th className="px-4 py-3 font-semibold">Phone</th>
-                                        <th className="px-4 py-3 font-semibold text-center">Online</th>
-                                        <th className="px-4 py-3 font-semibold text-center">Call</th>
+                                        <th className="px-4 py-3 font-semibold text-center">App / WA</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Call Delivery</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Pickup</th>
+                                        <th className="px-4 py-3 font-semibold text-center">Dine-In</th>
                                         <th className="px-4 py-3 font-semibold text-center">Counter</th>
+                                        <th className="px-4 py-3 font-semibold text-right">AOV</th>
                                         <th className="px-4 py-3 font-semibold text-right">Spend</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(data?.customerStats?.customerOrderMix || []).length === 0 ? (
+                                    {customerOrderMix.length === 0 ? (
                                         <tr>
-                                            <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                                            <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                                                 No customer channel data in selected range.
                                             </td>
                                         </tr>
                                     ) : (
-                                        (data?.customerStats?.customerOrderMix || []).map((row) => (
+                                        customerOrderMix.map((row) => (
                                             <tr key={row.customerKey} className="border-b border-border/60">
                                                 <td className="px-4 py-3 font-medium">{row.name || 'Customer'}</td>
                                                 <td className="px-4 py-3 uppercase text-xs tracking-wide text-muted-foreground">{row.customerType || 'guest'}</td>
                                                 <td className="px-4 py-3 text-muted-foreground">{row.phone || '-'}</td>
                                                 <td className="px-4 py-3 text-center">{row.onlineOrders || 0}</td>
                                                 <td className="px-4 py-3 text-center">{row.manualCallOrders || 0}</td>
+                                                <td className="px-4 py-3 text-center">{row.pickupOrders || 0}</td>
+                                                <td className="px-4 py-3 text-center">{row.dineInOrders || 0}</td>
                                                 <td className="px-4 py-3 text-center">{row.counterBills || 0}</td>
+                                                <td className="px-4 py-3 text-right">{formatCurrency(row.avgOrderValue || 0)}</td>
                                                 <td className="px-4 py-3 text-right font-semibold">{formatCurrency(row.totalSpent || 0)}</td>
                                             </tr>
                                         ))
@@ -1009,10 +1237,16 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
         isStoreBusiness ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']
     ), [isStoreBusiness]);
 
-    const manualOrders = useMemo(() =>
-        manualHistory.filter((bill) => allowedManualTypes.includes(bill.orderType)),
-        [allowedManualTypes, manualHistory]
-    );
+    const categorizedHistory = useMemo(() => (
+        manualHistory.map((bill) => {
+            const rawType = normalizeModeKey(bill?.orderType);
+            const category = allowedManualTypes.includes(rawType) ? rawType : 'custom-bill';
+            return {
+                ...bill,
+                category,
+            };
+        })
+    ), [allowedManualTypes, manualHistory]);
 
     const compute = (bills) => ({
         count: bills.length,
@@ -1020,25 +1254,38 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
         avg: bills.length > 0 ? bills.reduce((s, b) => s + Number(b.totalAmount || 0), 0) / bills.length : 0,
     });
 
-    const overall = useMemo(() => compute(manualOrders), [manualOrders]);
+    const manualOrders = useMemo(() =>
+        categorizedHistory.filter((bill) => bill.category !== 'custom-bill'),
+        [categorizedHistory]
+    );
+    const customBills = useMemo(() =>
+        categorizedHistory.filter((bill) => bill.category === 'custom-bill'),
+        [categorizedHistory]
+    );
+
+    const overall = useMemo(() => compute(categorizedHistory), [categorizedHistory]);
+    const manualOrderTotals = useMemo(() => compute(manualOrders), [manualOrders]);
+    const customBillTotals = useMemo(() => compute(customBills), [customBills]);
     const byType = useMemo(() => ({
         delivery: compute(manualOrders.filter(b => b.orderType === 'delivery')),
         'dine-in': compute(manualOrders.filter(b => b.orderType === 'dine-in')),
         pickup: compute(manualOrders.filter(b => b.orderType === 'pickup')),
-    }), [manualOrders]);
+        'custom-bill': compute(customBills),
+    }), [customBills, manualOrders]);
 
     const combinedRevenue = (Number(onlineRevenue) || 0) + overall.revenue;
 
     const typeConfig = [
-        { key: 'delivery', label: '📦 Delivery', color: 'border-blue-500/30 bg-blue-500/5 text-blue-400' },
-        ...(!isStoreBusiness ? [{ key: 'dine-in', label: '🍽️ Dine-In', color: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-400' }] : []),
-        { key: 'pickup', label: '🛍️ Pickup', color: 'border-green-500/30 bg-green-500/5 text-green-400' },
+        { key: 'delivery', label: 'Delivery', tone: 'sky' },
+        ...(!isStoreBusiness ? [{ key: 'dine-in', label: 'Dine-In', tone: 'amber' }] : []),
+        { key: 'pickup', label: 'Pickup', tone: 'emerald' },
+        { key: 'custom-bill', label: isStoreBusiness ? 'POS / Counter Bills' : 'Custom / Counter Bills', tone: 'slate' },
     ];
 
     if (manualLoading) {
         return (
             <div className="space-y-4">
-                {[1,2].map(i => <div key={i} className="h-32 bg-card border border-border rounded-xl animate-pulse" />)}
+                {[1,2].map(i => <div key={i} className="h-32 bg-card border border-border rounded-2xl animate-pulse" />)}
             </div>
         );
     }
@@ -1046,26 +1293,31 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
     return (
         <div className="space-y-6">
             {/* Combined revenue banner */}
-            <div className="bg-card border border-border rounded-xl p-5">
-                <p className="text-sm text-muted-foreground mb-1">Combined Total Revenue (Online + Manual Billing)</p>
+            <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-sm">
+                <p className="text-sm text-muted-foreground mb-1">Combined Total Revenue</p>
                 <p className="text-4xl font-bold text-foreground">{formatCurrency(combinedRevenue)}</p>
                 <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
-                    <span>🌐 Online: <strong className="text-foreground">{formatCurrency(Number(onlineRevenue) || 0)}</strong></span>
-                    <span>📋 Manual: <strong className="text-foreground">{formatCurrency(overall.revenue)}</strong></span>
+                    <span>Online tracked orders: <strong className="text-foreground">{formatCurrency(Number(onlineRevenue) || 0)}</strong></span>
+                    <span>Manual orders: <strong className="text-foreground">{formatCurrency(manualOrderTotals.revenue)}</strong></span>
+                    <span>Custom bills: <strong className="text-foreground">{formatCurrency(customBillTotals.revenue)}</strong></span>
                 </div>
             </div>
 
             {/* KPI cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-card border border-border rounded-xl p-5">
-                    <p className="text-sm text-muted-foreground">Total Manual Orders</p>
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
+                <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-sm">
+                    <p className="text-sm text-muted-foreground">Manual Billing Entries</p>
                     <p className="text-3xl font-bold mt-1">{overall.count.toLocaleString('en-IN')}</p>
                 </div>
-                <div className="bg-card border border-border rounded-xl p-5">
-                    <p className="text-sm text-muted-foreground">Manual Billing Revenue</p>
-                    <p className="text-3xl font-bold mt-1">{formatCurrency(overall.revenue)}</p>
+                <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-sm">
+                    <p className="text-sm text-muted-foreground">Manual Order Revenue</p>
+                    <p className="text-3xl font-bold mt-1">{formatCurrency(manualOrderTotals.revenue)}</p>
                 </div>
-                <div className="bg-card border border-border rounded-xl p-5">
+                <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-sm">
+                    <p className="text-sm text-muted-foreground">Custom Bill Revenue</p>
+                    <p className="text-3xl font-bold mt-1">{formatCurrency(customBillTotals.revenue)}</p>
+                </div>
+                <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-sm">
                     <p className="text-sm text-muted-foreground">Avg Bill Value</p>
                     <p className="text-3xl font-bold mt-1">{formatCurrency(overall.avg)}</p>
                 </div>
@@ -1074,11 +1326,11 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
             {/* Per-type breakdown */}
             <div>
                 <h3 className="text-lg font-semibold mb-3">Order Type Breakdown</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {typeConfig.map(({ key, label, color }) => (
-                        <div key={key} className={`border rounded-xl p-4 ${color}`}>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-4">
+                    {typeConfig.map(({ key, label, tone }) => (
+                        <div key={key} className={cn('border rounded-2xl p-4 shadow-sm', serviceCardToneMap[tone] || serviceCardToneMap.sky)}>
                             <p className="text-sm font-semibold mb-2">{label}</p>
-                            <p className="text-2xl font-bold">{byType[key].count} orders</p>
+                            <p className="text-2xl font-bold">{byType[key].count} entries</p>
                             <p className="text-sm opacity-90 mt-1">{formatCurrency(byType[key].revenue)}</p>
                             <p className="text-xs opacity-70 mt-0.5">Avg: {formatCurrency(byType[key].avg)}</p>
                         </div>
@@ -1088,25 +1340,27 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
 
             {/* Recent manual orders table */}
             <div>
-                <h3 className="text-lg font-semibold mb-3">Recent Orders</h3>
-                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <h3 className="text-lg font-semibold mb-3">Recent Manual Billing Activity</h3>
+                <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/30 border-b border-border">
                                 <tr>
-                                    <th className="p-4 text-left font-semibold text-muted-foreground">Type</th>
+                                    <th className="p-4 text-left font-semibold text-muted-foreground">Category</th>
                                     <th className="p-4 text-left font-semibold text-muted-foreground">Customer</th>
+                                    <th className="p-4 text-left font-semibold text-muted-foreground">Channel</th>
                                     <th className="p-4 text-left font-semibold text-muted-foreground">Amount</th>
                                     <th className="p-4 text-left font-semibold text-muted-foreground">Date</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {manualOrders.length === 0 ? (
-                                    <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No manual orders in selected period.</td></tr>
-                                ) : manualOrders.slice(0, 20).map((bill, i) => (
+                                {categorizedHistory.length === 0 ? (
+                                    <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No manual billing activity in selected period.</td></tr>
+                                ) : categorizedHistory.slice(0, 20).map((bill, i) => (
                                     <tr key={bill.id || i} className="hover:bg-muted/20">
-                                        <td className="p-4 capitalize text-xs font-semibold text-muted-foreground">{bill.orderType}</td>
+                                        <td className="p-4 capitalize text-xs font-semibold text-muted-foreground">{bill.category.replace('-', ' ')}</td>
                                         <td className="p-4">{bill.customerName || 'Walk-in'}</td>
+                                        <td className="p-4 text-xs text-muted-foreground">{bill.channel || bill.source || '-'}</td>
                                         <td className="p-4 font-semibold">{formatCurrency(bill.totalAmount || 0)}</td>
                                         <td className="p-4 text-xs text-muted-foreground">
                                             {bill.printedAt ? new Date(bill.printedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}

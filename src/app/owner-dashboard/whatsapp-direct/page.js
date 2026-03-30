@@ -405,10 +405,12 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                 description: `Special reward for ${customer.name}`,
                 type: 'flat',
                 value: '',
+                maxDiscount: '',
                 minOrder: '',
                 startDate: new Date(),
                 expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-                status: 'Active',
+                status: 'active',
+                singleUsePerCustomer: false,
                 customerId: customer.id, // Associate coupon with customer
             });
         }
@@ -416,8 +418,24 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
     if (!coupon) return null;
 
+    const minimumOrderValue = Number(coupon.minOrder) || 0;
+    const rewardValue = Number(coupon.value) || 0;
+    const maxDiscountValue = Number(coupon.maxDiscount) || 0;
+    const sampleOrderValue = Math.max(minimumOrderValue || 500, 500);
+    const percentagePreviewDiscount = Math.round((sampleOrderValue * rewardValue) / 100);
+    const effectivePercentageDiscount = maxDiscountValue > 0
+        ? Math.min(percentagePreviewDiscount, maxDiscountValue)
+        : percentagePreviewDiscount;
+
     const handleChange = (field, value) => {
-        setCoupon(prev => (prev ? { ...prev, [field]: value } : null));
+        setCoupon(prev => {
+            if (!prev) return prev;
+            const next = { ...prev, [field]: value };
+            if (field === 'type' && value !== 'percentage') {
+                next.maxDiscount = '';
+            }
+            return next;
+        });
     };
 
     const generateRandomCode = () => {
@@ -446,7 +464,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-lg bg-card border-border text-foreground">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border text-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-xl">
@@ -579,6 +597,19 @@ function WhatsAppDirectPageContent() {
     const [realtimeResolveAttempted, setRealtimeResolveAttempted] = useState(false);
     const [realtimeRuntimeBlocked, setRealtimeRuntimeBlocked] = useState(false);
     const isRealtimeActive = realtimeEligible && !!realtimeBusinessTarget && !realtimeRuntimeBlocked;
+
+    const rewardCustomer = useMemo(() => {
+        if (!activeConversation) return null;
+
+        const resolvedCustomerId = customerDetails?.id || activeConversation.customerPhone;
+        return {
+            ...activeConversation,
+            id: resolvedCustomerId,
+            customerId: resolvedCustomerId,
+            name: customerDetails?.customName || activeConversation.customerName,
+            phone: activeConversation.customerPhone,
+        };
+    }, [activeConversation, customerDetails]);
 
     const shortcutScope = useMemo(() => ({
         impersonatedOwnerId,
@@ -1716,7 +1747,12 @@ function WhatsAppDirectPageContent() {
                     <h4 className="text-xs font-semibold text-muted-foreground mb-4 uppercase tracking-wider flex items-center gap-2">
                         <Gift size={12} /> Send Reward
                     </h4>
-                    <Button onClick={() => setCouponModalOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" size="sm">
+                    <Button
+                        onClick={() => setCouponModalOpen(true)}
+                        disabled={!rewardCustomer?.id}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                        size="sm"
+                    >
                         <Gift className="mr-2 h-4 w-4" /> Send Special Reward
                     </Button>
                 </div>
@@ -1753,7 +1789,7 @@ function WhatsAppDirectPageContent() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {activeConversation && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customer={{ ...activeConversation, name: activeConversation.customerName, id: activeConversation.customerPhone }} onSave={handleSaveReward} />}
+            {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customer={rewardCustomer} onSave={handleSaveReward} />}
             <ConfirmationModal
                 isOpen={isConfirmEndChatOpen}
                 onClose={() => setConfirmEndChatOpen(false)}

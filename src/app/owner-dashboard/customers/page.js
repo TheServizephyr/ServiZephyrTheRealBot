@@ -112,10 +112,12 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                 description: `Special reward for ${customer.name}`,
                 type: 'flat',
                 value: '',
+                maxDiscount: '',
                 minOrder: '',
                 startDate: new Date(),
                 expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-                status: 'Active',
+                status: 'active',
+                singleUsePerCustomer: false,
                 customerId: customer.id, // Associate coupon with customer
             });
         }
@@ -123,8 +125,24 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
     if (!coupon) return null;
 
+    const minimumOrderValue = Number(coupon.minOrder) || 0;
+    const rewardValue = Number(coupon.value) || 0;
+    const maxDiscountValue = Number(coupon.maxDiscount) || 0;
+    const sampleOrderValue = Math.max(minimumOrderValue || 500, 500);
+    const percentagePreviewDiscount = Math.round((sampleOrderValue * rewardValue) / 100);
+    const effectivePercentageDiscount = maxDiscountValue > 0
+        ? Math.min(percentagePreviewDiscount, maxDiscountValue)
+        : percentagePreviewDiscount;
+
     const handleChange = (field, value) => {
-        setCoupon(prev => (prev ? { ...prev, [field]: value } : null));
+        setCoupon(prev => {
+            if (!prev) return prev;
+            const next = { ...prev, [field]: value };
+            if (field === 'type' && value !== 'percentage') {
+                next.maxDiscount = '';
+            }
+            return next;
+        });
     };
 
     const generateRandomCode = () => {
@@ -153,7 +171,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-lg bg-card border-border text-foreground">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border text-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-xl">
@@ -173,6 +191,13 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                         <div>
                             <Label htmlFor="description">Description</Label>
                             <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={2} placeholder="e.g., A special thanks for being a loyal customer." className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
+                        </div>
+                        <div>
+                            <Label>Reward Type</Label>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                <Button type="button" variant={coupon.type === 'flat' ? 'default' : 'outline'} onClick={() => handleChange('type', 'flat')}>Flat Amount</Button>
+                                <Button type="button" variant={coupon.type === 'percentage' ? 'default' : 'outline'} onClick={() => handleChange('type', 'percentage')}>Percentage</Button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>

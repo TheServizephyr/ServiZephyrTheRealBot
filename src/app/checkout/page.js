@@ -560,8 +560,13 @@ const CheckoutPageInternal = () => {
                 dineInTabId: tabId || savedCart.dineInTabId || null,
                 deliveryType
             };
+            const couponQuery = new URLSearchParams({ src: 'checkout_page' });
+            if (phoneToLookup) couponQuery.set('phone', phoneToLookup);
+            if (token) couponQuery.set('token', token);
+            if (ref) couponQuery.set('ref', ref);
+
             const paymentSettingsPromise = fetch(`/api/public/settings/${restaurantId}`);
-            const menuPromise = fetch(`/api/public/menu/${restaurantId}?src=checkout_page`);
+            const menuPromise = fetch(`/api/public/menu/${restaurantId}?${couponQuery.toString()}`);
 
             try {
                 const paymentSettingsRes = await paymentSettingsPromise;
@@ -1320,7 +1325,7 @@ const CheckoutPageInternal = () => {
             collectionName: cartData?.collectionName,
             items: cart,
             notes: String(cookingInstructions || cartData?.notes || '').trim(),
-            coupon: appliedCoupons.find(c => !c.customerId) || null,
+            coupon: appliedCoupons[0] || null,
             loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: effectivePaymentMethod,
             deliveryType: deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: tipAmount || 0,
             businessType: cartData.businessType || 'restaurant',

@@ -6,6 +6,7 @@ import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { findBusinessById } from '@/services/business/businessService';
+import { resolveGuestAccessRef } from '@/lib/public-auth';
 
 // --- Analytics Badge Thresholds ---
 // Strict thresholds to prevent badge inflation — only truly top-performing items qualify
@@ -222,6 +223,68 @@ function decodeUrlComponentRecursively(value, maxPasses = 3) {
     return normalized;
 }
 
+function normalizePhone(phone) {
+    if (!phone) return '';
+    const digits = String(phone).replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+async function resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams }) {
+    const eligibleIds = new Set();
+    const normalizedPhone = normalizePhone(searchParams.get('phone'));
+    const ref = String(searchParams.get('ref') || '').trim();
+
+    if (ref) {
+        try {
+            const refSession = await resolveGuestAccessRef(firestore, ref, { allowLegacy: true });
+            if (refSession?.subjectId) {
+                eligibleIds.add(String(refSession.subjectId));
+            }
+            const refPhone = normalizePhone(refSession?.phone);
+            if (refPhone) {
+                eligibleIds.add(`phone:${refPhone}`);
+            }
+        } catch (error) {
+            console.warn('[Menu API] Could not resolve reward ref:', error?.message || error);
+        }
+    }
+
+    if (normalizedPhone) {
+        eligibleIds.add(`phone:${normalizedPhone}`);
+    }
+
+    if (!businessRef || eligibleIds.size === 0) {
+        return eligibleIds;
+    }
+
+    const lookupPhones = [...eligibleIds]
+        .filter((value) => value.startsWith('phone:'))
+        .map((value) => value.slice('phone:'.length));
+
+    for (const phone of lookupPhones) {
+        try {
+            const customerSnap = await businessRef
+                .collection('customers')
+                .where('phone', '==', phone)
+                .limit(10)
+                .get();
+
+            customerSnap.forEach((doc) => {
+                eligibleIds.add(String(doc.id));
+                const customerData = doc.data() || {};
+                if (customerData.customerId) eligibleIds.add(String(customerData.customerId));
+                if (customerData.userId) eligibleIds.add(String(customerData.userId));
+                if (customerData.uid) eligibleIds.add(String(customerData.uid));
+            });
+        } catch (error) {
+            console.warn('[Menu API] Phone based reward lookup failed:', error?.message || error);
+        }
+    }
+
+    return eligibleIds;
+}
+
 function buildRestaurantIdCandidates(value) {
     const seed = String(value || '').trim();
     if (!seed) return [];
@@ -362,9 +425,12 @@ export async function GET(req, { params }) {
     const restaurantIdCandidates = buildRestaurantIdCandidates(canonicalRestaurantId);
     const { searchParams } = new URL(req.url);
     const phone = searchParams.get('phone');
+    const ref = searchParams.get('ref');
+    const token = searchParams.get('token');
     const menuSource = normalizeMenuSource(searchParams.get('src'));
     const telemetryEndpoint = menuSource ? `api.public.menu.${menuSource}` : 'api.public.menu';
     const firestore = await getFirestore();
+    const personalizedRequest = Boolean(normalizePhone(phone) || String(ref || '').trim() || String(token || '').trim());
     const respond = (payload, status = 200, headers = undefined) => {
         telemetryStatus = status;
         return NextResponse.json(payload, {
@@ -455,7 +521,7 @@ export async function GET(req, { params }) {
         debugLog(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
 
         // STEP 3: Check Redis cache with version-specific key
-        if (!skipCache) {
+        if (!skipCache && !personalizedRequest) {
             const l1CacheData = readMenuFromMemoryCache(cacheKey);
             if (l1CacheData) {
                 debugLog(`%c[Menu API] ✅ L1 CACHE HIT`, 'color: #22c55e; font-weight: bold');
@@ -477,7 +543,7 @@ export async function GET(req, { params }) {
             }
         }
 
-        if (isKvAvailable && !skipCache) {
+        if (isKvAvailable && !skipCache && !personalizedRequest) {
             try {
                 const cachedData = await kv.get(cacheKey);
                 if (cachedData) {
@@ -519,10 +585,11 @@ export async function GET(req, { params }) {
         debugLog(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${cacheRestaurantId}/coupons`);
 
         // Fetch menu, coupons, AND delivery settings in parallel
-        const [menuSnap, couponsSnap, deliveryConfigSnap] = await Promise.all([
+        const [menuSnap, couponsSnap, deliveryConfigSnap, eligibleCustomerIds] = await Promise.all([
             businessRef.collection('menu').get(),
             businessRef.collection('coupons').where('status', '==', 'active').get(),
-            businessRef.collection('delivery_settings').doc('config').get()
+            businessRef.collection('delivery_settings').doc('config').get(),
+            resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams })
         ]);
 
         debugLog(`[Menu API] 📊 Coupons query returned ${couponsSnap.size} documents`);
@@ -617,12 +684,14 @@ export async function GET(req, { params }) {
             .filter(coupon => {
                 const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
                 const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
-                const isPublic = !coupon.customerId;
+                const assignedCustomerId = String(coupon.customerId || '').trim();
+                const isPublic = !assignedCustomerId;
+                const isAssignedToCurrentCustomer = assignedCustomerId && eligibleCustomerIds.has(assignedCustomerId);
                 const isValid = startDate <= now && expiryDate >= now;
 
-                debugLog('[Menu API] Coupon', coupon.code, '- valid:', isValid, 'public:', isPublic, 'start:', startDate, 'expiry:', expiryDate);
+                debugLog('[Menu API] Coupon', coupon.code, '- valid:', isValid, 'public:', isPublic, 'assigned:', isAssignedToCurrentCustomer, 'start:', startDate, 'expiry:', expiryDate);
 
-                return isValid && isPublic; // Only public coupons in cache
+                return isValid && (isPublic || isAssignedToCurrentCustomer);
             });
 
         debugLog('[Menu API] Final coupons count:', coupons.length);
@@ -676,8 +745,10 @@ export async function GET(req, { params }) {
         };
 
         // STEP 5: Cache with version-based key and 12-hour TTL
-        writeMenuToMemoryCache(cacheKey, responseData);
-        if (isKvAvailable) {
+        if (!personalizedRequest) {
+            writeMenuToMemoryCache(cacheKey, responseData);
+        }
+        if (isKvAvailable && !personalizedRequest) {
             kv.set(cacheKey, responseData, { ex: 43200 }) // 12 hours = 43200 seconds
                 .then(() => debugLog(`[Menu API] ✅ Cached as ${cacheKey} (TTL: 12 hours)`))
                 .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));

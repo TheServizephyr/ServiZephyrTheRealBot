@@ -41,6 +41,14 @@ const isManualCallOrder = (order) =>
 
 const isLostOrder = (status) => LOST_ORDER_STATUSES.has(String(status || '').toLowerCase());
 
+const normalizeServiceMode = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'dine_in' || normalized === 'dine-in') return 'dine-in';
+    if (normalized === 'pickup' || normalized === 'takeaway') return 'pickup';
+    if (normalized === 'delivery') return 'delivery';
+    return 'other';
+};
+
 const calcChange = (current, previous) => {
     if (!Number.isFinite(previous) || previous === 0) return current > 0 ? 100 : 0;
     return ((current - previous) / previous) * 100;
@@ -165,10 +173,18 @@ const getOrCreateCustomerMix = (map, identity) => {
             phone: identity.phone || '',
             onlineOrders: 0,
             manualCallOrders: 0,
+            manualDeliveryOrders: 0,
+            pickupOrders: 0,
+            dineInOrders: 0,
             counterBills: 0,
+            customBills: 0,
             onlineRevenue: 0,
             manualCallRevenue: 0,
+            manualDeliveryRevenue: 0,
+            pickupRevenue: 0,
+            dineInRevenue: 0,
             counterBillRevenue: 0,
+            customBillRevenue: 0,
             totalSpent: 0,
         });
     }
@@ -349,6 +365,10 @@ export async function GET(req) {
                     'grandTotal',
                     'printedAt',
                     'createdAt',
+                    'items',
+                    'orderType',
+                    'channel',
+                    'source',
                     'customerType',
                     'customerId',
                     'customerPhone',
@@ -387,12 +407,18 @@ export async function GET(req) {
         let manualCallOrderRevenue = 0;
         let dineInOrderCount = 0;
         let dineInOrderRevenue = 0;
+        let deliveryOrderCount = 0;
+        let deliveryOrderRevenue = 0;
+        let pickupOrderCount = 0;
+        let pickupOrderRevenue = 0;
         let counterBillCount = 0;
         let counterBillRevenue = 0;
+        let totalManualHistoryCount = 0;
+        let totalManualHistoryRevenue = 0;
 
         const customerTypeMix = {
-            uid: { onlineOrders: 0, manualCallOrders: 0, counterBills: 0 },
-            guest: { onlineOrders: 0, manualCallOrders: 0, counterBills: 0 },
+            uid: { onlineOrders: 0, manualCallOrders: 0, manualDeliveryOrders: 0, pickupOrders: 0, dineInOrders: 0, counterBills: 0, customBills: 0 },
+            guest: { onlineOrders: 0, manualCallOrders: 0, manualDeliveryOrders: 0, pickupOrders: 0, dineInOrders: 0, counterBills: 0, customBills: 0 },
         };
 
         // Rejection Metrics
@@ -436,14 +462,23 @@ export async function GET(req) {
             }
 
             const manualCallOrder = isManualCallOrder(data);
-            const isDineInOrder = String(data?.deliveryType || '').toLowerCase() === 'dine-in';
-            if (isDineInOrder) {
+            const serviceMode = normalizeServiceMode(data?.deliveryType || data?.orderType);
+
+            if (serviceMode === 'dine-in') {
                 dineInOrderCount += 1;
                 dineInOrderRevenue += amount;
-            } else if (manualCallOrder) {
+            } else if (serviceMode === 'pickup') {
+                pickupOrderCount += 1;
+                pickupOrderRevenue += amount;
+            } else if (serviceMode === 'delivery' && !manualCallOrder) {
+                deliveryOrderCount += 1;
+                deliveryOrderRevenue += amount;
+            }
+
+            if (manualCallOrder && serviceMode === 'delivery') {
                 manualCallOrderCount += 1;
                 manualCallOrderRevenue += amount;
-            } else {
+            } else if (serviceMode !== 'dine-in') {
                 onlineOrderCount += 1;
                 onlineOrderRevenue += amount;
             }
@@ -477,10 +512,21 @@ export async function GET(req) {
                 customerMix.manualCallOrders += 1;
                 customerMix.manualCallRevenue += amount;
                 customerTypeMix[customerIdentity.customerType].manualCallOrders += 1;
+                customerMix.manualDeliveryOrders += serviceMode === 'delivery' ? 1 : 0;
+                customerMix.pickupOrders += serviceMode === 'pickup' ? 1 : 0;
+                customerTypeMix[customerIdentity.customerType].manualDeliveryOrders += serviceMode === 'delivery' ? 1 : 0;
+                customerTypeMix[customerIdentity.customerType].pickupOrders += serviceMode === 'pickup' ? 1 : 0;
+                customerMix.manualDeliveryRevenue += serviceMode === 'delivery' ? amount : 0;
+                customerMix.pickupRevenue += serviceMode === 'pickup' ? amount : 0;
             } else {
                 customerMix.onlineOrders += 1;
                 customerMix.onlineRevenue += amount;
                 customerTypeMix[customerIdentity.customerType].onlineOrders += 1;
+            }
+            if (serviceMode === 'dine-in') {
+                customerMix.dineInOrders += 1;
+                customerMix.dineInRevenue += amount;
+                customerTypeMix[customerIdentity.customerType].dineInOrders += 1;
             }
         });
 
@@ -488,17 +534,51 @@ export async function GET(req) {
             const data = doc.data();
             const amount = toAmount(data.totalAmount || data.grandTotal);
             const printedAt = timestampToDate(data.printedAt) || timestampToDate(data.createdAt);
+            const billMode = normalizeServiceMode(data.orderType);
+            totalManualHistoryCount += 1;
+            totalManualHistoryRevenue += amount;
 
-            counterBillCount += 1;
-            counterBillRevenue += amount;
+            if (billMode === 'delivery') {
+                manualCallOrderCount += 1;
+                manualCallOrderRevenue += amount;
+            } else if (billMode === 'pickup') {
+                pickupOrderCount += 1;
+                pickupOrderRevenue += amount;
+            } else if (billMode === 'dine-in') {
+                dineInOrderCount += 1;
+                dineInOrderRevenue += amount;
+            } else {
+                counterBillCount += 1;
+                counterBillRevenue += amount;
+            }
             addSalesByDay(salesByDay, salesDayOrder, printedAt, amount);
 
             const customerIdentity = getCounterBillCustomerIdentity(data, doc.id);
             const customerMix = getOrCreateCustomerMix(customerOrderMixMap, customerIdentity);
-            customerMix.counterBills += 1;
-            customerMix.counterBillRevenue += amount;
             customerMix.totalSpent += amount;
-            customerTypeMix[customerIdentity.customerType].counterBills += 1;
+            if (billMode === 'delivery') {
+                customerMix.manualCallOrders += 1;
+                customerMix.manualCallRevenue += amount;
+                customerMix.manualDeliveryOrders += 1;
+                customerMix.manualDeliveryRevenue += amount;
+                customerTypeMix[customerIdentity.customerType].manualCallOrders += 1;
+                customerTypeMix[customerIdentity.customerType].manualDeliveryOrders += 1;
+            } else if (billMode === 'pickup') {
+                customerMix.pickupOrders += 1;
+                customerMix.pickupRevenue += amount;
+                customerTypeMix[customerIdentity.customerType].pickupOrders += 1;
+            } else if (billMode === 'dine-in') {
+                customerMix.dineInOrders += 1;
+                customerMix.dineInRevenue += amount;
+                customerTypeMix[customerIdentity.customerType].dineInOrders += 1;
+            } else {
+                customerMix.counterBills += 1;
+                customerMix.counterBillRevenue += amount;
+                customerMix.customBills += 1;
+                customerMix.customBillRevenue += amount;
+                customerTypeMix[customerIdentity.customerType].counterBills += 1;
+                customerTypeMix[customerIdentity.customerType].customBills += 1;
+            }
         });
 
         // ---- PREVIOUS PERIOD COMPARISON ----
@@ -520,9 +600,9 @@ export async function GET(req) {
             prevCounterBillCount += 1;
         });
 
-        const totalBusinessRevenue = currentSales + counterBillRevenue;
+        const totalBusinessRevenue = currentSales + totalManualHistoryRevenue;
         const prevTotalBusinessRevenue = prevSales + prevCounterBillRevenue;
-        const totalBusinessOrders = currentOrdersCount + counterBillCount;
+        const totalBusinessOrders = currentOrdersCount + totalManualHistoryCount;
         const prevTotalBusinessOrders = prevOrdersCount + prevCounterBillCount;
 
         const salesTrend = Object.entries(salesByDay)
@@ -542,12 +622,19 @@ export async function GET(req) {
             .filter((entry) => entry.count > 0)
             .sort((a, b) => b.count - a.count);
 
-        const orderSourceBreakdown = [
+        const serviceModeBreakdown = [
+            { name: 'Delivery Orders', value: deliveryOrderCount, revenue: deliveryOrderRevenue },
+            { name: 'Pickup Orders', value: pickupOrderCount, revenue: pickupOrderRevenue },
             { name: 'Dine-In Orders', value: dineInOrderCount, revenue: dineInOrderRevenue },
+            { name: 'Call Orders', value: manualCallOrderCount, revenue: manualCallOrderRevenue },
+            { name: 'Counter Bills', value: counterBillCount, revenue: counterBillRevenue },
+        ].filter((entry) => entry.value > 0 || entry.revenue > 0);
+
+        const orderSourceBreakdown = [
             { name: 'Online Orders', value: onlineOrderCount, revenue: onlineOrderRevenue },
-            { name: 'Manual Call Orders', value: manualCallOrderCount, revenue: manualCallOrderRevenue },
+            { name: 'Call Orders', value: manualCallOrderCount, revenue: manualCallOrderRevenue },
             { name: 'Offline Counter Bills', value: counterBillCount, revenue: counterBillRevenue },
-        ];
+        ].filter((entry) => entry.value > 0 || entry.revenue > 0);
 
         const salesData = {
             kpis: {
@@ -568,10 +655,14 @@ export async function GET(req) {
                 onlineOrders: onlineOrderCount,
                 manualCallOrders: manualCallOrderCount,
                 dineInOrders: dineInOrderCount,
+                deliveryOrders: deliveryOrderCount,
+                pickupOrders: pickupOrderCount,
                 counterBills: counterBillCount,
                 onlineOrderRevenue,
                 manualCallRevenue: manualCallOrderRevenue,
                 dineInRevenue: dineInOrderRevenue,
+                deliveryRevenue: deliveryOrderRevenue,
+                pickupRevenue: pickupOrderRevenue,
                 counterBillRevenue,
             },
             salesTrend,
@@ -579,6 +670,7 @@ export async function GET(req) {
             rejectionReasons: rejectionReasonsData,
             peakHours,
             missedOpportunities: missedItemsData,
+            serviceModeBreakdown,
             orderSourceBreakdown,
         };
 
@@ -589,6 +681,15 @@ export async function GET(req) {
         currentPeriodOrdersSnap.forEach((doc) => {
             const data = doc.data();
             if (isLostOrder(data.status)) return;
+            (data.items || []).forEach((item) => {
+                const baseName = String(item?.name || 'Item').split(' (')[0];
+                if (!itemSales[baseName]) itemSales[baseName] = 0;
+                itemSales[baseName] += toAmount(item?.quantity || 0);
+            });
+        });
+
+        currentCounterBillsSnap.forEach((doc) => {
+            const data = doc.data() || {};
             (data.items || []).forEach((item) => {
                 const baseName = String(item?.name || 'Item').split(' (')[0];
                 if (!itemSales[baseName]) itemSales[baseName] = 0;
@@ -711,19 +812,83 @@ export async function GET(req) {
                 totalSpent: toAmount(customer.totalSpent),
             }));
 
-        const customerOrderMix = Array.from(customerOrderMixMap.values())
+        const customerOrderMixAll = Array.from(customerOrderMixMap.values())
             .map((row) => ({
                 ...row,
-                totalInteractions: row.onlineOrders + row.manualCallOrders + row.counterBills,
+                totalInteractions: row.onlineOrders + row.manualCallOrders + row.manualDeliveryOrders + row.pickupOrders + row.dineInOrders + row.counterBills + row.customBills,
+                totalOrders: row.onlineOrders + row.manualCallOrders + row.manualDeliveryOrders + row.pickupOrders + row.dineInOrders + row.counterBills + row.customBills,
+                avgOrderValue: (row.onlineOrders + row.manualCallOrders + row.manualDeliveryOrders + row.pickupOrders + row.dineInOrders + row.counterBills + row.customBills) > 0
+                    ? row.totalSpent / (row.onlineOrders + row.manualCallOrders + row.manualDeliveryOrders + row.pickupOrders + row.dineInOrders + row.counterBills + row.customBills)
+                    : 0,
             }))
             .sort((a, b) => {
                 if (b.totalInteractions !== a.totalInteractions) return b.totalInteractions - a.totalInteractions;
                 return b.totalSpent - a.totalSpent;
-            })
-            .slice(0, 20);
+            });
+
+        const customerOrderMix = customerOrderMixAll.slice(0, 20);
+
+        const callCustomers = Array.from(customerOrderMixMap.values())
+            .filter((row) => row.manualCallOrders > 0);
+        const repeatCallCustomers = callCustomers.filter((row) => row.manualCallOrders > 1);
+        const callRevenue = callCustomers.reduce((sum, row) => sum + row.manualCallRevenue, 0);
+        const callOrders = callCustomers.reduce((sum, row) => sum + row.manualCallOrders, 0);
+
+        const customerChannels = [
+            {
+                key: 'online',
+                label: 'App / WhatsApp Online',
+                orders: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.onlineOrders, 0),
+                revenue: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.onlineRevenue, 0),
+                customers: Array.from(customerOrderMixMap.values()).filter((row) => row.onlineOrders > 0).length,
+            },
+            {
+                key: 'call',
+                label: 'Call Delivery',
+                orders: callOrders,
+                revenue: callRevenue,
+                customers: callCustomers.length,
+            },
+            {
+                key: 'pickup',
+                label: 'Pickup',
+                orders: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.pickupOrders, 0),
+                revenue: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.pickupRevenue, 0),
+                customers: Array.from(customerOrderMixMap.values()).filter((row) => row.pickupOrders > 0).length,
+            },
+            {
+                key: 'dine-in',
+                label: 'Dine-In',
+                orders: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.dineInOrders, 0),
+                revenue: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.dineInRevenue, 0),
+                customers: Array.from(customerOrderMixMap.values()).filter((row) => row.dineInOrders > 0).length,
+            },
+            {
+                key: 'counter',
+                label: 'Custom Bills',
+                orders: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.customBills, 0),
+                revenue: Array.from(customerOrderMixMap.values()).reduce((sum, row) => sum + row.customBillRevenue, 0),
+                customers: Array.from(customerOrderMixMap.values()).filter((row) => row.customBills > 0).length,
+            },
+        ].map((row) => ({
+            ...row,
+            aov: row.orders > 0 ? row.revenue / row.orders : 0,
+        }));
+
+        const spendBuckets = [
+            { range: '0-499', min: 0, max: 499 },
+            { range: '500-999', min: 500, max: 999 },
+            { range: '1000-1999', min: 1000, max: 1999 },
+            { range: '2000+', min: 2000, max: Number.POSITIVE_INFINITY },
+        ].map((bucket) => ({
+            range: bucket.range,
+            allCustomers: Array.from(customerOrderMixMap.values()).filter((row) => row.totalSpent >= bucket.min && row.totalSpent <= bucket.max).length,
+            callCustomers: callCustomers.filter((row) => row.manualCallRevenue >= bucket.min && row.manualCallRevenue <= bucket.max).length,
+        }));
 
         const customerStats = {
-            totalCustomers: allCustomers.length,
+            totalCustomers: customerOrderMixMap.size,
+            registeredCustomers: allCustomers.length,
             newThisMonth: newThisMonth.length,
             repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
             newThisPeriod: Math.max(0, uniqueCustomerPhonesThisPeriod.size - returningThisPeriod.length),
@@ -731,6 +896,17 @@ export async function GET(req) {
             topLoyalCustomers,
             customerTypeMix,
             customerOrderMix,
+            customerOrderMixAll,
+            customerChannels,
+            spendBuckets,
+            callCustomerStats: {
+                totalCustomers: callCustomers.length,
+                totalOrders: callOrders,
+                totalRevenue: callRevenue,
+                repeatRate: callCustomers.length > 0 ? Math.round((repeatCallCustomers.length / callCustomers.length) * 100) : 0,
+                avgOrderValue: callOrders > 0 ? callRevenue / callOrders : 0,
+                avgSpendPerCustomer: callCustomers.length > 0 ? callRevenue / callCustomers.length : 0,
+            },
         };
 
         // ---- RIDER ANALYTICS ----
