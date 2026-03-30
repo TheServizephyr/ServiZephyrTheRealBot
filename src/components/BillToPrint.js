@@ -375,7 +375,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                             <div><strong>Order Online</strong> at</div>
                             <div><strong>No Extra Charges</strong></div>
                         </div>
-                        <div className="shrink-0 bg-white" style={{ width: 68, height: 68 }}>
+                        <div className="shrink-0 bg-white" style={{ width: 60, height: 60 }}>
                             <QRCode
                                 value={promoQrValue}
                                 size={4096}
@@ -386,8 +386,8 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                                 bgColor="#FFFFFF"
                                 style={{
                                     display: 'block',
-                                    width: '68px',
-                                    height: '68px',
+                                    width: '60px',
+                                    height: '60px',
                                     shapeRendering: 'crispEdges',
                                     imageRendering: 'pixelated',
                                 }}
