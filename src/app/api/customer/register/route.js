@@ -137,7 +137,7 @@ export async function POST(req) {
 
             await newOrderRef.set({
                 restaurantId, businessType, tableId,
-                items: items, notes: notes || null,
+                items: items, notes: notes || null, specialInstructions: notes || null,
                 subtotal, cgst, sgst, totalAmount: grandTotal,
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
@@ -169,7 +169,8 @@ export async function POST(req) {
                 customer_details: JSON.stringify({ name: tab_name, address: { full: `Table ${tableId}`}, phone: `dine-in-${tableId}` }),
                 items: JSON.stringify(items),
                 bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount: 0, pickupTime: '', cgst, sgst, deliveryCharge: 0, tableId, dineInTabId, pax_count, tab_name }),
-                notes: notes || null
+                notes: notes || null,
+                specialInstructions: notes || null
             };
             console.log("[API /customer/register] Generated servizephyr_payload for dine-in:", JSON.stringify(servizephyrOrderPayload, null, 2));
 
@@ -205,7 +206,7 @@ export async function POST(req) {
                     restaurantId, businessType, deliveryType, tableId, dineInTabId, items,
                     subtotal, coupon, loyaltyDiscount, discount: coupon?.discount || 0, cgst, sgst,
                     totalAmount: grandTotal, status: 'pending', orderDate: FieldValue.serverTimestamp(),
-                    notes: notes || null, paymentDetails: { method: paymentMethod },
+                    notes: notes || null, specialInstructions: notes || null, paymentDetails: { method: paymentMethod },
                     trackingToken: trackingToken
                 });
                 
@@ -283,7 +284,8 @@ export async function POST(req) {
                     sgst: sgst || 0,
                     deliveryCharge: deliveryCharge || 0
                 }),
-                notes: notes || null
+                notes: notes || null,
+                specialInstructions: notes || null
             };
             
             const razorpayOrderOptions = {
@@ -417,6 +419,7 @@ export async function POST(req) {
             status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
+            specialInstructions: notes || null,
             trackingToken: trackingToken,
             paymentDetails: { method: paymentMethod }
         };

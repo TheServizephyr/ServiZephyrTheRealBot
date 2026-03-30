@@ -142,7 +142,8 @@ function ManualOrderPage() {
     const [customerDetails, setCustomerDetails] = useState({
         name: '',
         phone: '',
-        address: ''
+        address: '',
+        notes: ''
     });
     const [orderType, setOrderType] = useState('dine-in'); // 'delivery', 'dine-in', 'pickup'
     const [phoneError, setPhoneError] = useState(false);
@@ -1014,7 +1015,7 @@ function ManualOrderPage() {
         setCart([]);
         setItemHistory([]);
         setBillDraftId(createBillDraftId());
-        setCustomerDetails({ name: '', phone: '', address: '' });
+        setCustomerDetails({ name: '', phone: '', address: '', notes: '' });
         setPhoneError(false);
         setDiscountInput('0');
         setPaymentMode('cash');
@@ -2639,11 +2640,21 @@ function ManualOrderPage() {
                                                 <Label className="flex items-center gap-1.5 text-xs"><MapPin size={13} /> Address</Label>
                                                 <textarea rows={2} value={customerDetails.address} onChange={e => setCustomerDetails({ ...customerDetails, address: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border resize-none" />
                                             </div>
-                                            <div className="space-y-1 col-span-2">
+                                            <div className="space-y-1 col-span-1">
                                                 <Label className="text-xs">Delivery Charge (Optional)</Label>
                                                 <input type="number" min="0" step="1" value={deliveryChargeInput} onChange={(e) => setDeliveryChargeInput(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="0" />
                                             </div>
+                                            <div className="space-y-1 col-span-1">
+                                                <Label className="text-xs">Notes</Label>
+                                                <input value={customerDetails.notes || ''} onChange={e => setCustomerDetails({ ...customerDetails, notes: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="Extra spicy, no onion..." />
+                                            </div>
                                         </>
+                                    )}
+                                    {orderType !== 'delivery' && (
+                                        <div className="space-y-1 col-span-2">
+                                            <Label className="text-xs">Notes</Label>
+                                            <input value={customerDetails.notes || ''} onChange={e => setCustomerDetails({ ...customerDetails, notes: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="Special note for kitchen / packing..." />
+                                        </div>
                                     )}
                                     {isStoreBusinessType(businessType) && (
                                         <>
@@ -2670,7 +2681,7 @@ function ManualOrderPage() {
                     <div className="hidden">
                         <div ref={billPrintRef} className="preview-bill">
                             <BillToPrint
-                                order={{ orderDate: new Date(), orderType }}
+                                order={{ orderDate: new Date(), orderType, notes: customerDetails.notes || '' }}
                                 restaurant={restaurant}
                                 billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, discount, paymentMode, grandTotal }}
                                 items={cart}
@@ -2834,7 +2845,7 @@ function ManualOrderPage() {
                 <div ref={tablePrintRef} className="preview-bill">
                     {tableToPrint && tableToPrint.currentOrder && (
                         <BillToPrint
-                            order={{ orderDate: new Date(), orderType: tableToPrint.currentOrder.orderType || 'dine-in' }}
+                            order={{ orderDate: new Date(), orderType: tableToPrint.currentOrder.orderType || 'dine-in', notes: tableToPrint.currentOrder.customerDetails?.notes || '' }}
                             restaurant={restaurant}
                             billDetails={{
                                 subtotal: tableToPrint.currentOrder.subtotal,

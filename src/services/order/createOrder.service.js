@@ -933,6 +933,7 @@ export async function createOrderV2(req, options = {}) {
                 status: 'awaiting_payment', // SAME as V1
                 orderDate: FieldValue.serverTimestamp(),
                 notes: notes || null,
+                specialInstructions: notes || null,
                 paymentDetails: [],
                 trackingToken: trackingToken,
                 dineInToken: dineInToken || null,
@@ -1107,6 +1108,7 @@ export async function createOrderV2(req, options = {}) {
             status: effectiveInitialStatus,
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
+            specialInstructions: notes || null,
             ownerDeliveryChargeProvided: ownerManualDeliveryChargeProvided,
             deliveryChargeLocked: ownerManualDeliveryChargeProvided,
             manualDeliveryChargeLocked: ownerManualDeliveryChargeProvided,

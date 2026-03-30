@@ -15,6 +15,60 @@ import { useToast } from "@/components/ui/use-toast";
 import { toPng } from 'html-to-image';
 import { auth } from '@/lib/firebase';
 
+const getOrderNoteText = (order = {}) =>
+    String(
+        order?.notes ||
+        order?.specialInstructions ||
+        order?.customerNote ||
+        order?.instructions ||
+        ''
+    ).trim();
+
+const getAddonUnitPrice = (addon = {}) => {
+    if (typeof addon?.price === 'number') return addon.price;
+    const parsedPrice = Number(addon?.price || 0);
+    return Number.isFinite(parsedPrice) ? parsedPrice : 0;
+};
+
+const getAddonQuantity = (addon = {}) => {
+    const parsedQuantity = Number(addon?.quantity || addon?.qty || 1);
+    return Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
+};
+
+const getItemUnitPrice = (item = {}) => {
+    if (typeof item?.price === 'number') return item.price;
+    if (item?.portion && typeof item.portion.price === 'number') return item.portion.price;
+    if (item?.totalPrice && item?.quantity) return item.totalPrice / item.quantity;
+    return 0;
+};
+
+const buildPrintRows = (items = []) =>
+    items.flatMap((item) => {
+        const quantity = Number(item.quantity || item.qty || 1) || 1;
+        const variantLabel = getItemVariantLabel(item).replace(/^\s*/, '');
+        const addons = item.addons || item.selectedAddOns || [];
+        const addOnTotalPerParentUnit = addons.reduce(
+            (sum, addon) => sum + (getAddonUnitPrice(addon) * getAddonQuantity(addon)),
+            0
+        );
+        const itemUnitPrice = getItemUnitPrice(item);
+        const rows = [{
+            name: `${item.name}${variantLabel}`,
+            quantity,
+            unitPrice: Math.max(0, itemUnitPrice - addOnTotalPerParentUnit),
+        }];
+
+        addons.forEach((addon) => {
+            rows.push({
+                name: addon.name || addon.itemName || 'Add-on',
+                quantity: quantity * getAddonQuantity(addon),
+                unitPrice: getAddonUnitPrice(addon),
+            });
+        });
+
+        return rows;
+    });
+
 // Reusable Print Dialog
 export default function PrintOrderDialog({ isOpen, onClose, order, restaurant }) {
     const billRef = useRef();
@@ -22,6 +76,8 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
     const [usbDevice, setUsbDevice] = useState(null);
     const [status, setStatus] = useState('');
     const [isSharing, setIsSharing] = useState(false);
+    const orderNote = getOrderNoteText(order);
+    const botDisplayNumber = String(restaurant?.botDisplayNumber || '').trim();
 
     const handleStandardPrint = useReactToPrint({
         content: () => billRef.current,
@@ -176,24 +232,17 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                 .newline()
                 .text('--------------------------------').newline();
 
+            if (orderNote) {
+                encoder.bold(true).text('NOTE:').bold(false).newline();
+                encoder.text(`"${orderNote}"`).newline();
+                encoder.text('--------------------------------').newline();
+            }
+
             // Items
-            (order.items || []).forEach(item => {
-                const qty = item.quantity || 1;
-                const price = item.price || 0;
-                const total = (qty * price).toFixed(0);
-
-                // FIXED: Portion Name
-                const variantLabel = getItemVariantLabel(item).replace(/^\s*/, '');
-                encoder.text(`${item.name}${variantLabel}`).newline();
-
-                // FIXED: Add-ons as sub-items
-                if (item.addons && item.addons.length > 0) {
-                    item.addons.forEach(addon => {
-                        encoder.text(`  + ${addon.name} (${addon.price})`).newline();
-                    });
-                }
-
-                encoder.text(`  ${qty} x ${price}`).align('right').text(total).align('left').newline();
+            buildPrintRows(order.items || []).forEach(row => {
+                const total = (row.quantity * row.unitPrice).toFixed(0);
+                encoder.text(row.name).newline();
+                encoder.text(`  ${row.quantity} x ${row.unitPrice}`).align('right').text(total).align('left').newline();
             });
 
             // Totals
@@ -232,6 +281,15 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
             encoder.bold(true).size('large')
                 .text(`TOTAL: ${grandTotal}`).newline()
                 .size('normal').bold(false).align('center')
+                .newline();
+
+            if (botDisplayNumber) {
+                encoder.bold(true).text('WHATSAPP US AT').bold(false).newline();
+                encoder.text(botDisplayNumber).newline();
+                encoder.text('TO ORDER ONLINE').newline();
+            }
+
+            encoder
                 .newline()
                 .text('Powered by ServiZephyr').newline()
                 .newline().newline().newline()

@@ -68,6 +68,65 @@ const getPaymentModeLabel = (value) => {
     return rawValue.charAt(0).toUpperCase() + rawValue.slice(1);
 };
 
+const getOrderNoteText = (order = {}, billDetails = {}, customerDetails = {}) =>
+    String(
+        order?.notes ||
+        order?.specialInstructions ||
+        order?.customerNote ||
+        order?.instructions ||
+        billDetails?.notes ||
+        customerDetails?.notes ||
+        ''
+    ).trim();
+
+const getAddonUnitPrice = (addon = {}) => {
+    if (typeof addon?.price === 'number') return addon.price;
+    const parsedPrice = Number(addon?.price || 0);
+    return Number.isFinite(parsedPrice) ? parsedPrice : 0;
+};
+
+const getAddonQuantity = (addon = {}) => {
+    const parsedQuantity = Number(addon?.quantity || addon?.qty || 1);
+    return Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
+};
+
+const getItemUnitPrice = (item = {}) => {
+    if (typeof item.price === 'number') return item.price;
+    if (item.portion && typeof item.portion.price === 'number') return item.portion.price;
+    if (item.totalPrice && item.quantity) return item.totalPrice / item.quantity;
+    return 0;
+};
+
+const buildPrintRows = (items = []) =>
+    items.flatMap((item) => {
+        const quantity = Number(item.quantity || item.qty || 1) || 1;
+        const addons = item.addons || item.selectedAddOns || [];
+        const addOnTotalPerParentUnit = addons.reduce(
+            (sum, addon) => sum + (getAddonUnitPrice(addon) * getAddonQuantity(addon)),
+            0
+        );
+        const itemUnitPrice = getItemUnitPrice(item);
+        const baseItemUnitPrice = Math.max(0, itemUnitPrice - addOnTotalPerParentUnit);
+        const rows = [{
+            name: `${safeRender(item.name || item.itemName)}${getBillVariantLabel(item, items)}`,
+            quantity,
+            unitPrice: baseItemUnitPrice,
+        }];
+
+        addons.forEach((addon) => {
+            rows.push({
+                name: safeRender(addon.name || addon.itemName),
+                quantity: quantity * getAddonQuantity(addon),
+                unitPrice: getAddonUnitPrice(addon),
+            });
+        });
+
+        return rows.map((row) => ({
+            ...row,
+            totalPrice: row.unitPrice * row.quantity,
+        }));
+    });
+
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
     if (!order) return null;
 
@@ -89,19 +148,9 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     };
     const orderTypeLabel = getOrderTypeLabel(order);
     const paymentModeLabel = getPaymentModeLabel(order.paymentMode || finalBillDetails.paymentMode);
-
-    const getItemPrice = (item) => {
-        if (typeof item.price === 'number') return item.price;
-        if (item.portion && typeof item.portion.price === 'number') return item.portion.price;
-        if (item.totalPrice && item.quantity) return item.totalPrice / item.quantity;
-        return 0; // Fallback
-    };
-
-    const getItemTotal = (item) => {
-        const price = getItemPrice(item);
-        const qty = item.quantity || item.qty || 1;
-        return price * qty;
-    };
+    const orderNote = getOrderNoteText(order, finalBillDetails, finalCustomerDetails);
+    const printRows = buildPrintRows(finalItems);
+    const botDisplayNumber = String(restaurant?.botDisplayNumber || '').trim();
 
     return (
         <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto text-[16px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
@@ -190,6 +239,13 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
             </div>
 
+            {orderNote && (
+                <div className="mb-3 p-2 text-[16px] font-bold" style={{ border: '2px solid #000000' }}>
+                    <span>NOTE:</span>{' '}
+                    <span style={{ fontWeight: 400 }}>&quot;{orderNote}&quot;</span>
+                </div>
+            )}
+
             <table className="w-full text-[16px] mb-2">
                 <thead style={{ borderTop: '2px solid #000000', borderBottom: '2px solid #000000' }}>
                     <tr>
@@ -200,36 +256,18 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     </tr>
                 </thead>
                 <tbody>
-                    {finalItems.map((item, index) => {
-                        const pricePerUnit = getItemPrice(item);
-                        const totalItemPrice = getItemTotal(item);
-                        const quantity = item.quantity || item.qty || 1;
-                        const variantLabel = getBillVariantLabel(item, finalItems);
-
+                    {printRows.map((row, index) => {
                         return (
                             <tr key={index}>
                                 <td className="py-1.5 align-top pr-1">
-                                    <div className="text-[16px] leading-snug font-normal">
-                                        {safeRender(item.name || item.itemName)}
-                                        {variantLabel}
-                                    </div>
-
-                                    {/* FIXED: Show Add-ons as sub-items in Bill */}
-                                    {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
-                                        <div className="text-[16px] font-medium text-black pl-2 leading-snug mt-0.5">
-                                            {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
-                                                <div key={aIdx}>+ {addon.name} (₹{addon.price})</div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <div className="text-[16px] leading-snug font-normal">{row.name}</div>
                                 </td>
-                                <td className="text-center py-1.5 align-top">{quantity}</td>
-                                <td className="text-right py-1.5 align-top">{formatCurrency(pricePerUnit)}</td>
-                                <td className="text-right py-1.5 align-top">{formatCurrency(totalItemPrice)}</td>
+                                <td className="text-center py-1.5 align-top">{row.quantity}</td>
+                                <td className="text-right py-1.5 align-top">{formatCurrency(row.unitPrice)}</td>
+                                <td className="text-right py-1.5 align-top">{formatCurrency(row.totalPrice)}</td>
                             </tr>
                         )
-                    })}
-                </tbody>
+                    })}                </tbody>
             </table>
 
             <div className="text-[16px] pt-2 mt-2" style={{ borderTop: '2px solid #000000' }}>
@@ -310,6 +348,14 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 <span>GRAND TOTAL</span>
                 <span className="grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
+
+            {botDisplayNumber && (
+                <div className="mt-3 p-2 text-[16px] font-bold" style={{ border: '2px solid #000000' }}>
+                    <span>WHATSAPP US AT </span>
+                    <span style={{ fontWeight: 400 }}>{botDisplayNumber}</span>
+                    <span> TO ORDER ONLINE</span>
+                </div>
+            )}
 
             <div className="text-center mt-4 pt-2" style={{ borderTop: '1px solid #000000' }}>
                 <p className="text-[16px] italic">Thank you for your order!</p>

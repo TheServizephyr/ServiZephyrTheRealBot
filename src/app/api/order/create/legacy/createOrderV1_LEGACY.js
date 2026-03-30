@@ -963,7 +963,7 @@ export async function processOrderV1(body, firestore) {
 
             batch.set(newOrderRef, {
                 restaurantId, businessType, tableId,
-                items: processedItems, notes: notes || null,
+                items: processedItems, notes: notes || null, specialInstructions: notes || null,
                 subtotal, cgst, sgst, totalAmount: grandTotal,
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
@@ -1040,7 +1040,8 @@ export async function processOrderV1(body, firestore) {
                 customer_details: JSON.stringify({ name: tab_name, address: { full: `Table ${tableId}` }, phone: `dine-in-${tableId}` }),
                 items: JSON.stringify(items),
                 bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount: 0, pickupTime: '', cgst, sgst, deliveryCharge: 0, tableId, dineInTabId, pax_count, tab_name, serviceFee, serviceFeeLabel }),
-                notes: notes || null
+                notes: notes || null,
+                specialInstructions: notes || null
             };
             console.log("[API /order/create] Generated servizephyr_payload for dine-in:", JSON.stringify(servizephyrOrderPayload, null, 2));
 
@@ -1080,7 +1081,7 @@ export async function processOrderV1(body, firestore) {
                     restaurantId, businessType, deliveryType, tableId, dineInTabId, items,
                     subtotal, coupon, loyaltyDiscount, discount: coupon?.discount || 0, cgst, sgst,
                     totalAmount: grandTotal, status: 'pending', orderDate: FieldValue.serverTimestamp(),
-                    notes: notes || null, paymentDetails: { method: paymentMethod },
+                    notes: notes || null, specialInstructions: notes || null, paymentDetails: { method: paymentMethod },
                     customerOrderId: customerOrderId, // 10-digit customer-facing ID
                     trackingToken: trackingToken
                 });
@@ -1259,6 +1260,7 @@ export async function processOrderV1(body, firestore) {
                 status: 'awaiting_payment', // Hidden from dashboard until payment completes
                 orderDate: FieldValue.serverTimestamp(),
                 notes: notes || null,
+                specialInstructions: notes || null,
                 paymentDetails: [],
                 trackingToken: trackingToken,
             };
@@ -1335,6 +1337,7 @@ export async function processOrderV1(body, firestore) {
                 status: 'awaiting_payment',
                 orderDate: FieldValue.serverTimestamp(),
                 notes: notes || null,
+                specialInstructions: notes || null,
                 paymentDetails: [],
                 trackingToken: trackingToken,
             };
@@ -1548,6 +1551,7 @@ export async function processOrderV1(body, firestore) {
             status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
+            specialInstructions: notes || null,
             paymentDetails: [{
                 method: 'cod',
                 amount: grandTotal,

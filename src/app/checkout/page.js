@@ -230,6 +230,28 @@ const CheckoutPageInternal = () => {
         });
     };
 
+    useEffect(() => {
+        if (!restaurantId || cartData === null) return;
+
+        const normalizedNotes = String(cookingInstructions || '').trim();
+        const currentNotes = String(cartData?.notes || '').trim();
+        if (normalizedNotes === currentNotes) return;
+
+        const nextCartData = {
+            ...(cartData || {}),
+            notes: normalizedNotes || '',
+        };
+
+        setCartData(nextCartData);
+
+        const savedData = safeReadCart(restaurantId) || {};
+        safeWriteCart(restaurantId, {
+            ...savedData,
+            ...nextCartData,
+            notes: normalizedNotes || '',
+        });
+    }, [cookingInstructions, cartData, restaurantId]);
+
     const handleEditItem = (index) => {
         setEditingItemIndex(index);
         setIsEditDrawerOpen(true);
@@ -556,6 +578,7 @@ const CheckoutPageInternal = () => {
                 setCart(updatedData.cart || []);
                 setAppliedCoupons((updatedData.appliedCoupons || []).map(normalizeCoupon).filter(Boolean));
                 setCartData(updatedData);
+                setCookingInstructions(updatedData.notes || '');
                 if (deliveryType === 'car-order') {
                     safeWriteCart(restaurantId, updatedData);
                     setCarOrderDetails({
@@ -1296,7 +1319,7 @@ const CheckoutPageInternal = () => {
             restaurantId,
             collectionName: cartData?.collectionName,
             items: cart,
-            notes: cartData.notes,
+            notes: String(cookingInstructions || cartData?.notes || '').trim(),
             coupon: appliedCoupons.find(c => !c.customerId) || null,
             loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: effectivePaymentMethod,
             deliveryType: deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: tipAmount || 0,

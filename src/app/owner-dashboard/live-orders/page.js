@@ -119,6 +119,15 @@ const hasValidCustomerLocation = (order = {}) => {
     return Number.isFinite(lat) && Number.isFinite(lng);
 };
 
+const getOrderNoteText = (order = {}) =>
+    String(
+        order?.notes ||
+        order?.specialInstructions ||
+        order?.customerNote ||
+        order?.instructions ||
+        ''
+    ).trim();
+
 const isAddressPendingForDelivery = (order = {}) =>
     order?.deliveryType === 'delivery' &&
     (order?.customerAddressPending === true || !hasValidCustomerLocation(order));
@@ -847,6 +856,7 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
     const isChefRole = (userRole || '').toLowerCase() === 'chef';
     const showCustomerDetails = !isChefRole && canViewCustomerDetails !== false;
     const showPaymentDetails = !isChefRole && canViewPaymentDetails !== false;
+    const orderNote = getOrderNoteText(order);
 
     if (!isOpen || !order) {
         return null;
@@ -875,12 +885,24 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
                                             : (order.customerAddress?.street || order.customerAddress?.formattedAddress || 'N/A')
                                     }</p>
                                 </div>
-                                {customer && (
-                                    <div className="p-4 bg-blue-500/10 rounded-lg">
-                                        <h5 className="font-semibold text-blue-400">Customer Insights</h5>
-                                        <p><strong>Total Orders:</strong> {customer.totalOrders || 0}</p>
-                                        <p><strong>Total Spend:</strong> ₹{customer.totalSpend?.toFixed(2) || '0.00'}</p>
-                                        <p><strong>Loyalty Points:</strong> {customer.loyaltyPoints || 0}</p>
+                                {(customer || orderNote) && (
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        {customer && (
+                                            <div className="p-4 bg-blue-500/10 rounded-lg">
+                                                <h5 className="font-semibold text-blue-400">Customer Insights</h5>
+                                                <p><strong>Total Orders:</strong> {customer.totalOrders || 0}</p>
+                                                <p><strong>Total Spend:</strong> &#8377;{customer.totalSpend?.toFixed(2) || '0.00'}</p>
+                                                <p><strong>Loyalty Points:</strong> {customer.loyaltyPoints || 0}</p>
+                                            </div>
+                                        )}
+                                        {orderNote && (
+                                            <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/10">
+                                                <h5 className="font-semibold text-amber-600">Notes</h5>
+                                                <p className="mt-2 text-sm leading-relaxed text-foreground">
+                                                    <strong>NOTE:</strong> &quot;{orderNote}&quot;
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </>
@@ -971,6 +993,7 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
 };
 
 const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelected, statusLabel }) => {
+    const orderNote = getOrderNoteText(order);
     const isPaid = order.paymentStatus === 'paid';
     const isPaidOnline = isPaid && ['razorpay', 'phonepe', 'online', 'upi_manual'].includes(order.paymentMethod);
     const isCOD = !isPaid && (!order.paymentMethod || order.paymentMethod === 'cod' || order.paymentMethod === 'cash');
@@ -1111,9 +1134,9 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             </div>
 
             {/* Special Note */}
-            {order.notes && (
+            {orderNote && (
                 <div className="bg-yellow-500/5 border-l-4 border-yellow-500 p-3 text-xs italic text-yellow-600/90 font-medium rounded-r-lg">
-                    &quot;{order.notes}&quot;
+                    &quot;{orderNote}&quot;
                 </div>
             )}
 
