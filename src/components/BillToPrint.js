@@ -147,10 +147,13 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         address: order.customerAddress,
     };
     const orderTypeLabel = getOrderTypeLabel(order);
-    const paymentModeLabel = getPaymentModeLabel(order.paymentMode || finalBillDetails.paymentMode);
     const orderNote = getOrderNoteText(order, finalBillDetails, finalCustomerDetails);
     const printRows = buildPrintRows(finalItems);
     const botDisplayNumber = String(restaurant?.botDisplayNumber || '').trim();
+    const customerNameFallback = String(order?.orderType || order?.deliveryType || '').trim().toLowerCase() === 'delivery'
+        ? 'Guest'
+        : 'Walk-in Customer';
+    const displayOrderId = String(order?.customerOrderId || order?.id || '').trim();
 
     return (
         <div id="bill-print-root" className="bg-white text-black p-2 max-w-[80mm] mx-auto text-[16px] leading-tight" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
@@ -220,7 +223,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 {restaurant?.fssai && <p className="text-[16px] font-bold">FSSAI: {restaurant.fssai}</p>}
             </div>
             <div className="mb-2 text-[16px] font-bold">
-                <p><strong>Bill To:</strong> {safeRender(finalCustomerDetails.name, 'Walk-in Customer')}</p>
+                <p><strong>Bill To:</strong> {safeRender(finalCustomerDetails.name, customerNameFallback)}</p>
                 {finalCustomerDetails.phone && <p><strong>Phone:</strong> {finalCustomerDetails.phone}</p>}
                 {finalCustomerDetails.address && (
                     <p>
@@ -235,8 +238,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     <p><strong>Date:</strong> {formatSafeDate(order.orderDate || order.createdAt)}</p>
                     {orderTypeLabel && <p><strong>{orderTypeLabel}</strong></p>}
                 </div>
-                {paymentModeLabel && <p><strong>Payment:</strong> {paymentModeLabel}</p>}
-                {order.id && <p><strong>Customer Order ID:</strong> #{order.customerOrderId || order.id.substring(0, 8)}</p>}
+                {displayOrderId && <p><strong>Order ID:</strong> {displayOrderId}</p>}
             </div>
 
             {orderNote && (
@@ -349,6 +351,10 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 <span className="grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
+            <div className="text-center mt-4 pt-2" style={{ borderTop: '1px solid #000000' }}>
+                <p className="text-[16px] italic">Thank you for your order!</p>
+            </div>
+
             {botDisplayNumber && (
                 <div className="mt-3 p-2 text-[16px] font-bold" style={{ border: '2px solid #000000' }}>
                     <span>WHATSAPP US AT </span>
@@ -356,11 +362,6 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     <span> TO ORDER ONLINE</span>
                 </div>
             )}
-
-            <div className="text-center mt-4 pt-2" style={{ borderTop: '1px solid #000000' }}>
-                <p className="text-[16px] italic">Thank you for your order!</p>
-                <p className="text-[16px] font-bold mt-1">Powered by ServiZephyr</p>
-            </div>
         </div>
     );
 };
