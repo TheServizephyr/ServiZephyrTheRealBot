@@ -2,6 +2,7 @@
 'use client';
 
 import React from 'react';
+import QRCode from 'qrcode.react';
 import { formatSafeDate } from '@/lib/safeDateFormat';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 
@@ -150,6 +151,8 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     const orderNote = getOrderNoteText(order, finalBillDetails, finalCustomerDetails);
     const printRows = buildPrintRows(finalItems);
     const botDisplayNumber = String(restaurant?.botDisplayNumber || '').trim();
+    const botDisplayDigits = botDisplayNumber.replace(/\D/g, '');
+    const promoQrValue = botDisplayDigits ? `https://wa.me/${botDisplayDigits}?text=hi` : '';
     const customerNameFallback = String(order?.orderType || order?.deliveryType || '').trim().toLowerCase() === 'delivery'
         ? 'Guest'
         : 'Walk-in Customer';
@@ -351,15 +354,22 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 <span className="grand-total-amount">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
-            <div className="text-center mt-4 pt-2" style={{ borderTop: '1px solid #000000' }}>
+            <div className="text-center mt-3 pt-1" style={{ borderTop: '1px solid #000000' }}>
                 <p className="text-[16px] italic">Thank you for your order!</p>
             </div>
 
-            {botDisplayNumber && (
-                <div className="mt-3 p-2 text-[16px] font-bold" style={{ border: '2px solid #000000' }}>
-                    <span>WHATSAPP US AT </span>
-                    <span style={{ fontWeight: 400 }}>{botDisplayNumber}</span>
-                    <span> TO ORDER ONLINE</span>
+            {promoQrValue && (
+                <div className="mt-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="text-[12px] leading-tight uppercase text-center">
+                            <div>Scan to</div>
+                            <div><strong>Order Online</strong> at</div>
+                            <div><strong>No Extra Charges</strong></div>
+                        </div>
+                        <div className="shrink-0 bg-white p-1">
+                            <QRCode value={promoQrValue} size={54} level="M" includeMargin={false} />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
