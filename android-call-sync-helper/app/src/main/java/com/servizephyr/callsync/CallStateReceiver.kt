@@ -59,56 +59,87 @@ class CallStateReceiver : BroadcastReceiver() {
     }
 
     private fun pushCallEvent(context: Context, config: CallSyncConfig, phone: String, state: String) {
-        val endpoint = "${config.serverBaseUrl}/api/call-sync/push"
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+        val endpoint = "${CallSyncStore.normalizeServerBaseUrl(config.serverBaseUrl)}/api/call-sync/push"
+        val payload = JSONObject()
+            .put("token", config.token)
+            .put("phone", phone)
+            .put("state", state)
+            .put("deviceId", config.deviceId)
+            .toString()
+
+        val response = executePost(endpoint, payload, redirectDepth = 0)
+
+        CallSyncStore.saveDebugSnapshot(
+            context = context,
+            lastEvent = state,
+            lastNumber = phone,
+            lastResult = response.debugMessage
+        )
+    }
+
+    private data class PushResponse(
+        val code: Int,
+        val body: String,
+        val debugMessage: String
+    )
+
+    private fun openJsonPostConnection(endpoint: String): HttpURLConnection {
+        return (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10000
             readTimeout = 10000
             doOutput = true
+            instanceFollowRedirects = false
             setRequestProperty("Content-Type", "application/json")
         }
+    }
 
+    private fun executePost(endpoint: String, payload: String, redirectDepth: Int): PushResponse {
+        val connection = openJsonPostConnection(endpoint)
         try {
-            val payload = JSONObject()
-                .put("token", config.token)
-                .put("phone", phone)
-                .put("state", state)
-                .put("deviceId", config.deviceId)
-                .toString()
-
             OutputStreamWriter(connection.outputStream).use { writer ->
                 writer.write(payload)
                 writer.flush()
             }
 
             val responseCode = connection.responseCode
+            val redirectLocation = connection.getHeaderField("Location")
+            if (
+                responseCode in listOf(
+                    HttpURLConnection.HTTP_MOVED_PERM,
+                    HttpURLConnection.HTTP_MOVED_TEMP,
+                    HttpURLConnection.HTTP_SEE_OTHER,
+                    307,
+                    308
+                ) &&
+                !redirectLocation.isNullOrBlank() &&
+                redirectDepth < 3
+            ) {
+                return executePost(redirectLocation, payload, redirectDepth + 1)
+            }
+
             val responseText = readStream(
                 if (responseCode in 200..299) connection.inputStream else connection.errorStream
             )
 
-            val resultText = buildString {
-                append("HTTP ")
-                append(responseCode)
-                if (responseText.isNotBlank()) {
-                    append(": ")
-                    append(responseText.take(180))
+            return PushResponse(
+                code = responseCode,
+                body = responseText,
+                debugMessage = buildString {
+                    append("HTTP ")
+                    append(responseCode)
+                    if (responseText.isNotBlank()) {
+                        append(": ")
+                        append(responseText.take(180))
+                    }
                 }
-            }
-
-            CallSyncStore.saveDebugSnapshot(
-                context = context,
-                lastEvent = state,
-                lastNumber = phone,
-                lastResult = resultText
             )
         } catch (error: Exception) {
-            CallSyncStore.saveDebugSnapshot(
-                context = context,
-                lastEvent = state,
-                lastNumber = phone,
-                lastResult = "Error: ${error.message ?: "unknown"}"
+            return PushResponse(
+                code = -1,
+                body = "",
+                debugMessage = "Error: ${error.message ?: "unknown"}"
             )
-            throw error
         } finally {
             connection.disconnect()
         }

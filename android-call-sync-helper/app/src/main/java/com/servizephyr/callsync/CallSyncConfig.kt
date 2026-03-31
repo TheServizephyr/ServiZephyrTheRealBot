@@ -44,11 +44,21 @@ object CallSyncStore {
     }
 
     fun save(context: Context, serverBaseUrl: String, token: String) {
+        val normalizedBaseUrl = normalizeServerBaseUrl(serverBaseUrl)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_SERVER_BASE_URL, serverBaseUrl.trim().trimEnd('/'))
+            .putString(KEY_SERVER_BASE_URL, normalizedBaseUrl)
             .putString(KEY_TOKEN, token.trim())
             .apply()
+    }
+
+    fun normalizeServerBaseUrl(serverBaseUrl: String): String {
+        val trimmed = serverBaseUrl.trim().trimEnd('/')
+        return if (trimmed.equals("https://servizephyr.com", ignoreCase = true)) {
+            "https://www.servizephyr.com"
+        } else {
+            trimmed
+        }
     }
 
     fun setSyncEnabled(context: Context, enabled: Boolean) {

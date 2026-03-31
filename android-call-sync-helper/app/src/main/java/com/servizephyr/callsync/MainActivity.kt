@@ -44,11 +44,13 @@ class MainActivity : AppCompatActivity() {
         syncToggle.isChecked = config.isSyncEnabled
 
         saveButton.setOnClickListener {
+            val normalizedBaseUrl = CallSyncStore.normalizeServerBaseUrl(serverInput.text.toString())
             CallSyncStore.save(
                 context = this,
-                serverBaseUrl = serverInput.text.toString(),
+                serverBaseUrl = normalizedBaseUrl,
                 token = tokenInput.text.toString()
             )
+            serverInput.setText(normalizedBaseUrl)
             statusText.text = getString(R.string.settings_saved)
             refreshUi()
         }
