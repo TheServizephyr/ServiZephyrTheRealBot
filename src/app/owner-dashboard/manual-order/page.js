@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
-import { auth, rtdb } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import BillToPrint from '@/components/BillToPrint';
@@ -14,10 +14,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/components/ui/use-toast";
-import { onValue, ref as rtdbRef } from 'firebase/database';
 import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
-import { buildActiveCallSyncPath, isCallSyncEventFresh, normalizeIndianPhoneLoose } from '@/lib/call-sync';
+import { isCallSyncEventFresh, normalizeIndianPhoneLoose } from '@/lib/call-sync';
 import {
     buildOwnerDashboardShortcutPath,
     navigateToShortcutPath,
@@ -661,44 +660,77 @@ function ManualOrderPage() {
             return undefined;
         }
 
+        let isMounted = true;
+        let timeoutId = null;
+
+        const syncActiveCall = async () => {
+            try {
+                const currentUser = auth.currentUser;
+                if (!currentUser) {
+                    setCallSyncStatus('listening');
+                    return;
+                }
+
+                const res = await fetch(buildScopedUrl('/api/owner/call-sync/active'), {
+                    cache: 'no-store',
+                    headers: {
+                        Authorization: `Bearer ${await currentUser.getIdToken()}`,
+                    },
+                });
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+
+                const payload = await res.json();
+                if (!isMounted) return;
+
+                const activeCall = payload?.activeCall;
+                if (!activeCall) {
+                    setCallSyncStatus('listening');
+                    return;
+                }
+
+                const phone = normalizeIndianPhoneLoose(activeCall.phone);
+                const state = String(activeCall.state || '').trim().toLowerCase();
+                const timestampMs = Number(activeCall.timestampMs || activeCall.updatedAt || 0);
+                const isIncoming = state === 'ringing' || state === 'incoming';
+
+                if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs)) {
+                    setCallSyncStatus('listening');
+                    return;
+                }
+
+                setLastLiveCallPhone(phone);
+                setCallSyncStatus('incoming');
+                setCustomerDetails((prev) => {
+                    const currentPhone = normalizeIndianPhoneLoose(prev.phone);
+                    const canReplaceExisting = !currentPhone || currentPhone === lastAutoFilledPhoneRef.current;
+                    if (phoneInputFocusRef.current && !canReplaceExisting && currentPhone !== phone) return prev;
+                    if (!canReplaceExisting && currentPhone !== phone) return prev;
+
+                    lastAutoFilledPhoneRef.current = phone;
+                    if (prev.phone === phone) return prev;
+                    return { ...prev, phone };
+                });
+            } catch (error) {
+                if (!isMounted) return;
+                console.error('[ManualOrder] Call sync polling failed:', error);
+                setCallSyncStatus('error');
+            } finally {
+                if (!isMounted) return;
+                timeoutId = window.setTimeout(syncActiveCall, 2500);
+            }
+        };
+
         setCallSyncStatus('listening');
-        const streamRef = rtdbRef(rtdb, buildActiveCallSyncPath({ businessId, collectionName }));
-        const unsubscribe = onValue(streamRef, (snapshot) => {
-            const payload = snapshot.val();
-            if (!payload) {
-                setCallSyncStatus('listening');
-                return;
-            }
+        syncActiveCall();
 
-            const phone = normalizeIndianPhoneLoose(payload.phone);
-            const state = String(payload.state || '').trim().toLowerCase();
-            const timestampMs = Number(payload.timestampMs || payload.updatedAt || 0);
-            const isIncoming = state === 'ringing' || state === 'incoming';
-
-            if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs)) {
-                setCallSyncStatus('listening');
-                return;
-            }
-
-            setLastLiveCallPhone(phone);
-            setCallSyncStatus('incoming');
-            setCustomerDetails((prev) => {
-                const currentPhone = normalizeIndianPhoneLoose(prev.phone);
-                const canReplaceExisting = !currentPhone || currentPhone === lastAutoFilledPhoneRef.current;
-                if (phoneInputFocusRef.current && !canReplaceExisting && currentPhone !== phone) return prev;
-                if (!canReplaceExisting && currentPhone !== phone) return prev;
-
-                lastAutoFilledPhoneRef.current = phone;
-                if (prev.phone === phone) return prev;
-                return { ...prev, phone };
-            });
-        }, (error) => {
-            console.error('[ManualOrder] Call sync listener failed:', error);
-            setCallSyncStatus('error');
-        });
-
-        return () => unsubscribe();
-    }, [callSyncTarget?.businessId, callSyncTarget?.collectionName]);
+        return () => {
+            isMounted = false;
+            if (timeoutId) window.clearTimeout(timeoutId);
+        };
+    }, [buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName]);
 
     const enforceCartStockLimit = useCallback((candidateItem, nextQuantity) => {
         if (candidateItem?.isAvailable === false) {
