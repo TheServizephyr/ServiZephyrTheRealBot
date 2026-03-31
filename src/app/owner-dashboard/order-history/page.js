@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import OrderCancellationTool from '@/components/OrderCancellationTool';
 
 const DATE_PRESETS = [
     { label: "Today", getValue: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
@@ -300,7 +301,8 @@ export default function OrderHistoryPage() {
         setLoading(false);
     };
 
-    useEffect(() => { fetchAllData(); /* eslint-disable-next-line */ }, [dateRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => { fetchAllData(); }, [dateRange]);
 
     // ── Settlement Action ───────────────────────────────────────────────────
     const handleSettleAction = async (id, isCurrentlySettled, type) => {
@@ -379,6 +381,9 @@ export default function OrderHistoryPage() {
     // ── Status Badge Helper ─────────────────────────────────────────────────
     const getStatusBadge = (status, orderType = '') => {
         if (activeTab === 'manual-history') {
+            if (String(status || '').toLowerCase() === 'cancelled') {
+                return <span className="px-2 py-0.5 text-xs font-medium rounded-full border capitalize bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>;
+            }
             const type = String(orderType || '').toLowerCase();
             const typeMap = {
                 delivery: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -493,67 +498,82 @@ export default function OrderHistoryPage() {
             </div>
 
             {/* Filters */}
-            <div className="bg-card border border-border rounded-xl p-4 mb-6 space-y-4">
-                {/* Date Presets */}
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-muted-foreground mr-1">Quick:</span>
-                    {DATE_PRESETS.map((preset) => (
-                        <Button key={preset.label} variant="outline" size="sm" onClick={() => setDateRange(preset.getValue())} className="text-xs">
-                            {preset.label}
-                        </Button>
-                    ))}
+            <div className="bg-card border border-border rounded-xl p-4 mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+                <div className="space-y-4">
+                    {/* Date Presets */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-muted-foreground mr-1">Quick:</span>
+                        {DATE_PRESETS.map((preset) => (
+                            <Button key={preset.label} variant="outline" size="sm" onClick={() => setDateRange(preset.getValue())} className="text-xs">
+                                {preset.label}
+                            </Button>
+                        ))}
+                    </div>
+
+                    {/* Date Pickers + Search + Settlement Filter */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">From</label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start text-sm">
+                                        <Calendar className="mr-2 h-4 w-4" />{format(dateRange.from, 'PP')}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <CalendarComponent mode="single" selected={dateRange.from} onSelect={(date) => date && setDateRange({ ...dateRange, from: startOfDay(date) })} initialFocus />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">To</label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start text-sm">
+                                        <Calendar className="mr-2 h-4 w-4" />{format(dateRange.to, 'PP')}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <CalendarComponent mode="single" selected={dateRange.to} onSelect={(date) => date && setDateRange({ ...dateRange, to: endOfDay(date) })} initialFocus />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Search</label>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <input type="text" placeholder="ID, name, phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 h-10 rounded-md bg-input border border-border text-sm" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Settlement</label>
+                            <div className="flex rounded-md border border-border overflow-hidden h-10">
+                                {[['all','All'],['pending','Pending'],['settled','Settled']].map(([val, label]) => (
+                                    <button key={val} onClick={() => setSettlementFilter(val)}
+                                        className={cn("flex-1 text-xs font-medium transition-colors", settlementFilter === val ? "bg-primary text-primary-foreground" : "bg-input text-muted-foreground hover:bg-muted")}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Date Pickers + Search + Settlement Filter */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div>
-                        <label className="text-xs font-medium mb-1 block text-muted-foreground">From</label>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full justify-start text-sm">
-                                    <Calendar className="mr-2 h-4 w-4" />{format(dateRange.from, 'PP')}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                                <CalendarComponent mode="single" selected={dateRange.from} onSelect={(date) => date && setDateRange({ ...dateRange, from: startOfDay(date) })} initialFocus />
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-
-                    <div>
-                        <label className="text-xs font-medium mb-1 block text-muted-foreground">To</label>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full justify-start text-sm">
-                                    <Calendar className="mr-2 h-4 w-4" />{format(dateRange.to, 'PP')}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                                <CalendarComponent mode="single" selected={dateRange.to} onSelect={(date) => date && setDateRange({ ...dateRange, to: endOfDay(date) })} initialFocus />
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-
-                    <div>
-                        <label className="text-xs font-medium mb-1 block text-muted-foreground">Search</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <input type="text" placeholder="ID, name, phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 h-10 rounded-md bg-input border border-border text-sm" />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="text-xs font-medium mb-1 block text-muted-foreground">Settlement</label>
-                        <div className="flex rounded-md border border-border overflow-hidden h-10">
-                            {[['all','All'],['pending','Pending'],['settled','Settled']].map(([val, label]) => (
-                                <button key={val} onClick={() => setSettlementFilter(val)}
-                                    className={cn("flex-1 text-xs font-medium transition-colors", settlementFilter === val ? "bg-primary text-primary-foreground" : "bg-input text-muted-foreground hover:bg-muted")}>
-                                    {label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                <div className="xl:border-l xl:border-border/70 xl:pl-4 xl:self-end">
+                    <OrderCancellationTool
+                        accessParams={{
+                            impersonate_owner_id: impersonatedOwnerId || '',
+                            employee_of: employeeOfOwnerId || '',
+                        }}
+                        onCancelled={() => fetchAllData()}
+                        title="Cancel Order By ID"
+                        helperText="Looks up the order, asks for a reason, sends OTP to the owner's personal WhatsApp, then cancels after verification."
+                        compact
+                    />
                 </div>
             </div>
 

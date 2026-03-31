@@ -327,6 +327,7 @@ function SettingsPageContent() {
                     serviceFeeValue: data.serviceFeeValue ?? 0,
                     serviceFeeApplyOn: data.serviceFeeApplyOn || 'all',
                     serviceFeeApplyOnManualOrders: data.serviceFeeApplyOnManualOrders || false,
+                    ownerPersonalWhatsappNumber: data.ownerPersonalWhatsappNumber || '',
                 };
                 setUser(userData);
                 setEditedUser(userData);
@@ -476,6 +477,7 @@ function SettingsPageContent() {
                 fssai: editedUser.fssai,
                 botPhoneNumberId: editedUser.botPhoneNumberId,
                 botDisplayNumber: editedUser.botDisplayNumber,
+                ownerPersonalWhatsappNumber: editedUser.ownerPersonalWhatsappNumber || '',
                 razorpayAccountId: editedUser.razorpayAccountId,
                 address: editedUser.address, // Pass the structured address
             };
@@ -550,6 +552,7 @@ function SettingsPageContent() {
                 serviceFeeValue: updatedUser.serviceFeeValue ?? 0,
                 serviceFeeApplyOn: updatedUser.serviceFeeApplyOn || 'all',
                 serviceFeeApplyOnManualOrders: updatedUser.serviceFeeApplyOnManualOrders || false,
+                ownerPersonalWhatsappNumber: updatedUser.ownerPersonalWhatsappNumber || '',
             };
             setUser(finalUser);
             setEditedUser(finalUser);
