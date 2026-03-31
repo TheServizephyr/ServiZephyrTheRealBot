@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical } from 'lucide-react';
+import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical, X } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
@@ -30,6 +30,7 @@ import { connectSerialPrinter, printSerialData } from '@/services/printer/webSer
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const createBillDraftId = () => `cb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+const CALL_SUGGESTION_TTL_MS = 2 * 60 * 1000;
 const formatCategoryLabel = (categoryId = '') => String(categoryId).replace(/-/g, ' ').trim();
 const getTableCustomerName = (table = {}) => {
     const customerName = table?.currentOrder?.customerDetails?.name;
@@ -242,12 +243,15 @@ function ManualOrderPage() {
     const [callSyncTarget, setCallSyncTarget] = useState({ businessId: '', collectionName: '' });
     const [callSyncStatus, setCallSyncStatus] = useState('inactive');
     const [lastLiveCallPhone, setLastLiveCallPhone] = useState('');
+    const [pendingCallSuggestion, setPendingCallSuggestion] = useState(null);
+    const [attachedCallContext, setAttachedCallContext] = useState(null);
     const [isCustomOpenItemModalOpen, setIsCustomOpenItemModalOpen] = useState(false);
     const [customOpenItemName, setCustomOpenItemName] = useState('');
     const [customOpenItemPrice, setCustomOpenItemPrice] = useState('');
     const hasHydratedFromCacheRef = useRef(false);
     const phoneInputFocusRef = useRef(false);
-    const lastAutoFilledPhoneRef = useRef('');
+    const dismissedCallSuggestionKeysRef = useRef(new Set());
+    const lastNotifiedCallKeyRef = useRef('');
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
     const searchInputRef = useRef(null);
@@ -316,6 +320,56 @@ function ManualOrderPage() {
             // Ignore storage errors
         }
     }, [cacheKey]);
+
+    const activeAttachedCallForBill = attachedCallContext?.billDraftId === billDraftId ? attachedCallContext : null;
+    const isPendingCallSuggestionFresh = pendingCallSuggestion
+        ? isCallSyncEventFresh(pendingCallSuggestion.timestampMs, CALL_SUGGESTION_TTL_MS)
+        : false;
+
+    const resolveCallSyncIdleState = useCallback(() => {
+        if (activeAttachedCallForBill?.phone) return 'attached';
+        if (pendingCallSuggestion && isCallSyncEventFresh(pendingCallSuggestion.timestampMs, CALL_SUGGESTION_TTL_MS)) {
+            return 'incoming';
+        }
+        return 'listening';
+    }, [activeAttachedCallForBill?.phone, pendingCallSuggestion]);
+
+    const dismissCallSuggestion = useCallback((suggestion, options = {}) => {
+        const callKey = typeof suggestion === 'string' ? suggestion : suggestion?.callKey;
+        if (callKey && options?.suppressFuturePrompts !== false) {
+            dismissedCallSuggestionKeysRef.current.add(callKey);
+        }
+        setPendingCallSuggestion((prev) => (prev?.callKey === callKey ? null : prev));
+        setCallSyncStatus(activeAttachedCallForBill?.phone ? 'attached' : 'listening');
+    }, [activeAttachedCallForBill?.phone]);
+
+    const attachCallSuggestionToBill = useCallback((suggestion) => {
+        const normalizedPhone = normalizeIndianPhoneLoose(suggestion?.phone);
+        if (normalizedPhone.length !== 10) return;
+
+        setCustomerDetails((prev) => ({ ...prev, phone: normalizedPhone }));
+        setAttachedCallContext({
+            phone: normalizedPhone,
+            callKey: suggestion.callKey,
+            timestampMs: suggestion.timestampMs,
+            billDraftId,
+            attachedAt: Date.now(),
+        });
+        setPendingCallSuggestion(null);
+        setLastLiveCallPhone(normalizedPhone);
+        setPhoneError(false);
+        setCallSyncStatus('attached');
+        if (suggestion?.callKey) {
+            dismissedCallSuggestionKeysRef.current.add(suggestion.callKey);
+        }
+    }, [billDraftId]);
+
+    const clearAttachedCallPhone = useCallback(() => {
+        setAttachedCallContext(null);
+        setCustomerDetails((prev) => ({ ...prev, phone: '' }));
+        setPhoneError(false);
+        setCallSyncStatus(isPendingCallSuggestionFresh ? 'incoming' : 'listening');
+    }, [isPendingCallSuggestionFresh]);
 
     // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
@@ -687,7 +741,7 @@ function ManualOrderPage() {
 
                 const activeCall = payload?.activeCall;
                 if (!activeCall) {
-                    setCallSyncStatus('listening');
+                    setCallSyncStatus(resolveCallSyncIdleState());
                     return;
                 }
 
@@ -695,24 +749,38 @@ function ManualOrderPage() {
                 const state = String(activeCall.state || '').trim().toLowerCase();
                 const timestampMs = Number(activeCall.timestampMs || activeCall.updatedAt || 0);
                 const isIncoming = state === 'ringing' || state === 'incoming';
+                const callKey = `${phone}:${timestampMs}`;
 
                 if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs)) {
-                    setCallSyncStatus('listening');
+                    setCallSyncStatus(resolveCallSyncIdleState());
                     return;
                 }
 
                 setLastLiveCallPhone(phone);
-                setCallSyncStatus('incoming');
-                setCustomerDetails((prev) => {
-                    const currentPhone = normalizeIndianPhoneLoose(prev.phone);
-                    const canReplaceExisting = !currentPhone || currentPhone === lastAutoFilledPhoneRef.current;
-                    if (phoneInputFocusRef.current && !canReplaceExisting && currentPhone !== phone) return prev;
-                    if (!canReplaceExisting && currentPhone !== phone) return prev;
+                if (dismissedCallSuggestionKeysRef.current.has(callKey) || activeAttachedCallForBill?.callKey === callKey) {
+                    setCallSyncStatus(resolveCallSyncIdleState());
+                    return;
+                }
 
-                    lastAutoFilledPhoneRef.current = phone;
-                    if (prev.phone === phone) return prev;
-                    return { ...prev, phone };
-                });
+                const nextSuggestion = {
+                    phone,
+                    state,
+                    timestampMs,
+                    callKey,
+                };
+
+                setPendingCallSuggestion((prev) => (prev?.callKey === callKey ? prev : nextSuggestion));
+                setCallSyncStatus('incoming');
+
+                if (lastNotifiedCallKeyRef.current !== callKey) {
+                    lastNotifiedCallKeyRef.current = callKey;
+                    toast({
+                        title: `Incoming call: ${phone}`,
+                        description: activeAttachedCallForBill?.phone
+                            ? 'Use "Replace with latest call" only if this bill should switch to the new caller.'
+                            : 'Review and attach it only if this call belongs to the current bill.',
+                    });
+                }
             } catch (error) {
                 if (!isMounted) return;
                 console.error('[ManualOrder] Call sync polling failed:', error);
@@ -730,7 +798,27 @@ function ManualOrderPage() {
             isMounted = false;
             if (timeoutId) window.clearTimeout(timeoutId);
         };
-    }, [buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName]);
+    }, [activeAttachedCallForBill?.callKey, activeAttachedCallForBill?.phone, buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, resolveCallSyncIdleState, toast]);
+
+    useEffect(() => {
+        if (!pendingCallSuggestion?.timestampMs) return undefined;
+
+        const remainingMs = CALL_SUGGESTION_TTL_MS - (Date.now() - pendingCallSuggestion.timestampMs);
+        if (remainingMs <= 0) {
+            setPendingCallSuggestion(null);
+            setCallSyncStatus(resolveCallSyncIdleState());
+            return undefined;
+        }
+
+        const timer = window.setTimeout(() => {
+            setPendingCallSuggestion((prev) => (
+                prev?.callKey === pendingCallSuggestion.callKey ? null : prev
+            ));
+            setCallSyncStatus(resolveCallSyncIdleState());
+        }, remainingMs + 250);
+
+        return () => window.clearTimeout(timer);
+    }, [pendingCallSuggestion, resolveCallSyncIdleState]);
 
     const enforceCartStockLimit = useCallback((candidateItem, nextQuantity) => {
         if (candidateItem?.isAvailable === false) {
@@ -1125,9 +1213,12 @@ function ManualOrderPage() {
         setLastSavedOrderData(null);
         setCurrentBillCustomerOrderId(generateCustomerOrderId());
         setCustomerDetails({ name: '', phone: '', address: '', notes: '' });
+        setAttachedCallContext(null);
+        setPendingCallSuggestion(null);
         setPhoneError(false);
         setDiscountInput('0');
         setPaymentMode('cash');
+        setCallSyncStatus('listening');
     };
 
     const handleClear = () => {
@@ -2730,6 +2821,50 @@ function ManualOrderPage() {
                         {/* Collapsible Body */}
                         <div className={cn('transition-all duration-200 overflow-hidden', isCustomerDetailsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0')}>
                             <div className="p-2 border-t border-border">
+                                {pendingCallSuggestion && isPendingCallSuggestionFresh && (
+                                    <div className="mb-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <p className="text-[11px] font-semibold text-emerald-700">Incoming call</p>
+                                                <p className="text-sm font-bold tracking-wide text-emerald-900">{pendingCallSuggestion.phone}</p>
+                                                <p className="text-[10px] text-emerald-700/90 mt-0.5">
+                                                    {activeAttachedCallForBill?.phone
+                                                        ? `This bill is already linked to ${activeAttachedCallForBill.phone}. Replace only if this new caller should take over.`
+                                                        : 'Attach it only if this call belongs to the bill you are working on right now.'}
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => dismissCallSuggestion(pendingCallSuggestion)}
+                                                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-500/10"
+                                                title="Ignore this incoming call"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                className="h-8 px-3 text-xs"
+                                                onClick={() => attachCallSuggestionToBill(pendingCallSuggestion)}
+                                            >
+                                                {activeAttachedCallForBill?.phone && activeAttachedCallForBill.phone !== pendingCallSuggestion.phone
+                                                    ? 'Replace with Latest Call'
+                                                    : 'Use for This Bill'}
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 px-3 text-xs"
+                                                onClick={() => dismissCallSuggestion(pendingCallSuggestion)}
+                                            >
+                                                Ignore
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><User size={13} /> Name</Label>
@@ -2737,30 +2872,55 @@ function ManualOrderPage() {
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><Phone size={13} /> Phone</Label>
-                                        <input
-                                            value={customerDetails.phone}
-                                            onFocus={() => { phoneInputFocusRef.current = true; }}
-                                            onBlur={() => { phoneInputFocusRef.current = false; }}
-                                            onChange={e => {
-                                                const val = e.target.value;
-                                                setCustomerDetails({ ...customerDetails, phone: val });
-                                                // Clear error if it becomes valid: length 10 or (empty and not delivery) AND numeric
-                                                const isNumeric = !/[^0-9]/.test(val);
-                                                if (val.length === 10 && isNumeric) setPhoneError(false);
-                                                if (val.length === 0 && orderType !== 'delivery') setPhoneError(false);
-                                            }}
-                                            className={cn(
-                                                "w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border transition-colors",
-                                                (customerDetails.phone.length > 10 || (customerDetails.phone.length > 0 && /[^0-9]/.test(customerDetails.phone))) ? "bg-red-500/20 border-red-500 text-red-500" : "",
-                                                phoneError ? "border-red-500 ring-1 ring-red-500" : ""
+                                        <div className="relative">
+                                            <input
+                                                value={customerDetails.phone}
+                                                onFocus={() => { phoneInputFocusRef.current = true; }}
+                                                onBlur={() => { phoneInputFocusRef.current = false; }}
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    if (activeAttachedCallForBill && normalizeIndianPhoneLoose(val) !== normalizeIndianPhoneLoose(activeAttachedCallForBill.phone)) {
+                                                        setAttachedCallContext(null);
+                                                    }
+                                                    setCustomerDetails({ ...customerDetails, phone: val });
+                                                    const isNumeric = !/[^0-9]/.test(val);
+                                                    if (val.length === 10 && isNumeric) setPhoneError(false);
+                                                    if (val.length === 0 && orderType !== 'delivery') setPhoneError(false);
+                                                }}
+                                                className={cn(
+                                                    "w-full rounded-md border bg-input px-2 py-1.5 pr-8 text-sm transition-colors border-border",
+                                                    (customerDetails.phone.length > 10 || (customerDetails.phone.length > 0 && /[^0-9]/.test(customerDetails.phone))) ? "bg-red-500/20 border-red-500 text-red-500" : "",
+                                                    phoneError ? "border-red-500 ring-1 ring-red-500" : ""
+                                                )}
+                                            />
+                                            {customerDetails.phone && (
+                                                <button
+                                                    type="button"
+                                                    onClick={clearAttachedCallPhone}
+                                                    className="absolute inset-y-0 right-1 my-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    title={activeAttachedCallForBill ? 'Remove linked caller number' : 'Clear phone number'}
+                                                >
+                                                    <X size={14} />
+                                                </button>
                                             )}
-                                        />
+                                        </div>
                                         {phoneError && <p className="text-[10px] font-bold text-red-500 mt-0.5 animate-pulse">INVALID PHONE NUMBER</p>}
+                                        {!phoneError && activeAttachedCallForBill?.phone && (
+                                            <p className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-emerald-600">
+                                                <CheckCircle size={11} />
+                                                Caller {activeAttachedCallForBill.phone} is attached to this bill.
+                                            </p>
+                                        )}
                                         {!phoneError && callSyncStatus === 'listening' && (
                                             <p className="text-[10px] text-muted-foreground mt-0.5">Live call sync ready for this outlet.</p>
                                         )}
                                         {!phoneError && callSyncStatus === 'incoming' && lastLiveCallPhone && (
-                                            <p className="text-[10px] font-medium text-emerald-600 mt-0.5">Incoming call detected: {lastLiveCallPhone}</p>
+                                            <p className="text-[10px] font-medium text-emerald-600 mt-0.5">
+                                                Incoming call detected: {lastLiveCallPhone}. Review the banner before attaching it.
+                                            </p>
+                                        )}
+                                        {!phoneError && callSyncStatus === 'attached' && !activeAttachedCallForBill?.phone && (
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">Caller link cleared. You can type a different number any time.</p>
                                         )}
                                         {!phoneError && callSyncStatus === 'error' && (
                                             <p className="text-[10px] text-amber-600 mt-0.5">Live call sync unavailable right now.</p>
