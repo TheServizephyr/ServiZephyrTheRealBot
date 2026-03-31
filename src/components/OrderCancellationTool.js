@@ -354,6 +354,18 @@ export default function OrderCancellationTool({
                                         placeholder="Enter 4-digit OTP"
                                         maxLength={4}
                                     />
+                                    <div className="flex justify-end">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleRequestOtp}
+                                            disabled={otpSending || !order?.canCancel}
+                                        >
+                                            {otpSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                            Retry OTP
+                                        </Button>
+                                    </div>
                                     <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg flex gap-4 items-start">
                                         <div className="flex-1">
                                             <p className="text-xs text-amber-600 font-bold mb-1">OTP not received?</p>
