@@ -429,10 +429,10 @@ export async function POST(req) {
         await batch.commit();
         console.log(`[API /customer/register] Batch committed successfully. Order ${newOrderRef.id} created.`);
 
-        if (businessData.ownerPhone && businessData.botPhoneNumberId) {
+        if ((businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone) && businessData.botPhoneNumberId) {
             console.log(`[API /customer/register] Sending new order notification to owner.`);
             await sendNewOrderToOwner({
-                ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
+                ownerPhone: businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
                 customerName: name, totalAmount: grandTotal, orderId: newOrderRef.id, restaurantName: businessData.name
             });
         }

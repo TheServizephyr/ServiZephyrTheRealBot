@@ -37,6 +37,13 @@ export async function GET(req) {
         await verifyAdmin(req);
 
         const firestore = await getFirestore();
+        const adminConfigSnap = await firestore.collection('admins').doc('servizephyr').get();
+        const adminConfig = adminConfigSnap.exists ? (adminConfigSnap.data() || {}) : {};
+        const configuredAdminIds = new Set(
+            Array.isArray(adminConfig.adminUserIds)
+                ? adminConfig.adminUserIds.map((value) => String(value || '').trim()).filter(Boolean)
+                : []
+        );
         const [usersSnap, guestProfilesSnap] = await Promise.all([
             firestore.collection('users').get(),
             firestore.collection('guest_profiles').get()
@@ -48,8 +55,12 @@ export async function GET(req) {
 
             // Determine user role based on businessType and role fields
             let userRole = 'Customer'; // Default
+            const hasAdminFlag = data.role === 'admin' || data.isAdmin === true;
+            const isRegisteredAdmin = configuredAdminIds.size > 0
+                ? configuredAdminIds.has(doc.id)
+                : hasAdminFlag;
 
-            if (data.role === 'admin' || data.isAdmin) {
+            if (isRegisteredAdmin) {
                 userRole = 'Admin';
             } else if (data.businessType === 'restaurant') {
                 userRole = 'Owner';

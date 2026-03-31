@@ -21,6 +21,7 @@ const normalizePhone = (phone) => {
 const sanitizeText = (value, fallback = '') => String(value || fallback).trim();
 const toLowerText = (value) => String(value || '').toLowerCase();
 const isSettlementEligible = (printedVia) => printedVia !== 'create_order';
+const isCancelledBill = (data = {}) => String(data.status || '').trim().toLowerCase() === 'cancelled';
 
 const normalizeItem = (item, index) => {
     const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
@@ -358,13 +359,16 @@ export async function GET(req) {
             }
 
             const amount = toAmount(data.totalAmount, 0);
-            totalAmount += amount;
-            totalBills += 1;
+            const cancelled = isCancelledBill(data);
+            if (!cancelled) {
+                totalAmount += amount;
+                totalBills += 1;
+            }
 
             const printedVia = data.printedVia || 'browser';
             const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
             const isSettled = settlementEligible ? !!data.isSettled : false;
-            if (settlementEligible) {
+            if (!cancelled && settlementEligible) {
                 if (isSettled) {
                     settledAmount += amount;
                     settledBills += 1;
@@ -388,6 +392,9 @@ export async function GET(req) {
                 customerId: data.customerId || null,
                 customerOrderId: data.customerOrderId || null,
                 orderType: data.orderType || data.printedVia || 'dine-in',
+                status: data.status || 'active',
+                cancelledAt: timestampToDate(data.cancelledAt)?.toISOString() || null,
+                cancellationReason: data.cancellationReason || null,
                 settlementEligible,
                 isSettled,
                 settledAt: timestampToDate(data.settledAt)?.toISOString() || null,

@@ -644,9 +644,9 @@ export async function POST(req) {
                     }
                 }
 
-                if (businessData.ownerPhone && businessData.botPhoneNumberId) {
+                if ((businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone) && businessData.botPhoneNumberId) {
                     await sendNewOrderToOwner({
-                        ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
+                        ownerPhone: businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
                         customerName: customerDetails.name, totalAmount: billDetails.grandTotal,
                         orderId: orderRef.id, restaurantName: businessData.name
                     });

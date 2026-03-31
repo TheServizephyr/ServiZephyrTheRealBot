@@ -969,7 +969,7 @@ export async function PATCH(req) {
                                     : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
                             effects.push(firestore.collection(bizCollection).doc(businessId).update({ isOpen: false }));
                             effects.push(sendRestaurantStatusChangeNotification({
-                                ownerPhone: businessData.ownerPhone,
+                                ownerPhone: businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone,
                                 botPhoneNumberId: businessData.botPhoneNumberId,
                                 newStatus: false,
                                 restaurantId: businessId,

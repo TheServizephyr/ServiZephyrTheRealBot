@@ -1591,10 +1591,10 @@ export async function processOrderV1(body, firestore) {
             }
         }
 
-        if (businessData && businessData.ownerPhone && businessData.botPhoneNumberId) {
+        if (businessData && (businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone) && businessData.botPhoneNumberId) {
             console.log(`[API /order/create] Sending new order notification to owner.`);
             await sendNewOrderToOwner({
-                ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
+                ownerPhone: businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
                 customerName: name, totalAmount: grandTotal, orderId: newOrderRef.id, restaurantName: businessData.name
             });
         }

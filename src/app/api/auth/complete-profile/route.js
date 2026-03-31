@@ -98,6 +98,7 @@ export async function POST(req) {
                 businessType: normalizedBusinessType,
                 ownerId: uid, // CRITICAL: Owner's user ID for RBAC and team management
                 merchantId: generateDisplayId('RS_', nowForId), // ✅ NEW: Merchant ID
+                ownerPersonalWhatsappNumber: '',
                 createdAt: FieldValue.serverTimestamp(),
                 // CRITICAL FIX: Set approval status so security restrictions work!
                 approvalStatus: 'pending', // New accounts need admin approval

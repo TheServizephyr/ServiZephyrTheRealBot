@@ -346,6 +346,7 @@ export async function GET(req) {
             fssai: businessData?.fssai || '',
             botPhoneNumberId: businessData?.botPhoneNumberId || '',
             botDisplayNumber: businessData?.botDisplayNumber || '',
+            ownerPersonalWhatsappNumber: businessData?.ownerPersonalWhatsappNumber || '',
             razorpayAccountId: businessData?.razorpayAccountId || '',
             logoUrl: businessData?.logoUrl || '',
             bannerUrls: businessData?.bannerUrls || [],
@@ -507,7 +508,7 @@ export async function PATCH(req) {
             console.log(`[Settings API] ⏰ Timestamp: ${new Date().toISOString()}`);
 
             sendRestaurantStatusChangeNotification({
-                ownerPhone: businessData.ownerPhone,
+                ownerPhone: businessData.ownerPersonalWhatsappNumber || businessData.ownerPhone,
                 botPhoneNumberId: businessData.botPhoneNumberId,
                 newStatus: updates.isOpen,
                 restaurantId: businessId,
@@ -665,6 +666,7 @@ export async function PATCH(req) {
             gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
             botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',
             botDisplayNumber: finalBusinessData?.botDisplayNumber || '',
+            ownerPersonalWhatsappNumber: finalBusinessData?.ownerPersonalWhatsappNumber || '',
             razorpayAccountId: finalBusinessData?.razorpayAccountId || '',
             logoUrl: finalBusinessData?.logoUrl || '', bannerUrls: finalBusinessData?.bannerUrls || [],
             // Delivery (from Sub-coll)

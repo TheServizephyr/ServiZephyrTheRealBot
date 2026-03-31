@@ -13,6 +13,7 @@ function normalizeBusinessType(value) {
 }
 
 const LOST_ORDER_STATUSES = new Set(['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant']);
+const isCancelledManualBill = (bill = {}) => String(bill.status || '').toLowerCase() === 'cancelled';
 
 const toAmount = (value) => {
     const num = Number(value);
@@ -172,8 +173,12 @@ export async function GET(req) {
             .map((doc) => ({ id: doc.id, ...doc.data() }))
             .filter((order) => !LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase()));
 
-        const currentManualBills = currentManualSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        const prevManualBills = prevManualSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const currentManualBills = currentManualSnap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((bill) => !isCancelledManualBill(bill));
+        const prevManualBills = prevManualSnap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((bill) => !isCancelledManualBill(bill));
 
         const currentOrderSales = acceptedCurrentOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0);
         const prevOrderSales = acceptedPrevOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0);
@@ -243,6 +248,7 @@ export async function GET(req) {
         });
         chartManualSnap.docs.forEach((doc) => {
             const bill = doc.data() || {};
+            if (isCancelledManualBill(bill)) return;
             addChartSale(bill.printedAt || bill.createdAt, toAmount(bill.totalAmount || bill.grandTotal));
         });
 

@@ -15,6 +15,7 @@ import BillToPrint from '@/components/BillToPrint';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import OrderCancellationTool from '@/components/OrderCancellationTool';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -103,6 +104,9 @@ const normalizeHistoryEntry = (doc) => {
         customerId: data.customerId || null,
         customerOrderId: data.customerOrderId || null,
         orderType: data.orderType || data.printedVia || 'dine-in',
+        status: data.status || 'active',
+        cancelledAt: timestampToDate(data.cancelledAt)?.toISOString() || null,
+        cancellationReason: data.cancellationReason || null,
         settlementEligible,
         isSettled,
         settledAt: timestampToDate(data.settledAt)?.toISOString() || null,
@@ -126,10 +130,11 @@ const normalizeHistoryEntry = (doc) => {
 };
 
 const computeSummary = (entries) => {
-    const totalBills = entries.length;
-    const totalAmount = entries.reduce((sum, bill) => sum + toAmount(bill.totalAmount), 0);
-    const pendingBills = entries.filter((bill) => bill.settlementEligible && !bill.isSettled);
-    const settledBillsList = entries.filter((bill) => bill.settlementEligible && bill.isSettled);
+    const activeEntries = entries.filter((bill) => String(bill.status || '').toLowerCase() !== 'cancelled');
+    const totalBills = activeEntries.length;
+    const totalAmount = activeEntries.reduce((sum, bill) => sum + toAmount(bill.totalAmount), 0);
+    const pendingBills = activeEntries.filter((bill) => bill.settlementEligible && !bill.isSettled);
+    const settledBillsList = activeEntries.filter((bill) => bill.settlementEligible && bill.isSettled);
 
     return {
         totalBills,
@@ -461,10 +466,11 @@ export default function ManualOrderHistoryPage() {
     // Per-tab computed stats (derived from full history, not filtered)
     const tabStats = useMemo(() => {
         const compute = (bills) => {
-            const total = bills.reduce((s, b) => s + Number(b.totalAmount || 0), 0);
-            const settled = bills.filter(b => b.isSettled).reduce((s, b) => s + Number(b.totalAmount || 0), 0);
-            const pending = bills.filter(b => b.settlementEligible && !b.isSettled).reduce((s, b) => s + Number(b.totalAmount || 0), 0);
-            return { count: bills.length, total, settled, pending };
+            const activeBills = bills.filter((bill) => String(bill.status || '').toLowerCase() !== 'cancelled');
+            const total = activeBills.reduce((s, b) => s + Number(b.totalAmount || 0), 0);
+            const settled = activeBills.filter(b => b.isSettled).reduce((s, b) => s + Number(b.totalAmount || 0), 0);
+            const pending = activeBills.filter(b => b.settlementEligible && !b.isSettled).reduce((s, b) => s + Number(b.totalAmount || 0), 0);
+            return { count: activeBills.length, total, settled, pending };
         };
         return {
             all: compute(history),
@@ -765,21 +771,36 @@ export default function ManualOrderHistoryPage() {
             )}
 
             {/* Date Range + Refresh */}
-            <div className="bg-card border border-border rounded-xl p-4 mb-4 flex flex-col md:flex-row md:items-end gap-3">
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-muted-foreground font-semibold">From</label>
-                    <input type="date" value={fromDate} max={toDate} onChange={e => setFromDate(e.target.value)}
-                        className="px-3 py-2 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+            <div className="bg-card border border-border rounded-xl p-4 mb-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-end">
+                <div className="flex flex-col md:flex-row md:items-end gap-3">
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs text-muted-foreground font-semibold">From</label>
+                        <input type="date" value={fromDate} max={toDate} onChange={e => setFromDate(e.target.value)}
+                            className="px-3 py-2 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs text-muted-foreground font-semibold">To</label>
+                        <input type="date" value={toDate} min={fromDate} onChange={e => setToDate(e.target.value)}
+                            className="px-3 py-2 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                    </div>
+                    <Button onClick={fetchHistory} disabled={loading} className="bg-primary hover:bg-primary/90 md:self-end">
+                        <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
+                        {loading ? 'Loading...' : 'Refresh'}
+                    </Button>
                 </div>
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-muted-foreground font-semibold">To</label>
-                    <input type="date" value={toDate} min={fromDate} onChange={e => setToDate(e.target.value)}
-                        className="px-3 py-2 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+
+                <div className="xl:border-l xl:border-border/70 xl:pl-4">
+                    <OrderCancellationTool
+                        accessParams={{
+                            impersonate_owner_id: impersonatedOwnerId || '',
+                            employee_of: employeeOfOwnerId || '',
+                        }}
+                        onCancelled={() => fetchHistory()}
+                        title="Cancel Manual Order By ID"
+                        helperText="Looks up the saved manual bill, asks for a reason, sends OTP to the owner's personal WhatsApp, then cancels after verification."
+                        compact
+                    />
                 </div>
-                <Button onClick={fetchHistory} disabled={loading} className="bg-primary hover:bg-primary/90 md:self-end">
-                    <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
-                    {loading ? 'Loading...' : 'Refresh'}
-                </Button>
             </div>
 
             {/* Settlement Bar */}

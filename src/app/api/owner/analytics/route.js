@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 export const dynamic = 'force-dynamic';
 
 const LOST_ORDER_STATUSES = new Set(['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant']);
+const isCancelledManualBill = (bill = {}) => String(bill.status || '').toLowerCase() === 'cancelled';
 
 const toAmount = (value) => {
     const num = Number(value);
@@ -365,6 +366,7 @@ export async function GET(req) {
                     'grandTotal',
                     'printedAt',
                     'createdAt',
+                    'status',
                     'items',
                     'orderType',
                     'channel',
@@ -380,7 +382,7 @@ export async function GET(req) {
             customBillHistoryRef
                 .where('printedAt', '>=', prevStartDate)
                 .where('printedAt', '<', startDate)
-                .select('totalAmount', 'grandTotal')
+                .select('totalAmount', 'grandTotal', 'status')
                 .get(),
             businessRef.collection('menu').select('name', 'portions').get(),
             businessRef.collection('customers').select('name', 'joinedAt', 'totalOrders', 'totalSpend', 'phone').get(),
@@ -532,6 +534,7 @@ export async function GET(req) {
 
         currentCounterBillsSnap.forEach((doc) => {
             const data = doc.data();
+            if (isCancelledManualBill(data)) return;
             const amount = toAmount(data.totalAmount || data.grandTotal);
             const printedAt = timestampToDate(data.printedAt) || timestampToDate(data.createdAt);
             const billMode = normalizeServiceMode(data.orderType);
@@ -596,6 +599,7 @@ export async function GET(req) {
 
         prevCounterBillsSnap.forEach((doc) => {
             const data = doc.data();
+            if (isCancelledManualBill(data)) return;
             prevCounterBillRevenue += toAmount(data.totalAmount || data.grandTotal);
             prevCounterBillCount += 1;
         });
@@ -690,6 +694,7 @@ export async function GET(req) {
 
         currentCounterBillsSnap.forEach((doc) => {
             const data = doc.data() || {};
+            if (isCancelledManualBill(data)) return;
             (data.items || []).forEach((item) => {
                 const baseName = String(item?.name || 'Item').split(' (')[0];
                 if (!itemSales[baseName]) itemSales[baseName] = 0;

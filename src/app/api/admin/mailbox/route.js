@@ -5,6 +5,17 @@ import { getClientIP } from '@/lib/audit-logger';
 
 export const dynamic = 'force-dynamic';
 
+async function resolveAdminMailboxCollection(firestore) {
+    try {
+        const configSnap = await firestore.collection('admins').doc('servizephyr').get();
+        if (!configSnap.exists) return 'adminMailbox';
+        const config = configSnap.data() || {};
+        return String(config.mailboxCollectionName || config.reportsCollectionName || 'adminMailbox').trim() || 'adminMailbox';
+    } catch {
+        return 'adminMailbox';
+    }
+}
+
 // GET all reports for the admin
 export async function GET(req) {
     try {
@@ -12,7 +23,8 @@ export async function GET(req) {
         await verifyAdmin(req);
 
         const firestore = await getFirestore();
-        const mailboxRef = firestore.collection('adminMailbox');
+        const mailboxCollectionName = await resolveAdminMailboxCollection(firestore);
+        const mailboxRef = firestore.collection(mailboxCollectionName);
         const snapshot = await mailboxRef.orderBy('timestamp', 'desc').get();
 
         const reports = snapshot.docs.map(doc => {
@@ -42,6 +54,7 @@ export async function POST(req) {
         }
 
         const firestore = await getFirestore();
+        const mailboxCollectionName = await resolveAdminMailboxCollection(firestore);
         const body = await req.json();
 
         const {
@@ -59,7 +72,7 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Missing required report data.' }, { status: 400 });
         }
 
-        const newReportRef = firestore.collection('adminMailbox').doc();
+        const newReportRef = firestore.collection(mailboxCollectionName).doc();
 
         const newReportData = {
             id: newReportRef.id,
@@ -109,7 +122,8 @@ export async function PATCH(req) {
         }
 
         const firestore = await getFirestore();
-        const reportRef = firestore.collection('adminMailbox').doc(reportId);
+        const mailboxCollectionName = await resolveAdminMailboxCollection(firestore);
+        const reportRef = firestore.collection(mailboxCollectionName).doc(reportId);
 
         await reportRef.update({ status: status });
 

@@ -540,9 +540,9 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
         const collectionName = business.ref.parent.id;
         await sendSystemMessage(fromNumber, `Thanks, your order request has been received!\n\n*Your Token is: ${dineInToken}*\n\nPlease show this token at the counter.\n\nTrack its live status here:\n${trackingUrl}`, botPhoneNumberId, business.id, business.data.name, collectionName);
 
-        if (business.data.ownerPhone && business.data.botPhoneNumberId) {
+        if ((business.data.ownerPersonalWhatsappNumber || business.data.ownerPhone) && business.data.botPhoneNumberId) {
             await sendNewOrderToOwner({
-                ownerPhone: business.data.ownerPhone,
+                ownerPhone: business.data.ownerPersonalWhatsappNumber || business.data.ownerPhone,
                 botPhoneNumberId: business.data.botPhoneNumberId,
                 customerName: `Dine-In (Token: ${dineInToken})`,
                 totalAmount: (await orderRef.get()).data().totalAmount,
