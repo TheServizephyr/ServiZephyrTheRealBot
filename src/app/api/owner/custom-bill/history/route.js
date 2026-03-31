@@ -5,7 +5,9 @@ import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
+import { isValidCustomerOrderId } from '@/utils/generateCustomerOrderId';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 
 const toAmount = (value, fallback = 0) => {
     const amount = Number(value);
@@ -204,7 +206,10 @@ export async function POST(req) {
             totalAmount,
         });
 
-        const customerOrderId = generateCustomerOrderId();
+        const requestedCustomerOrderId = sanitizeText(body?.customerOrderId, '');
+        const customerOrderId = isValidCustomerOrderId(requestedCustomerOrderId)
+            ? requestedCustomerOrderId
+            : generateCustomerOrderId();
         const docRef = historyRef.doc();
         const historyPayload = {
             historyId: docRef.id,
@@ -267,6 +272,26 @@ export async function POST(req) {
             });
         } else {
             await docRef.set(historyPayload);
+        }
+
+        if (customerPhone) {
+            await upsertBusinessCustomerProfile({
+                firestore,
+                businessCollection: collectionName,
+                businessId,
+                customerDocId: customerId || customerPhone,
+                customerName,
+                customerPhone,
+                customerAddress: customerAddress || null,
+                customerStatus: customerType === 'uid' ? 'verified' : 'unclaimed',
+                orderId: docRef.id,
+                orderSubtotal: subtotal,
+                orderTotal: totalAmount,
+                items,
+                customerType,
+            }).catch((profileError) => {
+                console.error('[Custom Bill History] Failed to update customer profile:', profileError);
+            });
         }
 
         return NextResponse.json({

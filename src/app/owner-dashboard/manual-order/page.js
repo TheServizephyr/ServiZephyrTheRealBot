@@ -38,6 +38,33 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 const createBillDraftId = () => `cb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 const CALL_SUGGESTION_TTL_MS = 2 * 60 * 1000;
 const formatCategoryLabel = (categoryId = '') => String(categoryId).replace(/-/g, ' ').trim();
+const CUSTOMER_SUGGESTION_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const normalizeSuggestionPhone = (value = '') => String(value || '').replace(/\D/g, '').slice(-10);
+const normalizeAddressText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
+const scoreAddressMatch = (candidate = '', query = '') => {
+    const normalizedCandidate = normalizeAddressText(candidate).toLowerCase();
+    const normalizedQuery = normalizeAddressText(query).toLowerCase();
+    if (!normalizedQuery) return normalizedCandidate ? 1 : 0;
+    if (!normalizedCandidate.includes(normalizedQuery)) return 0;
+    if (normalizedCandidate.startsWith(normalizedQuery)) return 120 - normalizedCandidate.length;
+    return 60 - normalizedCandidate.indexOf(normalizedQuery);
+};
+const scorePhoneSuggestion = (customer = {}, digits = '') => {
+    const phone = normalizeSuggestionPhone(customer?.phone);
+    if (!digits || !phone.includes(digits)) return -1;
+    let score = phone.startsWith(digits) ? 300 : 180 - phone.indexOf(digits);
+    score += Math.min(Number(customer?.totalOrders || 0), 50);
+    if (customer?.lastUsedAt) {
+        const daysSinceLastUse = Math.max(0, Math.floor((Date.now() - Number(customer.lastUsedAt || 0)) / 86400000));
+        score += Math.max(0, 40 - Math.min(daysSinceLastUse, 40));
+    }
+    return score;
+};
+const formatSuggestionAddressPreview = (addresses = []) => {
+    const firstAddress = addresses?.[0]?.full || '';
+    if (!firstAddress) return '';
+    return firstAddress.length > 64 ? `${firstAddress.slice(0, 61)}...` : firstAddress;
+};
 const getTableCustomerName = (table = {}) => {
     const customerName = table?.currentOrder?.customerDetails?.name;
     return String(customerName || '').trim();
@@ -154,6 +181,13 @@ function ManualOrderPage() {
         address: '',
         notes: ''
     });
+    const [customerSuggestionDataset, setCustomerSuggestionDataset] = useState({ generatedAt: 0, customers: [], addresses: [] });
+    const [customerSuggestionStatus, setCustomerSuggestionStatus] = useState('idle');
+    const [selectedCustomerSuggestion, setSelectedCustomerSuggestion] = useState(null);
+    const [isPhoneSuggestionOpen, setIsPhoneSuggestionOpen] = useState(false);
+    const [isAddressSuggestionOpen, setIsAddressSuggestionOpen] = useState(false);
+    const [activePhoneSuggestionIndex, setActivePhoneSuggestionIndex] = useState(-1);
+    const [activeAddressSuggestionIndex, setActiveAddressSuggestionIndex] = useState(-1);
     const [orderType, setOrderType] = useState('dine-in'); // 'delivery', 'dine-in', 'pickup'
     const [phoneError, setPhoneError] = useState(false);
     const [activeTable, setActiveTable] = useState(null);
@@ -255,6 +289,8 @@ function ManualOrderPage() {
     const [customOpenItemPrice, setCustomOpenItemPrice] = useState('');
     const hasHydratedFromCacheRef = useRef(false);
     const phoneInputFocusRef = useRef(false);
+    const phoneSuggestionBoxRef = useRef(null);
+    const addressSuggestionBoxRef = useRef(null);
     const dismissedCallSuggestionKeysRef = useRef(new Set());
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
@@ -292,6 +328,12 @@ function ManualOrderPage() {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_custom_bill_cache_v2_${scope}`;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+    const customerSuggestionCacheKey = useMemo(() => {
+        const businessId = String(callSyncTarget?.businessId || '').trim();
+        const collectionName = String(callSyncTarget?.collectionName || '').trim();
+        if (!businessId || !collectionName) return '';
+        return `manual_order_customer_suggestions_v1_${collectionName}_${businessId}`;
+    }, [callSyncTarget?.businessId, callSyncTarget?.collectionName]);
 
     const buildScopedUrl = useCallback((endpoint) => {
         const url = new URL(endpoint, window.location.origin);
@@ -324,6 +366,30 @@ function ManualOrderPage() {
             // Ignore storage errors
         }
     }, [cacheKey]);
+
+    const readCustomerSuggestionCache = useCallback(() => {
+        if (!customerSuggestionCacheKey) return null;
+        try {
+            const raw = localStorage.getItem(customerSuggestionCacheKey);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed?.data ? parsed : null;
+        } catch {
+            return null;
+        }
+    }, [customerSuggestionCacheKey]);
+
+    const writeCustomerSuggestionCache = useCallback((data = {}) => {
+        if (!customerSuggestionCacheKey) return;
+        try {
+            localStorage.setItem(customerSuggestionCacheKey, JSON.stringify({
+                ts: Date.now(),
+                data,
+            }));
+        } catch {
+            // Ignore storage errors
+        }
+    }, [customerSuggestionCacheKey]);
 
     const activeAttachedCallForBill = attachedCallContext?.billDraftId === billDraftId ? attachedCallContext : null;
     const isPendingCallSuggestionFresh = pendingCallSuggestion
@@ -372,9 +438,172 @@ function ManualOrderPage() {
     const clearAttachedCallPhone = useCallback(() => {
         setAttachedCallContext(null);
         setCustomerDetails((prev) => ({ ...prev, phone: '' }));
+        setSelectedCustomerSuggestion(null);
         setPhoneError(false);
         setCallSyncStatus(isPendingCallSuggestionFresh ? 'incoming' : 'listening');
     }, [isPendingCallSuggestionFresh]);
+
+    const normalizedPhoneQuery = useMemo(
+        () => normalizeSuggestionPhone(customerDetails.phone),
+        [customerDetails.phone]
+    );
+
+    const phoneSuggestions = useMemo(() => {
+        if (normalizedPhoneQuery.length < 4) return [];
+        return (customerSuggestionDataset.customers || [])
+            .map((customer) => ({ customer, score: scorePhoneSuggestion(customer, normalizedPhoneQuery) }))
+            .filter((entry) => entry.score >= 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 6)
+            .map((entry) => entry.customer);
+    }, [customerSuggestionDataset.customers, normalizedPhoneQuery]);
+
+    const selectedCustomerAddresses = useMemo(
+        () => (selectedCustomerSuggestion?.addresses || []).map((entry) => entry.full).filter(Boolean),
+        [selectedCustomerSuggestion]
+    );
+
+    const addressSuggestions = useMemo(() => {
+        const query = customerDetails.address || '';
+        const addressMap = new Map();
+
+        selectedCustomerAddresses.forEach((address, index) => {
+            const score = scoreAddressMatch(address, query);
+            if (score > 0) {
+                addressMap.set(address.toLowerCase(), {
+                    full: address,
+                    score: score + 300 - index,
+                    source: 'customer',
+                });
+            }
+        });
+
+        (customerSuggestionDataset.addresses || []).forEach((entry, index) => {
+            const address = typeof entry === 'string' ? entry : entry?.full;
+            const score = scoreAddressMatch(address, query);
+            if (score <= 0) return;
+            const key = String(address || '').trim().toLowerCase();
+            const existing = addressMap.get(key);
+            const nextScore = score + Math.min(Number(entry?.useCount || 0), 25) + Math.max(0, 60 - index);
+            if (!existing || nextScore > existing.score) {
+                addressMap.set(key, {
+                    full: address,
+                    score: nextScore,
+                    source: existing?.source || 'global',
+                });
+            }
+        });
+
+        return Array.from(addressMap.values())
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 8);
+    }, [customerDetails.address, customerSuggestionDataset.addresses, selectedCustomerAddresses]);
+
+    const applyCustomerSuggestion = useCallback((customer, options = {}) => {
+        if (!customer) return;
+        const phone = normalizeSuggestionPhone(customer.phone);
+        const topAddress = customer?.addresses?.[0]?.full || '';
+
+        setSelectedCustomerSuggestion(customer);
+        setCustomerDetails((prev) => ({
+            ...prev,
+            phone: phone || prev.phone,
+            name: customer.name || prev.name,
+            address: options.preserveAddress ? prev.address : (topAddress || prev.address),
+        }));
+        setPhoneError(false);
+        setIsPhoneSuggestionOpen(false);
+        setActivePhoneSuggestionIndex(-1);
+        if (orderType === 'delivery' && customer?.addresses?.length) {
+            setIsAddressSuggestionOpen(true);
+        }
+    }, [orderType]);
+
+    const applyAddressSuggestion = useCallback((address) => {
+        const nextAddress = normalizeAddressText(address);
+        if (!nextAddress) return;
+        setCustomerDetails((prev) => ({ ...prev, address: nextAddress }));
+        setIsAddressSuggestionOpen(false);
+        setActiveAddressSuggestionIndex(-1);
+    }, []);
+
+    const handlePhoneSuggestionKeyDown = useCallback((event) => {
+        if (!phoneSuggestions.length) return;
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setIsPhoneSuggestionOpen(true);
+            setActivePhoneSuggestionIndex((prev) => {
+                const nextIndex = prev < 0 ? 0 : Math.min(prev + 1, phoneSuggestions.length - 1);
+                return nextIndex;
+            });
+            return;
+        }
+
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setIsPhoneSuggestionOpen(true);
+            setActivePhoneSuggestionIndex((prev) => {
+                if (prev <= 0) return 0;
+                return prev - 1;
+            });
+            return;
+        }
+
+        if (event.key === 'Enter' && isPhoneSuggestionOpen) {
+            const targetIndex = activePhoneSuggestionIndex >= 0 ? activePhoneSuggestionIndex : 0;
+            const targetSuggestion = phoneSuggestions[targetIndex];
+            if (!targetSuggestion) return;
+            event.preventDefault();
+            applyCustomerSuggestion(targetSuggestion);
+            return;
+        }
+
+        if (event.key === 'Escape' && isPhoneSuggestionOpen) {
+            event.preventDefault();
+            setIsPhoneSuggestionOpen(false);
+            setActivePhoneSuggestionIndex(-1);
+        }
+    }, [activePhoneSuggestionIndex, applyCustomerSuggestion, isPhoneSuggestionOpen, phoneSuggestions]);
+
+    const handleAddressSuggestionKeyDown = useCallback((event) => {
+        if (!addressSuggestions.length) return;
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setIsAddressSuggestionOpen(true);
+            setActiveAddressSuggestionIndex((prev) => {
+                const nextIndex = prev < 0 ? 0 : Math.min(prev + 1, addressSuggestions.length - 1);
+                return nextIndex;
+            });
+            return;
+        }
+
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setIsAddressSuggestionOpen(true);
+            setActiveAddressSuggestionIndex((prev) => {
+                if (prev <= 0) return 0;
+                return prev - 1;
+            });
+            return;
+        }
+
+        if (event.key === 'Enter' && isAddressSuggestionOpen) {
+            const targetIndex = activeAddressSuggestionIndex >= 0 ? activeAddressSuggestionIndex : 0;
+            const targetSuggestion = addressSuggestions[targetIndex];
+            if (!targetSuggestion?.full) return;
+            event.preventDefault();
+            applyAddressSuggestion(targetSuggestion.full);
+            return;
+        }
+
+        if (event.key === 'Escape' && isAddressSuggestionOpen) {
+            event.preventDefault();
+            setIsAddressSuggestionOpen(false);
+            setActiveAddressSuggestionIndex(-1);
+        }
+    }, [activeAddressSuggestionIndex, addressSuggestions, applyAddressSuggestion, isAddressSuggestionOpen]);
 
     // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
@@ -709,6 +938,121 @@ function ManualOrderPage() {
             unsubscribe();
         };
     }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload, toast]);
+
+    useEffect(() => {
+        if (!customerSuggestionCacheKey) {
+            setCustomerSuggestionDataset({ generatedAt: 0, customers: [], addresses: [] });
+            setCustomerSuggestionStatus('idle');
+            return undefined;
+        }
+
+        let isMounted = true;
+        const cached = readCustomerSuggestionCache();
+        if (cached?.data) {
+            setCustomerSuggestionDataset(cached.data);
+            setCustomerSuggestionStatus('cached');
+        }
+
+        const shouldRefresh = !cached || (Date.now() - Number(cached.ts || 0)) > CUSTOMER_SUGGESTION_CACHE_TTL_MS;
+        if (!shouldRefresh && cached?.data) {
+            return undefined;
+        }
+
+        const fetchSuggestions = async () => {
+            try {
+                const currentUser = auth.currentUser;
+                if (!currentUser) return;
+                setCustomerSuggestionStatus(cached?.data ? 'refreshing' : 'loading');
+                const res = await fetch(buildScopedUrl('/api/owner/manual-order/customer-suggestions?limit=250'), {
+                    headers: {
+                        Authorization: `Bearer ${await currentUser.getIdToken()}`,
+                    },
+                    cache: 'no-store',
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const payload = await res.json();
+                if (!isMounted) return;
+                const nextDataset = {
+                    generatedAt: Number(payload?.generatedAt || Date.now()),
+                    customers: Array.isArray(payload?.customers) ? payload.customers : [],
+                    addresses: Array.isArray(payload?.addresses) ? payload.addresses : [],
+                };
+                setCustomerSuggestionDataset(nextDataset);
+                setCustomerSuggestionStatus('ready');
+                writeCustomerSuggestionCache(nextDataset);
+            } catch (error) {
+                if (!isMounted) return;
+                console.error('[ManualOrder] Failed to load customer suggestions:', error);
+                setCustomerSuggestionStatus(cached?.data ? 'stale' : 'error');
+            }
+        };
+
+        fetchSuggestions();
+        return () => {
+            isMounted = false;
+        };
+    }, [buildScopedUrl, customerSuggestionCacheKey, readCustomerSuggestionCache, writeCustomerSuggestionCache]);
+
+    useEffect(() => {
+        if (normalizedPhoneQuery.length !== 10) return;
+        const exactMatch = (customerSuggestionDataset.customers || []).find(
+            (customer) => normalizeSuggestionPhone(customer.phone) === normalizedPhoneQuery
+        );
+        if (!exactMatch) return;
+        if (selectedCustomerSuggestion?.phone === exactMatch.phone) return;
+
+        setSelectedCustomerSuggestion(exactMatch);
+        setCustomerDetails((prev) => ({
+            ...prev,
+            name: prev.name || exactMatch.name || '',
+            address: prev.address || exactMatch?.addresses?.[0]?.full || '',
+        }));
+    }, [customerSuggestionDataset.customers, normalizedPhoneQuery, selectedCustomerSuggestion?.phone]);
+
+    useEffect(() => {
+        if (!isPhoneSuggestionOpen || !phoneSuggestions.length) {
+            setActivePhoneSuggestionIndex(-1);
+            return;
+        }
+        setActivePhoneSuggestionIndex((prev) => {
+            if (prev < 0) return 0;
+            return Math.min(prev, phoneSuggestions.length - 1);
+        });
+    }, [isPhoneSuggestionOpen, phoneSuggestions]);
+
+    useEffect(() => {
+        if (!isAddressSuggestionOpen || !addressSuggestions.length) {
+            setActiveAddressSuggestionIndex(-1);
+            return;
+        }
+        setActiveAddressSuggestionIndex((prev) => {
+            if (prev < 0) return 0;
+            return Math.min(prev, addressSuggestions.length - 1);
+        });
+    }, [addressSuggestions, isAddressSuggestionOpen]);
+
+    useEffect(() => {
+        const handleClickOutsideSuggestions = (event) => {
+            const target = event.target;
+            if (
+                phoneSuggestionBoxRef.current &&
+                !phoneSuggestionBoxRef.current.contains(target)
+            ) {
+                setIsPhoneSuggestionOpen(false);
+                setActivePhoneSuggestionIndex(-1);
+            }
+            if (
+                addressSuggestionBoxRef.current &&
+                !addressSuggestionBoxRef.current.contains(target)
+            ) {
+                setIsAddressSuggestionOpen(false);
+                setActiveAddressSuggestionIndex(-1);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutsideSuggestions);
+        return () => document.removeEventListener('mousedown', handleClickOutsideSuggestions);
+    }, []);
 
     useEffect(() => {
         const businessId = String(callSyncTarget?.businessId || '').trim();
@@ -1207,6 +1551,11 @@ function ManualOrderPage() {
         setLastSavedOrderData(null);
         setCurrentBillCustomerOrderId(generateCustomerOrderId());
         setCustomerDetails({ name: '', phone: '', address: '', notes: '' });
+        setSelectedCustomerSuggestion(null);
+        setIsPhoneSuggestionOpen(false);
+        setIsAddressSuggestionOpen(false);
+        setActivePhoneSuggestionIndex(-1);
+        setActiveAddressSuggestionIndex(-1);
         setAttachedCallContext(null);
         setPendingCallSuggestion(null);
         setPhoneError(false);
@@ -1558,7 +1907,7 @@ function ManualOrderPage() {
         return { ok: false, error: lastError };
     };
 
-    const saveCustomBillHistory = async (printedVia = 'browser', typeOverride = null) => {
+    const saveCustomBillHistory = useCallback(async (printedVia = 'browser', typeOverride = null) => {
         const user = auth.currentUser;
         if (!user) throw new Error('Authentication required.');
         const idToken = await user.getIdToken();
@@ -1623,8 +1972,71 @@ function ManualOrderPage() {
                 });
             }
         }
+        const normalizedSavedPhone = normalizeSuggestionPhone(customerDetails.phone);
+        const normalizedSavedAddress = normalizeAddressText(customerDetails.address);
+        if (normalizedSavedPhone) {
+            const freshCustomerEntry = {
+                phone: normalizedSavedPhone,
+                name: String(customerDetails.name || '').trim(),
+                totalOrders: 1,
+                lastUsedAt: Date.now(),
+                addresses: normalizedSavedAddress ? [{ full: normalizedSavedAddress, useCount: 1, lastUsedAt: Date.now() }] : [],
+            };
+            setCustomerSuggestionDataset((prev) => {
+                const existingCustomers = Array.isArray(prev?.customers) ? prev.customers : [];
+                const existingAddresses = Array.isArray(prev?.addresses) ? prev.addresses : [];
+                const nextCustomersMap = new Map(existingCustomers.map((entry) => [normalizeSuggestionPhone(entry.phone), entry]));
+                const existingCustomer = nextCustomersMap.get(normalizedSavedPhone);
+                const mergedAddressMap = new Map(
+                    (existingCustomer?.addresses || []).map((entry) => [normalizeAddressText(entry.full).toLowerCase(), entry])
+                );
+                if (normalizedSavedAddress) {
+                    const currentAddress = mergedAddressMap.get(normalizedSavedAddress.toLowerCase()) || { full: normalizedSavedAddress, useCount: 0, lastUsedAt: 0 };
+                    mergedAddressMap.set(normalizedSavedAddress.toLowerCase(), {
+                        ...currentAddress,
+                        full: normalizedSavedAddress,
+                        useCount: Number(currentAddress.useCount || 0) + 1,
+                        lastUsedAt: Date.now(),
+                    });
+                }
+                nextCustomersMap.set(normalizedSavedPhone, {
+                    ...freshCustomerEntry,
+                    ...existingCustomer,
+                    phone: normalizedSavedPhone,
+                    name: String(customerDetails.name || existingCustomer?.name || '').trim(),
+                    totalOrders: Number(existingCustomer?.totalOrders || 0) + 1,
+                    lastUsedAt: Date.now(),
+                    addresses: Array.from(mergedAddressMap.values())
+                        .sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0))
+                        .slice(0, 8),
+                });
+
+                const nextAddressesMap = new Map(existingAddresses.map((entry) => [normalizeAddressText(entry?.full || entry).toLowerCase(), entry]));
+                if (normalizedSavedAddress) {
+                    const existingAddress = nextAddressesMap.get(normalizedSavedAddress.toLowerCase()) || { full: normalizedSavedAddress, useCount: 0, lastUsedAt: 0 };
+                    nextAddressesMap.set(normalizedSavedAddress.toLowerCase(), {
+                        ...existingAddress,
+                        full: normalizedSavedAddress,
+                        useCount: Number(existingAddress.useCount || 0) + 1,
+                        lastUsedAt: Date.now(),
+                    });
+                }
+
+                const nextDataset = {
+                    generatedAt: Date.now(),
+                    customers: Array.from(nextCustomersMap.values())
+                        .sort((a, b) => Number(b.lastUsedAt || 0) - Number(a.lastUsedAt || 0))
+                        .slice(0, 250),
+                    addresses: Array.from(nextAddressesMap.values())
+                        .sort((a, b) => Number(b.lastUsedAt || 0) - Number(a.lastUsedAt || 0))
+                        .slice(0, 250),
+                };
+                writeCustomerSuggestionCache(nextDataset);
+                return nextDataset;
+            });
+        }
         return data;
-    };
+    }, [accessQuery, additionalCharge, additionalChargeLabel, billDraftId, cart, cgst, currentBillCustomerOrderId, customerDetails, discount, grandTotal, orderType, paymentMode, subtotal, sgst, deliveryCharge, writeCustomerSuggestionCache]);
 
     const validatePhoneNumber = () => {
         const phone = customerDetails.phone?.trim() || '';
@@ -2797,7 +3209,7 @@ function ManualOrderPage() {
                     className="flex-shrink-0 flex flex-col gap-4 h-full lg:min-h-0 overflow-y-auto overscroll-contain pr-1"
                 >
                     {/* Collapsible Customer Details */}
-                    <div className="bg-card border border-border rounded-xl overflow-hidden flex-shrink-0">
+                    <div className="bg-card border border-border rounded-xl overflow-visible flex-shrink-0">
                         {/* Accordion Header — always visible, click to toggle */}
                         <button
                             type="button"
@@ -2813,7 +3225,7 @@ function ManualOrderPage() {
                         </button>
 
                         {/* Collapsible Body */}
-                        <div className={cn('transition-all duration-200 overflow-hidden', isCustomerDetailsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0')}>
+                        <div className={cn('transition-all duration-200', isCustomerDetailsOpen ? 'max-h-[42rem] overflow-visible opacity-100' : 'max-h-0 overflow-hidden opacity-0')}>
                             <div className="p-2 border-t border-border">
                                 {pendingCallSuggestion && isPendingCallSuggestionFresh && (
                                     <div className="mb-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5">
@@ -2857,24 +3269,41 @@ function ManualOrderPage() {
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><User size={13} /> Name</Label>
-                                        <input value={customerDetails.name} onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" />
+                                        <input
+                                            value={customerDetails.name}
+                                            onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })}
+                                            className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border"
+                                        />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><Phone size={13} /> Phone</Label>
-                                        <div className="relative">
+                                        <div className="relative" ref={phoneSuggestionBoxRef}>
                                             <input
                                                 value={customerDetails.phone}
-                                                onFocus={() => { phoneInputFocusRef.current = true; }}
+                                                onFocus={() => {
+                                                    phoneInputFocusRef.current = true;
+                                                    if (phoneSuggestions.length) {
+                                                        setIsPhoneSuggestionOpen(true);
+                                                        setActivePhoneSuggestionIndex(0);
+                                                    }
+                                                }}
                                                 onBlur={() => { phoneInputFocusRef.current = false; }}
+                                                onKeyDown={handlePhoneSuggestionKeyDown}
                                                 onChange={e => {
                                                     const val = e.target.value;
                                                     if (activeAttachedCallForBill && normalizeIndianPhoneLoose(val) !== normalizeIndianPhoneLoose(activeAttachedCallForBill.phone)) {
                                                         setAttachedCallContext(null);
                                                     }
+                                                    const nextDigits = normalizeSuggestionPhone(val);
+                                                    if (!nextDigits || normalizeSuggestionPhone(selectedCustomerSuggestion?.phone) !== nextDigits) {
+                                                        setSelectedCustomerSuggestion(null);
+                                                    }
                                                     setCustomerDetails({ ...customerDetails, phone: val });
                                                     const isNumeric = !/[^0-9]/.test(val);
                                                     if (val.length === 10 && isNumeric) setPhoneError(false);
                                                     if (val.length === 0 && orderType !== 'delivery') setPhoneError(false);
+                                                    setIsPhoneSuggestionOpen(nextDigits.length >= 4);
+                                                    setActivePhoneSuggestionIndex(nextDigits.length >= 4 ? 0 : -1);
                                                 }}
                                                 className={cn(
                                                     "w-full rounded-md border bg-input px-2 py-1.5 pr-8 text-sm transition-colors border-border",
@@ -2892,17 +3321,108 @@ function ManualOrderPage() {
                                                     <X size={14} />
                                                 </button>
                                             )}
+                                            {isPhoneSuggestionOpen && phoneSuggestions.length > 0 && (
+                                                <div className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-lg">
+                                                    {phoneSuggestions.map((suggestion) => (
+                                                        <button
+                                                            key={suggestion.phone}
+                                                            type="button"
+                                                            className={cn(
+                                                                "flex w-full flex-col gap-0.5 border-b border-border/70 px-3 py-2 text-left last:border-b-0 hover:bg-muted",
+                                                                phoneSuggestions[activePhoneSuggestionIndex]?.phone === suggestion.phone && "bg-muted"
+                                                            )}
+                                                            onMouseDown={(event) => event.preventDefault()}
+                                                            onMouseEnter={() => setActivePhoneSuggestionIndex(phoneSuggestions.findIndex((entry) => entry.phone === suggestion.phone))}
+                                                            onClick={() => applyCustomerSuggestion(suggestion)}
+                                                        >
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="text-sm font-medium text-foreground">
+                                                                    {suggestion.name || 'Repeat Customer'}
+                                                                </span>
+                                                                <span className="text-xs text-muted-foreground">{suggestion.phone}</span>
+                                                            </div>
+                                                            {formatSuggestionAddressPreview(suggestion.addresses) && (
+                                                                <p className="truncate text-xs text-muted-foreground">
+                                                                    {formatSuggestionAddressPreview(suggestion.addresses)}
+                                                                </p>
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                         {phoneError && <p className="text-[10px] font-bold text-red-500 mt-0.5 animate-pulse">INVALID PHONE NUMBER</p>}
                                         {!phoneError && callSyncStatus === 'error' && (
                                             <p className="text-[10px] text-amber-600 mt-0.5">Live call sync unavailable right now.</p>
+                                        )}
+                                        {!phoneError && customerSuggestionStatus === 'ready' && phoneSuggestions.length > 0 && normalizedPhoneQuery.length >= 4 && (
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">Repeat customer suggestions ready.</p>
                                         )}
                                     </div>
                                     {orderType === 'delivery' && (
                                         <>
                                             <div className="space-y-1 col-span-2">
                                                 <Label className="flex items-center gap-1.5 text-xs"><MapPin size={13} /> Address</Label>
-                                                <textarea rows={2} value={customerDetails.address} onChange={e => setCustomerDetails({ ...customerDetails, address: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border resize-none" />
+                                                <div className="relative" ref={addressSuggestionBoxRef}>
+                                                    <textarea
+                                                        rows={2}
+                                                        value={customerDetails.address}
+                                                        onFocus={() => {
+                                                            if (addressSuggestions.length) {
+                                                                setIsAddressSuggestionOpen(true);
+                                                                setActiveAddressSuggestionIndex(0);
+                                                            }
+                                                        }}
+                                                        onKeyDown={handleAddressSuggestionKeyDown}
+                                                        onChange={e => {
+                                                            setCustomerDetails({ ...customerDetails, address: e.target.value });
+                                                            setIsAddressSuggestionOpen(true);
+                                                            setActiveAddressSuggestionIndex(0);
+                                                        }}
+                                                        className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border resize-none"
+                                                    />
+                                                    {isAddressSuggestionOpen && addressSuggestions.length > 0 && (
+                                                        <div className="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-lg">
+                                                            {addressSuggestions.map((entry) => (
+                                                                <button
+                                                                    key={entry.full}
+                                                                    type="button"
+                                                                    className={cn(
+                                                                        "flex w-full flex-col gap-0.5 border-b border-border/70 px-3 py-2 text-left last:border-b-0 hover:bg-muted",
+                                                                        addressSuggestions[activeAddressSuggestionIndex]?.full === entry.full && "bg-muted"
+                                                                    )}
+                                                                    onMouseDown={(event) => event.preventDefault()}
+                                                                    onMouseEnter={() => setActiveAddressSuggestionIndex(addressSuggestions.findIndex((item) => item.full === entry.full))}
+                                                                    onClick={() => applyAddressSuggestion(entry.full)}
+                                                                >
+                                                                    <span className="text-sm text-foreground">{entry.full}</span>
+                                                                    {entry.source === 'customer' && (
+                                                                        <span className="text-[10px] uppercase tracking-wide text-emerald-600">Saved for this customer</span>
+                                                                    )}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {selectedCustomerAddresses.length > 1 && (
+                                                    <div className="mt-1 flex flex-wrap gap-1">
+                                                        {selectedCustomerAddresses.slice(0, 4).map((address) => (
+                                                            <button
+                                                                key={address}
+                                                                type="button"
+                                                                onClick={() => applyAddressSuggestion(address)}
+                                                                className={cn(
+                                                                    "max-w-full rounded-full border px-2 py-1 text-[10px] text-left transition-colors",
+                                                                    normalizeAddressText(customerDetails.address).toLowerCase() === normalizeAddressText(address).toLowerCase()
+                                                                        ? "border-emerald-500 bg-emerald-500/10 text-emerald-700"
+                                                                        : "border-border bg-muted/50 text-muted-foreground hover:bg-muted"
+                                                                )}
+                                                            >
+                                                                <span className="block truncate max-w-[220px]">{address}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="space-y-1 col-span-1">
                                                 <Label className="text-xs">Delivery Charge (Optional)</Label>
