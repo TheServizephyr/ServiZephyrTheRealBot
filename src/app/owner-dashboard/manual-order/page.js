@@ -16,7 +16,13 @@ import { cn } from '@/lib/utils';
 import { useToast } from "@/components/ui/use-toast";
 import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
-import { isCallSyncEventFresh, normalizeIndianPhoneLoose } from '@/lib/call-sync';
+import {
+    buildCallSyncEventKey,
+    dismissCallSyncEventForSession,
+    isCallSyncEventFresh,
+    isDismissedCallSyncEvent,
+    normalizeIndianPhoneLoose,
+} from '@/lib/call-sync';
 import {
     buildOwnerDashboardShortcutPath,
     navigateToShortcutPath,
@@ -242,7 +248,6 @@ function ManualOrderPage() {
     const [isBusinessTypeResolved, setIsBusinessTypeResolved] = useState(false);
     const [callSyncTarget, setCallSyncTarget] = useState({ businessId: '', collectionName: '' });
     const [callSyncStatus, setCallSyncStatus] = useState('inactive');
-    const [lastLiveCallPhone, setLastLiveCallPhone] = useState('');
     const [pendingCallSuggestion, setPendingCallSuggestion] = useState(null);
     const [attachedCallContext, setAttachedCallContext] = useState(null);
     const [isCustomOpenItemModalOpen, setIsCustomOpenItemModalOpen] = useState(false);
@@ -251,7 +256,6 @@ function ManualOrderPage() {
     const hasHydratedFromCacheRef = useRef(false);
     const phoneInputFocusRef = useRef(false);
     const dismissedCallSuggestionKeysRef = useRef(new Set());
-    const lastNotifiedCallKeyRef = useRef('');
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
     const searchInputRef = useRef(null);
@@ -338,6 +342,7 @@ function ManualOrderPage() {
         const callKey = typeof suggestion === 'string' ? suggestion : suggestion?.callKey;
         if (callKey && options?.suppressFuturePrompts !== false) {
             dismissedCallSuggestionKeysRef.current.add(callKey);
+            dismissCallSyncEventForSession(callKey);
         }
         setPendingCallSuggestion((prev) => (prev?.callKey === callKey ? null : prev));
         setCallSyncStatus(activeAttachedCallForBill?.phone ? 'attached' : 'listening');
@@ -356,11 +361,11 @@ function ManualOrderPage() {
             attachedAt: Date.now(),
         });
         setPendingCallSuggestion(null);
-        setLastLiveCallPhone(normalizedPhone);
         setPhoneError(false);
         setCallSyncStatus('attached');
         if (suggestion?.callKey) {
             dismissedCallSuggestionKeysRef.current.add(suggestion.callKey);
+            dismissCallSyncEventForSession(suggestion.callKey);
         }
     }, [billDraftId]);
 
@@ -749,15 +754,14 @@ function ManualOrderPage() {
                 const state = String(activeCall.state || '').trim().toLowerCase();
                 const timestampMs = Number(activeCall.timestampMs || activeCall.updatedAt || 0);
                 const isIncoming = state === 'ringing' || state === 'incoming';
-                const callKey = `${phone}:${timestampMs}`;
+                const callKey = buildCallSyncEventKey(phone, timestampMs);
 
                 if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs)) {
                     setCallSyncStatus(resolveCallSyncIdleState());
                     return;
                 }
 
-                setLastLiveCallPhone(phone);
-                if (dismissedCallSuggestionKeysRef.current.has(callKey) || activeAttachedCallForBill?.callKey === callKey) {
+                if (!callKey || dismissedCallSuggestionKeysRef.current.has(callKey) || isDismissedCallSyncEvent(callKey) || activeAttachedCallForBill?.callKey === callKey) {
                     setCallSyncStatus(resolveCallSyncIdleState());
                     return;
                 }
@@ -771,16 +775,6 @@ function ManualOrderPage() {
 
                 setPendingCallSuggestion((prev) => (prev?.callKey === callKey ? prev : nextSuggestion));
                 setCallSyncStatus('incoming');
-
-                if (lastNotifiedCallKeyRef.current !== callKey) {
-                    lastNotifiedCallKeyRef.current = callKey;
-                    toast({
-                        title: `Incoming call: ${phone}`,
-                        description: activeAttachedCallForBill?.phone
-                            ? 'Use "Replace with latest call" only if this bill should switch to the new caller.'
-                            : 'Review and attach it only if this call belongs to the current bill.',
-                    });
-                }
             } catch (error) {
                 if (!isMounted) return;
                 console.error('[ManualOrder] Call sync polling failed:', error);
@@ -798,7 +792,7 @@ function ManualOrderPage() {
             isMounted = false;
             if (timeoutId) window.clearTimeout(timeoutId);
         };
-    }, [activeAttachedCallForBill?.callKey, activeAttachedCallForBill?.phone, buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, resolveCallSyncIdleState, toast]);
+    }, [activeAttachedCallForBill?.callKey, activeAttachedCallForBill?.phone, buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, resolveCallSyncIdleState]);
 
     useEffect(() => {
         if (!pendingCallSuggestion?.timestampMs) return undefined;
@@ -2827,11 +2821,6 @@ function ManualOrderPage() {
                                             <div className="min-w-0">
                                                 <p className="text-[11px] font-semibold text-emerald-700">Incoming call</p>
                                                 <p className="text-sm font-bold tracking-wide text-emerald-900">{pendingCallSuggestion.phone}</p>
-                                                <p className="text-[10px] text-emerald-700/90 mt-0.5">
-                                                    {activeAttachedCallForBill?.phone
-                                                        ? `This bill is already linked to ${activeAttachedCallForBill.phone}. Replace only if this new caller should take over.`
-                                                        : 'Attach it only if this call belongs to the bill you are working on right now.'}
-                                                </p>
                                             </div>
                                             <button
                                                 type="button"
@@ -2905,23 +2894,6 @@ function ManualOrderPage() {
                                             )}
                                         </div>
                                         {phoneError && <p className="text-[10px] font-bold text-red-500 mt-0.5 animate-pulse">INVALID PHONE NUMBER</p>}
-                                        {!phoneError && activeAttachedCallForBill?.phone && (
-                                            <p className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-emerald-600">
-                                                <CheckCircle size={11} />
-                                                Caller {activeAttachedCallForBill.phone} is attached to this bill.
-                                            </p>
-                                        )}
-                                        {!phoneError && callSyncStatus === 'listening' && (
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">Live call sync ready for this outlet.</p>
-                                        )}
-                                        {!phoneError && callSyncStatus === 'incoming' && lastLiveCallPhone && (
-                                            <p className="text-[10px] font-medium text-emerald-600 mt-0.5">
-                                                Incoming call detected: {lastLiveCallPhone}. Review the banner before attaching it.
-                                            </p>
-                                        )}
-                                        {!phoneError && callSyncStatus === 'attached' && !activeAttachedCallForBill?.phone && (
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">Caller link cleared. You can type a different number any time.</p>
-                                        )}
                                         {!phoneError && callSyncStatus === 'error' && (
                                             <p className="text-[10px] text-amber-600 mt-0.5">Live call sync unavailable right now.</p>
                                         )}

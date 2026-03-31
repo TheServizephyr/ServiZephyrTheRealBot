@@ -10,7 +10,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import ThemeColorUpdater from "@/components/ThemeColorUpdater";
 import GlobalHapticHandler from "@/components/GlobalHapticHandler";
 import "../globals.css";
-import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare, Loader2 } from 'lucide-react';
+import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare, Loader2, PhoneCall, ArrowRight, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/firebase";
@@ -25,6 +25,13 @@ import {
   OwnerDashboardShortcutsDialog,
   useOwnerDashboardShortcuts,
 } from "@/lib/ownerDashboardShortcuts";
+import {
+  buildCallSyncEventKey,
+  dismissCallSyncEventForSession,
+  isCallSyncEventFresh,
+  isDismissedCallSyncEvent,
+  normalizeIndianPhoneLoose,
+} from "@/lib/call-sync";
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +108,8 @@ function OwnerDashboardContent({ children }) {
   const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const [userRole, setUserRole] = useState(null); // For employee role-based access
+  const [callSyncTarget, setCallSyncTarget] = useState({ businessId: '', collectionName: '' });
+  const [incomingCallBanner, setIncomingCallBanner] = useState(null);
   const [businessType, setBusinessType] = useState(() => {
     if (typeof window === 'undefined') return 'restaurant';
     return normalizeBusinessType(localStorage.getItem('businessType')) || 'restaurant';
@@ -134,6 +143,16 @@ function OwnerDashboardContent({ children }) {
       employeeOfOwnerId,
     });
     navigateToShortcutPath(path);
+  }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+  const buildScopedOwnerUrl = useCallback((endpoint) => {
+    const url = new URL(endpoint, typeof window !== 'undefined' ? window.location.origin : 'https://servizephyr.com');
+    if (impersonatedOwnerId) {
+      url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+    } else if (employeeOfOwnerId) {
+      url.searchParams.append('employee_of', employeeOfOwnerId);
+    }
+    return url.toString();
   }, [employeeOfOwnerId, impersonatedOwnerId]);
 
   const historyCapableShortcuts = useMemo(() => ({
@@ -403,6 +422,78 @@ function OwnerDashboardContent({ children }) {
   }, [user]);
 
   useEffect(() => {
+    const businessId = String(callSyncTarget?.businessId || '').trim();
+    const collectionName = String(callSyncTarget?.collectionName || '').trim();
+
+    if (!user || !businessId || !collectionName) {
+      setIncomingCallBanner(null);
+      return undefined;
+    }
+
+    let isMounted = true;
+    let timeoutId = null;
+
+    const syncIncomingCall = async () => {
+      try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          if (isMounted) setIncomingCallBanner(null);
+          return;
+        }
+
+        const res = await fetch(buildScopedOwnerUrl('/api/owner/call-sync/active'), {
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${await currentUser.getIdToken()}`,
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const payload = await res.json();
+        if (!isMounted) return;
+
+        const activeCall = payload?.activeCall;
+        if (!activeCall) {
+          setIncomingCallBanner(null);
+          return;
+        }
+
+        const phone = normalizeIndianPhoneLoose(activeCall.phone);
+        const state = String(activeCall.state || '').trim().toLowerCase();
+        const timestampMs = Number(activeCall.timestampMs || activeCall.updatedAt || 0);
+        const callKey = buildCallSyncEventKey(phone, timestampMs);
+        const isIncoming = state === 'ringing' || state === 'incoming';
+
+        if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs) || !callKey || isDismissedCallSyncEvent(callKey)) {
+          setIncomingCallBanner(null);
+          return;
+        }
+
+        setIncomingCallBanner((prev) => {
+          if (prev?.callKey === callKey) return prev;
+          return { phone, timestampMs, callKey };
+        });
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('[OwnerDashboardLayout] Call sync polling failed:', error);
+      } finally {
+        if (!isMounted) return;
+        timeoutId = window.setTimeout(syncIncomingCall, 2500);
+      }
+    };
+
+    syncIncomingCall();
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [buildScopedOwnerUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, user]);
+
+  useEffect(() => {
     console.log('[Layout] 🔄 useEffect triggered', { authChecked, hasUser: !!user, isUserLoading });
 
     // Only redirect after auth has been properly checked
@@ -536,6 +627,12 @@ function OwnerDashboardContent({ children }) {
           }
           setRestaurantName(settingsData.restaurantName || 'My Dashboard');
           setRestaurantLogo(settingsData.logoUrl || null);
+          if (settingsData.businessId && settingsData.collectionName) {
+            setCallSyncTarget({
+              businessId: String(settingsData.businessId),
+              collectionName: String(settingsData.collectionName),
+            });
+          }
         } else {
           console.warn('[Layout] ⚠️ Settings API failed:', settingsRes.status);
         }
@@ -710,10 +807,56 @@ function OwnerDashboardContent({ children }) {
 
   const blockedContent = renderStatusScreen();
   const isCollapsed = !isSidebarOpen && !isMobile;
+  const showGlobalIncomingCallBanner =
+    !!incomingCallBanner?.phone &&
+    !pathname?.startsWith('/owner-dashboard/manual-order');
 
   return (
     <>
       <ImpersonationBanner vendorName={restaurantName} />
+      {showGlobalIncomingCallBanner && (
+        <motion.div
+          initial={{ x: 280, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 280, opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+          className="fixed right-4 top-4 z-[120] w-[min(420px,calc(100vw-2rem))]"
+        >
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 shadow-2xl backdrop-blur-md">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-full bg-emerald-500/15 p-2 text-emerald-500">
+                <PhoneCall className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">Incoming call</p>
+                <p className="text-lg font-bold tracking-wide text-foreground">{incomingCallBanner.phone}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  dismissCallSyncEventForSession(incomingCallBanner.callKey);
+                  setIncomingCallBanner(null);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                title="Dismiss notification"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 rounded-full bg-foreground px-4 text-background hover:bg-foreground/90"
+                onClick={() => navigateWithShortcut('/owner-dashboard/manual-order')}
+              >
+                Jump to Manual Billing
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+      )}
       <div className="flex h-screen bg-background text-foreground">
         <motion.aside
           key={isMobile ? "mobile" : "desktop"}
