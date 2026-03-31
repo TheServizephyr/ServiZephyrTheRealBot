@@ -4,6 +4,7 @@ import android.content.Context
 
 data class CallSyncConfig(
     val serverBaseUrl: String,
+    val backupServerBaseUrl: String,
     val token: String,
     val deviceId: String,
     val isSyncEnabled: Boolean
@@ -12,6 +13,7 @@ data class CallSyncConfig(
 object CallSyncStore {
     private const val PREFS = "call_sync_helper"
     private const val KEY_SERVER_BASE_URL = "server_base_url"
+    private const val KEY_BACKUP_SERVER_BASE_URL = "backup_server_base_url"
     private const val KEY_TOKEN = "token"
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_SYNC_ENABLED = "sync_enabled"
@@ -37,28 +39,46 @@ object CallSyncStore {
 
         return CallSyncConfig(
             serverBaseUrl = prefs.getString(KEY_SERVER_BASE_URL, "https://servizephyr.com") ?: "https://servizephyr.com",
+            backupServerBaseUrl = prefs.getString(KEY_BACKUP_SERVER_BASE_URL, "") ?: "",
             token = prefs.getString(KEY_TOKEN, "") ?: "",
             deviceId = deviceId,
             isSyncEnabled = prefs.getBoolean(KEY_SYNC_ENABLED, true)
         )
     }
 
-    fun save(context: Context, serverBaseUrl: String, token: String) {
+    fun save(context: Context, serverBaseUrl: String, backupServerBaseUrl: String, token: String) {
         val normalizedBaseUrl = normalizeServerBaseUrl(serverBaseUrl)
+        val normalizedBackupUrl = normalizeServerBaseUrl(backupServerBaseUrl)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_SERVER_BASE_URL, normalizedBaseUrl)
+            .putString(KEY_BACKUP_SERVER_BASE_URL, normalizedBackupUrl)
             .putString(KEY_TOKEN, token.trim())
             .apply()
     }
 
     fun normalizeServerBaseUrl(serverBaseUrl: String): String {
-        val trimmed = serverBaseUrl.trim().trimEnd('/')
-        return if (trimmed.equals("https://servizephyr.com", ignoreCase = true)) {
-            "https://www.servizephyr.com"
-        } else {
-            trimmed
+        return serverBaseUrl.trim().trimEnd('/')
+    }
+
+    fun buildCandidateBaseUrls(config: CallSyncConfig): List<String> {
+        val candidates = linkedSetOf<String>()
+        val add = { raw: String ->
+            val normalized = normalizeServerBaseUrl(raw)
+            if (normalized.isNotBlank()) {
+                candidates.add(normalized)
+            }
         }
+
+        add(config.serverBaseUrl)
+        add(config.backupServerBaseUrl)
+
+        if (config.serverBaseUrl.contains("servizephyr.com", ignoreCase = true)) {
+            candidates.add("https://servizephyr.com")
+            candidates.add("https://www.servizephyr.com")
+        }
+
+        return candidates.toList()
     }
 
     fun setSyncEnabled(context: Context, enabled: Boolean) {

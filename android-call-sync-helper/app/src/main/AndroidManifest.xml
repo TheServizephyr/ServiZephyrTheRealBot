@@ -7,7 +7,9 @@
 
     <application
         android:allowBackup="true"
+        android:icon="@drawable/servizephyr_logo"
         android:label="@string/app_name"
+        android:roundIcon="@drawable/servizephyr_logo"
         android:supportsRtl="true"
         android:theme="@style/Theme.CallSyncHelper">
 

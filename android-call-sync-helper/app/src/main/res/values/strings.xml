@@ -1,11 +1,16 @@
 <resources>
-    <string name="app_name">Call Sync Helper</string>
-    <string name="helper_subtitle">Push incoming call numbers into ServiZephyr manual billing.</string>
+    <string name="app_name">ServiZephyr Bill Companion</string>
+    <string name="helper_subtitle">Keep billing in sync with live incoming calls without interrupting the counter flow.</string>
     <string name="server_base_url">Server Base URL</string>
+    <string name="backup_server_base_url">Backup URL (Optional)</string>
     <string name="call_sync_token">Call Sync Token</string>
     <string name="save_settings">Save Settings</string>
     <string name="grant_permissions">Grant Phone Permissions</string>
     <string name="sync_toggle_label">Enable live call sync</string>
+    <string name="sync_on_label">Live Sync On</string>
+    <string name="sync_off_label">Live Sync Off</string>
+    <string name="sync_enable_cta">Turn on live call sync</string>
+    <string name="sync_disable_cta">Turn off live call sync</string>
     <string name="permissions_ready">Phone permissions granted. Incoming calls can now be synced.</string>
     <string name="permissions_missing">Phone permissions are still required.</string>
     <string name="sync_disabled">Live call sync is turned off in this app.</string>
@@ -16,4 +21,16 @@
     <string name="debug_last_number">Captured number: %1$s</string>
     <string name="debug_last_result">Push result: %1$s</string>
     <string name="debug_last_updated">Updated: %1$s</string>
+    <string name="settings_heading">Settings</string>
+    <string name="settings_subtitle">Keep URLs, token, and permissions here. Add a Vercel backup URL if your custom domain has DNS issues on some phones.</string>
+    <string name="test_connection">Test Connection</string>
+    <string name="retry_pending">Retry Pending</string>
+    <string name="sync_health_heading">Sync health</string>
+    <string name="pending_events">Pending events: %1$d</string>
+    <string name="pending_events_placeholder">Pending events: 0</string>
+    <string name="last_success">Last successful sync: %1$s</string>
+    <string name="last_success_never">Last successful sync: not yet</string>
+    <string name="running_check">Checking connection…</string>
+    <string name="running_retry">Retrying pending events…</string>
+    <string name="not_configured">Save your server URL and token first.</string>
 </resources>
