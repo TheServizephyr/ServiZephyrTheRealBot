@@ -51,6 +51,7 @@ export default function OrderCancellationTool({
     const [otpVerifying, setOtpVerifying] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [justCancelled, setJustCancelled] = useState(false);
 
     const accessQuery = useMemo(() => {
         const params = new URLSearchParams();
@@ -81,6 +82,7 @@ export default function OrderCancellationTool({
         setOtp('');
         setError('');
         setSuccess('');
+        setJustCancelled(false);
     };
 
     const buildReasonPayload = () => {
@@ -194,6 +196,7 @@ export default function OrderCancellationTool({
             if (!res.ok) throw new Error(data.message || 'Cancellation failed.');
 
             setSuccess(data.message || 'Order cancelled successfully.');
+            setJustCancelled(true);
             onCancelled(data);
             setOrder((prev) => prev ? {
                 ...prev,
@@ -272,20 +275,20 @@ export default function OrderCancellationTool({
                                 </div>
                             </div>
 
-                            <div className="rounded-xl border border-border p-4">
+                            <div className={`rounded-xl border p-4 ${justCancelled ? 'border-green-500/30 bg-green-500/5' : 'border-border'}`}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
                                         <p className="text-sm font-semibold">Current Status</p>
-                                        <p className="text-xs text-muted-foreground mt-1 capitalize">{String(order.status || 'unknown').replace(/_/g, ' ')}</p>
+                                        <p className={`text-xs mt-1 capitalize ${justCancelled ? 'text-green-600 font-medium' : 'text-muted-foreground'}`}>{String(order.status || 'unknown').replace(/_/g, ' ')}</p>
                                     </div>
-                                    {!order.canCancel ? (
+                                    {!order.canCancel && !justCancelled ? (
                                         <div className="flex items-center gap-2 rounded-full bg-red-500/10 px-3 py-1 text-xs font-medium text-red-500">
                                             <AlertTriangle className="h-4 w-4" />
                                             Cancellation blocked
                                         </div>
                                     ) : null}
                                 </div>
-                                {!order.canCancel && order.cancelBlockedReason ? (
+                                {!order.canCancel && order.cancelBlockedReason && !justCancelled ? (
                                     <p className="text-xs text-red-500 mt-3">{order.cancelBlockedReason}</p>
                                 ) : null}
                             </div>
@@ -333,7 +336,7 @@ export default function OrderCancellationTool({
                                 />
                             </div>
 
-                            {challengeId ? (
+                            {challengeId && !justCancelled ? (
                                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
                                     <p className="text-sm font-semibold">OTP sent to owner WhatsApp {maskedPhone ? `(${maskedPhone})` : ''}</p>
                                     <Input
@@ -346,20 +349,22 @@ export default function OrderCancellationTool({
                             ) : null}
 
                             {error ? <p className="text-sm text-red-500">{error}</p> : null}
-                            {success ? <p className="text-sm text-green-600">{success}</p> : null}
+                            {success ? <p className="text-sm font-medium text-green-600 bg-green-500/10 p-3 rounded-lg border border-green-500/20">{success}</p> : null}
 
                             <div className="flex flex-col-reverse gap-3 md:flex-row md:justify-end">
-                                <Button variant="outline" onClick={() => setDialogOpen(false)}>Close</Button>
-                                {!challengeId ? (
-                                    <Button onClick={handleRequestOtp} disabled={!order.canCancel || otpSending}>
-                                        {otpSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                        Send OTP
-                                    </Button>
-                                ) : (
-                                    <Button onClick={handleVerifyAndCancel} disabled={otpVerifying || !order.canCancel}>
-                                        {otpVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                                        Verify OTP And Cancel Order
-                                    </Button>
+                                <Button variant={justCancelled ? "default" : "outline"} onClick={() => setDialogOpen(false)}>Close</Button>
+                                {!justCancelled && (
+                                    !challengeId ? (
+                                        <Button onClick={handleRequestOtp} disabled={!order.canCancel || otpSending}>
+                                            {otpSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                            Send OTP
+                                        </Button>
+                                    ) : (
+                                        <Button onClick={handleVerifyAndCancel} disabled={otpVerifying || !order.canCancel}>
+                                            {otpVerifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                            Verify OTP And Cancel Order
+                                        </Button>
+                                    )
                                 )}
                             </div>
                         </div>
