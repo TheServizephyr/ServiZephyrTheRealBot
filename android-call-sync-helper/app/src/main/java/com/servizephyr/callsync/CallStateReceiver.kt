@@ -8,6 +8,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStream
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -19,7 +22,24 @@ class CallStateReceiver : BroadcastReceiver() {
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
         val incomingNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER).orEmpty()
         val config = CallSyncStore.load(context)
-        if (config.token.isBlank() || config.serverBaseUrl.isBlank()) return
+        if (!config.isSyncEnabled) {
+            CallSyncStore.saveDebugSnapshot(
+                context = context,
+                lastEvent = state,
+                lastNumber = incomingNumber,
+                lastResult = "Sync disabled"
+            )
+            return
+        }
+        if (config.token.isBlank() || config.serverBaseUrl.isBlank()) {
+            CallSyncStore.saveDebugSnapshot(
+                context = context,
+                lastEvent = state,
+                lastNumber = incomingNumber,
+                lastResult = "Missing token or server URL"
+            )
+            return
+        }
 
         val normalizedState = when (state) {
             TelephonyManager.EXTRA_STATE_RINGING -> "ringing"
@@ -28,12 +48,17 @@ class CallStateReceiver : BroadcastReceiver() {
             else -> return
         }
 
+        val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
-            pushCallEvent(config, incomingNumber, normalizedState)
+            try {
+                pushCallEvent(context, config, incomingNumber, normalizedState)
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 
-    private fun pushCallEvent(config: CallSyncConfig, phone: String, state: String) {
+    private fun pushCallEvent(context: Context, config: CallSyncConfig, phone: String, state: String) {
         val endpoint = "${config.serverBaseUrl}/api/call-sync/push"
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -56,9 +81,43 @@ class CallStateReceiver : BroadcastReceiver() {
                 writer.flush()
             }
 
-            connection.responseCode
+            val responseCode = connection.responseCode
+            val responseText = readStream(
+                if (responseCode in 200..299) connection.inputStream else connection.errorStream
+            )
+
+            val resultText = buildString {
+                append("HTTP ")
+                append(responseCode)
+                if (responseText.isNotBlank()) {
+                    append(": ")
+                    append(responseText.take(180))
+                }
+            }
+
+            CallSyncStore.saveDebugSnapshot(
+                context = context,
+                lastEvent = state,
+                lastNumber = phone,
+                lastResult = resultText
+            )
+        } catch (error: Exception) {
+            CallSyncStore.saveDebugSnapshot(
+                context = context,
+                lastEvent = state,
+                lastNumber = phone,
+                lastResult = "Error: ${error.message ?: "unknown"}"
+            )
+            throw error
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private fun readStream(stream: InputStream?): String {
+        if (stream == null) return ""
+        return BufferedReader(InputStreamReader(stream)).use { reader ->
+            reader.readText()
         }
     }
 }

@@ -38,6 +38,13 @@
             android:hint="@string/call_sync_token"
             android:inputType="textNoSuggestions" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/syncToggle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/sync_toggle_label" />
+
         <Button
             android:id="@+id/saveButton"
             android:layout_width="match_parent"
@@ -58,6 +65,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/permissions_missing" />
+
+        <TextView
+            android:id="@+id/debugText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/debug_placeholder"
+            android:textSize="13sp" />
     </LinearLayout>
 
 </ScrollView>

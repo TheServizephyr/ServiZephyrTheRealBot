@@ -5,7 +5,8 @@ import android.content.Context
 data class CallSyncConfig(
     val serverBaseUrl: String,
     val token: String,
-    val deviceId: String
+    val deviceId: String,
+    val isSyncEnabled: Boolean
 )
 
 object CallSyncStore {
@@ -13,6 +14,18 @@ object CallSyncStore {
     private const val KEY_SERVER_BASE_URL = "server_base_url"
     private const val KEY_TOKEN = "token"
     private const val KEY_DEVICE_ID = "device_id"
+    private const val KEY_SYNC_ENABLED = "sync_enabled"
+    private const val KEY_LAST_EVENT = "last_event"
+    private const val KEY_LAST_NUMBER = "last_number"
+    private const val KEY_LAST_RESULT = "last_result"
+    private const val KEY_LAST_UPDATED_AT = "last_updated_at"
+
+    data class DebugSnapshot(
+        val lastEvent: String,
+        val lastNumber: String,
+        val lastResult: String,
+        val lastUpdatedAt: Long
+    )
 
     fun load(context: Context): CallSyncConfig {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -25,7 +38,8 @@ object CallSyncStore {
         return CallSyncConfig(
             serverBaseUrl = prefs.getString(KEY_SERVER_BASE_URL, "https://servizephyr.com") ?: "https://servizephyr.com",
             token = prefs.getString(KEY_TOKEN, "") ?: "",
-            deviceId = deviceId
+            deviceId = deviceId,
+            isSyncEnabled = prefs.getBoolean(KEY_SYNC_ENABLED, true)
         )
     }
 
@@ -35,5 +49,37 @@ object CallSyncStore {
             .putString(KEY_SERVER_BASE_URL, serverBaseUrl.trim().trimEnd('/'))
             .putString(KEY_TOKEN, token.trim())
             .apply()
+    }
+
+    fun setSyncEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_SYNC_ENABLED, enabled)
+            .apply()
+    }
+
+    fun saveDebugSnapshot(
+        context: Context,
+        lastEvent: String,
+        lastNumber: String,
+        lastResult: String
+    ) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_LAST_EVENT, lastEvent)
+            .putString(KEY_LAST_NUMBER, lastNumber)
+            .putString(KEY_LAST_RESULT, lastResult)
+            .putLong(KEY_LAST_UPDATED_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun loadDebugSnapshot(context: Context): DebugSnapshot {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return DebugSnapshot(
+            lastEvent = prefs.getString(KEY_LAST_EVENT, "") ?: "",
+            lastNumber = prefs.getString(KEY_LAST_NUMBER, "") ?: "",
+            lastResult = prefs.getString(KEY_LAST_RESULT, "") ?: "",
+            lastUpdatedAt = prefs.getLong(KEY_LAST_UPDATED_AT, 0L)
+        )
     }
 }

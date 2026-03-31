@@ -5,7 +5,15 @@
     <string name="call_sync_token">Call Sync Token</string>
     <string name="save_settings">Save Settings</string>
     <string name="grant_permissions">Grant Phone Permissions</string>
+    <string name="sync_toggle_label">Enable live call sync</string>
     <string name="permissions_ready">Phone permissions granted. Incoming calls can now be synced.</string>
     <string name="permissions_missing">Phone permissions are still required.</string>
+    <string name="sync_disabled">Live call sync is turned off in this app.</string>
     <string name="settings_saved">Settings saved. Incoming call sync is configured.</string>
+    <string name="debug_heading">Debug status</string>
+    <string name="debug_placeholder">Debug details will appear here after a call event.</string>
+    <string name="debug_last_event">Last event: %1$s</string>
+    <string name="debug_last_number">Captured number: %1$s</string>
+    <string name="debug_last_result">Push result: %1$s</string>
+    <string name="debug_last_updated">Updated: %1$s</string>
 </resources>
