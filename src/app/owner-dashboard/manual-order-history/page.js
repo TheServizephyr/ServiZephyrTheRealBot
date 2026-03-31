@@ -620,7 +620,11 @@ export default function ManualOrderHistoryPage() {
                         const billBreakdown = resolveBillBreakdown(printBillData, restaurant);
                         return (
                             <BillToPrint
-                                order={{ orderDate: printBillData.printedAt || printBillData.createdAt }}
+                                order={{ 
+                                    orderDate: printBillData.printedAt || printBillData.createdAt,
+                                    customerOrderId: printBillData.customerOrderId,
+                                    id: printBillData.id || printBillData.historyId
+                                }}
                                 restaurant={restaurant}
                                 billDetails={{
                                     ...billBreakdown,
@@ -884,7 +888,16 @@ export default function ManualOrderHistoryPage() {
                                                     onClick={e => e.stopPropagation()} />
                                             </td>
                                             <td className="p-4 font-mono text-xs md:text-sm">
-                                                {bill.customerOrderId || String(bill.historyId || bill.id).slice(0, 12)}
+                                                <div className="flex items-center gap-2">
+                                                    <span className={String(bill.status || '').toLowerCase() === 'cancelled' ? 'line-through text-muted-foreground' : 'text-foreground font-medium'}>
+                                                        {bill.customerOrderId || String(bill.historyId || bill.id).slice(0, 12)}
+                                                    </span>
+                                                    {String(bill.status || '').toLowerCase() === 'cancelled' && (
+                                                        <span className="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-sm font-bold border border-red-500/20" title="Cancelled">
+                                                            ✕
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="p-4 uppercase text-xs font-semibold text-muted-foreground">
                                                 <OrderTypeCell bill={bill} onTypeChange={handleTypeDropdownChange} />
@@ -894,7 +907,9 @@ export default function ManualOrderHistoryPage() {
                                                 <div className="text-xs text-muted-foreground">{bill.customerPhone || '-'}</div>
                                             </td>
                                             <td className="p-4">{Number(bill.itemCount || 0)}</td>
-                                            <td className="p-4 font-semibold">{formatCurrency(bill.totalAmount || 0)}</td>
+                                            <td className={cn("p-4 font-semibold", String(bill.status || '').toLowerCase() === 'cancelled' && "line-through text-muted-foreground")}>
+                                                {formatCurrency(bill.totalAmount || 0)}
+                                            </td>
                                             <td className="p-4">
                                                 {!bill?.settlementEligible ? (
                                                     <span className="inline-flex items-center rounded-full border border-slate-500/40 px-2 py-1 text-xs text-slate-500">Not Required</span>

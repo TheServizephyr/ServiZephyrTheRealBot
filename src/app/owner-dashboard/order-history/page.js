@@ -625,11 +625,20 @@ export default function OrderHistoryPage() {
                                 return (
                                     <tr key={itemId} className="hover:bg-muted/40 cursor-pointer transition-colors"
                                         onClick={() => setSelectedOrder(item)}>
-                                        <td className="p-4 font-mono text-sm text-primary font-semibold">
-                                            #{item.customerOrderId || item.historyId?.substring(0,8) || itemId.substring(0, 8)}
+                                        <td className="p-4 font-mono text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn('font-semibold', String(item.status || '').toLowerCase() === 'cancelled' ? 'line-through text-muted-foreground' : 'text-primary')}>
+                                                    #{item.customerOrderId || item.historyId?.substring(0,8) || itemId.substring(0, 8)}
+                                                </span>
+                                                {String(item.status || '').toLowerCase() === 'cancelled' && (
+                                                    <span className="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-sm font-bold border border-red-500/20" title="Cancelled">✕</span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="p-4 text-sm">{item.customer || item.customerName || 'Guest'}</td>
-                                        <td className="p-4 text-sm font-semibold">₹{(item.totalAmount || 0).toFixed(0)}</td>
+                                        <td className={cn("p-4 text-sm font-semibold", String(item.status || '').toLowerCase() === 'cancelled' && "line-through text-muted-foreground")}>
+                                            ₹{(item.totalAmount || 0).toFixed(0)}
+                                        </td>
                                         <td className="p-4 text-sm text-muted-foreground">{renderTableDate(item)}</td>
                                         <td className="p-4">{getStatusBadge(item.status, item.orderType)}</td>
                                         <td className="p-4 text-center">{renderSettlementCell(item, isOnlinePrepaid)}</td>
@@ -670,9 +679,14 @@ export default function OrderHistoryPage() {
                             onClick={() => setSelectedOrder(item)}>
                             <div className="flex justify-between items-start mb-3">
                                 <div>
-                                    <p className="font-mono text-xs font-bold text-primary">
-                                        #{item.customerOrderId || item.historyId?.substring(0,8) || itemId.substring(0, 8)}
-                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <p className={cn("font-mono text-xs font-bold", String(item.status || '').toLowerCase() === 'cancelled' ? 'line-through text-muted-foreground' : 'text-primary')}>
+                                            #{item.customerOrderId || item.historyId?.substring(0,8) || itemId.substring(0, 8)}
+                                        </p>
+                                        {String(item.status || '').toLowerCase() === 'cancelled' && (
+                                            <span className="text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-sm font-bold border border-red-500/20" title="Cancelled">✕</span>
+                                        )}
+                                    </div>
                                     <p className="font-semibold text-base mt-0.5">{item.customer || item.customerName || 'Guest'}</p>
                                     <p className="text-xs text-muted-foreground mt-0.5">{renderTableDate(item)}</p>
                                     <div className="mt-1.5">{getStatusBadge(item.status, item.orderType)}</div>

@@ -3,7 +3,7 @@ import { kv } from '@vercel/kv';
 import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
-import { sendAdminSystemMessage, hashOtp, generateFourDigitOtp } from '@/lib/admin-system';
+import { sendAdminSystemMessage, hashOtp, generateFourDigitOtp, getAdminSystemConfig } from '@/lib/admin-system';
 import {
     ORDER_CANCELLATION_OTP_MAX_ATTEMPTS,
     ORDER_CANCELLATION_OTP_TTL_MINUTES,
@@ -213,8 +213,14 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Order not found for this business.' }, { status: 404 });
         }
 
+        const adminConfig = await getAdminSystemConfig(firestore);
+        const botDisplayNumber = adminConfig.botDisplayNumber || '';
+
         if (action === 'lookup') {
-            return NextResponse.json({ order: resolved.payload }, { status: 200 });
+            return NextResponse.json({ 
+                order: resolved.payload,
+                botDisplayNumber,
+            }, { status: 200 });
         }
 
         if (action !== 'request_otp') {
@@ -283,6 +289,7 @@ export async function POST(req) {
             challengeId,
             maskedPhone: `******${ownerWhatsapp.slice(-4)}`,
             order: resolved.payload,
+            botDisplayNumber,
         }, { status: 200 });
     } catch (error) {
         console.error('[Owner Order Cancellation][POST] Error:', error);

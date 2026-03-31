@@ -272,6 +272,7 @@ export async function POST(req) {
         return NextResponse.json({
             message: 'Bill history saved successfully.',
             historyId: docRef.id,
+            customerOrderId,
             duplicateRequest: false,
         });
     } catch (error) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import QRCode from 'qrcode.react';
 import { AlertTriangle, Loader2, Search } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,7 @@ export default function OrderCancellationTool({
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [justCancelled, setJustCancelled] = useState(false);
+    const [botNumber, setBotNumber] = useState('');
 
     const accessQuery = useMemo(() => {
         const params = new URLSearchParams();
@@ -83,6 +85,7 @@ export default function OrderCancellationTool({
         setError('');
         setSuccess('');
         setJustCancelled(false);
+        setBotNumber('');
     };
 
     const buildReasonPayload = () => {
@@ -121,6 +124,7 @@ export default function OrderCancellationTool({
             if (!res.ok) throw new Error(data.message || 'Order lookup failed.');
 
             setOrder(data.order || null);
+            setBotNumber(data.botDisplayNumber || '');
             setDialogOpen(true);
         } catch (lookupError) {
             setError(lookupError.message || 'Order lookup failed.');
@@ -163,6 +167,7 @@ export default function OrderCancellationTool({
 
             setChallengeId(data.challengeId || '');
             setMaskedPhone(data.maskedPhone || '');
+            setBotNumber(data.botDisplayNumber || botNumber || '');
             setSuccess(data.message || 'OTP sent successfully.');
         } catch (requestError) {
             setError(requestError.message || 'OTP request failed.');
@@ -293,48 +298,52 @@ export default function OrderCancellationTool({
                                 ) : null}
                             </div>
 
-                            <div className="rounded-xl border border-border p-4">
-                                <p className="text-sm font-semibold">Items</p>
-                                <div className="mt-3 space-y-2">
-                                    {(order.items || []).length > 0 ? (
-                                        order.items.map((item, index) => (
-                                            <div key={`${item.id || item.name}-${index}`} className="flex items-start justify-between gap-3 text-sm border-b border-border/60 pb-2 last:border-0 last:pb-0">
-                                                <div>
-                                                    <p className="font-medium">{item.quantity} x {item.name}</p>
-                                                    {item.variant ? <p className="text-xs text-muted-foreground mt-1">{item.variant}</p> : null}
+                            {order.canCancel ? (
+                                <div className="rounded-xl border border-border p-4">
+                                    <p className="text-sm font-semibold">Items</p>
+                                    <div className="mt-3 space-y-2">
+                                        {(order.items || []).length > 0 ? (
+                                            order.items.map((item, index) => (
+                                                <div key={`${item.id || item.name}-${index}`} className="flex items-start justify-between gap-3 text-sm border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                                                    <div>
+                                                        <p className="font-medium">{item.quantity} x {item.name}</p>
+                                                        {item.variant ? <p className="text-xs text-muted-foreground mt-1">{item.variant}</p> : null}
+                                                    </div>
+                                                    <span className="font-semibold">{formatCurrency(item.price)}</span>
                                                 </div>
-                                                <span className="font-semibold">{formatCurrency(item.price)}</span>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">No items found.</p>
-                                    )}
+                                            ))
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">No items found.</p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            ) : null}
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-semibold">Cancellation Reason</label>
-                                <select
-                                    value={selectedReason}
-                                    onChange={(event) => setSelectedReason(event.target.value)}
-                                    disabled={!order.canCancel || !!challengeId}
-                                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
-                                >
-                                    <option value="">Select a reason</option>
-                                    {CANCELLATION_REASON_OPTIONS.map((option) => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                </select>
-                                <Textarea
-                                    value={reasonNote}
-                                    onChange={(event) => setReasonNote(event.target.value)}
-                                    placeholder={selectedReason === 'other'
-                                        ? 'Describe the cancellation reason'
-                                        : 'Optional internal note for audit trail'}
-                                    className="min-h-[96px]"
-                                    disabled={!order.canCancel || !!challengeId}
-                                />
-                            </div>
+                            {order.canCancel ? (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold">Cancellation Reason</label>
+                                    <select
+                                        value={selectedReason}
+                                        onChange={(event) => setSelectedReason(event.target.value)}
+                                        disabled={!!challengeId}
+                                        className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                                    >
+                                        <option value="">Select a reason</option>
+                                        {CANCELLATION_REASON_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                    <Textarea
+                                        value={reasonNote}
+                                        onChange={(event) => setReasonNote(event.target.value)}
+                                        placeholder={selectedReason === 'other'
+                                            ? 'Describe the cancellation reason'
+                                            : 'Optional internal note for audit trail'}
+                                        className="min-h-[96px]"
+                                        disabled={!!challengeId}
+                                    />
+                                </div>
+                            ) : null}
 
                             {challengeId && !justCancelled ? (
                                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
@@ -345,6 +354,29 @@ export default function OrderCancellationTool({
                                         placeholder="Enter 4-digit OTP"
                                         maxLength={4}
                                     />
+                                    <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg flex gap-4 items-start">
+                                        <div className="flex-1">
+                                            <p className="text-xs text-amber-600 font-bold mb-1">OTP not received?</p>
+                                            <p className="text-[11px] text-amber-700 leading-normal">
+                                                If you don&apos;t receive the OTP, send a <strong>&quot;Hi&quot;</strong> to our WhatsApp number 
+                                                {botNumber ? <strong> {botNumber} </strong> : ' '} 
+                                                then try again. 
+                                                <br/>
+                                                <span className="opacity-80 italic">(WhatsApp doesn&apos;t allow us to send messages unless you have messaged us in the last 24 hours.)</span>
+                                            </p>
+                                        </div>
+                                        {botNumber && (
+                                            <div className="shrink-0 bg-white p-1 rounded-sm border border-amber-500/20">
+                                                <QRCode
+                                                    value={`https://wa.me/${botNumber.replace(/\D/g, '')}?text=hi`}
+                                                    size={64}
+                                                    level="L"
+                                                    includeMargin={false}
+                                                    renderAs="svg"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ) : null}
 

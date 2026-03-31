@@ -163,6 +163,7 @@ function ManualOrderPage() {
     const [additionalChargeInput, setAdditionalChargeInput] = useState('0');
     const [discountInput, setDiscountInput] = useState('0');
     const [paymentMode, setPaymentMode] = useState('cash');
+    const [lastSavedOrderData, setLastSavedOrderData] = useState(null);
 
     // State to control modal visibility
     const [isBillModalOpen, setIsBillModalOpen] = useState(false);
@@ -1423,6 +1424,12 @@ function ManualOrderPage() {
         }
         if (!data?.duplicateRequest) {
             setBillDraftId(createBillDraftId());
+            if (data?.historyId) {
+                setLastSavedOrderData({
+                    historyId: data.historyId,
+                    customerOrderId: data.customerOrderId
+                });
+            }
         }
         return data;
     };
@@ -1727,7 +1734,12 @@ function ManualOrderPage() {
                 <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
                     <div>
                         <BillToPrint
-                            order={{ orderDate: new Date(), orderType }}
+                            order={{ 
+                                orderDate: new Date(), 
+                                orderType,
+                                customerOrderId: lastSavedOrderData?.customerOrderId,
+                                id: lastSavedOrderData?.historyId
+                            }}
                             restaurant={restaurant}
                             billDetails={{ subtotal, cgst, sgst, deliveryCharge, serviceFee: additionalCharge, serviceFeeLabel: additionalChargeLabel, discount, paymentMode, grandTotal }}
                             items={cart}
@@ -2847,7 +2859,13 @@ function ManualOrderPage() {
                 <div ref={tablePrintRef} className="preview-bill">
                     {tableToPrint && tableToPrint.currentOrder && (
                         <BillToPrint
-                            order={{ orderDate: new Date(), orderType: tableToPrint.currentOrder.orderType || 'dine-in', notes: tableToPrint.currentOrder.customerDetails?.notes || '' }}
+                            order={{ 
+                                orderDate: new Date(), 
+                                orderType: tableToPrint.currentOrder.orderType || 'dine-in', 
+                                notes: tableToPrint.currentOrder.customerDetails?.notes || '',
+                                customerOrderId: lastSavedOrderData?.customerOrderId,
+                                id: lastSavedOrderData?.historyId
+                            }}
                             restaurant={restaurant}
                             billDetails={{
                                 subtotal: tableToPrint.currentOrder.subtotal,
