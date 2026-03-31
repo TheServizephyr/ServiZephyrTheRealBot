@@ -267,6 +267,7 @@ function SettingsPageContent() {
     const [isEditingPayment, setIsEditingPayment] = useState(false);
     const [isEditingGst, setIsEditingGst] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [isGeneratingCallSyncToken, setIsGeneratingCallSyncToken] = useState(false);
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
     const bannerInputRef = React.useRef(null);
@@ -277,6 +278,9 @@ function SettingsPageContent() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    const settingsQuerySuffix = impersonatedOwnerId
+        ? `?impersonate_owner_id=${impersonatedOwnerId}`
+        : (employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '');
 
 
     // ... (useEffect and other handlers same) ...
@@ -572,6 +576,43 @@ function SettingsPageContent() {
         }
     };
 
+    const handleGenerateCallSyncToken = async (rotate = false) => {
+        const currentUser = getAuth().currentUser;
+        if (!currentUser) return;
+
+        try {
+            setIsGeneratingCallSyncToken(true);
+            const idToken = await currentUser.getIdToken();
+            const response = await fetch(`/api/owner/call-sync/token${settingsQuerySuffix}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({ rotate }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || 'Failed to issue call sync token.');
+            }
+
+            const data = await response.json();
+            setUser(prev => prev ? { ...prev, callSyncToken: data.callSyncToken } : prev);
+            setEditedUser(prev => prev ? { ...prev, callSyncToken: data.callSyncToken } : prev);
+            toast({
+                title: rotate ? 'Call Sync Token Rotated' : 'Call Sync Token Ready',
+                description: 'Use this token in the Android helper app.',
+                className: 'bg-green-500 text-white border-green-600',
+            });
+        } catch (error) {
+            console.error('Error generating call sync token:', error);
+            setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+        } finally {
+            setIsGeneratingCallSyncToken(false);
+        }
+    };
+
     const handlePasswordUpdate = async (e) => {
         e.preventDefault();
         const currentUser = getAuth().currentUser;
@@ -634,10 +675,6 @@ function SettingsPageContent() {
 
     // Show business owner sections if: owner accessing their own data OR employee/admin viewing owner's data
     const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor' || !!employeeOfOwnerId || !!impersonatedOwnerId;
-    const settingsQuerySuffix = impersonatedOwnerId
-        ? `?impersonate_owner_id=${impersonatedOwnerId}`
-        : (employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '');
-
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
             <InfoDialog
@@ -725,6 +762,30 @@ function SettingsPageContent() {
                                 )}
                             </div>
                             <p className="text-[10px] text-muted-foreground mt-1">Unique identifier for your outlet.</p>
+                        </div>
+                        <div>
+                            <Label htmlFor="callSyncToken" className="flex items-center gap-2"><Phone size={14} /> Call Sync Token</Label>
+                            <div className="mt-1 w-full p-2 border rounded-md bg-muted border-border font-mono text-sm flex items-center justify-between gap-2">
+                                <span className="truncate">{user.callSyncToken || 'Not generated yet'}</span>
+                                {user.callSyncToken && (
+                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => navigator.clipboard.writeText(user.callSyncToken)}>
+                                        <div className="sr-only">Copy</div>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                <Button type="button" variant="outline" size="sm" onClick={() => handleGenerateCallSyncToken(false)} disabled={isGeneratingCallSyncToken}>
+                                    {isGeneratingCallSyncToken ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Phone className="mr-2 h-3.5 w-3.5" />}
+                                    {user.callSyncToken ? 'Refresh Token' : 'Generate Token'}
+                                </Button>
+                                {user.callSyncToken && (
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => handleGenerateCallSyncToken(true)} disabled={isGeneratingCallSyncToken}>
+                                        Rotate Token
+                                    </Button>
+                                )}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">Paste this token into the private Android call helper app to route incoming calls only to this outlet.</p>
                         </div>
                         <div>
                             <Label htmlFor="ownerName" className="flex items-center gap-2"><User size={14} /> Owner Name</Label>

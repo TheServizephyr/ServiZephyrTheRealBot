@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
+import { auth, rtdb } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import BillToPrint from '@/components/BillToPrint';
@@ -14,7 +14,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/components/ui/use-toast";
+import { onValue, ref as rtdbRef } from 'firebase/database';
 import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
+import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
+import { buildActiveCallSyncPath, isCallSyncEventFresh, normalizeIndianPhoneLoose } from '@/lib/call-sync';
 import {
     buildOwnerDashboardShortcutPath,
     navigateToShortcutPath,
@@ -176,6 +179,7 @@ function ManualOrderPage() {
     const [qtyInputMap, setQtyInputMap] = useState({}); // local display value per cartItemId
     const [itemHistory, setItemHistory] = useState([]); // Track addition order for Undo
     const [billDraftId, setBillDraftId] = useState(() => createBillDraftId());
+    const [currentBillCustomerOrderId, setCurrentBillCustomerOrderId] = useState(() => generateCustomerOrderId());
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
     const [inventoryByItemId, setInventoryByItemId] = useState({});
     const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
@@ -236,10 +240,15 @@ function ManualOrderPage() {
     const [cacheStatus, setCacheStatus] = useState('checking');
     const [businessType, setBusinessType] = useState('restaurant');
     const [isBusinessTypeResolved, setIsBusinessTypeResolved] = useState(false);
+    const [callSyncTarget, setCallSyncTarget] = useState({ businessId: '', collectionName: '' });
+    const [callSyncStatus, setCallSyncStatus] = useState('inactive');
+    const [lastLiveCallPhone, setLastLiveCallPhone] = useState('');
     const [isCustomOpenItemModalOpen, setIsCustomOpenItemModalOpen] = useState(false);
     const [customOpenItemName, setCustomOpenItemName] = useState('');
     const [customOpenItemPrice, setCustomOpenItemPrice] = useState('');
     const hasHydratedFromCacheRef = useRef(false);
+    const phoneInputFocusRef = useRef(false);
+    const lastAutoFilledPhoneRef = useRef('');
     const scrollContainerRef = useRef(null);
     const categoryRefs = useRef({});
     const searchInputRef = useRef(null);
@@ -360,6 +369,9 @@ function ManualOrderPage() {
             setBusinessType(payload.businessType);
             setIsBusinessTypeResolved(true);
         }
+        if (payload.callSyncTarget?.businessId && payload.callSyncTarget?.collectionName) {
+            setCallSyncTarget(payload.callSyncTarget);
+        }
 
         if (isStoreBusinessType(payload.businessType)) {
             (async () => {
@@ -466,8 +478,13 @@ function ManualOrderPage() {
                         if (settingsRes.ok && isMounted) {
                             const settingsData = await settingsRes.json();
                             const resolvedBusinessType = settingsData.businessType || cached?.data?.businessType || 'restaurant';
+                            const nextCallSyncTarget = {
+                                businessId: String(settingsData.businessId || '').trim(),
+                                collectionName: String(settingsData.collectionName || '').trim(),
+                            };
                             setBusinessType(resolvedBusinessType);
                             setIsBusinessTypeResolved(true);
+                            setCallSyncTarget(nextCallSyncTarget);
                             const nextRestaurantPayload = {
                                 name: settingsData.restaurantName,
                                 address: settingsData.address,
@@ -489,6 +506,7 @@ function ManualOrderPage() {
                                 ...(cached?.data || {}),
                                 restaurant: nextRestaurantPayload,
                                 businessType: resolvedBusinessType,
+                                callSyncTarget: nextCallSyncTarget,
                             });
                         }
                     } catch {
@@ -574,8 +592,13 @@ function ManualOrderPage() {
 
                     const settingsData = await settingsRes.json();
                     const settingsBusinessType = settingsData.businessType || resolvedBusinessType;
+                    const nextCallSyncTarget = {
+                        businessId: String(settingsData.businessId || '').trim(),
+                        collectionName: String(settingsData.collectionName || '').trim(),
+                    };
                     setBusinessType(settingsBusinessType);
                     setIsBusinessTypeResolved(true);
+                    setCallSyncTarget(nextCallSyncTarget);
                     const nextRestaurantPayload = {
                         name: settingsData.restaurantName,
                         address: settingsData.address,
@@ -600,6 +623,7 @@ function ManualOrderPage() {
                         openItems: dedupeOpenItems(openItemsData.items || []),
                         restaurant: nextRestaurantPayload,
                         businessType: settingsBusinessType,
+                        callSyncTarget: nextCallSyncTarget,
                         menuVersion: Number(menuData?.menuVersion || 0),
                     });
                 } catch {
@@ -627,6 +651,54 @@ function ManualOrderPage() {
             unsubscribe();
         };
     }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload, toast]);
+
+    useEffect(() => {
+        const businessId = String(callSyncTarget?.businessId || '').trim();
+        const collectionName = String(callSyncTarget?.collectionName || '').trim();
+
+        if (!businessId || !collectionName) {
+            setCallSyncStatus('inactive');
+            return undefined;
+        }
+
+        setCallSyncStatus('listening');
+        const streamRef = rtdbRef(rtdb, buildActiveCallSyncPath({ businessId, collectionName }));
+        const unsubscribe = onValue(streamRef, (snapshot) => {
+            const payload = snapshot.val();
+            if (!payload) {
+                setCallSyncStatus('listening');
+                return;
+            }
+
+            const phone = normalizeIndianPhoneLoose(payload.phone);
+            const state = String(payload.state || '').trim().toLowerCase();
+            const timestampMs = Number(payload.timestampMs || payload.updatedAt || 0);
+            const isIncoming = state === 'ringing' || state === 'incoming';
+
+            if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs)) {
+                setCallSyncStatus('listening');
+                return;
+            }
+
+            setLastLiveCallPhone(phone);
+            setCallSyncStatus('incoming');
+            setCustomerDetails((prev) => {
+                const currentPhone = normalizeIndianPhoneLoose(prev.phone);
+                const canReplaceExisting = !currentPhone || currentPhone === lastAutoFilledPhoneRef.current;
+                if (phoneInputFocusRef.current && !canReplaceExisting && currentPhone !== phone) return prev;
+                if (!canReplaceExisting && currentPhone !== phone) return prev;
+
+                lastAutoFilledPhoneRef.current = phone;
+                if (prev.phone === phone) return prev;
+                return { ...prev, phone };
+            });
+        }, (error) => {
+            console.error('[ManualOrder] Call sync listener failed:', error);
+            setCallSyncStatus('error');
+        });
+
+        return () => unsubscribe();
+    }, [callSyncTarget?.businessId, callSyncTarget?.collectionName]);
 
     const enforceCartStockLimit = useCallback((candidateItem, nextQuantity) => {
         if (candidateItem?.isAvailable === false) {
@@ -1018,6 +1090,8 @@ function ManualOrderPage() {
         setCart([]);
         setItemHistory([]);
         setBillDraftId(createBillDraftId());
+        setLastSavedOrderData(null);
+        setCurrentBillCustomerOrderId(generateCustomerOrderId());
         setCustomerDetails({ name: '', phone: '', address: '', notes: '' });
         setPhoneError(false);
         setDiscountInput('0');
@@ -1401,6 +1475,7 @@ function ManualOrderPage() {
             },
             body: JSON.stringify({
                 billDraftId,
+                customerOrderId: currentBillCustomerOrderId,
                 printedVia: typeOverride || orderType, // Use printedVia/orderType to distinguish offline types
                 customerDetails,
                 items: historyItems,
@@ -1427,7 +1502,7 @@ function ManualOrderPage() {
             if (data?.historyId) {
                 setLastSavedOrderData({
                     historyId: data.historyId,
-                    customerOrderId: data.customerOrderId
+                    customerOrderId: data.customerOrderId || currentBillCustomerOrderId
                 });
             }
         }
@@ -1737,7 +1812,7 @@ function ManualOrderPage() {
                             order={{ 
                                 orderDate: new Date(), 
                                 orderType,
-                                customerOrderId: lastSavedOrderData?.customerOrderId,
+                                customerOrderId: lastSavedOrderData?.customerOrderId || currentBillCustomerOrderId,
                                 id: lastSavedOrderData?.historyId
                             }}
                             restaurant={restaurant}
@@ -2632,6 +2707,8 @@ function ManualOrderPage() {
                                         <Label className="flex items-center gap-1.5 text-xs"><Phone size={13} /> Phone</Label>
                                         <input
                                             value={customerDetails.phone}
+                                            onFocus={() => { phoneInputFocusRef.current = true; }}
+                                            onBlur={() => { phoneInputFocusRef.current = false; }}
                                             onChange={e => {
                                                 const val = e.target.value;
                                                 setCustomerDetails({ ...customerDetails, phone: val });
@@ -2647,6 +2724,15 @@ function ManualOrderPage() {
                                             )}
                                         />
                                         {phoneError && <p className="text-[10px] font-bold text-red-500 mt-0.5 animate-pulse">INVALID PHONE NUMBER</p>}
+                                        {!phoneError && callSyncStatus === 'listening' && (
+                                            <p className="text-[10px] text-muted-foreground mt-0.5">Live call sync ready for this outlet.</p>
+                                        )}
+                                        {!phoneError && callSyncStatus === 'incoming' && lastLiveCallPhone && (
+                                            <p className="text-[10px] font-medium text-emerald-600 mt-0.5">Incoming call detected: {lastLiveCallPhone}</p>
+                                        )}
+                                        {!phoneError && callSyncStatus === 'error' && (
+                                            <p className="text-[10px] text-amber-600 mt-0.5">Live call sync unavailable right now.</p>
+                                        )}
                                     </div>
                                     {orderType === 'delivery' && (
                                         <>

@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Call Sync Helper</string>
+    <string name="helper_subtitle">Push incoming call numbers into ServiZephyr manual billing.</string>
+    <string name="server_base_url">Server Base URL</string>
+    <string name="call_sync_token">Call Sync Token</string>
+    <string name="save_settings">Save Settings</string>
+    <string name="grant_permissions">Grant Phone Permissions</string>
+    <string name="permissions_ready">Phone permissions granted. Incoming calls can now be synced.</string>
+    <string name="permissions_missing">Phone permissions are still required.</string>
+    <string name="settings_saved">Settings saved. Incoming call sync is configured.</string>
+</resources>
