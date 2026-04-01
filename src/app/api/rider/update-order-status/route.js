@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, getDatabase, verifyAndGetUid, FieldValue } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 import { kv } from '@vercel/kv';
+import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 
 function normalizeIndianPhone(value) {
     const digits = String(value || '').replace(/\D/g, '');
@@ -212,9 +213,12 @@ export async function PATCH(req) {
         const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
         if (isKvAvailable) {
             try {
-                const cacheKey = `order_status:${orderId}`;
-                await kv.del(cacheKey);
-                console.log(`[API update-order-status] ✅ Cache invalidated for ${cacheKey}`);
+                const clearedKeys = await clearOrderStatusCache(kv, {
+                    orderId,
+                    dineInTabId: orderData.dineInTabId || null,
+                    tabId: orderData.tabId || null,
+                });
+                console.log(`[API update-order-status] ✅ Cache invalidated for ${clearedKeys.join(', ') || 'none'}`);
             } catch (cacheError) {
                 console.warn('[API update-order-status] Cache invalidation failed:', cacheError);
                 // Non-fatal - order update still succeeded

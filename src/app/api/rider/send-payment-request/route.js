@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-upi-payment';
+import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 
 function getBusinessCollectionFromType(businessType = 'restaurant') {
     if (businessType === 'shop' || businessType === 'store') return 'shops';
@@ -14,11 +15,15 @@ function normalizeIndianPhone(value) {
     return digits.length >= 10 ? digits.slice(-10) : digits;
 }
 
-async function invalidateOrderStatusCache(orderId) {
+async function invalidateOrderStatusCache(orderId, orderData = {}) {
     try {
         const { kv } = await import('@vercel/kv');
         if (process.env.KV_REST_API_URL) {
-            await kv.del(`order_status:${orderId}`);
+            await clearOrderStatusCache(kv, {
+                orderId,
+                dineInTabId: orderData.dineInTabId || null,
+                tabId: orderData.tabId || null,
+            });
         }
     } catch (cacheErr) {
         console.warn('[Rider Send Payment Request] Cache invalidation failed:', cacheErr?.message || cacheErr);
@@ -132,7 +137,7 @@ export async function POST(req) {
             }
         }
 
-        await invalidateOrderStatusCache(orderId);
+        await invalidateOrderStatusCache(orderId, orderData);
 
         return NextResponse.json({
             success: true,

@@ -4,6 +4,12 @@ import { kv } from '@vercel/kv';
 import { createRequestCache } from '@/lib/requestCache';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
+import {
+    buildOrderStatusCacheKey,
+    buildOrderStatusCacheVariantKey,
+    mergeOrderStatusCachedVariant,
+    readOrderStatusCachedVariant,
+} from '@/lib/orderStatusCache';
 import { enforceRateLimit, readSignedGuestSessionCookie, verifyScopedAuthToken } from '@/lib/public-auth';
 import { recordSecurityAnomaly } from '@/lib/security/security-events';
 import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
@@ -204,13 +210,20 @@ export async function GET(request, { params }) {
         );
         const cacheVisibility = isPublicTokenAccess ? 'public' : 'private';
         const addressVisibility = canRevealCustomerAddress ? 'address' : 'masked';
-        const cacheKey = `order_status:${orderId}:${liteMode ? 'lite' : 'full'}:${cacheVisibility}:${addressVisibility}`;
+        const cacheKey = buildOrderStatusCacheKey(orderId);
+        const cacheVariantKey = buildOrderStatusCacheVariantKey({
+            liteMode,
+            cacheVisibility,
+            addressVisibility,
+        });
+        let cachedRecord = null;
 
-        if (isKvAvailable) {
+        if (isKvAvailable && cacheKey) {
             try {
-                const cachedData = await kv.get(cacheKey);
+                cachedRecord = await kv.get(cacheKey);
+                const cachedData = readOrderStatusCachedVariant(cachedRecord, cacheVariantKey);
                 if (cachedData) {
-                    console.log(`[Order Status API] ✅ Cache HIT for ${cacheKey}`);
+                    console.log(`[Order Status API] ✅ Cache HIT for ${cacheKey} (${cacheVariantKey})`);
                     return respond(cachedData, 200, {
                         'X-Cache': 'HIT',
                         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -221,7 +234,7 @@ export async function GET(request, { params }) {
                         addressVisibility,
                     });
                 }
-                console.log(`[Order Status API] ❌ Cache MISS for ${cacheKey} - Fetching from Firestore`);
+                console.log(`[Order Status API] ❌ Cache MISS for ${cacheKey} (${cacheVariantKey}) - Fetching from Firestore`);
             } catch (cacheError) {
                 console.warn('[Order Status API] Cache check failed:', cacheError);
             }
@@ -250,9 +263,13 @@ export async function GET(request, { params }) {
             };
 
             const isFinalStateLite = FINAL_STATES.includes(orderData.status);
-            if (!isFinalStateLite && isKvAvailable) {
+            if (!isFinalStateLite && isKvAvailable && cacheKey) {
                 try {
-                    await kv.set(cacheKey, litePayload, { ex: 30 });
+                    await kv.set(
+                        cacheKey,
+                        mergeOrderStatusCachedVariant(cachedRecord, cacheVariantKey, litePayload),
+                        { ex: 30 }
+                    );
                 } catch {
                     // Non-fatal
                 }
@@ -680,10 +697,14 @@ export async function GET(request, { params }) {
         }
 
         // STEP 4: ACTIVE ORDER - Cache for 60 seconds
-        if (isKvAvailable) {
+        if (isKvAvailable && cacheKey) {
             try {
-                await kv.set(cacheKey, responsePayload, { ex: 60 }); // 60 seconds TTL
-                console.log(`[Order Status API] ✅ Cached ${cacheKey} for 60 seconds (status: ${orderData.status})`);
+                await kv.set(
+                    cacheKey,
+                    mergeOrderStatusCachedVariant(cachedRecord, cacheVariantKey, responsePayload),
+                    { ex: 60 }
+                );
+                console.log(`[Order Status API] ✅ Cached ${cacheKey} (${cacheVariantKey}) for 60 seconds (status: ${orderData.status})`);
             } catch (cacheError) {
                 console.error('[Order Status API] Cache SET failed:', cacheError);
                 // Non-fatal - response will still be sent

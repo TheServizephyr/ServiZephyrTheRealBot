@@ -5,7 +5,9 @@ import { motion } from 'framer-motion';
 import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical, X } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
+import { useUser } from '@/firebase';
+import { auth, rtdb } from '@/lib/firebase';
+import { onValue, ref } from 'firebase/database';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import BillToPrint from '@/components/BillToPrint';
@@ -18,6 +20,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 import {
+    buildActiveCallSyncUserPath,
     buildCallSyncEventKey,
     dismissCallSyncEventForSession,
     isCallSyncEventFresh,
@@ -72,8 +75,9 @@ const formatSuggestionAddressPreview = (addresses = []) => {
     return firstAddress.length > 64 ? `${firstAddress.slice(0, 61)}...` : firstAddress;
 };
 const sortManualTablesByName = (tables = []) => [...tables].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
-const DESKTOP_MUTATION_TIMEOUT_MS = 2500;
-const DESKTOP_TOKEN_TIMEOUT_MS = 1200;
+const IS_DEV_BUILD = process.env.NODE_ENV !== 'production';
+const DESKTOP_MUTATION_TIMEOUT_MS = IS_DEV_BUILD ? 30000 : 2500;
+const DESKTOP_TOKEN_TIMEOUT_MS = IS_DEV_BUILD ? 5000 : 1200;
 const getTableCustomerName = (table = {}) => {
     const customerName = table?.currentOrder?.customerDetails?.name;
     return String(customerName || '').trim();
@@ -180,6 +184,7 @@ const getItemSaleOptions = (item = {}, isStoreOutlet = false) => {
 
 function ManualOrderPage() {
     const { toast } = useToast();
+    const { user } = useUser();
     const [menu, setMenu] = useState({});
     const [cart, setCart] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1301,39 +1306,28 @@ function ManualOrderPage() {
     useEffect(() => {
         const businessId = String(callSyncTarget?.businessId || '').trim();
         const collectionName = String(callSyncTarget?.collectionName || '').trim();
+        const listenerUid = String(user?.uid || '').trim();
 
-        if (!businessId || !collectionName) {
+        if (!listenerUid || !businessId || !collectionName) {
             setCallSyncStatus('inactive');
             return undefined;
         }
 
-        let isMounted = true;
-        let timeoutId = null;
-
-        const syncActiveCall = async () => {
-            try {
-                const currentUser = auth.currentUser;
-                if (!currentUser) {
-                    setCallSyncStatus('listening');
+        setCallSyncStatus('listening');
+        const callRef = ref(rtdb, buildActiveCallSyncUserPath(listenerUid));
+        const unsubscribe = onValue(
+            callRef,
+            (snapshot) => {
+                const activeCall = snapshot.exists() ? snapshot.val() : null;
+                if (!activeCall) {
+                    setCallSyncStatus(resolveCallSyncIdleState());
                     return;
                 }
 
-                const res = await fetch(buildScopedUrl('/api/owner/call-sync/active'), {
-                    cache: 'no-store',
-                    headers: {
-                        Authorization: `Bearer ${await currentUser.getIdToken()}`,
-                    },
-                });
-
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`);
-                }
-
-                const payload = await res.json();
-                if (!isMounted) return;
-
-                const activeCall = payload?.activeCall;
-                if (!activeCall) {
+                if (
+                    String(activeCall?.businessId || '').trim() !== businessId ||
+                    String(activeCall?.collectionName || '').trim() !== collectionName
+                ) {
                     setCallSyncStatus(resolveCallSyncIdleState());
                     return;
                 }
@@ -1363,24 +1357,17 @@ function ManualOrderPage() {
 
                 setPendingCallSuggestion((prev) => (prev?.callKey === callKey ? prev : nextSuggestion));
                 setCallSyncStatus('incoming');
-            } catch (error) {
-                if (!isMounted) return;
-                console.error('[ManualOrder] Call sync polling failed:', error);
+            },
+            (error) => {
+                console.error('[ManualOrder] Call sync realtime listener failed:', error);
                 setCallSyncStatus('error');
-            } finally {
-                if (!isMounted) return;
-                timeoutId = window.setTimeout(syncActiveCall, 2500);
             }
-        };
-
-        setCallSyncStatus('listening');
-        syncActiveCall();
+        );
 
         return () => {
-            isMounted = false;
-            if (timeoutId) window.clearTimeout(timeoutId);
+            unsubscribe();
         };
-    }, [activeAttachedCallForBill?.callKey, activeAttachedCallForBill?.phone, buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, resolveCallSyncIdleState]);
+    }, [activeAttachedCallForBill?.callKey, activeAttachedCallForBill?.phone, callSyncTarget?.businessId, callSyncTarget?.collectionName, resolveCallSyncIdleState, user?.uid]);
 
     useEffect(() => {
         if (!pendingCallSuggestion?.timestampMs) return undefined;

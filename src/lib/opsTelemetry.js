@@ -1,12 +1,22 @@
 import { kv } from '@vercel/kv';
 
-const TELEMETRY_ENABLED = process.env.ENABLE_OPS_TELEMETRY !== 'false';
+const TELEMETRY_ENABLED = process.env.ENABLE_OPS_TELEMETRY === 'true';
 const TELEMETRY_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
 const RECENT_ERRORS_KEY = 'telemetry:ops:errors:recent';
 const MAX_RECENT_ERRORS = 250;
 const RECENT_ORDER_CREATES_KEY = 'telemetry:ops:order_create:recent';
 const MAX_RECENT_ORDER_CREATES = 400;
 const DEFAULT_TELEMETRY_TIMEZONE = 'Asia/Kolkata';
+const INCLUDE_HOT_ENDPOINTS = process.env.OPS_TELEMETRY_INCLUDE_HOT_ENDPOINTS === 'true';
+const HOT_ENDPOINT_PREFIXES = [
+    'api.order.active',
+    'api.order.status.',
+    'api.public.menu',
+    'api.owner.orders.get',
+    'api.owner.menu.get',
+    'api.owner.dine-in-tables',
+    'api.owner.open-items',
+];
 
 const LATENCY_BUCKET_LIMITS = [100, 250, 500, 1000, 2000, 3000, 5000, 8000, 12000];
 const LATENCY_BUCKETS = [
@@ -88,6 +98,11 @@ function sanitizeEndpoint(endpoint) {
         .replace(/\s+/g, '_')
         .replace(/\|/g, ':')
         .slice(0, 160);
+}
+
+function shouldSkipEndpointTelemetry(endpointName) {
+    if (!endpointName || INCLUDE_HOT_ENDPOINTS) return false;
+    return HOT_ENDPOINT_PREFIXES.some((prefix) => endpointName === prefix || endpointName.startsWith(prefix));
 }
 
 export function normalizeFlow(flow) {
@@ -239,6 +254,7 @@ export async function trackApiTelemetry({
 
     const endpointName = sanitizeEndpoint(endpoint);
     if (!endpointName) return;
+    if (shouldSkipEndpointTelemetry(endpointName)) return;
 
     const safeDuration = Math.max(0, toInt(durationMs, 0));
     const safeStatus = Math.max(0, toInt(statusCode, 0));

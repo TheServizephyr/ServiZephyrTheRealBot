@@ -14,7 +14,8 @@ import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSqu
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/firebase";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, rtdb } from "@/lib/firebase";
+import { onValue, ref } from "firebase/database";
 import { doc, getDoc } from "firebase/firestore";
 import GoldenCoinSpinner from "@/components/GoldenCoinSpinner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -26,6 +27,7 @@ import {
   useOwnerDashboardShortcuts,
 } from "@/lib/ownerDashboardShortcuts";
 import {
+  buildActiveCallSyncUserPath,
   buildCallSyncEventKey,
   dismissCallSyncEventForSession,
   isCallSyncEventFresh,
@@ -494,39 +496,27 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     const businessId = String(callSyncTarget?.businessId || '').trim();
     const collectionName = String(callSyncTarget?.collectionName || '').trim();
+    const listenerUid = String(user?.uid || '').trim();
 
-    if (!user || !businessId || !collectionName) {
+    if (!listenerUid || !businessId || !collectionName || pathname?.startsWith('/owner-dashboard/manual-order')) {
       setIncomingCallBanner(null);
       return undefined;
     }
 
-    let isMounted = true;
-    let timeoutId = null;
-
-    const syncIncomingCall = async () => {
-      try {
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
-          if (isMounted) setIncomingCallBanner(null);
+    const callRef = ref(rtdb, buildActiveCallSyncUserPath(listenerUid));
+    const unsubscribe = onValue(
+      callRef,
+      (snapshot) => {
+        const activeCall = snapshot.exists() ? snapshot.val() : null;
+        if (!activeCall) {
+          setIncomingCallBanner(null);
           return;
         }
 
-        const res = await fetch(buildScopedOwnerUrl('/api/owner/call-sync/active'), {
-          cache: 'no-store',
-          headers: {
-            Authorization: `Bearer ${await currentUser.getIdToken()}`,
-          },
-        });
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const payload = await res.json();
-        if (!isMounted) return;
-
-        const activeCall = payload?.activeCall;
-        if (!activeCall) {
+        if (
+          String(activeCall?.businessId || '').trim() !== businessId ||
+          String(activeCall?.collectionName || '').trim() !== collectionName
+        ) {
           setIncomingCallBanner(null);
           return;
         }
@@ -546,22 +536,17 @@ function OwnerDashboardContent({ children }) {
           if (prev?.callKey === callKey) return prev;
           return { phone, timestampMs, callKey };
         });
-      } catch (error) {
-        if (!isMounted) return;
-        console.error('[OwnerDashboardLayout] Call sync polling failed:', error);
-      } finally {
-        if (!isMounted) return;
-        timeoutId = window.setTimeout(syncIncomingCall, 2500);
+      },
+      (error) => {
+        console.error('[OwnerDashboardLayout] Call sync realtime listener failed:', error);
+        setIncomingCallBanner(null);
       }
-    };
-
-    syncIncomingCall();
+    );
 
     return () => {
-      isMounted = false;
-      if (timeoutId) window.clearTimeout(timeoutId);
+      unsubscribe();
     };
-  }, [buildScopedOwnerUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, user]);
+  }, [callSyncTarget?.businessId, callSyncTarget?.collectionName, pathname, user?.uid]);
 
   useEffect(() => {
     console.log('[Layout] 🔄 useEffect triggered', { authChecked, hasUser: !!user, isUserLoading });

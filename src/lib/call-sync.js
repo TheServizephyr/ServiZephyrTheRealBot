@@ -1,4 +1,5 @@
 const CALL_SYNC_ROOT = 'call_sync';
+const CALL_SYNC_USER_ROOT = 'call_sync_user';
 const CALL_SYNC_EVENT_TTL_MS = 45 * 1000;
 const CALL_SYNC_DISMISSED_SESSION_KEY = 'servizephyr_call_sync_dismissed_keys';
 const RTDB_INVALID_KEY_CHARS = /[.#$/\[\]\u0000-\u001F\u007F]/g;
@@ -28,6 +29,9 @@ export const isCallSyncLiveSuggestionState = (state) => {
 
 export const buildActiveCallSyncPath = ({ collectionName, businessId }) =>
     `${CALL_SYNC_ROOT}/${toSafeRtdbPathKey(collectionName)}/${toSafeRtdbPathKey(businessId)}/active`;
+
+export const buildActiveCallSyncUserPath = (uid) =>
+    `${CALL_SYNC_USER_ROOT}/${toSafeRtdbPathKey(uid)}/active`;
 
 export const buildCallSyncEventKey = (phone, timestampMs) => {
     const normalizedPhone = normalizeIndianPhoneLoose(phone);
@@ -69,4 +73,4 @@ export const dismissCallSyncEventForSession = (callKey) => {
     writeDismissedCallSyncKeys(keys);
 };
 
-export { CALL_SYNC_ROOT, CALL_SYNC_EVENT_TTL_MS };
+export { CALL_SYNC_ROOT, CALL_SYNC_USER_ROOT, CALL_SYNC_EVENT_TTL_MS };

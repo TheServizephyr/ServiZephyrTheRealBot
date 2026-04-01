@@ -73,3 +73,26 @@ WHATSAPP_DIRECT_FEATURE_AUDIT.md
 diff_temp.txt
 
 ngrok.log
+.tmp-*
+backend-debug-*.log
+devserver.log
+firebase-debug.log
+frontend-debug.log
+frontend-dev.err.log
+frontend-dev.out.log
+git_log.txt
+git_status.txt
+load-test-results*.json
+load-test-summary.json
+next_dev.log
+patch.js
+patch_*.js
+recent_*.txt
+remote_commits.txt
+restore_result*.json
+cancel-loadtest-orders.js
+check_conversation_state.js
+debug_full.json
+reset_8922_state.js
+servizephyr-dinein-load-test.js
+verify_capacity.js

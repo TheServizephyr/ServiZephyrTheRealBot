@@ -1,6 +1,7 @@
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import { kv } from '@vercel/kv'; // ✅ For cache invalidation
+import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
@@ -226,13 +227,16 @@ export async function POST(req) {
         }
 
         // ✅ CACHE INVALIDATION: Clear cached order status
-        const cacheKey = `order_status:${orderId}`;
         const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
 
         if (isKvAvailable) {
             try {
-                await kv.del(cacheKey);
-                console.log(`[API /order/cancel] 🗑️ Cleared cache: ${cacheKey}`);
+                const clearedKeys = await clearOrderStatusCache(kv, {
+                    orderId,
+                    dineInTabId: effectiveDineInTabId,
+                    tabId: orderData.tabId || null,
+                });
+                console.log(`[API /order/cancel] 🗑️ Cleared cache keys: ${clearedKeys.join(', ') || 'none'}`);
             } catch (cacheError) {
                 console.warn('[API /order/cancel] Failed to clear cache:', cacheError);
                 // Don't fail the cancel operation if cache clear fails

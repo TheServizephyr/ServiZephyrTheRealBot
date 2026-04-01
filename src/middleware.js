@@ -52,7 +52,9 @@ function getVisitorId(request, ipAddress) {
   return `anon:${hashValue(`${ipAddress}:${userAgent}`)}`;
 }
 
-function classifyRequest(pathname) {
+function classifyRequest(pathname, method = 'GET') {
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+
   if (
     pathname.startsWith('/api/webhooks') ||
     pathname.startsWith('/api/cron') ||
@@ -68,37 +70,26 @@ function classifyRequest(pathname) {
     pathname.startsWith('/api/customer/lookup') ||
     pathname.startsWith('/api/auth/verify-token')
   ) {
-    return { kind: 'api', bucket: 'sensitive-public-api', actorLimit: 30, ipLimit: 90 };
+    // These hot public endpoints already enforce their own per-route limiter,
+    // so duplicating Redis-backed middleware limits here just burns command quota.
+    return null;
   }
 
   if (pathname.startsWith('/api/auth')) {
     return { kind: 'api', bucket: 'auth-api', actorLimit: 20, ipLimit: 60 };
   }
 
-  if (pathname.startsWith('/api/')) {
-    return { kind: 'api', bucket: 'api', actorLimit: 80, ipLimit: 240 };
+  if (!pathname.startsWith('/api/')) {
+    return null;
   }
 
-  if (
-    pathname.startsWith('/owner-dashboard') ||
-    pathname.startsWith('/customer-dashboard') ||
-    pathname.startsWith('/employee-dashboard') ||
-    pathname.startsWith('/rider-dashboard') ||
-    pathname.startsWith('/admin-dashboard')
-  ) {
-    return { kind: 'page', bucket: 'dashboard-page', actorLimit: 90, ipLimit: 300 };
+  // Keep Redis-backed protection for auth and sensitive public APIs, but
+  // avoid burning command quota on routine read traffic and dashboard pages.
+  if (normalizedMethod === 'GET') {
+    return null;
   }
 
-  if (
-    pathname.startsWith('/order/') ||
-    pathname.startsWith('/track/') ||
-    pathname.startsWith('/checkout') ||
-    pathname.startsWith('/join/')
-  ) {
-    return { kind: 'page', bucket: 'public-page', actorLimit: 60, ipLimit: 180 };
-  }
-
-  return { kind: 'page', bucket: 'general-page', actorLimit: 120, ipLimit: 360 };
+  return { kind: 'api', bucket: 'api-write', actorLimit: 80, ipLimit: 240 };
 }
 
 function cleanupBuckets(now) {
@@ -188,7 +179,7 @@ export async function middleware(request) {
     return NextResponse.next();
   }
 
-  const policy = classifyRequest(request.nextUrl.pathname);
+  const policy = classifyRequest(request.nextUrl.pathname, request.method);
   if (!policy) {
     return NextResponse.next();
   }
@@ -212,7 +203,5 @@ export async function middleware(request) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|woff|woff2)$).*)',
-  ],
+  matcher: ['/api/:path*'],
 };

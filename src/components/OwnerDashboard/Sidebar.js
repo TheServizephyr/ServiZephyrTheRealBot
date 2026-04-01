@@ -654,7 +654,14 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     if (!badgeMonitoringReady) return;
 
     let intervalId = null;
+    let unsubscribe = () => { };
     let isMounted = true;
+
+    const setCountSafely = (count) => {
+      if (isMounted) {
+        setDineInServiceRequestsCount(Math.max(0, Number(count) || 0));
+      }
+    };
 
     const fetchServiceRequestCount = async () => {
       try {
@@ -671,25 +678,63 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         });
 
         if (!res.ok) {
-          if (isMounted) setDineInServiceRequestsCount(0);
+          setCountSafely(0);
           return;
         }
 
         const data = await res.json();
-        if (isMounted) {
-          setDineInServiceRequestsCount(Array.isArray(data?.requests) ? data.requests.length : 0);
-        }
+        setCountSafely(Array.isArray(data?.requests) ? data.requests.length : 0);
       } catch (error) {
         console.error('Error fetching dine-in service requests count:', error);
-        if (isMounted) setDineInServiceRequestsCount(0);
+        setCountSafely(0);
       }
     };
 
-    fetchServiceRequestCount();
-    intervalId = setInterval(fetchServiceRequestCount, desktopRuntime ? 45000 : 15000);
+    const startPollingFallback = async () => {
+      await fetchServiceRequestCount();
+      if (!intervalId) {
+        intervalId = setInterval(fetchServiceRequestCount, desktopRuntime ? 90000 : 60000);
+      }
+    };
+
+    const setupListener = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user || !isMounted) return;
+
+        if (impersonatedOwnerId) {
+          await startPollingFallback();
+          return;
+        }
+
+        const business = await resolveOwnedBusiness(user.uid, 'restaurant');
+        if (!business?.id) {
+          setCountSafely(0);
+          return;
+        }
+
+        const serviceRequestsQuery = query(
+          collection(db, 'restaurants', business.id, 'serviceRequests'),
+          where('status', '==', 'pending')
+        );
+
+        unsubscribe = onSnapshot(serviceRequestsQuery, (snapshot) => {
+          setCountSafely(snapshot.size);
+        }, (error) => {
+          console.error('Error listening to dine-in service requests count:', error);
+          void startPollingFallback();
+        });
+      } catch (error) {
+        console.error('Error setting up dine-in service requests listener:', error);
+        void startPollingFallback();
+      }
+    };
+
+    setupListener();
 
     return () => {
       isMounted = false;
+      unsubscribe();
       if (intervalId) clearInterval(intervalId);
     };
   }, [badgeMonitoringReady, businessType, desktopRuntime, impersonatedOwnerId, employeeOfOwnerId]);

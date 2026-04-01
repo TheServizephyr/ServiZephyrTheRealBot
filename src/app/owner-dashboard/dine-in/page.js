@@ -1944,7 +1944,7 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall }) => {
 };
 
 
-const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, compact = false }) => {
+const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restaurantId, compact = false }) => {
     const [requests, setRequests] = useState([]);
     const [isExpanded, setIsExpanded] = useState(true);
 
@@ -1971,25 +1971,79 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, compact =
         const user = auth.currentUser;
         if (!user) return;
 
+        let unsubscribe = () => { };
+        let interval = null;
+        let isMounted = true;
+
+        const setRequestsSafely = (nextRequests) => {
+            if (!isMounted) return;
+            setRequests(Array.isArray(nextRequests) ? nextRequests : []);
+        };
+
         const fetchRequests = async () => {
-            const idToken = await user.getIdToken();
-            let url = new URL('/api/owner/service-requests', window.location.origin);
-            if (impersonatedOwnerId) {
-                url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-            } else if (employeeOfOwnerId) {
-                url.searchParams.append('employee_of', employeeOfOwnerId);
-            }
-            const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
-            if (res.ok) {
+            try {
+                const idToken = await user.getIdToken();
+                let url = new URL('/api/owner/service-requests', window.location.origin);
+                if (impersonatedOwnerId) {
+                    url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+                } else if (employeeOfOwnerId) {
+                    url.searchParams.append('employee_of', employeeOfOwnerId);
+                }
+                const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+                if (!res.ok) {
+                    setRequestsSafely([]);
+                    return;
+                }
                 const data = await res.json();
-                setRequests(data.requests || []);
+                setRequestsSafely(data.requests || []);
+            } catch (error) {
+                console.error('Failed to fetch live service requests:', error);
+                setRequestsSafely([]);
             }
         };
 
-        fetchRequests();
-        const interval = setInterval(fetchRequests, 15000);
-        return () => clearInterval(interval);
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+        const startPollingFallback = async () => {
+            await fetchRequests();
+            if (!interval) {
+                interval = setInterval(fetchRequests, 60000);
+            }
+        };
+
+        if (!impersonatedOwnerId && !employeeOfOwnerId && restaurantId) {
+            const serviceRequestsQuery = query(
+                collection(db, 'restaurants', restaurantId, 'serviceRequests'),
+                where('status', '==', 'pending')
+            );
+
+            unsubscribe = onSnapshot(serviceRequestsQuery, (snapshot) => {
+                const nextRequests = snapshot.docs
+                    .map((requestDoc) => {
+                        const data = requestDoc.data() || {};
+                        const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : null);
+                        return {
+                            id: requestDoc.id,
+                            ...data,
+                            createdAt: createdAtDate && !Number.isNaN(createdAtDate.getTime())
+                                ? createdAtDate.toISOString()
+                                : new Date().toISOString(),
+                        };
+                    })
+                    .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
+                setRequestsSafely(nextRequests);
+            }, (error) => {
+                console.error('Failed to subscribe to live service requests:', error);
+                void startPollingFallback();
+            });
+        } else {
+            void startPollingFallback();
+        }
+
+        return () => {
+            isMounted = false;
+            unsubscribe();
+            if (interval) clearInterval(interval);
+        };
+    }, [employeeOfOwnerId, impersonatedOwnerId, restaurantId]);
 
 
     if (requests.length === 0 && !isExpanded) return null;
@@ -2687,7 +2741,7 @@ const DineInPageContent = () => {
 
     // Adaptive Polling for data
     usePolling(fetchData, {
-        interval: 15000,
+        interval: 60000,
         enabled: businessType === 'restaurant' && !!(impersonatedOwnerId || employeeOfOwnerId),
         deps: [impersonatedOwnerId, employeeOfOwnerId, businessType]
     });
@@ -3671,7 +3725,12 @@ const DineInPageContent = () => {
                     <div />
                 )}
                 <div className="w-full">
-                    <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} employeeOfOwnerId={employeeOfOwnerId} compact />
+                    <LiveServiceRequests
+                        impersonatedOwnerId={impersonatedOwnerId}
+                        employeeOfOwnerId={employeeOfOwnerId}
+                        restaurantId={restaurantDetails?.id}
+                        compact
+                    />
                 </div>
             </div>
 

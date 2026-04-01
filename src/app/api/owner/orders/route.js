@@ -10,6 +10,7 @@ import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-
 import Razorpay from 'razorpay';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
+import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 
 
@@ -638,7 +639,11 @@ export async function PATCH(req) {
             try {
                 const { kv } = await import('@vercel/kv');
                 if (process.env.KV_REST_API_URL) {
-                    await kv.del(`order_status:${targetOrderId}`);
+                    await clearOrderStatusCache(kv, {
+                        orderId: targetOrderId,
+                        dineInTabId: targetOrder?.dineInTabId || null,
+                        tabId: targetOrder?.tabId || null,
+                    });
                 }
             } catch (cacheErr) {
                 console.warn('[Owner Orders] Payment request cache invalidation failed:', cacheErr?.message || cacheErr);
@@ -725,7 +730,11 @@ export async function PATCH(req) {
             try {
                 const { kv } = await import('@vercel/kv');
                 if (process.env.KV_REST_API_URL) {
-                    await kv.del(`order_status:${targetOrderId}`);
+                    await clearOrderStatusCache(kv, {
+                        orderId: targetOrderId,
+                        dineInTabId: targetOrder?.dineInTabId || null,
+                        tabId: targetOrder?.tabId || null,
+                    });
                 }
             } catch (cacheErr) {
                 console.warn('[Owner Orders] Mark-paid cache invalidation failed:', cacheErr?.message || cacheErr);
@@ -1054,7 +1063,11 @@ export async function PATCH(req) {
                         // E. Cache Invalidation (KV)
                         const { kv } = await import('@vercel/kv');
                         if (process.env.KV_REST_API_URL) {
-                            effects.push(kv.del(`order_status:${id}`));
+                            effects.push(clearOrderStatusCache(kv, {
+                                orderId: id,
+                                dineInTabId: orderData.dineInTabId || null,
+                                tabId: orderData.tabId || null,
+                            }));
                         }
 
                         // F. Auto-Cleanup Dine-In Tabs on Cancellation/Rejection

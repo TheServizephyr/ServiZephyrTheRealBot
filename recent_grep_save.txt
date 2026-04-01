@@ -1,4 +1,0 @@
-
-src\app\owner-dashboard\manual-order\page.js:1474:            if (!res.ok) throw new Error('Failed to save to table');
-src\app\owner-dashboard\manual-order\page.js:2791:                                    {tableActionLoading ? 'Saving...' : 'Save to Table'}
-

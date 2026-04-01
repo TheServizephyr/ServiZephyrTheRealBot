@@ -14,6 +14,7 @@ import {
     createOtpChallenge,
     canOwnerCancelOnlineOrder,
 } from '@/lib/order-cancellation';
+import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 
 export const dynamic = 'force-dynamic';
@@ -173,7 +174,11 @@ async function cancelOnlineOrder({
 
     if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
         try {
-            await kv.del(`order_status:${orderDoc.id}`);
+            await clearOrderStatusCache(kv, {
+                orderId: orderDoc.id,
+                dineInTabId: data.dineInTabId || null,
+                tabId: data.tabId || null,
+            });
         } catch (error) {
             console.warn('[Order Cancellation] Cache clear failed:', error?.message || error);
         }
