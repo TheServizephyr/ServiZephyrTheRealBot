@@ -1,4 +1,5 @@
 import { getAdminSystemConfig, sendAdminSystemMessage } from '@/lib/admin-system';
+import { DEFAULT_TIMEZONE, parseHHMMToMinutes } from '@/lib/businessSchedule';
 
 const LOST_ORDER_STATUSES = new Set(['rejected', 'cancelled', 'failed_delivery', 'returned_to_restaurant']);
 const REPORT_KEYS = {
@@ -18,7 +19,7 @@ const REPORT_MENU = [
     { number: '4', key: REPORT_KEYS.TODAY_ANALYTICS, label: "Today's Analytics" },
     { number: '5', key: REPORT_KEYS.LAST_7_DAYS_ANALYTICS, label: 'Last 7 Days Analytics' },
     { number: '6', key: REPORT_KEYS.MONTHLY_SALES, label: 'Monthly Sales' },
-    { number: '7', key: REPORT_KEYS.CANCELLED_BILLS, label: 'Cancelled Bills (This Month)' },
+    { number: '7', key: REPORT_KEYS.CANCELLED_BILLS, label: "Today's Cancelled Bills" },
 ];
 
 const normalizePhone = (value) => {
@@ -59,29 +60,52 @@ const isLostOrder = (status) => LOST_ORDER_STATUSES.has(String(status || '').tri
 const isManualCallOrder = (order = {}) =>
     order?.isManualCallOrder === true || String(order?.orderSource || '').trim().toLowerCase() === 'manual_call';
 
-const getDayRange = () => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+const setTimeFromMinutes = (date, minutes) => {
+    const next = new Date(date);
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    next.setHours(hrs, mins, 0, 0);
+    return next;
 };
 
-const getLastNDaysRange = (days) => {
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - (days - 1));
-    return { start, end };
-};
-
-const getCurrentMonthRange = () => {
+const getBusinessDayRange = (business = {}) => {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const openingMinutes = parseHHMMToMinutes(business?.data?.openingTime);
+    const closingMinutes = parseHHMMToMinutes(business?.data?.closingTime);
+
+    if (openingMinutes !== null && closingMinutes !== null) {
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const overnight = openingMinutes > closingMinutes;
+        let startBase = new Date(now);
+
+        if (overnight && nowMinutes < closingMinutes) {
+            startBase.setDate(startBase.getDate() - 1);
+        }
+
+        const start = setTimeFromMinutes(startBase, openingMinutes);
+        return { start, end: now, timezone: business?.data?.timeZone || business?.data?.timezone || DEFAULT_TIMEZONE };
+    }
+
+    const start = new Date(now);
+    start.setHours(4, 0, 0, 0);
+    if (now < start) {
+        start.setDate(start.getDate() - 1);
+    }
+    return { start, end: now, timezone: business?.data?.timeZone || business?.data?.timezone || DEFAULT_TIMEZONE };
+};
+
+const getLastNDaysRange = (business, days) => {
+    const businessDay = getBusinessDayRange(business);
+    const start = new Date(businessDay.start);
+    start.setDate(start.getDate() - (days - 1));
+    return { start, end: businessDay.end, timezone: businessDay.timezone };
+};
+
+const getCalendarMonthRange = () => {
+    const end = new Date();
     end.setHours(23, 59, 59, 999);
+    const start = new Date(end.getFullYear(), end.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
     return { start, end };
 };
 
@@ -324,6 +348,19 @@ function buildAnalyticsReportText({ title, businessName, metrics }) {
     ].join('\n');
 }
 
+const buildBusinessDayNote = (business = {}) => {
+    const opening = String(business?.data?.openingTime || '').trim();
+    const closing = String(business?.data?.closingTime || '').trim();
+    if (opening && closing) {
+        const openingMinutes = parseHHMMToMinutes(opening);
+        const closingMinutes = parseHHMMToMinutes(closing);
+        if (openingMinutes !== null && closingMinutes !== null && openingMinutes > closingMinutes) {
+            return `Business day follows your schedule (${opening} to ${closing}), so late-night orders after midnight are counted in the same trading day.`;
+        }
+    }
+    return 'If your outlet runs late night, reports use a 4:00 AM business-day cutoff by default.';
+};
+
 function buildUnsettledReportText({ businessName, summary }) {
     const recentLines = summary.recentBills.length
         ? summary.recentBills
@@ -345,7 +382,7 @@ function buildUnsettledReportText({ businessName, summary }) {
 
 function buildCancelledReportText({ businessName, metrics }) {
     return [
-        '*Cancelled Bills (This Month)*',
+        "*Today's Cancelled Bills*",
         businessName,
         '',
         `Cancelled Count: ${metrics.cancelledOrders}`,
@@ -360,11 +397,15 @@ async function buildReportText({ firestore, business, reportKey }) {
 
     switch (reportKey) {
         case REPORT_KEYS.TODAY_SALES: {
-            const metrics = await loadPeriodMetrics({ firestore, business, ...getDayRange() });
-            return buildSalesReportText({ title: "Today's Sales", businessName, metrics });
+            const metrics = await loadPeriodMetrics({ firestore, business, ...getBusinessDayRange(business) });
+            return [
+                buildSalesReportText({ title: "Today's Sales", businessName, metrics }),
+                '',
+                buildBusinessDayNote(business),
+            ].join('\n');
         }
         case REPORT_KEYS.LAST_7_DAYS_SALES: {
-            const metrics = await loadPeriodMetrics({ firestore, business, ...getLastNDaysRange(7) });
+            const metrics = await loadPeriodMetrics({ firestore, business, ...getLastNDaysRange(business, 7) });
             return buildSalesReportText({ title: 'Last 7 Days Sales', businessName, metrics });
         }
         case REPORT_KEYS.UNSETTLED_BILLS: {
@@ -372,19 +413,23 @@ async function buildReportText({ firestore, business, reportKey }) {
             return buildUnsettledReportText({ businessName, summary });
         }
         case REPORT_KEYS.TODAY_ANALYTICS: {
-            const metrics = await loadPeriodMetrics({ firestore, business, ...getDayRange() });
-            return buildAnalyticsReportText({ title: "Today's Analytics", businessName, metrics });
+            const metrics = await loadPeriodMetrics({ firestore, business, ...getBusinessDayRange(business) });
+            return [
+                buildAnalyticsReportText({ title: "Today's Analytics", businessName, metrics }),
+                '',
+                buildBusinessDayNote(business),
+            ].join('\n');
         }
         case REPORT_KEYS.LAST_7_DAYS_ANALYTICS: {
-            const metrics = await loadPeriodMetrics({ firestore, business, ...getLastNDaysRange(7) });
+            const metrics = await loadPeriodMetrics({ firestore, business, ...getLastNDaysRange(business, 7) });
             return buildAnalyticsReportText({ title: 'Last 7 Days Analytics', businessName, metrics });
         }
         case REPORT_KEYS.MONTHLY_SALES: {
-            const metrics = await loadPeriodMetrics({ firestore, business, ...getCurrentMonthRange() });
+            const metrics = await loadPeriodMetrics({ firestore, business, ...getCalendarMonthRange() });
             return buildSalesReportText({ title: 'Monthly Sales', businessName, metrics });
         }
         case REPORT_KEYS.CANCELLED_BILLS: {
-            const metrics = await loadPeriodMetrics({ firestore, business, ...getCurrentMonthRange() });
+            const metrics = await loadPeriodMetrics({ firestore, business, ...getBusinessDayRange(business) });
             return buildCancelledReportText({ businessName, metrics });
         }
         default:
