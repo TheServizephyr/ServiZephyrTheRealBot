@@ -29,6 +29,7 @@ import {
   buildCallSyncEventKey,
   dismissCallSyncEventForSession,
   isCallSyncEventFresh,
+  isCallSyncLiveSuggestionState,
   isDismissedCallSyncEvent,
   normalizeIndianPhoneLoose,
 } from "@/lib/call-sync";
@@ -465,7 +466,7 @@ function OwnerDashboardContent({ children }) {
         const state = String(activeCall.state || '').trim().toLowerCase();
         const timestampMs = Number(activeCall.timestampMs || activeCall.updatedAt || 0);
         const callKey = buildCallSyncEventKey(phone, timestampMs);
-        const isIncoming = state === 'ringing' || state === 'incoming';
+        const isIncoming = isCallSyncLiveSuggestionState(state);
 
         if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs) || !callKey || isDismissedCallSyncEvent(callKey)) {
           setIncomingCallBanner(null);

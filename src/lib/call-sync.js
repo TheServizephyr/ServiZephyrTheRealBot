@@ -1,5 +1,5 @@
 const CALL_SYNC_ROOT = 'call_sync';
-const CALL_SYNC_EVENT_TTL_MS = 30 * 1000;
+const CALL_SYNC_EVENT_TTL_MS = 45 * 1000;
 const CALL_SYNC_DISMISSED_SESSION_KEY = 'servizephyr_call_sync_dismissed_keys';
 const RTDB_INVALID_KEY_CHARS = /[.#$/\[\]\u0000-\u001F\u007F]/g;
 
@@ -19,6 +19,11 @@ export const isCallSyncEventFresh = (timestampMs, ttlMs = CALL_SYNC_EVENT_TTL_MS
     const ts = Number(timestampMs || 0);
     if (!Number.isFinite(ts) || ts <= 0) return false;
     return (Date.now() - ts) <= ttlMs;
+};
+
+export const isCallSyncLiveSuggestionState = (state) => {
+    const normalized = String(state || '').trim().toLowerCase();
+    return normalized === 'ringing' || normalized === 'incoming' || normalized === 'offhook';
 };
 
 export const buildActiveCallSyncPath = ({ collectionName, businessId }) =>

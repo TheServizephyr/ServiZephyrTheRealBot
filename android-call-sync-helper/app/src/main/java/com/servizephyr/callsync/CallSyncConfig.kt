@@ -7,16 +7,25 @@ data class CallSyncConfig(
     val backupServerBaseUrl: String,
     val token: String,
     val deviceId: String,
-    val isSyncEnabled: Boolean
+    val isSyncEnabled: Boolean,
+    val isScheduleEnabled: Boolean,
+    val openMinutes: Int,
+    val closeMinutes: Int
 )
 
 object CallSyncStore {
+    const val DEFAULT_SERVER_BASE_URL = "https://servizephyr.com"
+    const val DEFAULT_BACKUP_SERVER_BASE_URL = "https://servi-zephyr-the-real-bot.vercel.app"
+
     private const val PREFS = "call_sync_helper"
     private const val KEY_SERVER_BASE_URL = "server_base_url"
     private const val KEY_BACKUP_SERVER_BASE_URL = "backup_server_base_url"
     private const val KEY_TOKEN = "token"
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_SYNC_ENABLED = "sync_enabled"
+    private const val KEY_SCHEDULE_ENABLED = "schedule_enabled"
+    private const val KEY_OPEN_MINUTES = "open_minutes"
+    private const val KEY_CLOSE_MINUTES = "close_minutes"
     private const val KEY_LAST_EVENT = "last_event"
     private const val KEY_LAST_NUMBER = "last_number"
     private const val KEY_LAST_RESULT = "last_result"
@@ -38,15 +47,26 @@ object CallSyncStore {
         }
 
         return CallSyncConfig(
-            serverBaseUrl = prefs.getString(KEY_SERVER_BASE_URL, "https://servizephyr.com") ?: "https://servizephyr.com",
-            backupServerBaseUrl = prefs.getString(KEY_BACKUP_SERVER_BASE_URL, "") ?: "",
+            serverBaseUrl = prefs.getString(KEY_SERVER_BASE_URL, DEFAULT_SERVER_BASE_URL) ?: DEFAULT_SERVER_BASE_URL,
+            backupServerBaseUrl = prefs.getString(KEY_BACKUP_SERVER_BASE_URL, DEFAULT_BACKUP_SERVER_BASE_URL) ?: DEFAULT_BACKUP_SERVER_BASE_URL,
             token = prefs.getString(KEY_TOKEN, "") ?: "",
             deviceId = deviceId,
-            isSyncEnabled = prefs.getBoolean(KEY_SYNC_ENABLED, true)
+            isSyncEnabled = prefs.getBoolean(KEY_SYNC_ENABLED, true),
+            isScheduleEnabled = prefs.getBoolean(KEY_SCHEDULE_ENABLED, false),
+            openMinutes = prefs.getInt(KEY_OPEN_MINUTES, 10 * 60),
+            closeMinutes = prefs.getInt(KEY_CLOSE_MINUTES, 23 * 60)
         )
     }
 
-    fun save(context: Context, serverBaseUrl: String, backupServerBaseUrl: String, token: String) {
+    fun save(
+        context: Context,
+        serverBaseUrl: String,
+        backupServerBaseUrl: String,
+        token: String,
+        isScheduleEnabled: Boolean,
+        openMinutes: Int,
+        closeMinutes: Int
+    ) {
         val normalizedBaseUrl = normalizeServerBaseUrl(serverBaseUrl)
         val normalizedBackupUrl = normalizeServerBaseUrl(backupServerBaseUrl)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -54,6 +74,9 @@ object CallSyncStore {
             .putString(KEY_SERVER_BASE_URL, normalizedBaseUrl)
             .putString(KEY_BACKUP_SERVER_BASE_URL, normalizedBackupUrl)
             .putString(KEY_TOKEN, token.trim())
+            .putBoolean(KEY_SCHEDULE_ENABLED, isScheduleEnabled)
+            .putInt(KEY_OPEN_MINUTES, openMinutes)
+            .putInt(KEY_CLOSE_MINUTES, closeMinutes)
             .apply()
     }
 
@@ -73,11 +96,6 @@ object CallSyncStore {
         add(config.serverBaseUrl)
         add(config.backupServerBaseUrl)
 
-        if (config.serverBaseUrl.contains("servizephyr.com", ignoreCase = true)) {
-            candidates.add("https://servizephyr.com")
-            candidates.add("https://www.servizephyr.com")
-        }
-
         return candidates.toList()
     }
 
@@ -86,6 +104,18 @@ object CallSyncStore {
             .edit()
             .putBoolean(KEY_SYNC_ENABLED, enabled)
             .apply()
+    }
+
+    fun isWithinOperatingHours(config: CallSyncConfig, currentMinutes: Int): Boolean {
+        if (!config.isScheduleEnabled) return true
+        val open = config.openMinutes.coerceIn(0, 1439)
+        val close = config.closeMinutes.coerceIn(0, 1439)
+        if (open == close) return true
+        return if (open < close) {
+            currentMinutes in open until close
+        } else {
+            currentMinutes >= open || currentMinutes < close
+        }
     }
 
     fun saveDebugSnapshot(
@@ -113,3 +143,4 @@ object CallSyncStore {
         )
     }
 }
+

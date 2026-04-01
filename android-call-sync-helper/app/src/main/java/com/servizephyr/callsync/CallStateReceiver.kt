@@ -7,6 +7,7 @@ import android.telephony.TelephonyManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 class CallStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,6 +31,19 @@ class CallStateReceiver : BroadcastReceiver() {
                 lastEvent = state,
                 lastNumber = incomingNumber,
                 lastResult = "Missing token or server URL"
+            )
+            return
+        }
+
+        val currentMinutes = Calendar.getInstance().let {
+            (it.get(Calendar.HOUR_OF_DAY) * 60) + it.get(Calendar.MINUTE)
+        }
+        if (!CallSyncStore.isWithinOperatingHours(config, currentMinutes)) {
+            CallSyncStore.saveDebugSnapshot(
+                context = context,
+                lastEvent = state,
+                lastNumber = incomingNumber,
+                lastResult = "Outside restaurant hours"
             )
             return
         }

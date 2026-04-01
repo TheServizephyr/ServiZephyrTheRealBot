@@ -20,6 +20,7 @@ import {
     buildCallSyncEventKey,
     dismissCallSyncEventForSession,
     isCallSyncEventFresh,
+    isCallSyncLiveSuggestionState,
     isDismissedCallSyncEvent,
     normalizeIndianPhoneLoose,
 } from '@/lib/call-sync';
@@ -1097,7 +1098,7 @@ function ManualOrderPage() {
                 const phone = normalizeIndianPhoneLoose(activeCall.phone);
                 const state = String(activeCall.state || '').trim().toLowerCase();
                 const timestampMs = Number(activeCall.timestampMs || activeCall.updatedAt || 0);
-                const isIncoming = state === 'ringing' || state === 'incoming';
+                const isIncoming = isCallSyncLiveSuggestionState(state);
                 const callKey = buildCallSyncEventKey(phone, timestampMs);
 
                 if (!isIncoming || phone.length !== 10 || !isCallSyncEventFresh(timestampMs)) {
@@ -3270,6 +3271,11 @@ function ManualOrderPage() {
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><User size={13} /> Name</Label>
                                         <input
+                                            name="manual-order-customer-name"
+                                            autoComplete="off"
+                                            autoCorrect="off"
+                                            autoCapitalize="words"
+                                            spellCheck={false}
                                             value={customerDetails.name}
                                             onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })}
                                             className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border"
@@ -3279,6 +3285,11 @@ function ManualOrderPage() {
                                         <Label className="flex items-center gap-1.5 text-xs"><Phone size={13} /> Phone</Label>
                                         <div className="relative" ref={phoneSuggestionBoxRef}>
                                             <input
+                                                name="manual-order-customer-phone"
+                                                autoComplete="off"
+                                                autoCorrect="off"
+                                                autoCapitalize="off"
+                                                spellCheck={false}
                                                 value={customerDetails.phone}
                                                 onFocus={() => {
                                                     phoneInputFocusRef.current = true;
@@ -3365,6 +3376,12 @@ function ManualOrderPage() {
                                                 <Label className="flex items-center gap-1.5 text-xs"><MapPin size={13} /> Address</Label>
                                                 <div className="relative" ref={addressSuggestionBoxRef}>
                                                     <textarea
+                                                        name="manual-order-customer-address"
+                                                        autoComplete="new-password"
+                                                        autoCorrect="off"
+                                                        autoCapitalize="sentences"
+                                                        spellCheck={false}
+                                                        data-form-type="other"
                                                         rows={2}
                                                         value={customerDetails.address}
                                                         onFocus={() => {

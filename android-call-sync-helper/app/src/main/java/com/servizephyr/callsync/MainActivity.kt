@@ -1,33 +1,49 @@
 package com.servizephyr.callsync
 
 import android.Manifest
+import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
+import android.text.format.DateFormat as AndroidDateFormat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.text.DateFormat
+import java.util.Calendar
 import java.util.Date
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var serverInput: EditText
-    private lateinit var backupServerInput: EditText
     private lateinit var tokenInput: EditText
     private lateinit var syncPowerButton: ImageButton
     private lateinit var syncButtonCard: MaterialCardView
+    private lateinit var settingsCard: MaterialCardView
     private lateinit var statusText: TextView
     private lateinit var statusLabel: TextView
     private lateinit var debugText: TextView
     private lateinit var pendingStatusText: TextView
     private lateinit var lastSuccessText: TextView
+    private lateinit var networkStatusText: TextView
+    private lateinit var primaryUrlValue: TextView
+    private lateinit var backupUrlValue: TextView
+    private lateinit var scheduleSummaryText: TextView
+    private lateinit var settingsToggleButton: Button
+    private lateinit var settingsActionsRow: LinearLayout
+    private lateinit var scheduleSwitch: SwitchMaterial
+    private lateinit var openTimeButton: Button
+    private lateinit var closeTimeButton: Button
+    private var isSettingsVisible: Boolean = false
+    private var selectedOpenMinutes: Int = 10 * 60
+    private var selectedCloseMinutes: Int = 23 * 60
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -39,39 +55,99 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        serverInput = findViewById(R.id.serverInput)
-        backupServerInput = findViewById(R.id.backupServerInput)
         tokenInput = findViewById(R.id.tokenInput)
         syncPowerButton = findViewById(R.id.syncPowerButton)
         syncButtonCard = findViewById(R.id.syncButtonCard)
+        settingsCard = findViewById(R.id.settingsCard)
         statusText = findViewById(R.id.statusText)
         statusLabel = findViewById(R.id.statusLabel)
         debugText = findViewById(R.id.debugText)
         pendingStatusText = findViewById(R.id.pendingStatusText)
         lastSuccessText = findViewById(R.id.lastSuccessText)
+        networkStatusText = findViewById(R.id.networkStatusText)
+        primaryUrlValue = findViewById(R.id.primaryUrlValue)
+        backupUrlValue = findViewById(R.id.backupUrlValue)
+        scheduleSummaryText = findViewById(R.id.scheduleSummaryText)
+        settingsToggleButton = findViewById(R.id.settingsToggleButton)
+        settingsActionsRow = findViewById(R.id.settingsActionsRow)
+        scheduleSwitch = findViewById(R.id.scheduleSwitch)
+        openTimeButton = findViewById(R.id.openTimeButton)
+        closeTimeButton = findViewById(R.id.closeTimeButton)
         val saveButton: Button = findViewById(R.id.saveButton)
+        val dummyCallButton: Button = findViewById(R.id.dummyCallButton)
         val permissionButton: Button = findViewById(R.id.permissionButton)
         val testConnectionButton: Button = findViewById(R.id.testConnectionButton)
         val retryPendingButton: Button = findViewById(R.id.retryPendingButton)
+        val networkCheckButton: Button = findViewById(R.id.networkCheckButton)
 
         val config = CallSyncStore.load(this)
-        serverInput.setText(config.serverBaseUrl)
-        backupServerInput.setText(config.backupServerBaseUrl)
+        primaryUrlValue.text = config.serverBaseUrl
+        backupUrlValue.text = config.backupServerBaseUrl
         tokenInput.setText(config.token)
+        selectedOpenMinutes = config.openMinutes
+        selectedCloseMinutes = config.closeMinutes
+        scheduleSwitch.isChecked = config.isScheduleEnabled
+        updateTimeButtons()
+        settingsCard.visibility = android.view.View.GONE
 
         saveButton.setOnClickListener {
-            val normalizedBaseUrl = CallSyncStore.normalizeServerBaseUrl(serverInput.text.toString())
-            val normalizedBackupUrl = CallSyncStore.normalizeServerBaseUrl(backupServerInput.text.toString())
             CallSyncStore.save(
                 context = this,
-                serverBaseUrl = normalizedBaseUrl,
-                backupServerBaseUrl = normalizedBackupUrl,
-                token = tokenInput.text.toString()
+                serverBaseUrl = CallSyncStore.DEFAULT_SERVER_BASE_URL,
+                backupServerBaseUrl = CallSyncStore.DEFAULT_BACKUP_SERVER_BASE_URL,
+                token = tokenInput.text.toString(),
+                isScheduleEnabled = scheduleSwitch.isChecked,
+                openMinutes = selectedOpenMinutes,
+                closeMinutes = selectedCloseMinutes
             )
-            serverInput.setText(normalizedBaseUrl)
-            backupServerInput.setText(normalizedBackupUrl)
+            val savedConfig = CallSyncStore.load(this)
+            primaryUrlValue.text = savedConfig.serverBaseUrl
+            backupUrlValue.text = savedConfig.backupServerBaseUrl
+            tokenInput.setText(savedConfig.token)
+            selectedOpenMinutes = savedConfig.openMinutes
+            selectedCloseMinutes = savedConfig.closeMinutes
+            scheduleSwitch.isChecked = savedConfig.isScheduleEnabled
+            updateTimeButtons()
             statusText.text = getString(R.string.settings_saved)
             refreshUi()
+        }
+
+        dummyCallButton.setOnClickListener {
+            val configToUse = saveCurrentInputs()
+            if (!canRunSyncActions(configToUse)) return@setOnClickListener
+            statusText.text = getString(R.string.running_check)
+            val dummyPhone = buildDummyPhoneNumber()
+            runBackgroundAction("dummy-call", dummyPhone) {
+                CallSyncPushService.pushEvent(
+                    context = this,
+                    config = configToUse,
+                    event = CallSyncEvent(
+                        phone = dummyPhone,
+                        state = "ringing",
+                        timestampMs = System.currentTimeMillis(),
+                        deviceId = configToUse.deviceId
+                    )
+                )
+            }
+        }
+
+        settingsToggleButton.setOnClickListener {
+            isSettingsVisible = !isSettingsVisible
+            refreshUi()
+        }
+
+        openTimeButton.setOnClickListener {
+            showTimePicker(selectedOpenMinutes) { minutes ->
+                selectedOpenMinutes = minutes
+                updateTimeButtons()
+            }
+        }
+
+        closeTimeButton.setOnClickListener {
+            showTimePicker(selectedCloseMinutes) { minutes ->
+                selectedCloseMinutes = minutes
+                updateTimeButtons()
+            }
         }
 
         permissionButton.setOnClickListener {
@@ -113,6 +189,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        networkCheckButton.setOnClickListener {
+            val configToUse = saveCurrentInputs()
+            if (!canRunSyncActions(configToUse)) return@setOnClickListener
+            statusText.text = getString(R.string.running_network_check)
+            runBackgroundAction("network-check", "") {
+                CallSyncPushService.checkNetworkDns(configToUse)
+            }
+        }
+
         refreshUi()
     }
 
@@ -131,9 +216,21 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.READ_CALL_LOG
         ) == PackageManager.PERMISSION_GRANTED
         val config = CallSyncStore.load(this)
+        primaryUrlValue.text = config.serverBaseUrl
+        backupUrlValue.text = config.backupServerBaseUrl
+        selectedOpenMinutes = config.openMinutes
+        selectedCloseMinutes = config.closeMinutes
+        if (scheduleSwitch.isPressed.not()) {
+            scheduleSwitch.isChecked = config.isScheduleEnabled
+        }
+        updateTimeButtons()
 
+        val currentMinutes = currentMinutes()
+        val withinHours = CallSyncStore.isWithinOperatingHours(config, currentMinutes)
         val statusMessage = if (!config.isSyncEnabled) {
             getString(R.string.sync_disabled)
+        } else if (!withinHours) {
+            getString(R.string.outside_schedule)
         } else if (hasPhoneState && hasCallLog) {
             getString(R.string.permissions_ready)
         } else {
@@ -153,8 +250,28 @@ class MainActivity : AppCompatActivity() {
         } else {
             getString(R.string.sync_enable_cta)
         }
+        scheduleSummaryText.text = if (config.isScheduleEnabled) {
+            getString(
+                R.string.schedule_summary_on,
+                formatMinutes(config.openMinutes),
+                formatMinutes(config.closeMinutes)
+            )
+        } else {
+            getString(R.string.schedule_summary_off)
+        }
+        settingsCard.visibility = if (isSettingsVisible) android.view.View.VISIBLE else android.view.View.GONE
+        settingsToggleButton.text = if (isSettingsVisible) {
+            getString(R.string.hide_settings)
+        } else {
+            getString(R.string.open_settings)
+        }
 
         val debugSnapshot = CallSyncStore.loadDebugSnapshot(this)
+        networkStatusText.text = if (debugSnapshot.lastEvent == "network-check") {
+            getString(R.string.network_status_value, debugSnapshot.lastResult.ifBlank { getString(R.string.network_status_unknown) })
+        } else {
+            getString(R.string.network_status_value, getString(R.string.network_status_unknown))
+        }
         debugText.text = buildString {
             append(getString(R.string.debug_heading))
             append("\n")
@@ -193,18 +310,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveCurrentInputs(): CallSyncConfig {
-        val normalizedBaseUrl = CallSyncStore.normalizeServerBaseUrl(serverInput.text.toString())
-        val normalizedBackupUrl = CallSyncStore.normalizeServerBaseUrl(backupServerInput.text.toString())
         CallSyncStore.save(
             context = this,
-            serverBaseUrl = normalizedBaseUrl,
-            backupServerBaseUrl = normalizedBackupUrl,
-            token = tokenInput.text.toString()
+            serverBaseUrl = CallSyncStore.DEFAULT_SERVER_BASE_URL,
+            backupServerBaseUrl = CallSyncStore.DEFAULT_BACKUP_SERVER_BASE_URL,
+            token = tokenInput.text.toString(),
+            isScheduleEnabled = scheduleSwitch.isChecked,
+            openMinutes = selectedOpenMinutes,
+            closeMinutes = selectedCloseMinutes
         )
-        serverInput.setText(normalizedBaseUrl)
-        backupServerInput.setText(normalizedBackupUrl)
-        tokenInput.setText(tokenInput.text.toString().trim())
-        return CallSyncStore.load(this)
+        val savedConfig = CallSyncStore.load(this)
+        primaryUrlValue.text = savedConfig.serverBaseUrl
+        backupUrlValue.text = savedConfig.backupServerBaseUrl
+        tokenInput.setText(savedConfig.token)
+        selectedOpenMinutes = savedConfig.openMinutes
+        selectedCloseMinutes = savedConfig.closeMinutes
+        scheduleSwitch.isChecked = savedConfig.isScheduleEnabled
+        updateTimeButtons()
+        return savedConfig
     }
 
     private fun canRunSyncActions(config: CallSyncConfig): Boolean {
@@ -239,5 +362,44 @@ class MainActivity : AppCompatActivity() {
                 refreshUi()
             }
         }
+    }
+
+    private fun showTimePicker(initialMinutes: Int, onSelected: (Int) -> Unit) {
+        val hour = initialMinutes / 60
+        val minute = initialMinutes % 60
+        TimePickerDialog(
+            this,
+            { _, pickedHour, pickedMinute ->
+                onSelected((pickedHour * 60) + pickedMinute)
+            },
+            hour,
+            minute,
+            AndroidDateFormat.is24HourFormat(this)
+        ).show()
+    }
+
+    private fun updateTimeButtons() {
+        openTimeButton.text = formatMinutes(selectedOpenMinutes)
+        closeTimeButton.text = formatMinutes(selectedCloseMinutes)
+    }
+
+    private fun formatMinutes(totalMinutes: Int): String {
+        val hour = (totalMinutes / 60) % 24
+        val minute = totalMinutes % 60
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+        }
+        return DateFormat.getTimeInstance(DateFormat.SHORT).format(calendar.time)
+    }
+
+    private fun currentMinutes(): Int {
+        val calendar = Calendar.getInstance()
+        return calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
+    }
+
+    private fun buildDummyPhoneNumber(): String {
+        val suffix = (System.currentTimeMillis() % 1000000000L).toString().padStart(9, '0')
+        return "9$suffix".take(10)
     }
 }

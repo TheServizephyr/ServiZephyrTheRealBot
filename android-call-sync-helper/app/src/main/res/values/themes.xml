@@ -1,5 +1,14 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.CallSyncHelper" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="colorPrimary">#FFCC1B</item>
+        <item name="colorOnPrimary">#17131E</item>
+        <item name="colorPrimaryContainer">#FFE78A</item>
+        <item name="colorOnPrimaryContainer">#17131E</item>
+        <item name="colorSecondary">#FFCC1B</item>
+        <item name="colorOnSecondary">#17131E</item>
+        <item name="colorSurface">#120F18</item>
+        <item name="colorOnSurface">#F8F4FF</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">#120F18</item>
+        <item name="android:statusBarColor" tools:targetApi="l">#120F18</item>
     </style>
 </resources>
