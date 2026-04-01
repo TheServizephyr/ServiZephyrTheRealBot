@@ -14,6 +14,8 @@ import { nanoid } from 'nanoid';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime } from '@/lib/whatsapp-realtime';
 import { issueGuestAccessRef, WHATSAPP_GUEST_SESSION_TTL_MS } from '@/lib/public-auth';
+import { getAdminSystemConfig } from '@/lib/admin-system';
+import { handleAdminOwnerReportMessage } from '@/lib/owner-whatsapp-reports';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -961,8 +963,12 @@ export async function POST(request) {
         }
 
         const botPhoneNumberId = change.value.metadata.phone_number_id;
-        const business = await getBusiness(firestore, botPhoneNumberId);
-        if (!business) {
+        const [business, adminConfig] = await Promise.all([
+            getBusiness(firestore, botPhoneNumberId),
+            getAdminSystemConfig(firestore),
+        ]);
+        const isAdminBot = !!adminConfig?.botPhoneNumberId && adminConfig.botPhoneNumberId === botPhoneNumberId;
+        if (!business && !isAdminBot) {
             console.error(`[Webhook WA] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
             return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
@@ -970,6 +976,9 @@ export async function POST(request) {
         console.log("[Webhook WA] Change Value:", JSON.stringify(change.value, null, 2));
 
         if (change.value.statuses && change.value.statuses.length > 0) {
+            if (isAdminBot && !business) {
+                return NextResponse.json({ message: 'Admin statuses processed' }, { status: 200 });
+            }
             console.log(`[Webhook WA] 🔍 Processing ${change.value.statuses.length} status updates`);
 
             // Iterate through ALL statuses in the batch
@@ -1053,6 +1062,18 @@ export async function POST(request) {
         }
 
         if (change.value.messages && change.value.messages.length > 0) {
+            if (isAdminBot && !business) {
+                for (const message of change.value.messages) {
+                    if (message.type !== 'text') continue;
+                    await handleAdminOwnerReportMessage({
+                        firestore,
+                        fromNumber: message.from,
+                        messageText: message.text?.body || '',
+                        customerName: change.value.contacts?.[0]?.profile?.name || '',
+                    });
+                }
+                return NextResponse.json({ message: 'Admin owner report messages processed' }, { status: 200 });
+            }
             console.log(`[Webhook WA] 📩 Processing batch of ${change.value.messages.length} messages`);
 
             for (const message of change.value.messages) {
