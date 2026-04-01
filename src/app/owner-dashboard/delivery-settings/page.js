@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings, Loader2, XCircle } from 'lucide-react';
@@ -14,6 +14,9 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import { auth } from '@/lib/firebase';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +56,12 @@ function DeliverySettingsPageContent() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const deliverySettingsCacheKey = useMemo(() => [
+        'owner_delivery_settings_v1',
+        impersonatedOwnerId || 'self',
+        employeeOfOwnerId || 'none',
+    ].join(':'), [employeeOfOwnerId, impersonatedOwnerId]);
 
     const [settings, setSettings] = useState({
         deliveryEnabled: true,
@@ -103,7 +112,7 @@ function DeliverySettingsPageContent() {
                     const n = Number(value);
                     return Number.isFinite(n) ? n : fallback;
                 };
-                setSettings({
+                const normalizedSettings = {
                     // Keep threshold unified across "Free Over" and "Bonus Min Order".
                     // Prefer explicit free-over value, fallback to global min-order override.
                     // This keeps UI and backend behavior aligned.
@@ -131,9 +140,23 @@ function DeliverySettingsPageContent() {
                     deliveryOrderSlabAboveFee: toNum(data.deliveryOrderSlabAboveFee, 0),
                     deliveryOrderSlabBaseDistance: Math.max(0, toNum(data.deliveryOrderSlabBaseDistance, 1)),
                     deliveryOrderSlabPerKmFee: Math.max(0, toNum(data.deliveryOrderSlabPerKmFee, 15)),
-                });
+                };
+                setSettings(normalizedSettings);
+                if (desktopRuntime) {
+                    await setOfflineNamespace('owner_delivery_settings', deliverySettingsCacheKey, normalizedSettings);
+                }
             } catch (error) {
-                setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load settings: ${error.message}` });
+                let restored = false;
+                if (desktopRuntime) {
+                    const desktopPayload = await getOfflineNamespace('owner_delivery_settings', deliverySettingsCacheKey, null);
+                    if (desktopPayload) {
+                        setSettings(desktopPayload);
+                        restored = true;
+                    }
+                }
+                if (!restored) {
+                    setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load settings: ${error.message}` });
+                }
             } finally {
                 setLoading(false);
             }
@@ -145,7 +168,7 @@ function DeliverySettingsPageContent() {
         });
 
         return () => unsubscribe();
-    }, [router, impersonatedOwnerId, employeeOfOwnerId]);
+    }, [router, impersonatedOwnerId, employeeOfOwnerId, desktopRuntime, deliverySettingsCacheKey]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -203,6 +226,9 @@ function DeliverySettingsPageContent() {
                 throw new Error(errorData.message || 'Failed to save settings');
             }
 
+            if (desktopRuntime) {
+                await setOfflineNamespace('owner_delivery_settings', deliverySettingsCacheKey, settings);
+            }
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Delivery settings saved successfully!' });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save settings: ${error.message}` });
@@ -340,7 +366,9 @@ function DeliverySettingsPageContent() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 px-4 py-3 bg-card border rounded-2xl shadow-sm">
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                    <OfflineDesktopStatus />
+                    <div className="flex items-center gap-3 px-4 py-3 bg-card border rounded-2xl shadow-sm">
                     <div className="flex flex-col">
                         <span className="text-sm font-bold">Accepting Orders</span>
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
@@ -352,6 +380,7 @@ function DeliverySettingsPageContent() {
                         onCheckedChange={(val) => handleSettingChange('deliveryEnabled', val)}
                         className="data-[state=checked]:bg-green-500 scale-110 ml-2"
                     />
+                    </div>
                 </div>
             </header>
 

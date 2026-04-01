@@ -42,6 +42,7 @@ import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { logoutClientSession } from '@/lib/client-session';
+import DesktopSyncProcessor from '@/components/DesktopSyncProcessor';
 
 
 const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
@@ -142,6 +143,7 @@ function AdminLayoutContent({ children }) {
 
   return (
     <>
+      <DesktopSyncProcessor />
       <InfoDialog
         isOpen={infoDialog.isOpen}
         onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}

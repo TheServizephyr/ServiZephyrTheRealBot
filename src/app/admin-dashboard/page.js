@@ -3,6 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 import { motion } from 'framer-motion';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { AlertCircle, Store, Users, IndianRupee, ShoppingCart, RefreshCw } from 'lucide-react';
@@ -11,6 +13,7 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 
 const StatCard = ({ title, value, icon: Icon, isCurrency = false, className = '', isLoading, href }) => {
   const cardContent = (
@@ -50,6 +53,8 @@ export default function AdminDashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const desktopRuntime = isDesktopApp();
+  const cacheKey = 'admin_dashboard_stats_v1';
 
   const fetchData = async () => {
     setLoading(true);
@@ -72,8 +77,31 @@ export default function AdminDashboardPage() {
       }
       const result = await res.json();
       setData(result);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(result));
+      } catch {
+        // Ignore cache write errors.
+      }
+      if (desktopRuntime) {
+        await setOfflineNamespace('admin_dashboard', cacheKey, result);
+      }
     } catch (err) {
-      setError(err.message);
+      let cached = null;
+      try {
+        const localCached = localStorage.getItem(cacheKey);
+        cached = localCached ? JSON.parse(localCached) : null;
+      } catch {
+        cached = null;
+      }
+      if (!cached && desktopRuntime) {
+        cached = await getOfflineNamespace('admin_dashboard', cacheKey, null);
+      }
+      if (cached) {
+        setData(cached);
+        setError(null);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -116,6 +144,9 @@ export default function AdminDashboardPage() {
       <motion.h1 variants={itemVariants} className="text-3xl font-bold tracking-tight">
         Platform Overview
       </motion.h1>
+      <motion.div variants={itemVariants}>
+        <OfflineDesktopStatus />
+      </motion.div>
 
       <motion.div variants={itemVariants} className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
         <StatCard

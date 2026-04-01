@@ -10,6 +10,9 @@ import { getAuth } from 'firebase/auth';
 import Image from 'next/image';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +44,7 @@ function MyProfileContent() {
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const profileCacheKey = React.useMemo(() => `owner_my_profile::${employeeOfOwnerId || 'owner_self'}`, [employeeOfOwnerId]);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -94,6 +98,15 @@ function MyProfileContent() {
 
                 setProfile(profileData);
                 setEditedProfile(profileData);
+                const cachePayload = { ts: Date.now(), data: profileData };
+                try {
+                    localStorage.setItem(profileCacheKey, JSON.stringify(cachePayload));
+                } catch {
+                    // Ignore local cache failures.
+                }
+                if (isDesktopApp()) {
+                    await setOfflineNamespace('owner_my_profile', profileCacheKey, cachePayload);
+                }
             } catch (error) {
                 console.error("[MyProfile] Error fetching profile:", error);
                 // Still set basic profile from Firebase Auth if API fails
@@ -108,8 +121,37 @@ function MyProfileContent() {
                     };
                     setProfile(basicProfile);
                     setEditedProfile(basicProfile);
+                    const cachePayload = { ts: Date.now(), data: basicProfile };
+                    try {
+                        localStorage.setItem(profileCacheKey, JSON.stringify(cachePayload));
+                    } catch {
+                        // Ignore local cache failures.
+                    }
+                    if (isDesktopApp()) {
+                        await setOfflineNamespace('owner_my_profile', profileCacheKey, cachePayload);
+                    }
                 } else {
-                    setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+                    let cached = null;
+                    try {
+                        const raw = localStorage.getItem(profileCacheKey);
+                        if (raw) {
+                            const parsed = JSON.parse(raw);
+                            if (parsed?.data) cached = parsed.data;
+                        }
+                    } catch {
+                        // Ignore malformed cache.
+                    }
+                    if (!cached && isDesktopApp()) {
+                        const desktopPayload = await getOfflineNamespace('owner_my_profile', profileCacheKey, null);
+                        cached = desktopPayload?.data || null;
+                    }
+                    if (cached) {
+                        setProfile(cached);
+                        setEditedProfile(cached);
+                        setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live profile fetch failed, so cached desktop profile is being shown.' });
+                    } else {
+                        setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+                    }
                 }
             } finally {
                 setLoading(false);
@@ -125,7 +167,7 @@ function MyProfileContent() {
         });
 
         return () => unsubscribe();
-    }, [employeeOfOwnerId]);
+    }, [employeeOfOwnerId, profileCacheKey]);
 
     const handleEditToggle = () => {
         if (isEditing) {
@@ -164,8 +206,19 @@ function MyProfileContent() {
             }
 
             const updatedData = await response.json();
-            setProfile({ ...profile, ...updatedData, displayName: updatedData.name });
-            setEditedProfile({ ...editedProfile, ...updatedData, displayName: updatedData.name });
+            const nextProfile = { ...profile, ...updatedData, displayName: updatedData.name };
+            const nextEditedProfile = { ...editedProfile, ...updatedData, displayName: updatedData.name };
+            setProfile(nextProfile);
+            setEditedProfile(nextEditedProfile);
+            const cachePayload = { ts: Date.now(), data: nextProfile };
+            try {
+                localStorage.setItem(profileCacheKey, JSON.stringify(cachePayload));
+            } catch {
+                // Ignore local cache failures.
+            }
+            if (isDesktopApp()) {
+                await setOfflineNamespace('owner_my_profile', profileCacheKey, cachePayload);
+            }
             setIsEditing(false);
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Profile updated successfully!' });
 
@@ -214,7 +267,12 @@ function MyProfileContent() {
                 message={infoDialog.message}
             />
 
-            <h1 className="text-3xl font-bold tracking-tight">My Profile</h1>
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">My Profile</h1>
+                <div className="mt-2">
+                    <OfflineDesktopStatus />
+                </div>
+            </div>
 
             <SectionCard
                 title="Profile Information"

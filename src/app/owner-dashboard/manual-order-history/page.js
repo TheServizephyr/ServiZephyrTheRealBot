@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, RefreshCw, Printer, Search, X } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
@@ -16,6 +16,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import OrderCancellationTool from '@/components/OrderCancellationTool';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespaces, listOfflineQueueItems, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { getBestEffortIdToken } from '@/lib/client-session';
+import { silentPrintElement } from '@/lib/desktop/print';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -62,6 +67,14 @@ const timestampToDate = (value) => {
 };
 
 const isSettlementEligible = (printedVia) => printedVia !== 'create_order';
+const isDesktopOfflineMode = (desktopRuntime) => (
+    Boolean(
+        desktopRuntime &&
+        typeof navigator !== 'undefined' &&
+        navigator.onLine === false
+    )
+);
+const offlineHistoryActions = new Set(['manual_bill_history_create', 'manual_table_settle']);
 
 const normalizeHistoryItem = (item = {}) => {
     const portionName = String(
@@ -127,6 +140,93 @@ const normalizeHistoryEntry = (doc) => {
         printedAt: printedAt ? printedAt.toISOString() : null,
         createdAt: timestampToDate(data.createdAt)?.toISOString() || null,
     };
+};
+
+const buildOfflineHistoryEntry = (queueItem = {}) => {
+    const action = queueItem?.action;
+    const payload = action === 'manual_table_settle'
+        ? queueItem?.payload?.bill
+        : queueItem?.payload;
+
+    if (!payload || !offlineHistoryActions.has(action)) return null;
+
+    const printedAt = String(
+        queueItem?.queuedAt ||
+        payload?.queuedAt ||
+        payload?.createdAt ||
+        new Date().toISOString()
+    );
+    const billDetails = payload?.billDetails || {};
+    const items = Array.isArray(payload?.items) ? payload.items.map(normalizeHistoryItem) : [];
+    const billDraftId = String(
+        payload?.billDraftId ||
+        queueItem?.payload?.billDraftId ||
+        `offline_${queueItem?.action || 'bill'}_${printedAt}`
+    );
+    const orderType = String(payload?.printedVia || payload?.orderType || 'dine-in').trim().toLowerCase() || 'dine-in';
+    const isSettled = action === 'manual_table_settle';
+
+    return {
+        id: `offline_${billDraftId}`,
+        historyId: `offline_${billDraftId}`,
+        billDraftId,
+        source: 'offline_queue',
+        channel: 'custom_bill',
+        printedVia: payload?.printedVia || orderType,
+        customerName: payload?.customerDetails?.name || 'Walk-in Customer',
+        customerPhone: payload?.customerDetails?.phone || null,
+        customerAddress: payload?.customerDetails?.address || null,
+        customerType: 'guest',
+        customerId: null,
+        customerOrderId: null,
+        orderType,
+        settlementEligible: true,
+        isSettled,
+        settledAt: isSettled ? printedAt : null,
+        settledByUid: null,
+        settledByRole: null,
+        settlementBatchId: null,
+        subtotal: toAmount(billDetails?.subtotal),
+        cgst: toAmount(billDetails?.cgst),
+        sgst: toAmount(billDetails?.sgst),
+        deliveryCharge: toAmount(billDetails?.deliveryCharge),
+        serviceFee: toAmount(billDetails?.serviceFee),
+        serviceFeeLabel: String(billDetails?.serviceFeeLabel || 'Additional Charge').trim() || 'Additional Charge',
+        discount: toAmount(billDetails?.discount),
+        paymentMode: billDetails?.paymentMode || null,
+        totalAmount: toAmount(billDetails?.grandTotal),
+        itemCount: Number(items.length),
+        items,
+        printedAt,
+        createdAt: printedAt,
+        isOfflineQueued: true,
+    };
+};
+
+const mergeHistoryEntries = (historyEntries = [], queuedEntries = []) => {
+    const merged = new Map();
+
+    queuedEntries.forEach((entry) => {
+        const key = String(entry?.billDraftId || entry?.historyId || entry?.id || '').trim();
+        if (!key) return;
+        merged.set(key, entry);
+    });
+
+    historyEntries.forEach((entry) => {
+        const key = String(entry?.billDraftId || entry?.historyId || entry?.id || '').trim();
+        if (!key) return;
+        merged.set(key, {
+            ...merged.get(key),
+            ...entry,
+            isOfflineQueued: false,
+        });
+    });
+
+    return Array.from(merged.values()).sort((left, right) => {
+        const rightTime = new Date(right?.printedAt || right?.createdAt || 0).getTime();
+        const leftTime = new Date(left?.printedAt || left?.createdAt || 0).getTime();
+        return rightTime - leftTime;
+    });
 };
 
 const computeSummary = (entries) => {
@@ -232,6 +332,13 @@ export default function ManualOrderHistoryPage() {
     const [fromDate, setFromDate] = useState(() => toDateInput(new Date()));
     const [toDate, setToDate] = useState(() => toDateInput(new Date()));
     const [searchTerm, setSearchTerm] = useState('');
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const historyCacheKey = useMemo(() => `manual_order_history::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}::${fromDate}::${toDate}`, [impersonatedOwnerId, employeeOfOwnerId, fromDate, toDate]);
+    const restaurantCacheKey = useMemo(() => `manual_order_history_restaurant::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}`, [impersonatedOwnerId, employeeOfOwnerId]);
+    const offlineQueueScope = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_custom_bill_cache_v2_${scope}__queue`;
+    }, [employeeOfOwnerId, impersonatedOwnerId]);
 
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
@@ -247,27 +354,116 @@ export default function ManualOrderHistoryPage() {
 
     const handleRebillPrint = useReactToPrint({ content: () => rebillPrintRef.current });
 
-    const fetchRestaurantDetails = async () => {
-        const user = auth.currentUser;
-        if (!user) return;
-        const idToken = await user.getIdToken();
-        const settingsUrl = new URL('/api/owner/settings', window.location.origin);
-        if (accessQuery) {
-            new URLSearchParams(accessQuery).forEach((v, k) => settingsUrl.searchParams.set(k, v));
+    const readCachedPayload = async (namespace, scope) => {
+        try {
+            const raw = localStorage.getItem(scope);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.data) return parsed.data;
+            }
+        } catch {
+            // Ignore malformed cache.
         }
-        const res = await fetch(settingsUrl.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) return;
-        setRestaurant({
-            name: data.restaurantName || 'Outlet',
-            address: data.address || '',
-            botDisplayNumber: data.botDisplayNumber || '',
-            gstin: data.gstin || '',
-            gstEnabled: !!data.gstEnabled,
-            gstPercentage: Number(data.gstPercentage ?? data.gstRate ?? 0),
-            gstMinAmount: Number(data.gstMinAmount ?? 0),
-            serviceFeeLabel: data.serviceFeeLabel || 'Additional Charge',
+
+        if (!isDesktopApp()) return null;
+        const desktopPayload = (await getOfflineNamespaces([
+            { key: 'historyCache', namespace, scope, fallback: null },
+        ])).historyCache;
+        return desktopPayload?.data || null;
+    };
+
+    const writeCachedPayload = async (namespace, scope, data) => {
+        const payload = { ts: Date.now(), data };
+        try {
+            localStorage.setItem(scope, JSON.stringify(payload));
+        } catch {
+            // Ignore local storage failures.
+        }
+        if (isDesktopApp()) {
+            await setOfflineNamespace(namespace, scope, payload);
+        }
+    };
+
+    const readQueuedOfflineHistory = useCallback(async () => {
+        const fromLocalStorage = (() => {
+            try {
+                const raw = localStorage.getItem(offlineQueueScope);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        })();
+
+        let fromDesktopQueue = [];
+        if (desktopRuntime) {
+            try {
+                const queued = await listOfflineQueueItems('owner_offline_sync_queue');
+                fromDesktopQueue = Array.isArray(queued) ? queued : [];
+            } catch {
+                fromDesktopQueue = [];
+            }
+        }
+
+        const combined = [...fromLocalStorage, ...fromDesktopQueue]
+            .filter((item) => item?.scope === offlineQueueScope && offlineHistoryActions.has(item?.action));
+        const deduped = new Map();
+
+        combined.forEach((item) => {
+            const dedupeKey = [
+                item?.action || '',
+                item?.scope || '',
+                item?.payload?.billDraftId || item?.payload?.bill?.billDraftId || '',
+                item?.payload?.tableId || '',
+                item?.queuedAt || '',
+            ].join('::');
+            deduped.set(dedupeKey, item);
         });
+
+        return Array.from(deduped.values())
+            .map(buildOfflineHistoryEntry)
+            .filter(Boolean);
+    }, [desktopRuntime, offlineQueueScope]);
+
+    const fetchRestaurantDetails = async () => {
+        const cachedRestaurant = await readCachedPayload('manual_order_history', restaurantCacheKey);
+        if (isDesktopOfflineMode(desktopRuntime)) {
+            if (cachedRestaurant) setRestaurant(cachedRestaurant);
+            return;
+        }
+
+        const user = auth.currentUser;
+        if (!user) {
+            if (cachedRestaurant) setRestaurant(cachedRestaurant);
+            return;
+        }
+
+        try {
+            const idToken = await getBestEffortIdToken(user);
+            const settingsUrl = new URL('/api/owner/settings', window.location.origin);
+            if (accessQuery) {
+                new URLSearchParams(accessQuery).forEach((v, k) => settingsUrl.searchParams.set(k, v));
+            }
+            const res = await fetch(settingsUrl.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (cachedRestaurant) setRestaurant(cachedRestaurant);
+                return;
+            }
+            const nextRestaurant = {
+                name: data.restaurantName || 'Outlet',
+                address: data.address || '',
+                gstin: data.gstin || '',
+                gstEnabled: !!data.gstEnabled,
+                gstPercentage: Number(data.gstPercentage ?? data.gstRate ?? 0),
+                gstMinAmount: Number(data.gstMinAmount ?? 0),
+                serviceFeeLabel: data.serviceFeeLabel || 'Additional Charge',
+            };
+            setRestaurant(nextRestaurant);
+            await writeCachedPayload('manual_order_history', restaurantCacheKey, nextRestaurant);
+        } catch {
+            if (cachedRestaurant) setRestaurant(cachedRestaurant);
+        }
     };
 
     const fetchHistory = async ({ silent = false } = {}) => {
@@ -275,9 +471,24 @@ export default function ManualOrderHistoryPage() {
             if (!silent) {
                 setLoading(true);
             }
+            const queuedEntries = await readQueuedOfflineHistory();
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                const cached = await readCachedPayload('manual_order_history', historyCacheKey);
+                const cachedHistory = Array.isArray(cached?.history) ? cached.history : [];
+                const mergedHistory = mergeHistoryEntries(cachedHistory, queuedEntries);
+                if (mergedHistory.length > 0) {
+                    setHistory(mergedHistory);
+                    setSummary(computeSummary(mergedHistory));
+                    if (!silent) {
+                        setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Offline desktop history is being shown from cached and queued bills.' });
+                    }
+                    return;
+                }
+            }
+
             const user = auth.currentUser;
             if (!user) throw new Error('Please login first.');
-            const idToken = await user.getIdToken();
+            const idToken = await getBestEffortIdToken(user);
 
             const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
             apiUrl.searchParams.set('from', fromDate);
@@ -290,8 +501,9 @@ export default function ManualOrderHistoryPage() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || 'Failed to load order history.');
 
-            const nextHistory = Array.isArray(data.history) ? data.history : [];
-            const nextSummary = { ...defaultSummary, ...(data.summary || {}) };
+            const fetchedHistory = Array.isArray(data.history) ? data.history : [];
+            const nextHistory = mergeHistoryEntries(fetchedHistory, queuedEntries);
+            const nextSummary = computeSummary(nextHistory);
             const nextSignature = JSON.stringify({
                 history: nextHistory.map((bill) => ({
                     id: bill.id,
@@ -315,7 +527,24 @@ export default function ManualOrderHistoryPage() {
                 setHistory(nextHistory);
                 setSummary(nextSummary);
             }
+            await writeCachedPayload('manual_order_history', historyCacheKey, {
+                history: nextHistory,
+                summary: nextSummary,
+            });
         } catch (error) {
+            const queuedEntries = await readQueuedOfflineHistory();
+            const cached = await readCachedPayload('manual_order_history', historyCacheKey);
+            if (cached?.history || queuedEntries.length > 0) {
+                const cachedHistory = Array.isArray(cached?.history) ? cached.history : [];
+                const nextHistory = mergeHistoryEntries(cachedHistory, queuedEntries);
+                const nextSummary = computeSummary(nextHistory);
+                setHistory(nextHistory);
+                setSummary(nextSummary);
+                if (!silent) {
+                    setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live manual order history fetch failed, so cached desktop data is being shown.' });
+                }
+                return;
+            }
             if (!silent) {
                 setInfoDialog({ isOpen: true, title: 'Load Failed', message: error.message });
             } else {
@@ -354,6 +583,7 @@ export default function ManualOrderHistoryPage() {
         const startPollingFallback = async () => {
             stopPolling();
             await fetchHistory();
+            if (isDesktopOfflineMode(desktopRuntime)) return;
             pollingIntervalRef.current = setInterval(() => {
                 fetchHistory({ silent: true }).catch(() => {});
             }, 5000);
@@ -368,6 +598,13 @@ export default function ManualOrderHistoryPage() {
 
             const setupRealtimeHistory = async () => {
                 try {
+                    if (isDesktopOfflineMode(desktopRuntime)) {
+                        stopPolling();
+                        await fetchHistory();
+                        fetchRestaurantDetails().catch(() => {});
+                        return;
+                    }
+
                     stopPolling();
                     setLoading(true);
                     const targetOwnerId = impersonatedOwnerId || employeeOfOwnerId || user.uid;
@@ -412,6 +649,10 @@ export default function ManualOrderHistoryPage() {
                             });
                             setHistory(entries);
                             setSummary(computeSummary(entries));
+                            writeCachedPayload('manual_order_history', historyCacheKey, {
+                                history: entries,
+                                summary: computeSummary(entries),
+                            }).catch(() => {});
                             setLoading(false);
                         },
                         async (error) => {
@@ -439,17 +680,25 @@ export default function ManualOrderHistoryPage() {
             if (typeof unsubscribe === 'function') unsubscribe();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fromDate, toDate, accessQuery]);
+    }, [accessQuery, desktopRuntime, fromDate, toDate]);
 
     useEffect(() => {
         if (!pendingRebillPrint || !printBillData) return;
         const run = async () => {
-            try { await handleRebillPrint?.(); }
+            try {
+                if (desktopRuntime && rebillPrintRef.current) {
+                    await silentPrintElement(rebillPrintRef.current, {
+                        documentTitle: `Re-Bill-${Date.now()}`,
+                    });
+                } else {
+                    await handleRebillPrint?.();
+                }
+            }
             catch (e) { setInfoDialog({ isOpen: true, title: 'Re-Bill Failed', message: e?.message }); }
             finally { setPendingRebillPrint(false); }
         };
         run();
-    }, [pendingRebillPrint, printBillData, handleRebillPrint]);
+    }, [pendingRebillPrint, printBillData, handleRebillPrint, desktopRuntime]);
 
     // Filter by tab + Search term
     const filteredHistory = useMemo(() => {
@@ -525,7 +774,7 @@ export default function ManualOrderHistoryPage() {
         if (billIds.length === 0) throw new Error('No bills provided.');
         const user = auth.currentUser;
         if (!user) throw new Error('Please login first.');
-        const idToken = await user.getIdToken();
+        const idToken = await getBestEffortIdToken(user);
 
         const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
         if (impersonatedOwnerId) apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
@@ -544,7 +793,7 @@ export default function ManualOrderHistoryPage() {
     const updateOrderType = async (historyId, newOrderType, customerPhone = null) => {
         const user = auth.currentUser;
         if (!user) throw new Error('Please login first.');
-        const idToken = await user.getIdToken();
+        const idToken = await getBestEffortIdToken(user);
 
         const apiUrl = new URL('/api/owner/custom-bill/history', window.location.origin);
         if (impersonatedOwnerId) apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
@@ -750,6 +999,9 @@ export default function ManualOrderHistoryPage() {
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Manual Order History</h1>
                     <p className="text-sm text-muted-foreground">Bills created from the Manual Order page</p>
+                    <div className="mt-2">
+                        <OfflineDesktopStatus />
+                    </div>
                 </div>
             </div>
 

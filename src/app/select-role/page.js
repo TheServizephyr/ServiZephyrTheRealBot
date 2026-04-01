@@ -8,6 +8,7 @@ import { Building2, Users, ChefHat, Store, ShoppingCart, User, ArrowRight, Loade
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { ROLE_DISPLAY_NAMES } from '@/lib/permissions';
+import { resolveAuthProfileFromClient } from '@/lib/authRoleCache';
 
 export default function SelectRolePage() {
     const router = useRouter();
@@ -37,11 +38,31 @@ export default function SelectRolePage() {
                 const data = await res.json();
 
                 if (res.status === 404) {
+                    const fallbackData = await resolveAuthProfileFromClient(user);
+                    if (fallbackData?.hasMultipleRoles) {
+                        setRoleData(fallbackData);
+                        setLoading(false);
+                        return;
+                    }
+                    if (fallbackData) {
+                        redirectToDashboard(fallbackData);
+                        return;
+                    }
                     router.push('/complete-profile');
                     return;
                 }
 
                 if (!res.ok) {
+                    const fallbackData = await resolveAuthProfileFromClient(user);
+                    if (fallbackData?.hasMultipleRoles) {
+                        setRoleData(fallbackData);
+                        setLoading(false);
+                        return;
+                    }
+                    if (fallbackData) {
+                        redirectToDashboard(fallbackData);
+                        return;
+                    }
                     router.push('/');
                     return;
                 }
@@ -56,6 +77,16 @@ export default function SelectRolePage() {
                 setLoading(false);
             } catch (err) {
                 console.error('Error fetching roles:', err);
+                const fallbackData = await resolveAuthProfileFromClient(user);
+                if (fallbackData?.hasMultipleRoles) {
+                    setRoleData(fallbackData);
+                    setLoading(false);
+                    return;
+                }
+                if (fallbackData) {
+                    redirectToDashboard(fallbackData);
+                    return;
+                }
                 router.push('/');
             }
         }

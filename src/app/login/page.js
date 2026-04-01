@@ -6,6 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, setPersistence, browserLocalPersistence, onAuthStateChanged } from "firebase/auth";
+import { isDesktopApp } from "@/lib/desktop/runtime";
+import {
+    persistResolvedAuthProfile,
+    resolveBestEffortAuthRedirect,
+} from "@/lib/authRoleCache";
 
 const getSafeRedirectPath = (value) => {
     if (!value || typeof value !== "string") return null;
@@ -34,6 +39,7 @@ function LoginPageContent() {
     const searchParams = useSearchParams();
     const redirectTo = getSafeRedirectPath(searchParams.get("redirect"));
     const hasProcessedRedirect = useRef(false); // Prevent React Strict Mode double call
+    const desktopRuntime = isDesktopApp();
 
     const shouldFallbackToRedirect = (error) => {
         const code = String(error?.code || '');
@@ -168,6 +174,30 @@ function LoginPageContent() {
         setError("");
 
         try {
+            if (desktopRuntime) {
+                console.log("[Login] Desktop runtime detected, trying popup-based Google login first...");
+                setMsg("Opening Google sign-in...");
+                await setPersistence(auth, browserLocalPersistence);
+
+                try {
+                    const result = await signInWithPopup(auth, googleProvider);
+                    console.log("[Login] Desktop popup successful, processing...");
+                    writeLoginFlag(null);
+                    setLoading(true);
+                    setMsg("Verifying user details...");
+                    await handleAuthSuccess(result.user);
+                    return;
+                } catch (desktopPopupError) {
+                    console.warn("[Login] Desktop popup failed, falling back to redirect...", desktopPopupError);
+                    if (!shouldFallbackToRedirect(desktopPopupError)) {
+                        throw desktopPopupError;
+                    }
+                    writeLoginFlag(JSON.stringify({ timestamp: Date.now(), mode: 'desktop-redirect' }));
+                    await signInWithRedirect(auth, googleProvider);
+                    return;
+                }
+            }
+
             try {
                 console.log("[Login] Trying popup-based Google login...");
                 const result = await signInWithPopup(auth, googleProvider);
@@ -190,7 +220,12 @@ function LoginPageContent() {
             }
         } catch (err) {
             console.error("Login error:", err);
-            setError(err.message || "Login failed. Please try again.");
+            const code = String(err?.code || "");
+            if (code === "auth/unauthorized-domain") {
+                setError("Google login is blocked because localhost is not authorized in Firebase Authentication. Add localhost in Firebase -> Authentication -> Settings -> Authorized domains.");
+            } else {
+                setError(err.message || "Login failed. Please try again.");
+            }
             setLoading(false);
             writeLoginFlag(null);
         }
@@ -221,12 +256,21 @@ function LoginPageContent() {
             }
 
             if (res.status === 404) {
+                if (desktopRuntime) {
+                    const fallbackRedirect = await resolveBestEffortAuthRedirect(user);
+                    if (fallbackRedirect) {
+                        console.log("[Login] Desktop best-effort auth fallback resolved after 404:", fallbackRedirect);
+                        window.location.href = fallbackRedirect;
+                        return;
+                    }
+                }
                 // New user - redirect to onboarding profile completion
                 console.log("[Login] New user detected, redirecting to complete-profile");
                 return router.push("/complete-profile");
             }
 
             if (data.hasMultipleRoles) {
+                persistResolvedAuthProfile(user, data);
                 console.log("[Login] Multiple roles detected, redirecting to select-role");
                 window.location.href = "/select-role";
                 return;
@@ -234,6 +278,7 @@ function LoginPageContent() {
 
             // PRIORITY 1: Check if API returned specific redirectTo (for employees, etc.)
             if (data.redirectTo) {
+                persistResolvedAuthProfile(user, data);
                 console.log("[Login] API returned redirectTo:", data.redirectTo);
                 localStorage.setItem("role", data.role || "employee");
                 localStorage.removeItem("businessType");
@@ -245,6 +290,7 @@ function LoginPageContent() {
             if (data.role) {
                 const { role, businessType } = data;
                 console.log("[Login] Role found:", role, "Business Type:", businessType);
+                persistResolvedAuthProfile(user, data);
 
                 const resolvedBusinessType =
                     (businessType
@@ -309,10 +355,26 @@ function LoginPageContent() {
             }
 
             // Fallback
-            console.log("[Login] No role matched or found, redirecting to home");
+            console.log("[Login] No role matched or found after auth resolution.");
+            if (desktopRuntime) {
+                const fallbackRedirect = await resolveBestEffortAuthRedirect(user);
+                if (fallbackRedirect) {
+                    console.log("[Login] Desktop best-effort auth fallback resolved after empty payload:", fallbackRedirect);
+                    window.location.href = fallbackRedirect;
+                    return;
+                }
+            }
             router.push(redirectTo || "/");
         } catch (err) {
             console.error("[Login] Auth error:", err);
+            if (desktopRuntime) {
+                const fallbackRedirect = await resolveBestEffortAuthRedirect(user);
+                if (fallbackRedirect) {
+                    console.log("[Login] Desktop best-effort auth fallback resolved after auth error:", fallbackRedirect);
+                    window.location.href = fallbackRedirect;
+                    return;
+                }
+            }
             setError("Authentication failed. Please try again.");
             setLoading(false);
         }

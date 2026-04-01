@@ -23,6 +23,9 @@ import { validatePriceChange } from '@/lib/priceValidation';
 import PriceChangeConfirmationDialog from '@/components/PriceChangeConfirmationDialog';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -1269,6 +1272,10 @@ export default function MenuPage() {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_menu_cache_v2_${scope}`;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+    const desktopCacheScope = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_menu::${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const buildScopedUrl = useCallback((endpoint) => {
         const url = new URL(endpoint, window.location.origin);
@@ -1317,6 +1324,28 @@ export default function MenuPage() {
         }
     }, [cacheKey]);
 
+    const readDesktopCachedPayload = useCallback(async () => {
+        if (!isDesktopApp()) return null;
+        const payload = await getOfflineNamespace('owner_menu', desktopCacheScope, null);
+        return payload?.data ? payload : null;
+    }, [desktopCacheScope]);
+
+    const readCombinedCachedPayload = useCallback(async () => {
+        return readCachedPayload() || await readDesktopCachedPayload();
+    }, [readCachedPayload, readDesktopCachedPayload]);
+
+    const persistCachedPayload = useCallback(async (data = {}) => {
+        const payload = {
+            ts: Date.now(),
+            data,
+        };
+        writeCachedPayload(data);
+        if (isDesktopApp()) {
+            await setOfflineNamespace('owner_menu', desktopCacheScope, payload);
+        }
+        return payload;
+    }, [desktopCacheScope, writeCachedPayload]);
+
     const applyMenuPayload = useCallback((data) => {
         setMenu(data.menu || {});
         setCustomCategories(data.customCategories || []);
@@ -1338,7 +1367,7 @@ export default function MenuPage() {
             const versionUrl = buildScopedUrl('/api/owner/menu?versionOnly=1');
             const menuUrl = buildScopedUrl(`/api/owner/menu?dashboard=1${includeOpenItems ? '&includeOpenItems=1' : ''}`);
 
-            const cached = readCachedPayload();
+            const cached = await readCombinedCachedPayload();
             try {
                 const versionRes = await fetch(versionUrl, { headers });
                 if (versionRes.ok && cached?.data?.menu) {
@@ -1373,7 +1402,7 @@ export default function MenuPage() {
             }
 
             const preservedOpenItems = Array.isArray(cached?.data?.openItems) ? cached.data.openItems : [];
-            writeCachedPayload({
+            await persistCachedPayload({
                 menu: data.menu || {},
                 customCategories: data.customCategories || [],
                 businessType: data.businessType || 'restaurant',
@@ -1382,13 +1411,26 @@ export default function MenuPage() {
             });
         } catch (error) {
             console.error("Error fetching menu:", error);
-            setInfoDialog({ isOpen: true, title: "Error", message: "Could not fetch menu. " + error.message });
+            const cached = await readCombinedCachedPayload();
+            if (cached?.data?.menu) {
+                applyMenuPayload(cached.data);
+                if (Array.isArray(cached.data.openItems)) {
+                    setOpenItems(cached.data.openItems);
+                }
+                setInfoDialog({
+                    isOpen: true,
+                    title: "Offline Cache Active",
+                    message: "Could not reach live menu, so cached desktop menu is being shown.",
+                });
+            } else {
+                setInfoDialog({ isOpen: true, title: "Error", message: "Could not fetch menu. " + error.message });
+            }
         } finally {
             if (!background) {
                 setLoading(false);
             }
         }
-    }, [applyMenuPayload, buildScopedUrl, readCachedPayload, writeCachedPayload]);
+    }, [applyMenuPayload, buildScopedUrl, readCombinedCachedPayload, persistCachedPayload]);
 
     const handleUploadCategoryImageClick = useCallback((categoryId, categoryTitle) => {
         if (!isStoreBusiness || !canEdit) return;
@@ -1465,14 +1507,20 @@ export default function MenuPage() {
     useEffect(() => {
         if (hasHydratedFromCacheRef.current) return;
         hasHydratedFromCacheRef.current = true;
-        const cached = readCachedPayload();
-        if (!cached?.data) return;
-        applyMenuPayload(cached.data);
-        if (Array.isArray(cached.data.openItems)) {
-            setOpenItems(cached.data.openItems);
-        }
-        setLoading(false);
-    }, [applyMenuPayload, readCachedPayload]);
+        let cancelled = false;
+        (async () => {
+            const cached = await readCombinedCachedPayload();
+            if (cancelled || !cached?.data) return;
+            applyMenuPayload(cached.data);
+            if (Array.isArray(cached.data.openItems)) {
+                setOpenItems(cached.data.openItems);
+            }
+            setLoading(false);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [applyMenuPayload, readCombinedCachedPayload]);
 
     useEffect(() => {
         if (isUserLoading) return;
@@ -1983,6 +2031,9 @@ export default function MenuPage() {
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">{pageTitle}</h1>
                     <p className="text-muted-foreground mt-1">{pageDescription}</p>
+                    <div className="mt-2">
+                        <OfflineDesktopStatus />
+                    </div>
                     {isStoreBusiness && (
                         <div className="mt-2 text-xs text-muted-foreground">
                             Tip: Product details and stock quantity are managed on this same page.

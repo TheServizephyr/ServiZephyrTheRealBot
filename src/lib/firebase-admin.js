@@ -234,6 +234,9 @@ function getServiceAccount() {
     console.log("[firebase-admin] Found FIREBASE_SERVICE_ACCOUNT_JSON env var.");
     try {
       const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      if (typeof parsed?.private_key === 'string' && parsed.private_key.includes('\\n')) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+      }
       console.log("[firebase-admin] Successfully parsed FIREBASE_SERVICE_ACCOUNT_JSON.");
       return parsed;
     } catch (e) {
@@ -247,6 +250,9 @@ function getServiceAccount() {
     try {
       const decodedServiceAccount = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8');
       const parsed = JSON.parse(decodedServiceAccount);
+      if (typeof parsed?.private_key === 'string' && parsed.private_key.includes('\\n')) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+      }
       console.log("[firebase-admin] Successfully parsed FIREBASE_SERVICE_ACCOUNT_BASE64.");
       return parsed;
     } catch (e) {
@@ -340,6 +346,32 @@ function getCookieValueFromRequest(req, cookieName) {
   return '';
 }
 
+function isDesktopLocalRequest(req) {
+  if (process.env.NEXT_PUBLIC_IS_DESKTOP_APP !== '1') return false;
+  try {
+    const hostHeader = String(req?.headers?.get?.('host') || '').toLowerCase();
+    return hostHeader.includes('localhost') || hostHeader.includes('127.0.0.1');
+  } catch {
+    return false;
+  }
+}
+
+function isTransientNetworkAuthError(error) {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || error || '').toLowerCase();
+  return (
+    code.includes('ehostunreach') ||
+    code.includes('enotfound') ||
+    code.includes('unavailable') ||
+    message.includes('identitytoolkit.googleapis.com') ||
+    message.includes('ehostunreach') ||
+    message.includes('enotfound') ||
+    message.includes('no connection established') ||
+    message.includes('unable to resolve host') ||
+    message.includes('error while making request')
+  );
+}
+
 const createAuthSessionCookie = async (idToken, expiresInMs = AUTH_SESSION_MAX_AGE_MS) => {
   const auth = await getAuth();
   const safeToken = String(idToken || '').trim();
@@ -403,16 +435,31 @@ const verifySessionCookie = async (sessionCookie, checkRevoked = false) => {
 };
 
 const getDecodedAuthContext = async (req, { checkRevoked = false, allowSessionCookie = true } = {}) => {
+  const safeCheckRevoked = checkRevoked && !isDesktopLocalRequest(req);
   const bearerToken = extractBearerTokenFromRequest(req);
   if (bearerToken) {
     const auth = await getAuth();
-    return auth.verifyIdToken(bearerToken, checkRevoked);
+    try {
+      return await auth.verifyIdToken(bearerToken, safeCheckRevoked);
+    } catch (error) {
+      if (safeCheckRevoked && isDesktopLocalRequest(req) && isTransientNetworkAuthError(error)) {
+        return auth.verifyIdToken(bearerToken, false);
+      }
+      throw error;
+    }
   }
 
   if (allowSessionCookie) {
     const sessionCookie = getCookieValueFromRequest(req, AUTH_SESSION_COOKIE_NAME);
     if (sessionCookie) {
-      return verifySessionCookie(sessionCookie, checkRevoked);
+      try {
+        return await verifySessionCookie(sessionCookie, safeCheckRevoked);
+      } catch (error) {
+        if (safeCheckRevoked && isDesktopLocalRequest(req) && isTransientNetworkAuthError(error)) {
+          return verifySessionCookie(sessionCookie, false);
+        }
+        throw error;
+      }
     }
   }
 
@@ -490,8 +537,15 @@ const verifyIdToken = async (token, checkRevoked = false) => {
   const auth = await getAuth();
   const decodedToken = await auth.verifyIdToken(token, false);
   if (checkRevoked) {
-    await assertDecodedTokenNotRevoked(auth, decodedToken);
-    return assertDecodedTokenNotLoggedOut(decodedToken);
+    try {
+      await assertDecodedTokenNotRevoked(auth, decodedToken);
+      return assertDecodedTokenNotLoggedOut(decodedToken);
+    } catch (error) {
+      if (process.env.NEXT_PUBLIC_IS_DESKTOP_APP === '1' && isTransientNetworkAuthError(error)) {
+        return decodedToken;
+      }
+      throw error;
+    }
   }
   return decodedToken;
 };

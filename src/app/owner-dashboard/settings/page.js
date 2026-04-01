@@ -17,6 +17,9 @@ import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import { useToast } from '@/components/ui/use-toast';
 import imageCompression from 'browser-image-compression';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -37,6 +40,14 @@ const normalizeBusinessType = (value) => {
     if (normalized === 'shop' || normalized === 'store') return 'store';
     if (normalized === 'restaurant' || normalized === 'street-vendor') return normalized;
     return null;
+};
+
+const defaultAddress = {
+    street: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: 'IN'
 };
 
 // --- Sub-components for better structure ---
@@ -281,16 +292,40 @@ function SettingsPageContent() {
     const settingsQuerySuffix = impersonatedOwnerId
         ? `?impersonate_owner_id=${impersonatedOwnerId}`
         : (employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '');
+    const settingsCacheKey = React.useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_settings_cache::${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
 
     // ... (useEffect and other handlers same) ...
-    const defaultAddress = {
-        street: '',
-        city: '',
-        state: '',
-        postalCode: '',
-        country: 'IN'
-    };
+    const readCachedSettings = React.useCallback(async () => {
+        try {
+            const raw = localStorage.getItem(settingsCacheKey);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.data) return parsed.data;
+            }
+        } catch {
+            // Ignore malformed cache payloads.
+        }
+
+        if (!isDesktopApp()) return null;
+        const desktopPayload = await getOfflineNamespace('owner_settings', settingsCacheKey, null);
+        return desktopPayload?.data || null;
+    }, [settingsCacheKey]);
+
+    const writeCachedSettings = React.useCallback(async (data) => {
+        const payload = { ts: Date.now(), data };
+        try {
+            localStorage.setItem(settingsCacheKey, JSON.stringify(payload));
+        } catch {
+            // Ignore local storage issues.
+        }
+        if (isDesktopApp()) {
+            await setOfflineNamespace('owner_settings', settingsCacheKey, payload);
+        }
+    }, [settingsCacheKey]);
 
     useEffect(() => {
         // ... (Fetch logic same) ...
@@ -335,9 +370,17 @@ function SettingsPageContent() {
                 };
                 setUser(userData);
                 setEditedUser(userData);
+                await writeCachedSettings(userData);
             } catch (error) {
                 console.error("Error fetching user data:", error);
-                setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+                const cachedUserData = await readCachedSettings();
+                if (cachedUserData) {
+                    setUser(cachedUserData);
+                    setEditedUser(cachedUserData);
+                    setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live settings fetch failed, so cached desktop settings are being shown.' });
+                } else {
+                    setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+                }
             } finally {
                 setLoading(false);
             }
@@ -352,7 +395,7 @@ function SettingsPageContent() {
         });
 
         return () => unsubscribe();
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, readCachedSettings, writeCachedSettings]);
 
 
     const handleEditToggle = (section) => {
@@ -560,6 +603,7 @@ function SettingsPageContent() {
             };
             setUser(finalUser);
             setEditedUser(finalUser);
+            await writeCachedSettings(finalUser);
             if (section === 'profile') setIsEditingProfile(false);
             if (section === 'media') setIsEditingMedia(false);
             if (section === 'payment') setIsEditingPayment(false);
@@ -685,7 +729,12 @@ function SettingsPageContent() {
             />
             <DeleteAccountModal isOpen={isDeleteModalOpen} setIsOpen={setDeleteModalOpen} />
 
-            <h1 className="text-3xl font-bold tracking-tight">User Profile & Settings</h1>
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">User Profile & Settings</h1>
+                <div className="mt-2">
+                    <OfflineDesktopStatus />
+                </div>
+            </div>
 
             {isBusinessOwner && (
                 <SectionCard

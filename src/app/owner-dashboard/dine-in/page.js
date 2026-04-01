@@ -29,6 +29,7 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { toPng } from 'html-to-image';
 import InfoDialog from '@/components/InfoDialog';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
     buildOwnerDashboardShortcutPath,
@@ -36,11 +37,14 @@ import {
     OwnerDashboardShortcutsDialog,
     useOwnerDashboardShortcuts,
 } from '@/lib/ownerDashboardShortcuts';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { appendOfflineQueueItem, getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 
 import { usePolling } from '@/lib/usePolling';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const sortTablesById = (tables = []) => [...tables].sort((a, b) => String(a?.id || '').localeCompare(String(b?.id || ''), undefined, { numeric: true, sensitivity: 'base' }));
 
 const toAmount = (value, fallback = 0) => {
     const parsed = Number(value);
@@ -2331,6 +2335,76 @@ const DineInPageContent = () => {
         impersonatedOwnerId,
         employeeOfOwnerId,
     }), [employeeOfOwnerId, impersonatedOwnerId]);
+    const dineInScope = useMemo(() => (
+        impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self')
+    ), [employeeOfOwnerId, impersonatedOwnerId]);
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const dineInSnapshotCacheKey = useMemo(() => `owner_dinein_snapshot_${dineInScope}`, [dineInScope]);
+    const dineInMenuCacheKey = useMemo(() => `owner_dinein_menu_${dineInScope}`, [dineInScope]);
+    const dineInSettingsCacheKey = useMemo(() => `owner_dinein_settings_${dineInScope}`, [dineInScope]);
+    const dineInQueueScope = useMemo(() => `owner_dinein_queue_${dineInScope}`, [dineInScope]);
+
+    const readLocalJson = useCallback((key, fallback) => {
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return fallback;
+            return JSON.parse(raw);
+        } catch {
+            return fallback;
+        }
+    }, []);
+
+    const writeLocalJson = useCallback((key, value) => {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch {
+            // Ignore storage errors.
+        }
+    }, []);
+
+    const persistDineInSnapshot = useCallback((value) => {
+        writeLocalJson(dineInSnapshotCacheKey, value);
+        if (desktopRuntime) {
+            void setOfflineNamespace('dine_in_snapshot', dineInSnapshotCacheKey, value);
+        }
+    }, [desktopRuntime, dineInSnapshotCacheKey, writeLocalJson]);
+
+    const persistDineInMenu = useCallback((value) => {
+        writeLocalJson(dineInMenuCacheKey, value);
+        if (desktopRuntime) {
+            void setOfflineNamespace('dine_in_menu', dineInMenuCacheKey, value);
+        }
+    }, [desktopRuntime, dineInMenuCacheKey, writeLocalJson]);
+
+    const persistDineInSettings = useCallback((value) => {
+        writeLocalJson(dineInSettingsCacheKey, value);
+        if (desktopRuntime) {
+            void setOfflineNamespace('dine_in_settings', dineInSettingsCacheKey, value);
+        }
+    }, [desktopRuntime, dineInSettingsCacheKey, writeLocalJson]);
+
+    const queueOfflineAction = useCallback(async (action, payload) => {
+        const item = {
+            action,
+            payload,
+            scope: dineInQueueScope,
+            impersonatedOwnerId,
+            employeeOfOwnerId,
+            queuedAt: new Date().toISOString(),
+        };
+        const current = readLocalJson(dineInQueueScope, []);
+        writeLocalJson(dineInQueueScope, Array.isArray(current) ? [...current, item] : [item]);
+        if (desktopRuntime) {
+            await appendOfflineQueueItem('owner_offline_sync_queue', item);
+        }
+    }, [desktopRuntime, dineInQueueScope, employeeOfOwnerId, impersonatedOwnerId, readLocalJson, writeLocalJson]);
+
+    const canUseOfflineFallback = useCallback((error = null) => {
+        if (!desktopRuntime) return false;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+        const message = String(error?.message || error || '').toLowerCase();
+        return message.includes('failed to fetch') || message.includes('network') || message.includes('authentication required');
+    }, [desktopRuntime]);
 
     const navigateWithShortcut = useCallback((basePath) => {
         navigateToShortcutPath(buildOwnerDashboardShortcutPath(basePath, shortcutScope));
@@ -2362,6 +2436,37 @@ const DineInPageContent = () => {
         shortcuts: ownerDashboardShortcuts,
         onOpenHelp: () => setIsShortcutHelpOpen(true),
     });
+
+    useEffect(() => {
+        if (!desktopRuntime) return;
+        let cancelled = false;
+
+        const hydrateDesktopCache = async () => {
+            const snapshot = readLocalJson(dineInSnapshotCacheKey, null) || await getOfflineNamespace('dine_in_snapshot', dineInSnapshotCacheKey, null);
+            const menuSnapshot = readLocalJson(dineInMenuCacheKey, null) || await getOfflineNamespace('dine_in_menu', dineInMenuCacheKey, null);
+            const settingsSnapshot = readLocalJson(dineInSettingsCacheKey, null) || await getOfflineNamespace('dine_in_settings', dineInSettingsCacheKey, null);
+
+            if (cancelled) return;
+
+            if (snapshot && !allData?.tables?.length) {
+                setAllData(snapshot);
+                setLoading(false);
+            }
+            if (Array.isArray(menuSnapshot) && dineInOnlyItems.length === 0) {
+                setDineInOnlyItems(menuSnapshot);
+            }
+            if (settingsSnapshot) {
+                if (settingsSnapshot.businessType) setBusinessType(settingsSnapshot.businessType);
+                if (settingsSnapshot.restaurantDetails) setRestaurantDetails(settingsSnapshot.restaurantDetails);
+                setIsBusinessTypeResolved(true);
+            }
+        };
+
+        hydrateDesktopCache();
+        return () => {
+            cancelled = true;
+        };
+    }, [allData?.tables?.length, desktopRuntime, dineInMenuCacheKey, dineInOnlyItems.length, dineInSettingsCacheKey, dineInSnapshotCacheKey, readLocalJson]);
 
     // Global undo state - tracks last bulk action for reversing
     const [lastBulkAction, setLastBulkAction] = useState(null);
@@ -2506,14 +2611,22 @@ const DineInPageContent = () => {
         if (!isManualRefresh) setLoading(true);
         try {
             const data = await handleApiCall('GET', { include_empty_tabs: 'true' }, '/api/owner/dine-in-tables');
-            setAllData(data || { tables: [], serviceRequests: [], closedTabs: [], carOrders: [] });
+            const normalizedData = data || { tables: [], serviceRequests: [], closedTabs: [], carOrders: [] };
+            setAllData(normalizedData);
+            persistDineInSnapshot(normalizedData);
         } catch (error) {
             console.error("[Dine-In Dashboard] Fetch data error:", error);
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
+            const cachedSnapshot = readLocalJson(dineInSnapshotCacheKey, null);
+            if (cachedSnapshot) {
+                setAllData(cachedSnapshot);
+                setInfoDialog({ isOpen: true, title: "Offline Mode", message: 'Loaded cached dine-in data because the network is unavailable.' });
+            } else {
+                setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
+            }
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    }, [handleApiCall, businessType]);
+    }, [businessType, dineInSnapshotCacheKey, handleApiCall, persistDineInSnapshot, readLocalJson]);
 
     const fetchDineInOnlyMenu = useCallback(async () => {
         if (businessType !== 'restaurant') {
@@ -2562,13 +2675,15 @@ const DineInPageContent = () => {
                 .filter((item) => item?.isDineInExclusive === true)
                 .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')));
             setDineInOnlyItems(dineInExclusiveItems);
+            persistDineInMenu(dineInExclusiveItems);
         } catch (error) {
             console.error('[Dine-In Dashboard] Failed to fetch dine-in only menu:', error);
-            setDineInOnlyItems([]);
+            const cachedMenu = readLocalJson(dineInMenuCacheKey, []);
+            setDineInOnlyItems(Array.isArray(cachedMenu) ? cachedMenu : []);
         } finally {
             setDineInOnlyLoading(false);
         }
-    }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+    }, [businessType, dineInMenuCacheKey, employeeOfOwnerId, impersonatedOwnerId, persistDineInMenu, readLocalJson]);
 
     // Adaptive Polling for data
     usePolling(fetchData, {
@@ -2624,13 +2739,19 @@ const DineInPageContent = () => {
                 const settingsRes = await fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } });
                 if (settingsRes.ok) {
                     const settingsData = await settingsRes.json();
-                    setBusinessType(settingsData.businessType || 'restaurant');
-                    setRestaurantDetails({
+                    const nextBusinessType = settingsData.businessType || 'restaurant';
+                    const nextRestaurantDetails = {
                         id: settingsData.businessId,
                         name: settingsData.restaurantName,
                         address: settingsData.address,
                         gstin: settingsData.gstin,
                         dineInRbacEnabled: settingsData.dineInRbacEnabled
+                    };
+                    setBusinessType(nextBusinessType);
+                    setRestaurantDetails(nextRestaurantDetails);
+                    persistDineInSettings({
+                        businessType: nextBusinessType,
+                        restaurantDetails: nextRestaurantDetails,
                     });
 
                 } else {
@@ -2638,14 +2759,20 @@ const DineInPageContent = () => {
                     console.error("[Dine-In Dashboard] Failed to fetch restaurant settings.");
                 }
             } catch (error) {
-                setBusinessType('restaurant');
+                const cachedSettings = readLocalJson(dineInSettingsCacheKey, null);
+                if (cachedSettings) {
+                    setBusinessType(cachedSettings.businessType || 'restaurant');
+                    setRestaurantDetails(cachedSettings.restaurantDetails || null);
+                } else {
+                    setBusinessType('restaurant');
+                }
                 console.error("[Dine-In Dashboard] Failed to resolve business type:", error);
             } finally {
                 setIsBusinessTypeResolved(true);
             }
         };
         fetchAndSetRestaurantDetails();
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [dineInSettingsCacheKey, employeeOfOwnerId, impersonatedOwnerId, persistDineInSettings, readLocalJson]);
 
     // Handle auto-printing when billData changes
     useEffect(() => {
@@ -2667,6 +2794,18 @@ const DineInPageContent = () => {
             setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableName}" saved.` });
             await fetchData(true);
         } catch (error) {
+            if (canUseOfflineFallback(error)) {
+                const nextTables = sortTablesById([
+                    ...(allData?.tables || []),
+                    { id: tableName, max_capacity: maxCapacity, current_pax: 0, state: 'available', tabs: {}, pendingOrders: [] }
+                ]);
+                const nextData = { ...(allData || {}), tables: nextTables };
+                setAllData(nextData);
+                persistDineInSnapshot(nextData);
+                await queueOfflineAction('dine_in_table_create', { tableId: tableName, max_capacity: maxCapacity });
+                setInfoDialog({ isOpen: true, title: "Offline Saved", message: `Table "${tableName}" saved locally and queued for sync.` });
+                return;
+            }
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not save table: ${error.message}` });
             throw error;
         }
@@ -2678,6 +2817,19 @@ const DineInPageContent = () => {
             setInfoDialog({ isOpen: true, title: "Success", message: `Table updated.` });
             await fetchData(true);
         } catch (error) {
+            if (canUseOfflineFallback(error)) {
+                const nextTables = sortTablesById((allData?.tables || []).map((table) => (
+                    table.id === originalId
+                        ? { ...table, id: newId, max_capacity: newCapacity }
+                        : table
+                )));
+                const nextData = { ...(allData || {}), tables: nextTables };
+                setAllData(nextData);
+                persistDineInSnapshot(nextData);
+                await queueOfflineAction('dine_in_table_update', { tableId: originalId, newTableId: newId, newCapacity });
+                setInfoDialog({ isOpen: true, title: "Offline Saved", message: `Table updated locally and queued for sync.` });
+                return;
+            }
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not edit table: ${error.message}` });
             throw error;
         }
@@ -2696,7 +2848,16 @@ const DineInPageContent = () => {
                     setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableId}" has been deleted.` });
                     await fetchData(true);
                 } catch (error) {
-                    setInfoDialog({ isOpen: true, title: "Error", message: `Could not delete table: ${error.message}` });
+                    if (canUseOfflineFallback(error)) {
+                        const nextTables = (allData?.tables || []).filter((table) => table.id !== tableId);
+                        const nextData = { ...(allData || {}), tables: nextTables };
+                        setAllData(nextData);
+                        persistDineInSnapshot(nextData);
+                        await queueOfflineAction('dine_in_table_delete', { tableId });
+                        setInfoDialog({ isOpen: true, title: "Offline Saved", message: `Table "${tableId}" deleted locally and queued for sync.` });
+                    } else {
+                        setInfoDialog({ isOpen: true, title: "Error", message: `Could not delete table: ${error.message}` });
+                    }
                 }
                 setConfirmationState({ isOpen: false });
             },
@@ -2889,8 +3050,21 @@ const DineInPageContent = () => {
             }
             toast({ title: "Success", description: `Table ${tableId} is now available.` });
         } catch (error) {
-            await fetchData(true);
-            toast({ variant: "destructive", title: "Error", description: `Could not update table status: ${error.message}` });
+            if (canUseOfflineFallback(error)) {
+                const nextData = {
+                    ...(allData || {}),
+                    tables: (allData?.tables || []).map((table) => (
+                        table.id === tableId ? { ...table, state: 'available' } : table
+                    )),
+                };
+                setAllData(nextData);
+                persistDineInSnapshot(nextData);
+                await queueOfflineAction('dine_in_mark_cleaned', { tableId });
+                toast({ title: "Offline Saved", description: `Table ${tableId} marked clean locally and queued for sync.`, variant: "warning" });
+            } else {
+                await fetchData(true);
+                toast({ variant: "destructive", title: "Error", description: `Could not update table status: ${error.message}` });
+            }
         }
     };
 
@@ -3003,8 +3177,25 @@ const DineInPageContent = () => {
                     : `Tab on Table ${tableId} has been cleared.`
             });
         } catch (error) {
-            await fetchData(true);
-            toast({ variant: "destructive", title: "Error", description: `Could not clear tab: ${error.message}` });
+            if (canUseOfflineFallback(error)) {
+                await queueOfflineAction('dine_in_clear_tab', {
+                    tabId,
+                    tableId,
+                    paxCount,
+                    settlementMethod,
+                    restaurantId: restaurantDetails?.id || null,
+                    dineInTabId: realDineInTabId || null,
+                });
+                persistDineInSnapshot({
+                    ...(allData || {}),
+                    tables: allData?.tables || [],
+                    carOrders: allData?.carOrders || [],
+                });
+                toast({ title: "Offline Saved", description: `Tab clear action queued for sync.`, variant: "warning" });
+            } else {
+                await fetchData(true);
+                toast({ variant: "destructive", title: "Error", description: `Could not clear tab: ${error.message}` });
+            }
         }
     };
     const handleUpdateStatus = async (orderId, newStatus) => {
@@ -3412,6 +3603,9 @@ const DineInPageContent = () => {
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
+                    <div className="mt-2">
+                        <OfflineDesktopStatus />
+                    </div>
                 </div>
                 <div className="w-full lg:flex-1 lg:max-w-4xl lg:ml-auto">
                     <div className="flex items-center gap-2 justify-end">

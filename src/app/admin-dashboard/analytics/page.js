@@ -11,6 +11,9 @@ import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 function formatCurrency(value) {
   return `₹${Number(value || 0).toLocaleString('en-IN')}`;
@@ -59,6 +62,11 @@ export default function AdminAnalyticsPage() {
     topItems: [],
     totals: { orderCount: 0, userSignups: 0 },
   });
+  const analyticsCacheKey = useMemo(() => {
+    const start = date?.from ? format(date.from, 'yyyy-MM-dd') : 'start';
+    const end = date?.to ? format(date.to, 'yyyy-MM-dd') : 'end';
+    return `admin_analytics::${start}::${end}`;
+  }, [date]);
 
   const fetchAnalytics = useCallback(async () => {
     if (!date?.from || !date?.to) return;
@@ -92,20 +100,57 @@ export default function AdminAnalyticsPage() {
       }
 
       const data = await res.json();
-      setPayload({
+      const nextPayload = {
         range: data.range || null,
         revenueData: Array.isArray(data.revenueData) ? data.revenueData : [],
         userData: Array.isArray(data.userData) ? data.userData : [],
         topRestaurants: Array.isArray(data.topRestaurants) ? data.topRestaurants : [],
         topItems: Array.isArray(data.topItems) ? data.topItems : [],
         totals: data.totals || { orderCount: 0, userSignups: 0 },
-      });
+      };
+      setPayload(nextPayload);
+      const cachePayload = { ts: Date.now(), data: nextPayload };
+      try {
+        localStorage.setItem(analyticsCacheKey, JSON.stringify(cachePayload));
+      } catch {
+        // Ignore local cache failures.
+      }
+      if (isDesktopApp()) {
+        await setOfflineNamespace('admin_analytics', analyticsCacheKey, cachePayload);
+      }
     } catch (err) {
-      setError(err.message || 'Could not load analytics');
+      let cached = null;
+      try {
+        const raw = localStorage.getItem(analyticsCacheKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.data) cached = parsed.data;
+        }
+      } catch {
+        // Ignore malformed cache.
+      }
+      if (!cached && isDesktopApp()) {
+        const desktopPayload = await getOfflineNamespace('admin_analytics', analyticsCacheKey, null);
+        cached = desktopPayload?.data || null;
+      }
+
+      if (cached) {
+        setPayload({
+          range: cached.range || null,
+          revenueData: Array.isArray(cached.revenueData) ? cached.revenueData : [],
+          userData: Array.isArray(cached.userData) ? cached.userData : [],
+          topRestaurants: Array.isArray(cached.topRestaurants) ? cached.topRestaurants : [],
+          topItems: Array.isArray(cached.topItems) ? cached.topItems : [],
+          totals: cached.totals || { orderCount: 0, userSignups: 0 },
+        });
+        setError('Showing cached analytics because the live fetch failed.');
+      } else {
+        setError(err.message || 'Could not load analytics');
+      }
     } finally {
       setLoading(false);
     }
-  }, [date?.from, date?.to]);
+  }, [date?.from, date?.to, analyticsCacheKey]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -138,6 +183,9 @@ export default function AdminAnalyticsPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Real data from Firestore (Orders: {payload.totals.orderCount || 0}, Signups: {payload.totals.userSignups || 0})
           </p>
+          <div className="mt-2">
+            <OfflineDesktopStatus />
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">

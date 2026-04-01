@@ -11,6 +11,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import Image from 'next/image';
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { getBestEffortIdToken } from '@/lib/client-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +27,29 @@ const normalizeBusinessType = (value) => {
   if (normalized === 'street-vendor' || normalized === 'street_vendor') return 'street-vendor';
   return 'restaurant';
 };
+
+const isOfflineLikeError = (value) => {
+  const message = String(value || '').toLowerCase();
+  return (
+    message.includes('token verification failed') ||
+    message.includes('identitytoolkit') ||
+    message.includes('network') ||
+    message.includes('offline') ||
+    message.includes('enotfound') ||
+    message.includes('ehostunreach') ||
+    message.includes('unavailable') ||
+    message.includes('failed to fetch')
+  );
+};
+
+async function readErrorMessage(response, fallbackMessage) {
+  try {
+    const payload = await response.json();
+    return payload?.message || fallbackMessage;
+  } catch {
+    return fallbackMessage;
+  }
+}
 
 // --- Individual Components Defined in One File ---
 
@@ -207,6 +234,42 @@ function PageContent() {
   const dashboardTitle = isStoreBusiness ? 'Store Command Center' : 'Business Command Center';
   const orderStatTitle = isStoreBusiness ? 'Total Sales' : 'Total Bills / Orders';
   const rejectionStatTitle = isStoreBusiness ? "Today's Cancelled Sales" : "Today's Rejections";
+  const ownerDashboardCacheKey = React.useMemo(() => {
+    const scopeOwner = impersonatedOwnerId || employeeOfOwnerId || auth.currentUser?.uid || 'default';
+    return `owner_dashboard_cache::${scopeOwner}::${activeFilter}`;
+  }, [activeFilter, impersonatedOwnerId, employeeOfOwnerId]);
+
+  const readCachedDashboardPayload = React.useCallback(async () => {
+    try {
+      const raw = localStorage.getItem(ownerDashboardCacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.data) return parsed;
+      }
+    } catch {
+      // Ignore malformed cache payloads.
+    }
+
+    if (!isDesktopApp()) return null;
+    const desktopData = await getOfflineNamespace('owner_dashboard', ownerDashboardCacheKey, null);
+    return desktopData?.data ? desktopData : null;
+  }, [ownerDashboardCacheKey]);
+
+  const writeCachedDashboardPayload = React.useCallback(async (data) => {
+    const payload = {
+      ts: Date.now(),
+      data,
+    };
+    try {
+      localStorage.setItem(ownerDashboardCacheKey, JSON.stringify(payload));
+    } catch {
+      // Ignore local cache write failures.
+    }
+    if (isDesktopApp()) {
+      await setOfflineNamespace('owner_dashboard', ownerDashboardCacheKey, payload);
+    }
+    return payload;
+  }, [ownerDashboardCacheKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -225,7 +288,7 @@ function PageContent() {
           return;
         }
 
-        const idToken = await user.getIdToken(true);
+        const idToken = await getBestEffortIdToken(user);
         console.log("[Dashboard] Got ID token.");
 
         // API URLs - support both admin impersonation and employee access
@@ -243,23 +306,41 @@ function PageContent() {
         console.log(`[Dashboard] Fetching dashboard data from: ${dashboardApiUrl}`);
         console.log(`[Dashboard] Fetching connections data from: ${connectionsApiUrl}`);
 
-        // Fetch both endpoints concurrently
-        const [dashboardRes, connectionsRes] = await Promise.all([
+        const [dashboardResult, connectionsResult] = await Promise.allSettled([
           fetch(dashboardApiUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
           fetch(connectionsApiUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
         ]);
 
-        console.log(`[Dashboard] Dashboard API Response Status: ${dashboardRes.status}`);
-        console.log(`[Dashboard] Connections API Response Status: ${connectionsRes.status}`);
+        if (dashboardResult.status !== 'fulfilled') {
+          throw dashboardResult.reason || new Error('Failed to fetch dashboard data');
+        }
 
-        if (!dashboardRes.ok || !connectionsRes.ok) {
-          const errorData = !dashboardRes.ok ? await dashboardRes.json() : await connectionsRes.json();
-          console.error("[Dashboard] API Error:", errorData.message);
-          throw new Error(errorData.message || 'Failed to fetch initial data');
+        const dashboardRes = dashboardResult.value;
+        console.log(`[Dashboard] Dashboard API Response Status: ${dashboardRes.status}`);
+        if (!dashboardRes.ok) {
+          const errorMessage = await readErrorMessage(dashboardRes, 'Failed to fetch dashboard data');
+          console.error("[Dashboard] Dashboard API Error:", errorMessage);
+          throw new Error(errorMessage);
+        }
+
+        const connectionsRes = connectionsResult.status === 'fulfilled' ? connectionsResult.value : null;
+        if (connectionsRes) {
+          console.log(`[Dashboard] Connections API Response Status: ${connectionsRes.status}`);
+        } else {
+          console.warn('[Dashboard] Connections request failed before response:', connectionsResult.reason);
         }
 
         const dashboardData = await dashboardRes.json();
-        const connectionsData = await connectionsRes.json();
+        let resolvedBotCount = 0;
+        if (connectionsRes?.ok) {
+          const connectionsData = await connectionsRes.json();
+          console.log("[Dashboard] Successfully fetched connections data:", connectionsData);
+          resolvedBotCount = connectionsData.connections?.length || 0;
+        } else if (connectionsRes) {
+          const connectionsError = await readErrorMessage(connectionsRes, 'Failed to fetch connections');
+          console.warn("[Dashboard] Connections API Error:", connectionsError);
+        }
+
         const resolvedBusinessType = normalizeBusinessType(dashboardData?.businessInfo?.businessType);
         if (resolvedBusinessType) {
           setBusinessType(resolvedBusinessType);
@@ -269,14 +350,36 @@ function PageContent() {
         }
 
         console.log("[Dashboard] Successfully fetched dashboard data:", dashboardData);
-        console.log("[Dashboard] Successfully fetched connections data:", connectionsData);
 
         setDashboardData(dashboardData);
-        setBotCount(connectionsData.connections?.length || 0);
+        setBotCount(resolvedBotCount);
+        await writeCachedDashboardPayload({
+          dashboardData,
+          botCount: resolvedBotCount,
+          businessType: resolvedBusinessType || businessType,
+        });
 
       } catch (error) {
         console.error("[Dashboard] CRITICAL Error fetching initial data:", error);
-        setInfoDialog({ isOpen: true, title: 'Error', message: `Error: ${error.message}` });
+        const cached = await readCachedDashboardPayload();
+        if (cached?.data) {
+          setDashboardData(cached.data.dashboardData || null);
+          setBotCount(Number(cached.data.botCount || 0));
+          setBusinessType(normalizeBusinessType(cached.data.businessType || businessType));
+          const shouldPresentAsOffline = (
+            typeof navigator !== 'undefined' &&
+            navigator.onLine === false
+          ) || isOfflineLikeError(error?.message || error);
+          setInfoDialog({
+            isOpen: true,
+            title: shouldPresentAsOffline ? 'Offline Cache Active' : 'Cached Snapshot Active',
+            message: shouldPresentAsOffline
+              ? 'Live dashboard fetch failed, so cached desktop data is being shown.'
+              : 'Live dashboard fetch failed, so the last cached desktop snapshot is being shown.',
+          });
+        } else {
+          setInfoDialog({ isOpen: true, title: 'Error', message: `Error: ${error.message}` });
+        }
       } finally {
         console.log("[Dashboard] Finished fetching data.");
         setLoading(false);
@@ -294,7 +397,7 @@ function PageContent() {
     });
 
     return () => unsubscribe();
-  }, [activeFilter, router, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [activeFilter, router, impersonatedOwnerId, employeeOfOwnerId, readCachedDashboardPayload, writeCachedDashboardPayload, businessType]);
 
   return (
     <div className="text-foreground min-h-full p-4 md:p-6">
@@ -308,7 +411,12 @@ function PageContent() {
 
         {/* Global Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-4 md:mb-0">{dashboardTitle}</h1>
+          <div className="mb-4 md:mb-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">{dashboardTitle}</h1>
+            <div className="mt-2">
+              <OfflineDesktopStatus />
+            </div>
+          </div>
           <div className="flex items-center bg-card p-1 rounded-lg border border-border">
             {['Today', 'This Week', 'This Month'].map(filter => (
               <button

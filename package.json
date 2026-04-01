@@ -1,11 +1,19 @@
 {
   "name": "servizephyr-main-app",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "private": true,
+  "main": "desktop/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "desktop:dev": "concurrently -k \"cross-env NEXT_PUBLIC_IS_DESKTOP_APP=1 npm run dev\" \"wait-on http://localhost:3000 && cross-env NEXT_PUBLIC_IS_DESKTOP_APP=1 ELECTRON_DEV=1 ELECTRON_START_URL=http://localhost:3000 electron .\"",
+    "desktop:start": "cross-env NODE_ENV=production NEXT_PUBLIC_IS_DESKTOP_APP=1 electron .",
+    "desktop:build": "node scripts/prepare-desktop-runtime.js && npm run build && electron-builder --win nsis --publish never",
+    "desktop:build:dir": "node scripts/prepare-desktop-runtime.js && npm run build && electron-builder --win dir --publish never --config.directories.output=desktop-dist-dir --config.win.signAndEditExecutable=false",
+    "desktop:refresh:unpacked": "node scripts/prepare-desktop-runtime.js && npm run build && node scripts/sync-desktop-unpacked.js",
+    "desktop:build:installer": "node scripts/prepare-desktop-runtime.js && npm run build && electron-builder --win nsis --publish never -c.directories.output=desktop-dist-installer -c.win.signAndEditExecutable=false -c.nsis.include=desktop/installer.nsh -c.nsis.installerIcon=desktop/assets/icon.ico -c.nsis.uninstallerIcon=desktop/assets/icon.ico -c.nsis.installerHeaderIcon=desktop/assets/icon.ico",
+    "desktop:build:portable": "node scripts/prepare-desktop-runtime.js && npm run build && electron-builder --config desktop/electron-builder-portable.json --publish never",
     "lint": "echo \"linting...\" && next lint",
     "migrate:menu-images": "node scripts/migrate-menu-images-to-storage.js",
     "backfill:business-customers": "node -r dotenv/config scripts/backfill-business-customers.js dotenv_config_path=.env.local",
@@ -51,12 +59,14 @@
     "@vercel/speed-insights": "^1.3.1",
     "@vis.gl/react-google-maps": "^0.10.0",
     "axios": "^1.13.2",
+    "better-sqlite3": "^12.8.0",
     "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "0.2.1",
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.5",
+    "electron-updater": "^6.8.3",
     "firebase": "^10.12.3",
     "flowbite": "^3.1.2",
     "framer-motion": "^11.3.19",
@@ -99,10 +109,110 @@
     "autocannon": "^8.0.0",
     "autoprefixer": "^10.4.21",
     "baseline-browser-mapping": "^2.10.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.4",
     "firebase-admin": "^12.2.0",
     "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.1"
+    "tailwindcss": "^3.4.1",
+    "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "com.servizephyr.desktop",
+    "productName": "ServiZephyr Desktop",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "TheServizephyr",
+        "repo": "desktop-releases"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      ".next/standalone/**/*",
+      ".next/standalone/node_modules/**/*",
+      ".next/static/**/*",
+      "public/**/*",
+      "node_modules/electron-updater/**/*",
+      "node_modules/builder-util-runtime/**/*",
+      "node_modules/fs-extra/**/*",
+      "node_modules/graceful-fs/**/*",
+      "node_modules/jsonfile/**/*",
+      "node_modules/universalify/**/*",
+      "node_modules/js-yaml/**/*",
+      "node_modules/argparse/**/*",
+      "node_modules/lazy-val/**/*",
+      "node_modules/lodash.escaperegexp/**/*",
+      "node_modules/lodash.isequal/**/*",
+      "node_modules/semver/**/*",
+      "node_modules/tiny-typed-emitter/**/*",
+      "node_modules/debug/**/*",
+      "node_modules/ms/**/*",
+      "node_modules/sax/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*"
+    ],
+    "directories": {
+      "output": "desktop-dist-build",
+      "buildResources": "desktop/assets"
+    },
+    "files": [
+      "desktop/**/*",
+      "public/**/*",
+      ".env.local",
+      ".next/standalone/**/*",
+      ".next/static/**/*",
+      "package.json",
+      "!node_modules/**/*",
+      ".next/standalone/node_modules/**/*",
+      "node_modules/electron-updater/**/*",
+      "node_modules/builder-util-runtime/**/*",
+      "node_modules/fs-extra/**/*",
+      "node_modules/graceful-fs/**/*",
+      "node_modules/jsonfile/**/*",
+      "node_modules/universalify/**/*",
+      "node_modules/js-yaml/**/*",
+      "node_modules/argparse/**/*",
+      "node_modules/lazy-val/**/*",
+      "node_modules/lodash.escaperegexp/**/*",
+      "node_modules/lodash.isequal/**/*",
+      "node_modules/semver/**/*",
+      "node_modules/tiny-typed-emitter/**/*",
+      "node_modules/debug/**/*",
+      "node_modules/ms/**/*",
+      "node_modules/sax/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*",
+      "!.next/standalone/**/*.map",
+      "!.next/static/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/runtime/node.exe",
+        "to": "node-runtime/node.exe"
+      }
+    ],
+    "extraMetadata": {
+      "main": "desktop/main.js"
+    },
+    "win": {
+      "icon": "desktop/assets/icon.ico",
+      "signAndEditExecutable": true,
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "ServiZephyr-Desktop-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "ServiZephyr Desktop"
+    }
   }
 }

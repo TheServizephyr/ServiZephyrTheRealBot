@@ -33,6 +33,9 @@ import {
   isDismissedCallSyncEvent,
   normalizeIndianPhoneLoose,
 } from "@/lib/call-sync";
+import DesktopSyncProcessor from "@/components/DesktopSyncProcessor";
+import { getBestEffortIdToken } from "@/lib/client-session";
+import { isDesktopApp } from "@/lib/desktop/runtime";
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +58,28 @@ const normalizeBusinessType = (value) => {
   if (normalized === 'street_vendor') return 'street-vendor';
   if (normalized === 'street-vendor' || normalized === 'restaurant') return normalized;
   return 'restaurant';
+};
+
+const isDesktopOfflineMode = (desktopRuntime) => (
+  Boolean(
+    desktopRuntime &&
+    typeof navigator !== 'undefined' &&
+    navigator.onLine === false
+  )
+);
+
+const isOfflineEligibleMessage = (value) => {
+  const message = String(value || '').toLowerCase();
+  return (
+    message.includes('backend error') ||
+    message.includes('token verification failed') ||
+    message.includes('enotfound') ||
+    message.includes('ehostunreach') ||
+    message.includes('unavailable') ||
+    message.includes('no connection established') ||
+    message.includes('identitytoolkit') ||
+    message.includes('network')
+  );
 };
 
 function FeatureLockScreen({ remark, featureId }) {
@@ -98,6 +123,7 @@ function FeatureLockScreen({ remark, featureId }) {
 
 
 function OwnerDashboardContent({ children }) {
+  const desktopRuntime = useMemo(() => isDesktopApp(), []);
   const [isMobile, setIsMobile] = useState(true); // FIX: Default to true
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [restaurantStatus, setRestaurantStatus] = useState({
@@ -130,6 +156,50 @@ function OwnerDashboardContent({ children }) {
   const [hasAttemptedSessionRecovery, setHasAttemptedSessionRecovery] = useState(false);
   const pendingHistoryNavigationRef = useRef(null);
   const pendingHistoryTimerRef = useRef(null);
+  const ownerCacheKey = useMemo(() => {
+    const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+    return `owner_dashboard_shell_cache_v1_${scope}`;
+  }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+  const readOwnerCache = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(ownerCacheKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, [ownerCacheKey]);
+
+  const writeOwnerCache = useCallback((payload = {}) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(ownerCacheKey, JSON.stringify({
+        ts: Date.now(),
+        ...payload,
+      }));
+    } catch {
+      // Ignore cache write failures
+    }
+  }, [ownerCacheKey]);
+
+  useEffect(() => {
+    if (!desktopRuntime) return;
+    const cached = readOwnerCache();
+    if (!cached) return;
+
+    if (cached.restaurantName) setRestaurantName(cached.restaurantName);
+    if (cached.restaurantLogo) setRestaurantLogo(cached.restaurantLogo);
+    if (cached.businessType) {
+      const normalizedBusinessType = normalizeBusinessType(cached.businessType);
+      localStorage.setItem('businessType', normalizedBusinessType);
+      setBusinessType(normalizedBusinessType);
+    }
+    if (cached.restaurantStatus) {
+      setRestaurantStatus(cached.restaurantStatus);
+    }
+  }, [desktopRuntime, readOwnerCache]);
 
   const hasOwnerSessionHint = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -314,8 +384,7 @@ function OwnerDashboardContent({ children }) {
         // Fetch employee role from Firestore linkedOutlets
         console.log('[Layout] Employee detected, checking Firestore...');
         try {
-          // Force token refresh before Direct Firestore Access to prevent permission errors
-          await user.getIdToken(true);
+          await getBestEffortIdToken(user);
 
           const userDocRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userDocRef);
@@ -564,7 +633,7 @@ function OwnerDashboardContent({ children }) {
 
     // Log impersonation when detected
     if (user && impersonatedOwnerId) {
-      user.getIdToken().then(idToken => {
+      getBestEffortIdToken(user).then(idToken => {
         fetch('/api/admin/log-impersonation', {
           method: 'POST',
           headers: {
@@ -584,7 +653,22 @@ function OwnerDashboardContent({ children }) {
     const fetchRestaurantData = async () => {
       console.log('[Layout] 🚀 fetchRestaurantData started');
       try {
-        const idToken = await user.getIdToken();
+        const cached = readOwnerCache();
+        if (isDesktopOfflineMode(desktopRuntime) && cached) {
+          setRestaurantName(cached.restaurantName || 'My Dashboard');
+          setRestaurantLogo(cached.restaurantLogo || null);
+          if (cached.businessType) {
+            const normalizedBusinessType = normalizeBusinessType(cached.businessType);
+            localStorage.setItem('businessType', normalizedBusinessType);
+            setBusinessType(normalizedBusinessType);
+          }
+          if (cached.restaurantStatus) {
+            setRestaurantStatus(cached.restaurantStatus);
+          }
+          return;
+        }
+
+        const idToken = await getBestEffortIdToken(user);
         console.log('[Layout] ✅ Got ID token');
 
         let statusUrl = '/api/owner/status';
@@ -634,8 +718,25 @@ function OwnerDashboardContent({ children }) {
               collectionName: String(settingsData.collectionName),
             });
           }
+          writeOwnerCache({
+            restaurantName: settingsData.restaurantName || 'My Dashboard',
+            restaurantLogo: settingsData.logoUrl || null,
+            businessType: settingsData.businessType || businessType,
+            restaurantStatus,
+          });
         } else {
-          console.warn('[Layout] ⚠️ Settings API failed:', settingsRes.status);
+          const settingsError = await settingsRes.json().catch(() => ({}));
+          console.warn('[Layout] ⚠️ Settings API failed:', settingsRes.status, settingsError?.message);
+          const cached = readOwnerCache();
+          if (desktopRuntime && cached && isOfflineEligibleMessage(settingsError?.message || '')) {
+            setRestaurantName(cached.restaurantName || 'My Dashboard');
+            setRestaurantLogo(cached.restaurantLogo || null);
+            if (cached.businessType) {
+              const normalizedBusinessType = normalizeBusinessType(cached.businessType);
+              localStorage.setItem('businessType', normalizedBusinessType);
+              setBusinessType(normalizedBusinessType);
+            }
+          }
         }
 
         if (statusRes.ok) {
@@ -651,6 +752,17 @@ function OwnerDashboardContent({ children }) {
             lockedFeatures: statusData.lockedFeatures || [],
             suspensionRemark: statusData.suspensionRemark || '',
           });
+          writeOwnerCache({
+            restaurantName,
+            restaurantLogo,
+            businessType,
+            restaurantStatus: {
+              status: statusData.status,
+              restrictedFeatures: statusData.restrictedFeatures || [],
+              lockedFeatures: statusData.lockedFeatures || [],
+              suspensionRemark: statusData.suspensionRemark || '',
+            },
+          });
         } else if (statusRes.status === 404) {
           console.log('[Layout] ⚠️ Status 404 - Setting to pending');
           setRestaurantStatus({ status: 'pending', restrictedFeatures: [], lockedFeatures: [], suspensionRemark: '' });
@@ -662,11 +774,42 @@ function OwnerDashboardContent({ children }) {
         } else {
           const errorData = await statusRes.json();
           console.error("[Layout] ❌ Error fetching status:", errorData.message);
-          setRestaurantStatus({ status: 'error', restrictedFeatures: [], lockedFeatures: [], suspensionRemark: '' });
+          const cached = readOwnerCache();
+          if (desktopRuntime && cached?.restaurantStatus && isOfflineEligibleMessage(errorData?.message || '')) {
+            setRestaurantStatus(cached.restaurantStatus);
+          } else {
+            setRestaurantStatus({ status: 'error', restrictedFeatures: [], lockedFeatures: [], suspensionRemark: '' });
+          }
         }
 
       } catch (e) {
         console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
+        const cached = readOwnerCache();
+        const canUseCachedDesktopState =
+          desktopRuntime &&
+          cached?.restaurantStatus &&
+          (
+            typeof navigator !== 'undefined' ? navigator.onLine === false : false
+          ||
+            String(e?.message || '').toLowerCase().includes('network')
+          ||
+            String(e?.message || '').toLowerCase().includes('enotfound')
+          ||
+            String(e?.message || '').toLowerCase().includes('auth')
+          );
+
+        if (canUseCachedDesktopState) {
+          setRestaurantName(cached.restaurantName || 'My Dashboard');
+          setRestaurantLogo(cached.restaurantLogo || null);
+          if (cached.businessType) {
+            const normalizedBusinessType = normalizeBusinessType(cached.businessType);
+            localStorage.setItem('businessType', normalizedBusinessType);
+            setBusinessType(normalizedBusinessType);
+          }
+          setRestaurantStatus(cached.restaurantStatus);
+          return;
+        }
+
         setRestaurantStatus({ status: 'error', restrictedFeatures: [], lockedFeatures: [], suspensionRemark: '' });
       }
     }
@@ -683,7 +826,7 @@ function OwnerDashboardContent({ children }) {
       }
 
       try {
-        const idToken = await user.getIdToken();
+        const idToken = await getBestEffortIdToken(user);
         const response = await fetch('/api/employee/me', {
           headers: { 'Authorization': `Bearer ${idToken}` }
         });
@@ -753,6 +896,9 @@ function OwnerDashboardContent({ children }) {
     }
 
     if (restaurantStatus.status === 'error') {
+      if (desktopRuntime) {
+        return null;
+      }
       return (
         <main className={styles.mainContent} style={{ padding: '1rem' }}>
           <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
@@ -814,6 +960,7 @@ function OwnerDashboardContent({ children }) {
 
   return (
     <>
+      <DesktopSyncProcessor />
       <ImpersonationBanner vendorName={restaurantName} />
       {showGlobalIncomingCallBanner && (
         <motion.div

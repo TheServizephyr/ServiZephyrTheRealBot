@@ -4,6 +4,8 @@
 
 import { useState, useEffect } from 'react';
 import { auth } from '@/lib/firebase';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -149,6 +151,8 @@ export default function AdminUsersPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('owners');
   const [exporting, setExporting] = useState(false);
+  const desktopRuntime = isDesktopApp();
+  const cacheKey = 'admin_users_v1';
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -169,8 +173,31 @@ export default function AdminUsersPage() {
       }
       const data = await res.json();
       setUsers(data.users);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(data.users || []));
+      } catch {
+        // Ignore cache errors.
+      }
+      if (desktopRuntime) {
+        await setOfflineNamespace('admin_users', cacheKey, data.users || []);
+      }
     } catch (err) {
-      setError(err.message);
+      let cached = null;
+      try {
+        const localCached = localStorage.getItem(cacheKey);
+        cached = localCached ? JSON.parse(localCached) : null;
+      } catch {
+        cached = null;
+      }
+      if (!cached && desktopRuntime) {
+        cached = await getOfflineNamespace('admin_users', cacheKey, null);
+      }
+      if (Array.isArray(cached)) {
+        setUsers(cached);
+        setError(null);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }

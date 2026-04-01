@@ -14,6 +14,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { silentPrintElement } from '@/lib/desktop/print';
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -153,6 +157,10 @@ function CustomBillPage() {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_custom_bill_cache_v2_${scope}`;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+    const desktopCacheScope = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_custom_bill::${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const buildScopedUrl = useCallback((endpoint) => {
         const url = new URL(endpoint, window.location.origin);
@@ -186,6 +194,25 @@ function CustomBillPage() {
         }
     }, [cacheKey]);
 
+    const readDesktopCachedPayload = useCallback(async () => {
+        if (!isDesktopApp()) return null;
+        const payload = await getOfflineNamespace('owner_custom_bill', desktopCacheScope, null);
+        return payload?.data ? payload : null;
+    }, [desktopCacheScope]);
+
+    const readCombinedCachedPayload = useCallback(async () => {
+        return readCachedPayload() || await readDesktopCachedPayload();
+    }, [readCachedPayload, readDesktopCachedPayload]);
+
+    const persistCachedPayload = useCallback(async (data = {}) => {
+        const payload = { ts: Date.now(), data };
+        writeCachedPayload(data);
+        if (isDesktopApp()) {
+            await setOfflineNamespace('owner_custom_bill', desktopCacheScope, payload);
+        }
+        return payload;
+    }, [desktopCacheScope, writeCachedPayload]);
+
     // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
@@ -199,44 +226,50 @@ function CustomBillPage() {
     useEffect(() => {
         if (hasHydratedFromCacheRef.current) return;
         hasHydratedFromCacheRef.current = true;
-        const cached = readCachedPayload();
-        if (!cached) {
-            setCacheStatus('empty');
-            return;
-        }
-        const payload = cached.data || {};
-        if (payload.menu && typeof payload.menu === 'object') setMenu(payload.menu);
-        if (Array.isArray(payload.openItems)) setOpenItems(dedupeOpenItems(payload.openItems));
-        if (payload.restaurant) setRestaurant(payload.restaurant);
-        if (payload.businessType) setBusinessType(payload.businessType);
-        if (payload.businessType) setInventoryByItemId(payload.inventoryByItemId || {});
-        if (payload.businessType === 'store' || payload.businessType === 'shop') {
-            (async () => {
-                try {
-                    const user = auth.currentUser;
-                    if (!user) return;
-                    const idToken = await user.getIdToken();
-                    const inventoryRes = await fetch(buildScopedUrl('/api/owner/inventory?limit=500'), {
-                        headers: { Authorization: `Bearer ${idToken}` },
-                    });
-                    if (!inventoryRes.ok) return;
-                    const inventoryData = await inventoryRes.json();
-                    const inventoryMap = Array.isArray(inventoryData?.items)
-                        ? inventoryData.items.reduce((acc, inventoryItem) => {
-                            if (inventoryItem?.id) acc[inventoryItem.id] = inventoryItem;
-                            return acc;
-                        }, {})
-                        : {};
-                    setInventoryByItemId(inventoryMap);
-                    setMenu((prev) => mergeMenuWithInventory(prev, inventoryMap));
-                } catch {
-                    // Non-blocking
-                }
-            })();
-        }
-        setCacheStatus('local-hit');
-        setLoading(false);
-    }, [buildScopedUrl, readCachedPayload]);
+        let cancelled = false;
+        (async () => {
+            const cached = await readCombinedCachedPayload();
+            if (cancelled || !cached) {
+                setCacheStatus('empty');
+                return;
+            }
+            const payload = cached.data || {};
+            if (payload.menu && typeof payload.menu === 'object') setMenu(payload.menu);
+            if (Array.isArray(payload.openItems)) setOpenItems(dedupeOpenItems(payload.openItems));
+            if (payload.restaurant) setRestaurant(payload.restaurant);
+            if (payload.businessType) setBusinessType(payload.businessType);
+            if (payload.businessType) setInventoryByItemId(payload.inventoryByItemId || {});
+            if (payload.businessType === 'store' || payload.businessType === 'shop') {
+                (async () => {
+                    try {
+                        const user = auth.currentUser;
+                        if (!user) return;
+                        const idToken = await user.getIdToken();
+                        const inventoryRes = await fetch(buildScopedUrl('/api/owner/inventory?limit=500'), {
+                            headers: { Authorization: `Bearer ${idToken}` },
+                        });
+                        if (!inventoryRes.ok) return;
+                        const inventoryData = await inventoryRes.json();
+                        const inventoryMap = Array.isArray(inventoryData?.items)
+                            ? inventoryData.items.reduce((acc, inventoryItem) => {
+                                if (inventoryItem?.id) acc[inventoryItem.id] = inventoryItem;
+                                return acc;
+                            }, {})
+                            : {};
+                        setInventoryByItemId(inventoryMap);
+                        setMenu((prev) => mergeMenuWithInventory(prev, inventoryMap));
+                    } catch {
+                        // Non-blocking
+                    }
+                })();
+            }
+            setCacheStatus('local-hit');
+            setLoading(false);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [buildScopedUrl, readCombinedCachedPayload]);
 
     useEffect(() => {
         let isMounted = true;
@@ -254,7 +287,7 @@ function CustomBillPage() {
                 const settingsUrl = buildScopedUrl('/api/owner/settings');
                 const versionUrl = buildScopedUrl('/api/owner/menu?versionOnly=1');
 
-                const cached = readCachedPayload();
+                const cached = await readCombinedCachedPayload();
                 let shouldFetchFullMenu = true;
                 try {
                     const versionRes = await fetch(versionUrl, { headers });
@@ -318,7 +351,7 @@ function CustomBillPage() {
                                 gstCalculationMode: settingsData.gstCalculationMode || (settingsData.gstIncludedInPrice === false ? 'excluded' : 'included'),
                             };
                             setRestaurant(nextRestaurantPayload);
-                            writeCachedPayload({
+                            await persistCachedPayload({
                                 ...(cached?.data || {}),
                                 restaurant: nextRestaurantPayload,
                             });
@@ -381,7 +414,7 @@ function CustomBillPage() {
                     }
                 }
 
-                writeCachedPayload({
+                await persistCachedPayload({
                     menu: menuWithInventory,
                     openItems: dedupeOpenItems(openItemsData.items || []),
                     restaurant: restaurantPayload,
@@ -420,8 +453,9 @@ function CustomBillPage() {
                     };
                     if (isMounted) setRestaurant(nextRestaurantPayload);
 
-                    writeCachedPayload({
-                        ...(readCachedPayload()?.data || {}),
+                    const latestCached = await readCombinedCachedPayload();
+                    await persistCachedPayload({
+                        ...(latestCached?.data || {}),
                         menu: menuWithInventory,
                         openItems: dedupeOpenItems(openItemsData.items || []),
                         restaurant: nextRestaurantPayload,
@@ -435,7 +469,19 @@ function CustomBillPage() {
             } catch (error) {
                 if (isMounted) {
                     setCacheStatus('error');
-                    setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load menu: ${error.message}` });
+                    const cached = await readCombinedCachedPayload();
+                    if (cached?.data?.menu) {
+                        const payload = cached.data || {};
+                        setMenu(payload.menu || {});
+                        setOpenItems(Array.isArray(payload.openItems) ? dedupeOpenItems(payload.openItems) : []);
+                        setRestaurant(payload.restaurant || null);
+                        setBusinessType(payload.businessType || 'restaurant');
+                        setInventoryByItemId(payload.inventoryByItemId || {});
+                        setCacheStatus('offline-hit');
+                        setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live menu fetch failed, so cached desktop billing data is being shown.' });
+                    } else {
+                        setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load menu: ${error.message}` });
+                    }
                 }
             } finally {
                 if (isMounted) {
@@ -453,7 +499,7 @@ function CustomBillPage() {
             isMounted = false;
             unsubscribe();
         };
-    }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload]);
+    }, [accessQuery, buildScopedUrl, cacheKey, readCombinedCachedPayload, persistCachedPayload]);
 
     // Compute normalized search query
     const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
@@ -1060,8 +1106,20 @@ function CustomBillPage() {
             setIsSavingBillHistory(false);
         }
 
-        if (billPrintRef.current && handlePrint) {
-            handlePrint();
+        if (billPrintRef.current) {
+            if (isDesktopApp()) {
+                try {
+                    await silentPrintElement(billPrintRef.current, {
+                        documentTitle: `Bill-${Date.now()}`,
+                    });
+                    setIsBillModalOpen(false);
+                } catch (printError) {
+                    console.error('[Custom Bill] Silent print failed, falling back to browser print:', printError);
+                    if (handlePrint) handlePrint();
+                }
+            } else if (handlePrint) {
+                handlePrint();
+            }
         }
 
         if (saveError) {
@@ -1163,9 +1221,9 @@ function CustomBillPage() {
                             customerDetails={customerDetails}
                         />
                     </div>
-                    {isKioskPrintMode(preferredPrintMode) && (
+                    {(isKioskPrintMode(preferredPrintMode) || isDesktopApp()) && (
                         <div className="px-4 py-2 text-xs text-emerald-700 bg-emerald-50 border-t border-emerald-200 no-print">
-                            Silent print mode active. System popups will not appear when printing from the Kiosk browser.
+                            Silent print mode active. System popups will not appear when printing from the desktop app or Kiosk browser.
                         </div>
                     )}
                     <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">
@@ -1181,10 +1239,10 @@ function CustomBillPage() {
                             onClick={handleBrowserPrintForBill}
                             className="bg-primary hover:bg-primary/90"
                             disabled={isSavingBillHistory}
-                            title={isKioskPrintMode(preferredPrintMode) ? 'Silent print via kiosk browser' : 'Standard browser print dialog'}
+                            title={isDesktopApp() || isKioskPrintMode(preferredPrintMode) ? 'Silent print to the saved/default printer' : 'Standard browser print dialog'}
                         >
                             <Printer className="mr-2 h-4 w-4" />
-                            {isSavingBillHistory ? 'Saving...' : isKioskPrintMode(preferredPrintMode) ? 'Silent Print' : 'Browser Print'}
+                            {isSavingBillHistory ? 'Saving...' : (isDesktopApp() || isKioskPrintMode(preferredPrintMode)) ? 'Silent Print' : 'Browser Print'}
                         </Button>
                     </div>
                 </DialogContent>
@@ -1278,6 +1336,7 @@ function CustomBillPage() {
                             <h1 className="text-lg font-bold tracking-tight">
                                 {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
                             </h1>
+                            <OfflineDesktopStatus />
 
                             <Link href={historyUrl}>
                                 <Button

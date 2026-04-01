@@ -11,6 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { silentPrintElement } from '@/lib/desktop/print';
 
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -73,37 +77,79 @@ export default function CustomBillHistoryPage() {
         : employeeOfOwnerId
             ? `employee_of=${encodeURIComponent(employeeOfOwnerId)}`
             : '';
+    const historyCacheKey = useMemo(() => `custom_bill_history::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}::${fromDate}::${toDate}`, [impersonatedOwnerId, employeeOfOwnerId, fromDate, toDate]);
+    const restaurantCacheKey = useMemo(() => `custom_bill_restaurant::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}`, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const handleRebillPrint = useReactToPrint({
         content: () => rebillPrintRef.current,
     });
 
-    const fetchRestaurantDetails = async () => {
-        const user = auth.currentUser;
-        if (!user) return;
-
-        const idToken = await user.getIdToken();
-        const settingsUrl = new URL('/api/owner/settings', window.location.origin);
-        if (accessQuery) {
-            const params = new URLSearchParams(accessQuery);
-            params.forEach((value, key) => settingsUrl.searchParams.set(key, value));
+    const readCachedPayload = async (namespace, scope) => {
+        try {
+            const raw = localStorage.getItem(scope);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.data) return parsed.data;
+            }
+        } catch {
+            // Ignore malformed local cache payloads.
         }
 
-        const res = await fetch(settingsUrl.toString(), {
-            headers: { Authorization: `Bearer ${idToken}` },
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.message || 'Failed to load outlet details.');
+        if (!isDesktopApp()) return null;
+        const desktopPayload = await getOfflineNamespace(namespace, scope, null);
+        return desktopPayload?.data || null;
+    };
 
-        setRestaurant({
-            name: data.restaurantName || 'Outlet',
-            address: data.address || '',
-            botDisplayNumber: data.botDisplayNumber || '',
-            gstin: data.gstin || '',
-            gstEnabled: !!data.gstEnabled,
-            gstPercentage: Number(data.gstPercentage ?? data.gstRate ?? 0),
-            gstMinAmount: Number(data.gstMinAmount ?? 0),
-        });
+    const writeCachedPayload = async (namespace, scope, data) => {
+        const payload = { ts: Date.now(), data };
+        try {
+            localStorage.setItem(scope, JSON.stringify(payload));
+        } catch {
+            // Ignore local cache failures.
+        }
+        if (isDesktopApp()) {
+            await setOfflineNamespace(namespace, scope, payload);
+        }
+    };
+
+    const fetchRestaurantDetails = async () => {
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            const idToken = await user.getIdToken();
+            const settingsUrl = new URL('/api/owner/settings', window.location.origin);
+            if (accessQuery) {
+                const params = new URLSearchParams(accessQuery);
+                params.forEach((value, key) => settingsUrl.searchParams.set(key, value));
+            }
+
+            const res = await fetch(settingsUrl.toString(), {
+                headers: { Authorization: `Bearer ${idToken}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.message || 'Failed to load outlet details.');
+
+            const nextRestaurant = {
+                name: data.restaurantName || 'Outlet',
+                address: data.address || '',
+                botDisplayNumber: data.botDisplayNumber || '',
+                gstin: data.gstin || '',
+                gstEnabled: !!data.gstEnabled,
+                gstPercentage: Number(data.gstPercentage ?? data.gstRate ?? 0),
+                gstMinAmount: Number(data.gstMinAmount ?? 0),
+            };
+
+            setRestaurant(nextRestaurant);
+            await writeCachedPayload('custom_bill_history', restaurantCacheKey, nextRestaurant);
+        } catch (error) {
+            const cachedRestaurant = await readCachedPayload('custom_bill_history', restaurantCacheKey);
+            if (cachedRestaurant) {
+                setRestaurant(cachedRestaurant);
+                return;
+            }
+            throw error;
+        }
     };
 
     const fetchHistory = async (searchOverride = query) => {
@@ -131,14 +177,32 @@ export default function CustomBillHistoryPage() {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || 'Failed to load custom bill history.');
 
-            setHistory(Array.isArray(data.history) ? data.history : []);
-            setSummary({ ...defaultSummary, ...(data.summary || {}) });
-        } catch (error) {
-            setInfoDialog({
-                isOpen: true,
-                title: 'History Load Failed',
-                message: error.message,
+            const nextHistory = Array.isArray(data.history) ? data.history : [];
+            const nextSummary = { ...defaultSummary, ...(data.summary || {}) };
+
+            setHistory(nextHistory);
+            setSummary(nextSummary);
+            await writeCachedPayload('custom_bill_history', historyCacheKey, {
+                history: nextHistory,
+                summary: nextSummary,
             });
+        } catch (error) {
+            const cached = await readCachedPayload('custom_bill_history', historyCacheKey);
+            if (cached) {
+                setHistory(Array.isArray(cached.history) ? cached.history : []);
+                setSummary({ ...defaultSummary, ...(cached.summary || {}) });
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Offline Cache Active',
+                    message: 'Live bill history fetch failed, so cached desktop data is being shown.',
+                });
+            } else {
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'History Load Failed',
+                    message: error.message,
+                });
+            }
         } finally {
             setLoading(false);
         }
@@ -165,7 +229,13 @@ export default function CustomBillHistoryPage() {
 
         const runPrint = async () => {
             try {
-                await handleRebillPrint?.();
+                if (isDesktopApp() && rebillPrintRef.current) {
+                    await silentPrintElement(rebillPrintRef.current, {
+                        documentTitle: `Re-Bill-${Date.now()}`,
+                    });
+                } else {
+                    await handleRebillPrint?.();
+                }
             } catch (error) {
                 setInfoDialog({
                     isOpen: true,
@@ -372,6 +442,9 @@ export default function CustomBillHistoryPage() {
                         <p className="text-muted-foreground mt-1 text-sm md:text-base">
                             All offline/manual counter bills with full details.
                         </p>
+                        <div className="mt-2">
+                            <OfflineDesktopStatus />
+                        </div>
                     </div>
                 </div>
 

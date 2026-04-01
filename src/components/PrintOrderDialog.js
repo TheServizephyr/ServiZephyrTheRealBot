@@ -14,6 +14,8 @@ import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 import { useToast } from "@/components/ui/use-toast";
 import { toPng } from 'html-to-image';
 import { auth } from '@/lib/firebase';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { silentPrintElement } from '@/lib/desktop/print';
 
 const getOrderNoteText = (order = {}) =>
     String(
@@ -83,6 +85,25 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
         content: () => billRef.current,
         onAfterPrint: () => setStatus('Standard print sent'),
     });
+
+    const handlePrintAction = async () => {
+        if (isDesktopApp() && billRef.current) {
+            try {
+                setStatus('Sending to default printer...');
+                await silentPrintElement(billRef.current, {
+                    documentTitle: `Order-${order?.customerOrderId || order?.id || Date.now()}`,
+                });
+                setStatus('Printed successfully');
+                return;
+            } catch (error) {
+                console.error('[PrintOrderDialog] Silent print failed, falling back to browser print:', error);
+            }
+        }
+
+        if (handleStandardPrint) {
+            handleStandardPrint();
+        }
+    };
 
     const handleWhatsAppShare = async () => {
         if (!order.customerPhone) {
@@ -364,7 +385,7 @@ export default function PrintOrderDialog({ isOpen, onClose, order, restaurant })
                     <Button onClick={handleDirectPrint} variant="secondary" className="bg-slate-800 text-white hover:bg-slate-700 whitespace-nowrap flex-shrink-0">
                         ⚡ Thermal
                     </Button>
-                    <Button onClick={handleStandardPrint} className="bg-primary hover:bg-primary/90 whitespace-nowrap flex-shrink-0">
+                    <Button onClick={handlePrintAction} className="bg-primary hover:bg-primary/90 whitespace-nowrap flex-shrink-0">
                         <Printer className="mr-2 h-4 w-4" /> Standard
                     </Button>
                 </div>

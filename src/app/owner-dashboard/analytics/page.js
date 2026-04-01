@@ -18,6 +18,9 @@ import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 import {
     buildOwnerDashboardShortcutPath,
     navigateToShortcutPath,
@@ -1395,6 +1398,15 @@ function AnalyticsPageContent() {
     const [analyticsData, setAnalyticsData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [businessType, setBusinessType] = useState('restaurant');
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const analyticsDesktopCacheKey = useMemo(() => [
+        'owner_analytics_v2',
+        activeDateFilter,
+        date?.from ? date.from.toISOString() : 'na',
+        date?.to ? date.to.toISOString() : 'na',
+        impersonatedOwnerId || 'self',
+        employeeOfOwnerId || 'none',
+    ].join(':'), [activeDateFilter, date, employeeOfOwnerId, impersonatedOwnerId]);
     const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
     const isStoreBusiness = normalizedBusinessType === 'store';
 
@@ -1501,10 +1513,29 @@ function AnalyticsPageContent() {
                 const resolvedBusinessType = normalizeBusinessType(data?.businessInfo?.businessType);
                 if (resolvedBusinessType) setBusinessType(resolvedBusinessType);
                 sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), payload: data }));
+                if (desktopRuntime) {
+                    await setOfflineNamespace('owner_analytics', analyticsDesktopCacheKey, {
+                        payload: data,
+                        businessType: resolvedBusinessType || businessType,
+                    });
+                }
 
             } catch (error) {
                 console.error("Error fetching analytics data:", error);
-                setInfoDialog({ isOpen: true, title: "Error", message: "Could not load analytics: " + error.message });
+                let restored = false;
+                if (desktopRuntime) {
+                    const desktopPayload = await getOfflineNamespace('owner_analytics', analyticsDesktopCacheKey, null);
+                    if (desktopPayload?.payload) {
+                        setAnalyticsData(desktopPayload.payload);
+                        if (desktopPayload.businessType) {
+                            setBusinessType(desktopPayload.businessType);
+                        }
+                        restored = true;
+                    }
+                }
+                if (!restored) {
+                    setInfoDialog({ isOpen: true, title: "Error", message: "Could not load analytics: " + error.message });
+                }
             } finally {
                 setLoading(false);
             }
@@ -1517,7 +1548,7 @@ function AnalyticsPageContent() {
 
         return () => unsubscribe();
 
-    }, [activeDateFilter, date, impersonatedOwnerId, employeeOfOwnerId]);
+    }, [activeDateFilter, date, impersonatedOwnerId, employeeOfOwnerId, analyticsDesktopCacheKey, businessType, desktopRuntime]);
 
 
     useEffect(() => {
@@ -1578,7 +1609,11 @@ function AnalyticsPageContent() {
                         {isStoreBusiness ? 'Store performance, demand, and product movement in one place.' : 'Your personal business advisor, now with deeper insights.'}
                     </p>
                 </div>
-                <div className="bg-card p-1 rounded-lg flex items-center gap-2 w-full md:w-auto overflow-x-auto border border-border">
+                <div className="flex w-full md:w-auto flex-col items-stretch gap-3 md:items-end">
+                    <div className="flex justify-end">
+                        <OfflineDesktopStatus />
+                    </div>
+                    <div className="bg-card p-1 rounded-lg flex items-center gap-2 w-full md:w-auto overflow-x-auto border border-border">
                     <div className="flex gap-1 whitespace-nowrap">
                         {dateFilters.map(filter => (
                             <Button
@@ -1635,6 +1670,7 @@ function AnalyticsPageContent() {
                                 />
                             </PopoverContent>
                         </Popover>
+                    </div>
                     </div>
                 </div>
             </div>

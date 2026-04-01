@@ -1,8 +1,7 @@
 
-
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { Phone, Bike, Mail, Search, Edit, RefreshCw, Star, Clock, Trophy, ChevronDown, ChevronUp, BarChart as BarChartIcon, Settings, UserPlus } from 'lucide-react';
@@ -18,6 +17,9 @@ import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
 import { Trash2, Upload, QrCode, AlertTriangle } from 'lucide-react'; // Added icons
 import imageCompression from 'browser-image-compression'; // ✅ Image Compression
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 const StatusBadge = ({ status }) => {
     const statusConfig = {
@@ -504,8 +506,14 @@ export default function DeliveryPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const deliveryCacheKey = useMemo(() => [
+        'owner_delivery_v1',
+        impersonatedOwnerId || 'self',
+        employeeOfOwnerId || 'none',
+    ].join(':'), [employeeOfOwnerId, impersonatedOwnerId]);
 
-    const handleApiCall = async (method, body, endpoint = '/api/owner/delivery') => {
+    const handleApiCall = useCallback(async (method, body, endpoint = '/api/owner/delivery') => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
@@ -531,22 +539,39 @@ export default function DeliveryPage() {
         const result = await res.json();
         if (!res.ok) throw new Error(result.message || 'API call failed');
         return result;
-    }
+    }, [employeeOfOwnerId, impersonatedOwnerId]);
 
-    const fetchData = async (isManualRefresh = false) => {
+    const fetchData = useCallback(async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
             const result = await handleApiCall('GET', undefined, '/api/owner/delivery');
             const settingsResult = await handleApiCall('GET', undefined, '/api/owner/settings'); // Fetch settings for QR
             setData(result);
             setSettings(settingsResult);
+            if (desktopRuntime) {
+                await setOfflineNamespace('owner_delivery', deliveryCacheKey, {
+                    data: result,
+                    settings: settingsResult,
+                });
+            }
         } catch (error) {
             console.error(error);
-            setInfoDialog({ isOpen: true, title: "Error", message: "Could not load delivery data: " + error.message });
+            let restored = false;
+            if (desktopRuntime) {
+                const desktopPayload = await getOfflineNamespace('owner_delivery', deliveryCacheKey, null);
+                if (desktopPayload) {
+                    setData(desktopPayload.data || { boys: [], performance: {}, readyOrders: [], weeklyPerformance: [] });
+                    setSettings(desktopPayload.settings || {});
+                    restored = true;
+                }
+            }
+            if (!restored) {
+                setInfoDialog({ isOpen: true, title: "Error", message: "Could not load delivery data: " + error.message });
+            }
         } finally {
             setLoading(false);
         }
-    };
+    }, [desktopRuntime, deliveryCacheKey, handleApiCall]);
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -554,7 +579,7 @@ export default function DeliveryPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [fetchData]);
 
     // ✅ FIX 3: Auto-refresh delivery data every 10 seconds for real-time updates
     // ✅ FIX 3: Optimized Polling - 60s Interval & Pause in Background
@@ -567,7 +592,7 @@ export default function DeliveryPage() {
         }, 60000); // 60 seconds (Reduced from 10s to save costs)
 
         return () => clearInterval(interval);
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [fetchData]);
 
     const handleInviteRider = async (riderEmail) => {
         try {
@@ -651,7 +676,8 @@ export default function DeliveryPage() {
                         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Delivery Command Center</h1>
                         <p className="text-muted-foreground mt-1 text-sm md:text-base">Monitor and manage your delivery team in real-time.</p>
                     </div>
-                    <div className="flex-shrink-0 flex gap-4">
+                    <div className="flex-shrink-0 flex flex-wrap items-center justify-end gap-4">
+                        <OfflineDesktopStatus />
                         <Link href={`/owner-dashboard/delivery-settings?${searchParams.toString()}`}>
                             <Button variant="outline"><Settings size={16} className="mr-2" /> Delivery Settings</Button>
                         </Link>

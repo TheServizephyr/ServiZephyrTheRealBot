@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense, useRef } from 'react';
+import React, { useState, useEffect, Suspense, useRef, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building } from 'lucide-react';
@@ -14,6 +14,9 @@ import InfoDialog from '@/components/InfoDialog';
 import { useAuth } from '@/firebase';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +31,12 @@ const OwnerLocationPage = () => {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const geocodeTimeoutRef = useRef(null);
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const locationCacheKey = useMemo(() => [
+        'owner_location_v1',
+        impersonatedOwnerId || 'self',
+        employeeOfOwnerId || 'none',
+    ].join(':'), [employeeOfOwnerId, impersonatedOwnerId]);
 
     const [mapCenter, setMapCenter] = useState({ lat: 27.1751, lng: 78.0421 }); // Default Agra
     const [addressDetails, setAddressDetails] = useState(null);
@@ -42,9 +51,33 @@ const OwnerLocationPage = () => {
     const debounceTimeout = useRef(null);
 
 
-    const fetchInitialLocation = async () => {
+    const fetchInitialLocation = useCallback(async () => {
         setLoading(true);
         setError('');
+        const startCurrentGeolocation = () => {
+            setLoading(true);
+            setError('');
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const coords = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                        };
+                        handleMapIdle(coords);
+                    },
+                    () => {
+                        setError('Could not get your location. Please search manually or check browser permissions.');
+                        setLoading(false);
+                        setMapCenter({ lat: 27.1751, lng: 78.0421 });
+                    },
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                );
+            } else {
+                setError("Geolocation is not supported by your browser.");
+                setLoading(false);
+            }
+        };
         try {
             const user = auth.currentUser;
             if (!user) {
@@ -82,18 +115,71 @@ const OwnerLocationPage = () => {
                     });
                     setFullAddress(addr.full || `${addr.street}, ${addr.city}`);
                     setSearchQuery(addr.full || `${addr.street}, ${addr.city}`);
+                    if (desktopRuntime) {
+                        await setOfflineNamespace('owner_location', locationCacheKey, {
+                            savedLocation: data.address,
+                            mapCenter: coords,
+                            addressDetails: {
+                                street: addr.street || '',
+                                city: addr.city || '',
+                                pincode: addr.postalCode || '',
+                                state: addr.state || '',
+                                country: addr.country || 'IN',
+                                latitude,
+                                longitude
+                            },
+                            fullAddress: addr.full || `${addr.street}, ${addr.city}`,
+                            searchQuery: addr.full || `${addr.street}, ${addr.city}`,
+                        });
+                    }
                     setLoading(false);
                 } else {
-                    getCurrentGeolocation(); // No saved location, get current
+                    if (desktopRuntime) {
+                        const desktopPayload = await getOfflineNamespace('owner_location', locationCacheKey, null);
+                        if (desktopPayload) {
+                            setSavedLocation(desktopPayload.savedLocation || null);
+                            setMapCenter(desktopPayload.mapCenter || { lat: 27.1751, lng: 78.0421 });
+                            setAddressDetails(desktopPayload.addressDetails || null);
+                            setFullAddress(desktopPayload.fullAddress || '');
+                            setSearchQuery(desktopPayload.searchQuery || desktopPayload.fullAddress || '');
+                            setLoading(false);
+                            return;
+                        }
+                    }
+                    startCurrentGeolocation(); // No saved location, get current
                 }
             } else {
-                getCurrentGeolocation(); // API error, get current
+                const desktopPayload = desktopRuntime
+                    ? await getOfflineNamespace('owner_location', locationCacheKey, null)
+                    : null;
+                if (desktopPayload) {
+                    setSavedLocation(desktopPayload.savedLocation || null);
+                    setMapCenter(desktopPayload.mapCenter || { lat: 27.1751, lng: 78.0421 });
+                    setAddressDetails(desktopPayload.addressDetails || null);
+                    setFullAddress(desktopPayload.fullAddress || '');
+                    setSearchQuery(desktopPayload.searchQuery || desktopPayload.fullAddress || '');
+                    setLoading(false);
+                } else {
+                    startCurrentGeolocation(); // API error, get current
+                }
             }
         } catch (err) {
-            setError("Failed to fetch saved location. Trying to get current location...");
-            getCurrentGeolocation();
+            const desktopPayload = desktopRuntime
+                ? await getOfflineNamespace('owner_location', locationCacheKey, null)
+                : null;
+            if (desktopPayload) {
+                setSavedLocation(desktopPayload.savedLocation || null);
+                setMapCenter(desktopPayload.mapCenter || { lat: 27.1751, lng: 78.0421 });
+                setAddressDetails(desktopPayload.addressDetails || null);
+                setFullAddress(desktopPayload.fullAddress || '');
+                setSearchQuery(desktopPayload.searchQuery || desktopPayload.fullAddress || '');
+                setLoading(false);
+            } else {
+                setError("Failed to fetch saved location. Trying to get current location...");
+                startCurrentGeolocation();
+            }
         }
-    };
+    }, [desktopRuntime, employeeOfOwnerId, impersonatedOwnerId, locationCacheKey, handleMapIdle]);
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -104,7 +190,7 @@ const OwnerLocationPage = () => {
             }
         });
         return () => unsubscribe();
-    }, [router]);
+    }, [fetchInitialLocation]);
 
     const getCurrentGeolocation = () => {
         setLoading(true);
@@ -159,21 +245,7 @@ const OwnerLocationPage = () => {
         handleMapIdle(coords);
     };
 
-    const handleMapIdle = (coords) => {
-        // FIX: Do NOT update mapCenter state here.
-        // Updating state triggers re-render -> passes new 'center' prop to GoogleMap -> triggers map.setCenter -> triggers 'idle' -> Loop.
-        // The map is already at 'coords' because the user dragged it. We just need to reverse geocode.
-
-        if (geocodeTimeoutRef.current) {
-            clearTimeout(geocodeTimeoutRef.current);
-        }
-        geocodeTimeoutRef.current = setTimeout(() => {
-            reverseGeocode(coords);
-        }, 500);
-    };
-
-
-    const reverseGeocode = async (coords) => {
+    const reverseGeocode = useCallback(async (coords) => {
         setLoading(true);
         setError('');
         try {
@@ -198,7 +270,20 @@ const OwnerLocationPage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    const handleMapIdle = useCallback((coords) => {
+        // FIX: Do NOT update mapCenter state here.
+        // Updating state triggers re-render -> passes new 'center' prop to GoogleMap -> triggers map.setCenter -> triggers 'idle' -> Loop.
+        // The map is already at 'coords' because the user dragged it. We just need to reverse geocode.
+
+        if (geocodeTimeoutRef.current) {
+            clearTimeout(geocodeTimeoutRef.current);
+        }
+        geocodeTimeoutRef.current = setTimeout(() => {
+            reverseGeocode(coords);
+        }, 500);
+    }, [reverseGeocode]);
 
 
     const handleSaveLocation = async () => {
@@ -237,6 +322,16 @@ const OwnerLocationPage = () => {
                 const errData = await res.json();
                 throw new Error(errData.message || "Failed to save location");
             }
+            setSavedLocation(locationToSave);
+            if (desktopRuntime) {
+                await setOfflineNamespace('owner_location', locationCacheKey, {
+                    savedLocation: locationToSave,
+                    mapCenter: { lat: locationToSave.latitude, lng: locationToSave.longitude },
+                    addressDetails,
+                    fullAddress: locationToSave.full,
+                    searchQuery: locationToSave.full,
+                });
+            }
             setInfoDialog({ isOpen: true, title: "Success", message: "Your business location has been updated successfully!" });
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not save location: ${err.message}` });
@@ -259,6 +354,7 @@ const OwnerLocationPage = () => {
                     <h1 className="text-2xl font-bold">Set Your Business Location</h1>
                     <p className="text-muted-foreground text-sm">Search, or drag the map to set your pin. Then, fine-tune the address details below.</p>
                 </div>
+                <OfflineDesktopStatus />
                 <div className="relative w-full">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                     <Input

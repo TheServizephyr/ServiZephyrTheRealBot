@@ -1,0 +1,22 @@
+{
+  "directories": {
+    "output": "desktop-dist-installer"
+  },
+  "win": {
+    "signAndEditExecutable": false,
+    "target": [
+      "nsis"
+    ],
+    "artifactName": "ServiZephyr-Desktop-Setup-${version}.${ext}"
+  },
+  "nsis": {
+    "include": "desktop/installer.nsh",
+    "installerIcon": "desktop/assets/icon.ico",
+    "uninstallerIcon": "desktop/assets/icon.ico",
+    "installerHeaderIcon": "desktop/assets/icon.ico",
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "perMachine": false,
+    "shortcutName": "ServiZephyr Desktop"
+  }
+}

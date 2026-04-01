@@ -25,6 +25,9 @@ import { toPng } from 'html-to-image';
 import { Printer } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -1164,6 +1167,10 @@ function BookingsPageContent() {
     const [capacityDraft, setCapacityDraft] = useState('40');
     const [noShowTimeoutDraft, setNoShowTimeoutDraft] = useState('10');
     const { toast } = useToast();
+    const bookingsCacheKey = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_bookings::${scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     const fetchBookings = useCallback(async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
@@ -1178,11 +1185,37 @@ function BookingsPageContent() {
             const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
             if (res.ok) {
                 const data = await res.json();
-                setBookings(data.bookings || []);
+                const nextBookings = data.bookings || [];
+                setBookings(nextBookings);
+                const payload = { bookings: nextBookings };
+                try {
+                    localStorage.setItem(bookingsCacheKey, JSON.stringify({ ts: Date.now(), data: payload }));
+                } catch {}
+                if (isDesktopApp()) {
+                    await setOfflineNamespace('owner_bookings', bookingsCacheKey, { ts: Date.now(), data: payload });
+                }
             }
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error(err);
+            let cached = null;
+            try {
+                const raw = localStorage.getItem(bookingsCacheKey);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed?.data) cached = parsed.data;
+                }
+            } catch {}
+            if (!cached && isDesktopApp()) {
+                const desktopPayload = await getOfflineNamespace('owner_bookings', bookingsCacheKey, null);
+                cached = desktopPayload?.data || null;
+            }
+            if (cached?.bookings) {
+                setBookings(Array.isArray(cached.bookings) ? cached.bookings : []);
+                setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live bookings fetch failed, so cached desktop bookings are being shown.' });
+            }
+        }
         finally { clearTimeout(timeoutId); setLoading(false); }
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, bookingsCacheKey]);
 
     useEffect(() => {
         const user = auth.currentUser;
@@ -1428,6 +1461,9 @@ function BookingsPageContent() {
                 <div>
                     <h1 className="text-xl md:text-3xl font-bold tracking-tight leading-tight">Bookings & Waitlist</h1>
                     <p className="hidden md:block text-muted-foreground mt-1 text-sm md:text-base">Manage your table reservations and walk-in waitlist.</p>
+                    <div className="mt-2">
+                        <OfflineDesktopStatus />
+                    </div>
                 </div>
                 <div className="flex gap-1.5 md:gap-2">
                     <Button onClick={() => setIsHistoryOpen(true)} variant="outline" className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center md:gap-2">

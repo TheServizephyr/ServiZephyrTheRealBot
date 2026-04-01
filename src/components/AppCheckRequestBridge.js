@@ -11,6 +11,13 @@ let _cachedToken = null;
 let _cachedTokenExpiresAt = 0;
 
 const TOKEN_REFRESH_BUFFER_MS = 60 * 1000;
+
+function isElectronDesktopRuntime() {
+  if (typeof window === 'undefined') return false;
+  if (window.servizephyrDesktop) return true;
+  return /electron/i.test(String(window.navigator?.userAgent || ''));
+}
+
 function getAppCheckInstance() {
     if (_appCheckInstance) return _appCheckInstance;
     const siteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY;
@@ -101,6 +108,7 @@ async function getCachedAppCheckToken(appCheck) {
 export default function AppCheckRequestBridge() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
+    if (isElectronDesktopRuntime()) return undefined;
     if (!process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY) return undefined;
     if (window.__servizephyrAppCheckFetchPatched) return undefined;
 

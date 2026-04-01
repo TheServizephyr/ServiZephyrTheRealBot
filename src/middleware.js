@@ -29,6 +29,12 @@ function getClientIp(request) {
   return request.headers.get('x-real-ip') || 'unknown';
 }
 
+function isDesktopLocalRequest(request) {
+  if (process.env.NEXT_PUBLIC_IS_DESKTOP_APP !== '1') return false;
+  const hostHeader = String(request.headers.get('host') || '').toLowerCase();
+  return hostHeader.includes('localhost') || hostHeader.includes('127.0.0.1');
+}
+
 function getVisitorId(request, ipAddress) {
   const authSession = request.cookies.get('auth_session')?.value;
   if (authSession) return `auth:${hashValue(authSession)}`;
@@ -175,6 +181,10 @@ function tooManyResponse(kind) {
 
 export async function middleware(request) {
   if (request.method === 'OPTIONS' || request.method === 'HEAD') {
+    return NextResponse.next();
+  }
+
+  if (isDesktopLocalRequest(request)) {
     return NextResponse.next();
   }
 

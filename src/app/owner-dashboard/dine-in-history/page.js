@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import { Calendar as CalendarIcon, ArrowLeft, RefreshCw, Loader2, RotateCcw, Users } from 'lucide-react';
@@ -11,6 +11,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export default function DineInHistoryPage() {
     const [activeTab, setActiveTab] = useState('completed');
@@ -23,8 +26,41 @@ export default function DineInHistoryPage() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const queryParam = impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : employeeOfOwnerId ? `?employee_of=${employeeOfOwnerId}` : '';
+    const historyCacheKey = useMemo(() => {
+        const from = date?.from ? format(date.from, 'yyyy-MM-dd') : 'today';
+        const to = date?.to ? format(date.to, 'yyyy-MM-dd') : from;
+        return `dine_in_history::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}::${from}::${to}`;
+    }, [date, impersonatedOwnerId, employeeOfOwnerId]);
 
-    const fetchHistory = async (start, end) => {
+    const readCachedHistory = useCallback(async () => {
+        try {
+            const raw = localStorage.getItem(historyCacheKey);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.data) return parsed.data;
+            }
+        } catch {
+            // Ignore malformed local cache payloads.
+        }
+
+        if (!isDesktopApp()) return null;
+        const desktopPayload = await getOfflineNamespace('dine_in_history', historyCacheKey, null);
+        return desktopPayload?.data || null;
+    }, [historyCacheKey]);
+
+    const writeCachedHistory = useCallback(async (data) => {
+        const payload = { ts: Date.now(), data };
+        try {
+            localStorage.setItem(historyCacheKey, JSON.stringify(payload));
+        } catch {
+            // Ignore local storage write failures.
+        }
+        if (isDesktopApp()) {
+            await setOfflineNamespace('dine_in_history', historyCacheKey, payload);
+        }
+    }, [historyCacheKey]);
+
+    const fetchHistory = useCallback(async (start, end) => {
         setLoading(true);
         try {
             const user = auth.currentUser;
@@ -51,17 +87,22 @@ export default function DineInHistoryPage() {
             if (res.ok) {
                 const data = await res.json();
                 setHistoryData(data);
+                await writeCachedHistory(data);
             }
         } catch (error) {
             console.error('[History] Fetch error:', error);
+            const cached = await readCachedHistory();
+            if (cached) {
+                setHistoryData(cached);
+            }
         } finally {
             setLoading(false);
         }
-    };
+    }, [date, impersonatedOwnerId, employeeOfOwnerId, readCachedHistory, writeCachedHistory]);
 
     useEffect(() => {
         fetchHistory();
-    }, [date]);
+    }, [fetchHistory]);
 
     // Group orders by tab
     const groupedOrders = useMemo(() => {
@@ -148,6 +189,9 @@ export default function DineInHistoryPage() {
                 <div>
                     <h1 className="text-2xl font-bold">Dine-In History</h1>
                     <p className="text-sm text-muted-foreground">View completed and cancelled orders</p>
+                    <div className="mt-2">
+                        <OfflineDesktopStatus />
+                    </div>
                 </div>
             </div>
 

@@ -29,7 +29,7 @@ import {
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
 import { motion } from 'framer-motion';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, getDocs, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
@@ -38,6 +38,7 @@ import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
 import { canAccessPage, ROLES } from '@/lib/permissions';
 import { clearAppNotificationAlarmState, emitAppNotification, setAppNotificationAlarmState } from '@/lib/appNotifications';
+import { isDesktopApp } from '@/lib/desktop/runtime';
 
 const normalizeBusinessType = (value) => {
   if (value === null || value === undefined || value === '') return null;
@@ -140,7 +141,9 @@ const getSettingsItems = (businessType, effectiveOwnerId, paramName = 'impersona
 
 
 export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], lockedFeatures = [], status, userRole = null }) {
+  const desktopRuntime = useMemo(() => isDesktopApp(), []);
   const [businessType, setBusinessType] = useState('restaurant');
+  const [badgeMonitoringReady, setBadgeMonitoringReady] = useState(() => !desktopRuntime);
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -149,6 +152,19 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   // Use either impersonation or employee context for links
   const effectiveOwnerId = impersonatedOwnerId || employeeOfOwnerId;
   const paramName = employeeOfOwnerId ? 'employee_of' : 'impersonate_owner_id';
+
+  useEffect(() => {
+    if (!desktopRuntime) {
+      setBadgeMonitoringReady(true);
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setBadgeMonitoringReady(true);
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, [desktopRuntime]);
 
   useEffect(() => {
     const storedBusinessType = normalizeBusinessType(localStorage.getItem('businessType'));
@@ -178,13 +194,14 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         setBusinessType(storedBusinessType);
       }
 
+      if (desktopRuntime && storedBusinessType) {
+        return undefined;
+      }
+
       const fetchBusinessType = async () => {
         const user = auth.currentUser;
         if (user) {
           try {
-            // Force token refresh to handle idle states/stale tokens
-            await user.getIdToken(true);
-
             const userDocRef = doc(db, "users", user.uid);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
@@ -209,7 +226,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
       return () => unsubscribe();
     }
-  }, [effectiveOwnerId, pathname]);
+  }, [desktopRuntime, effectiveOwnerId, pathname]);
 
 
   const getIsDisabled = (featureId) => {
@@ -382,6 +399,9 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const hasBootstrappedWaNotifRef = useRef(false);
   const prevWaUnreadCountRef = useRef(0);
   const isOnWhatsAppDirectPage = pathname?.includes('/owner-dashboard/whatsapp-direct');
+  const isOnLiveOrdersPage =
+    pathname === '/owner-dashboard/live-orders' ||
+    pathname === '/street-vendor-dashboard';
 
   // Realtime Listener for WhatsApp Unread Count
   useEffect(() => {
@@ -389,6 +409,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     if (!auth.currentUser) return;
     if (impersonatedOwnerId || employeeOfOwnerId) return; // Skip for now until we handle composite query permissions perfectly
     if (isOnWhatsAppDirectPage) return; // Page has its own realtime pipeline; avoid duplicate reads
+    if (!badgeMonitoringReady) return;
 
     let unsubscribe = () => { };
 
@@ -425,11 +446,13 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [businessType, impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage]);
+  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage]);
 
   // Fetch Pending Orders Count (Real-time and Fallback)
   useEffect(() => {
     if (!auth.currentUser) return;
+    if (isOnLiveOrdersPage) return; // Live Orders page already has direct realtime; avoid duplicate listener
+    if (!badgeMonitoringReady) return;
 
     let unsubscribe = () => { };
     let pollInterval = null;
@@ -539,7 +562,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       unsubscribe();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
 
   // Dine-In badge counts (pending dine-in orders + pending service requests)
   useEffect(() => {
@@ -548,6 +571,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       return;
     }
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
+    if (!badgeMonitoringReady) return;
 
     let unsubscribeOrders = () => { };
 
@@ -579,7 +603,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     return () => {
       unsubscribeOrders();
     };
-  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId]);
 
   // Fetch Waitlist Count (Real-time)
   useEffect(() => {
@@ -588,6 +612,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       return;
     }
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
+    if (!badgeMonitoringReady) return;
 
     let unsubscribe = () => { };
 
@@ -617,7 +642,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [impersonatedOwnerId, employeeOfOwnerId, businessType]);
+  }, [badgeMonitoringReady, impersonatedOwnerId, employeeOfOwnerId, businessType]);
 
   // Service request count via API (more reliable with Firestore security rules)
   useEffect(() => {
@@ -626,6 +651,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       return;
     }
     if (employeeOfOwnerId || !auth.currentUser) return;
+    if (!badgeMonitoringReady) return;
 
     let intervalId = null;
     let isMounted = true;
@@ -660,13 +686,13 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     };
 
     fetchServiceRequestCount();
-    intervalId = setInterval(fetchServiceRequestCount, 15000);
+    intervalId = setInterval(fetchServiceRequestCount, desktopRuntime ? 45000 : 15000);
 
     return () => {
       isMounted = false;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [businessType, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [badgeMonitoringReady, businessType, desktopRuntime, impersonatedOwnerId, employeeOfOwnerId]);
 
   useEffect(() => {
     if (impersonatedOwnerId || employeeOfOwnerId) return;

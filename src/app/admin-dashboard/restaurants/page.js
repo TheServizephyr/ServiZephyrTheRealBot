@@ -6,6 +6,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { auth } from '@/lib/firebase';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
@@ -497,6 +499,8 @@ export default function AdminRestaurantsPage() {
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
+  const desktopRuntime = isDesktopApp();
+  const cacheKey = 'admin_restaurants_v1';
 
   const fetchRestaurants = async () => {
     setLoading(true);
@@ -517,8 +521,31 @@ export default function AdminRestaurantsPage() {
       }
       const data = await response.json();
       setRestaurants(data.restaurants);
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(data.restaurants || []));
+      } catch {
+        // Ignore cache errors.
+      }
+      if (desktopRuntime) {
+        await setOfflineNamespace('admin_restaurants', cacheKey, data.restaurants || []);
+      }
     } catch (err) {
-      setError(err.message);
+      let cached = null;
+      try {
+        const localCached = localStorage.getItem(cacheKey);
+        cached = localCached ? JSON.parse(localCached) : null;
+      } catch {
+        cached = null;
+      }
+      if (!cached && desktopRuntime) {
+        cached = await getOfflineNamespace('admin_restaurants', cacheKey, null);
+      }
+      if (Array.isArray(cached)) {
+        setRestaurants(cached);
+        setError(null);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }

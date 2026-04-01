@@ -6,6 +6,9 @@ import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 function appendAccessParams(baseUrl, impersonatedOwnerId, employeeOfOwnerId) {
     const url = new URL(baseUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
@@ -34,6 +37,34 @@ function formatLedgerDate(value) {
     });
 }
 
+async function readInventoryCache(cacheKey) {
+    try {
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.data) return parsed.data;
+        }
+    } catch {
+        // Ignore malformed local cache.
+    }
+
+    if (!isDesktopApp()) return null;
+    const desktopPayload = await getOfflineNamespace('owner_inventory', cacheKey, null);
+    return desktopPayload?.data || null;
+}
+
+async function writeInventoryCache(cacheKey, data) {
+    const payload = { ts: Date.now(), data };
+    try {
+        localStorage.setItem(cacheKey, JSON.stringify(payload));
+    } catch {
+        // Ignore local storage issues.
+    }
+    if (isDesktopApp()) {
+        await setOfflineNamespace('owner_inventory', cacheKey, payload);
+    }
+}
+
 export default function InventoryManagerPage({ title = 'Inventory Management', subtitle = 'Track stock and keep items ready for orders.' }) {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -53,6 +84,10 @@ export default function InventoryManagerPage({ title = 'Inventory Management', s
     const [loadingLedger, setLoadingLedger] = useState(false);
     const [bulkDraft, setBulkDraft] = useState('');
     const [bulkUpdating, setBulkUpdating] = useState(false);
+    const inventoryCacheKey = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_inventory::${scope}`;
+    }, [employeeOfOwnerId, impersonatedOwnerId]);
 
     const loadInventory = useCallback(async (searchTerm = '') => {
         setLoading(true);
@@ -77,13 +112,27 @@ export default function InventoryManagerPage({ title = 'Inventory Management', s
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Failed to fetch inventory.');
 
-            setItems(Array.isArray(data.items) ? data.items : []);
+            const nextItems = Array.isArray(data.items) ? data.items : [];
+            setItems(nextItems);
+            await writeInventoryCache(inventoryCacheKey, {
+                items: nextItems,
+                ledgerEntries,
+            });
         } catch (fetchError) {
-            setError(fetchError.message || 'Failed to load inventory.');
+            const cached = await readInventoryCache(inventoryCacheKey);
+            if (cached?.items) {
+                setItems(Array.isArray(cached.items) ? cached.items : []);
+                if (Array.isArray(cached.ledgerEntries)) {
+                    setLedgerEntries(cached.ledgerEntries);
+                }
+                setError('Showing cached inventory because the live fetch failed.');
+            } else {
+                setError(fetchError.message || 'Failed to load inventory.');
+            }
         } finally {
             setLoading(false);
         }
-    }, [employeeOfOwnerId, impersonatedOwnerId]);
+    }, [employeeOfOwnerId, impersonatedOwnerId, inventoryCacheKey, ledgerEntries]);
 
     useEffect(() => {
         loadInventory('');
@@ -101,13 +150,18 @@ export default function InventoryManagerPage({ title = 'Inventory Management', s
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Failed to fetch inventory ledger.');
-            setLedgerEntries(Array.isArray(data.entries) ? data.entries : []);
+            const nextEntries = Array.isArray(data.entries) ? data.entries : [];
+            setLedgerEntries(nextEntries);
+            await writeInventoryCache(inventoryCacheKey, {
+                items,
+                ledgerEntries: nextEntries,
+            });
         } catch (ledgerError) {
             setError(ledgerError.message || 'Failed to load inventory ledger.');
         } finally {
             setLoadingLedger(false);
         }
-    }, [employeeOfOwnerId, impersonatedOwnerId]);
+    }, [employeeOfOwnerId, impersonatedOwnerId, inventoryCacheKey, items]);
 
     useEffect(() => {
         loadLedger();
@@ -331,6 +385,9 @@ export default function InventoryManagerPage({ title = 'Inventory Management', s
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
                     <p className="text-muted-foreground mt-1">{subtitle}</p>
+                    <div className="mt-2">
+                        <OfflineDesktopStatus />
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" onClick={() => loadInventory(query)} disabled={loading || syncing}>

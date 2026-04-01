@@ -8,11 +8,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loader2, User, Store, Phone, Mail, MapPin, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export default function WaitlistPage() {
     const [waitlistEntries, setWaitlistEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const waitlistCacheKey = 'admin_waitlist';
 
     const fetchWaitlist = async () => {
         setLoading(true);
@@ -32,13 +36,45 @@ export default function WaitlistPage() {
             }
             const data = await res.json();
             setWaitlistEntries(data.entries);
+            const cachePayload = { ts: Date.now(), data: { entries: data.entries } };
+            try {
+                localStorage.setItem(waitlistCacheKey, JSON.stringify(cachePayload));
+            } catch {
+                // Ignore local cache failures.
+            }
+            if (isDesktopApp()) {
+                await setOfflineNamespace('admin_waitlist', waitlistCacheKey, cachePayload);
+            }
         } catch (error) {
             console.error("[Waitlist Page] Error:", error);
-            setInfoDialog({
-                isOpen: true,
-                title: "Error",
-                message: `Could not load waitlist: ${error.message}`
-            });
+            let cached = null;
+            try {
+                const raw = localStorage.getItem(waitlistCacheKey);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed?.data) cached = parsed.data;
+                }
+            } catch {
+                // Ignore malformed cache.
+            }
+            if (!cached && isDesktopApp()) {
+                const desktopPayload = await getOfflineNamespace('admin_waitlist', waitlistCacheKey, null);
+                cached = desktopPayload?.data || null;
+            }
+            if (cached?.entries) {
+                setWaitlistEntries(Array.isArray(cached.entries) ? cached.entries : []);
+                setInfoDialog({
+                    isOpen: true,
+                    title: "Offline Cache Active",
+                    message: "Could not load live waitlist, so cached desktop data is being shown."
+                });
+            } else {
+                setInfoDialog({
+                    isOpen: true,
+                    title: "Error",
+                    message: `Could not load waitlist: ${error.message}`
+                });
+            }
         } finally {
             setLoading(false);
         }
@@ -59,6 +95,9 @@ export default function WaitlistPage() {
             <header>
                 <h1 className="text-3xl font-bold tracking-tight">Waitlist Submissions</h1>
                 <p className="text-muted-foreground mt-1">New restaurants and shops eager to join the platform.</p>
+                <div className="mt-2">
+                    <OfflineDesktopStatus />
+                </div>
             </header>
 
             <Card>

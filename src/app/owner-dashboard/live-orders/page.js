@@ -28,6 +28,9 @@ import { usePolling } from '@/lib/usePolling';
 import { emitAppNotification } from '@/lib/appNotifications';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 import { useToast } from "@/components/ui/use-toast";
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 import {
     buildOwnerDashboardShortcutPath,
     navigateToShortcutPath,
@@ -1379,6 +1382,15 @@ export default function LiveOrdersPage() {
     const staticCacheKey = useMemo(() => `live_orders_static_v1_${cacheScope}`, [cacheScope]);
     const ordersCacheKey = useMemo(() => `live_orders_orders_v1_${cacheScope}`, [cacheScope]);
     const autoPrintRef = useRef(null);
+    const readDesktopCache = useCallback(async (scopeKey) => {
+        if (!isDesktopApp()) return null;
+        const payload = await getOfflineNamespace('owner_live_orders', scopeKey, null);
+        return payload?.data || payload || null;
+    }, []);
+    const writeDesktopCache = useCallback(async (scopeKey, data) => {
+        if (!isDesktopApp()) return;
+        await setOfflineNamespace('owner_live_orders', scopeKey, { ts: Date.now(), data });
+    }, []);
 
     const shortcutScope = useMemo(() => ({
         impersonatedOwnerId,
@@ -1425,7 +1437,10 @@ export default function LiveOrdersPage() {
         } catch {
             // Ignore storage failures safely
         }
-    }, [ordersCacheKey]);
+        writeDesktopCache(ordersCacheKey, {
+            orders: Array.isArray(nextOrders) ? nextOrders : [],
+        }).catch(() => {});
+    }, [ordersCacheKey, writeDesktopCache]);
 
     // Fetch User Role
     useEffect(() => {
@@ -1496,34 +1511,50 @@ export default function LiveOrdersPage() {
     useEffect(() => {
         if (staticDataHydratedRef.current) return;
         staticDataHydratedRef.current = true;
-        try {
-            const raw = sessionStorage.getItem(staticCacheKey);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
+        let cancelled = false;
+        (async () => {
+            let parsed = null;
+            try {
+                const raw = sessionStorage.getItem(staticCacheKey);
+                if (raw) parsed = JSON.parse(raw);
+            } catch {
+                // Ignore malformed cache safely
+            }
+            if (!parsed) parsed = await readDesktopCache(staticCacheKey);
+            if (cancelled || !parsed) return;
             if (Array.isArray(parsed?.riders)) setRiders(parsed.riders);
             if (parsed?.restaurantData) setRestaurantData(parsed.restaurantData);
             const cachedBusinessType = normalizeBusinessType(parsed?.businessType || parsed?.restaurantData?.businessType);
             if (cachedBusinessType) setBusinessType(cachedBusinessType);
-        } catch {
-            // Ignore malformed cache safely
-        }
-    }, [staticCacheKey]);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [readDesktopCache, staticCacheKey]);
 
     useEffect(() => {
         if (ordersDataHydratedRef.current) return;
         ordersDataHydratedRef.current = true;
-        try {
-            const raw = sessionStorage.getItem(ordersCacheKey);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
+        let cancelled = false;
+        (async () => {
+            let parsed = null;
+            try {
+                const raw = sessionStorage.getItem(ordersCacheKey);
+                if (raw) parsed = JSON.parse(raw);
+            } catch {
+                // Ignore malformed cache safely
+            }
+            if (!parsed) parsed = await readDesktopCache(ordersCacheKey);
+            if (cancelled) return;
             if (Array.isArray(parsed?.orders) && parsed.orders.length > 0) {
                 setOrders(parsed.orders);
                 setLoading(false);
             }
-        } catch {
-            // Ignore malformed cache safely
-        }
-    }, [ordersCacheKey]);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [ordersCacheKey, readDesktopCache]);
 
 
     const fetchInitialData = useCallback(async (isManualRefresh = false) => {
@@ -1572,6 +1603,11 @@ export default function LiveOrdersPage() {
                         ts: Date.now()
                     }));
                 } catch { }
+                writeDesktopCache(staticCacheKey, {
+                    riders: ridersData.boys || [],
+                    restaurantData,
+                    businessType: normalizedBusinessType,
+                }).catch(() => {});
             }
 
             if (settingsRes.ok) {
@@ -1594,15 +1630,20 @@ export default function LiveOrdersPage() {
                         ts: Date.now()
                     }));
                 } catch { }
+                writeDesktopCache(staticCacheKey, {
+                    riders,
+                    restaurantData: nextRestaurantData,
+                    businessType: resolvedBusinessType,
+                }).catch(() => {});
             }
 
         } catch (error) {
             console.error("[LiveOrders] Error fetching initial data:", error);
-            setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load data: ${error.message}` });
+            setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: `Could not load live data, so cached desktop data will be used where available. ${error.message}` });
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    }, [employeeOfOwnerId, impersonatedOwnerId, staticCacheKey, persistOrdersToCache]);
+    }, [employeeOfOwnerId, impersonatedOwnerId, normalizedBusinessType, persistOrdersToCache, restaurantData, riders, staticCacheKey, writeDesktopCache]);
 
 
     // Use adaptive polling for impersonation/employee access
@@ -2286,6 +2327,9 @@ export default function LiveOrdersPage() {
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">
                         {isStoreBusiness ? 'A real-time view of your active store orders and dispatch flow.' : 'A real-time, intelligent view of your kitchen\'s pulse.'}
                     </p>
+                    <div className="mt-2">
+                        <OfflineDesktopStatus />
+                    </div>
                 </div>
                 <div className="flex items-center gap-4 w-full md:w-auto">
                     <div className="relative flex-grow md:flex-grow-0">

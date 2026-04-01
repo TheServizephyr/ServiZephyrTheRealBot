@@ -14,6 +14,14 @@ server/
 # Next.js build output
 /.next
 /out
+desktop-dist/
+desktop-dist-build/
+desktop-dist-dir/
+desktop-dist-installer/
+desktop-dist-portable/
+workspace/asar-extract/
+desktop/runtime/
+/main.js
 
 # Production
 /build

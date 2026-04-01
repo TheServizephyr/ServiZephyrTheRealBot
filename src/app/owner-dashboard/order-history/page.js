@@ -13,6 +13,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import OrderCancellationTool from '@/components/OrderCancellationTool';
+import InfoDialog from '@/components/InfoDialog';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 const DATE_PRESETS = [
     { label: "Today", getValue: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
@@ -236,12 +240,17 @@ export default function OrderHistoryPage() {
     const [loading, setLoading] = useState(true);
     const [actionLoadingId, setActionLoadingId] = useState(null);
     const [selectedOrder, setSelectedOrder] = useState(null);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const [dateRange, setDateRange] = useState({
         from: startOfDay(new Date()),
         to: endOfDay(new Date())
     });
     const [searchQuery, setSearchQuery] = useState('');
+    const cacheKey = useMemo(() => {
+        const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
+        return `owner_order_history::${scope}::${toDateInput(dateRange.from)}::${toDateInput(dateRange.to)}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId, dateRange]);
 
     // ── Fetchers ────────────────────────────────────────────────────────────
     const fetchOrdersData = async () => {
@@ -270,8 +279,10 @@ export default function OrderHistoryPage() {
                 }
             });
             setOrders(fetchedOrders);
+            return fetchedOrders;
         } catch (error) {
             console.error('[OrderHistory] Error fetching orders:', error);
+            throw error;
         }
     };
 
@@ -289,20 +300,52 @@ export default function OrderHistoryPage() {
 
             const res = await fetch(apiUrl.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
             const data = await res.json().catch(() => ({}));
-            if (res.ok) setManualOrderHistory(Array.isArray(data.history) ? data.history : []);
+            if (res.ok) {
+                const nextHistory = Array.isArray(data.history) ? data.history : [];
+                setManualOrderHistory(nextHistory);
+                return nextHistory;
+            }
         } catch (error) {
             console.error('[OrderHistory] Error fetching manual order history:', error);
+            throw error;
         }
     };
 
     const fetchAllData = async () => {
         setLoading(true);
-        await Promise.all([fetchOrdersData(), fetchManualOrderHistoryData()]);
-        setLoading(false);
+        try {
+            const [nextOrders = [], nextManualHistory = []] = await Promise.all([fetchOrdersData(), fetchManualOrderHistoryData()]);
+            const payload = { orders: nextOrders, manualOrderHistory: nextManualHistory };
+            try {
+                localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: payload }));
+            } catch {}
+            if (isDesktopApp()) {
+                await setOfflineNamespace('owner_order_history', cacheKey, { ts: Date.now(), data: payload });
+            }
+        } catch (error) {
+            let cached = null;
+            try {
+                const raw = localStorage.getItem(cacheKey);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed?.data) cached = parsed.data;
+                }
+            } catch {}
+            if (!cached && isDesktopApp()) {
+                const desktopPayload = await getOfflineNamespace('owner_order_history', cacheKey, null);
+                cached = desktopPayload?.data || null;
+            }
+            if (cached) {
+                setOrders(Array.isArray(cached.orders) ? cached.orders : []);
+                setManualOrderHistory(Array.isArray(cached.manualOrderHistory) ? cached.manualOrderHistory : []);
+                setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live order history fetch failed, so cached desktop data is being shown.' });
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => { fetchAllData(); }, [dateRange]);
+    useEffect(() => { fetchAllData(); }, [dateRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Settlement Action ───────────────────────────────────────────────────
     const handleSettleAction = async (id, isCurrentlySettled, type) => {
@@ -481,6 +524,7 @@ export default function OrderHistoryPage() {
     // ── Render ──────────────────────────────────────────────────────────────
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div className="flex items-center gap-3">
@@ -490,6 +534,9 @@ export default function OrderHistoryPage() {
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Order History</h1>
                         <p className="text-muted-foreground mt-1 text-sm md:text-base">View completed orders and manage settlements</p>
+                        <div className="mt-2">
+                            <OfflineDesktopStatus />
+                        </div>
                     </div>
                 </div>
                 <Button onClick={fetchAllData} variant="outline" disabled={loading}>

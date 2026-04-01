@@ -16,6 +16,9 @@ import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Wand2, Ticket, Percent, Truck } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
 const CUSTOMER_HUB_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -777,6 +780,12 @@ export default function CustomersPage() {
     const router = useRouter();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const customersDesktopCacheKey = useMemo(() => [
+        'owner_customers_v2',
+        impersonatedOwnerId || 'self',
+        employeeOfOwnerId || 'none',
+    ].join(':'), [employeeOfOwnerId, impersonatedOwnerId]);
 
     const handleApiCall = useCallback(async (endpoint, method, body) => {
         const user = auth.currentUser;
@@ -835,13 +844,32 @@ export default function CustomersPage() {
                     leaderboard: data.leaderboard || null,
                 },
             }));
+            if (desktopRuntime) {
+                await setOfflineNamespace('owner_customers', customersDesktopCacheKey, {
+                    customers: data.customers || [],
+                    stats: data.stats || {},
+                    leaderboard: data.leaderboard || null,
+                });
+            }
         } catch (error) {
             console.error("Failed to fetch customers:", error);
-            setInfoDialog({ isOpen: true, title: "Error", message: "Could not load customer data: " + error.message });
+            let restored = false;
+            if (desktopRuntime) {
+                const desktopPayload = await getOfflineNamespace('owner_customers', customersDesktopCacheKey, null);
+                if (desktopPayload) {
+                    setCustomers(desktopPayload.customers || []);
+                    setStats(desktopPayload.stats || {});
+                    setLeaderboard(desktopPayload.leaderboard || null);
+                    restored = true;
+                }
+            }
+            if (!restored) {
+                setInfoDialog({ isOpen: true, title: "Error", message: "Could not load customer data: " + error.message });
+            }
         } finally {
             setLoading(false);
         }
-    }, [handleApiCall, impersonatedOwnerId, employeeOfOwnerId]);
+    }, [handleApiCall, impersonatedOwnerId, employeeOfOwnerId, desktopRuntime, customersDesktopCacheKey]);
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -1050,6 +1078,9 @@ export default function CustomersPage() {
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Customer Hub</h1>
                 <p className="text-muted-foreground mt-1">Manage, analyze, and engage with your customers.</p>
+            </div>
+            <div className="mt-4">
+                <OfflineDesktopStatus />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 my-6">

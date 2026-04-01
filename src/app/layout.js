@@ -4,6 +4,7 @@ import LayoutWrapper from '@/components/LayoutWrapper';
 import PWARecoveryHandler from '@/components/PWARecoveryHandler';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import AppCheckRequestBridge from '@/components/AppCheckRequestBridge';
+import DesktopAuthRecovery from '@/components/DesktopAuthRecovery';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -170,6 +171,7 @@ const jsonLd = {
 
 export default function RootLayout({ children }) {
   const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const isDesktopRuntime = process.env.NEXT_PUBLIC_IS_DESKTOP_APP === '1';
   return (
     <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`} suppressHydrationWarning>
       <head>
@@ -183,11 +185,15 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker,routes&loading=async`}
-          strategy="afterInteractive"
-        />
-        <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+        {!isDesktopRuntime && GOOGLE_MAPS_API_KEY ? (
+          <Script
+            src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker,routes&loading=async`}
+            strategy="afterInteractive"
+          />
+        ) : null}
+        {!isDesktopRuntime ? (
+          <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+        ) : null}
 
         {/* Development: Filter Noisy Warnings */}
         <Script id="console-filter" strategy="beforeInteractive">
@@ -262,14 +268,15 @@ export default function RootLayout({ children }) {
             <PWARecoveryHandler />
             <GlobalHapticHandler />
             <AppCheckRequestBridge />
+            <DesktopAuthRecovery />
             <LayoutWrapper>
               {children}
             </LayoutWrapper>
             <Toaster />
           </FirebaseClientProvider>
         </ThemeProvider>
-        <Analytics />
-        <SpeedInsights />
+        {!isDesktopRuntime ? <Analytics /> : null}
+        {!isDesktopRuntime ? <SpeedInsights /> : null}
       </body>
     </html>
   );

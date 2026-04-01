@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useFirebase } from '@/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,6 +28,9 @@ import {
     getRoleHelperText,
 } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 function getTeamCopy(businessType) {
     if (businessType === 'store') {
@@ -562,6 +565,12 @@ export default function EmployeesPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
+    const employeesCacheKey = useMemo(() => [
+        'owner_employees_v1',
+        impersonatedOwnerId || 'self',
+        employeeOfOwnerId || 'none',
+    ].join(':'), [employeeOfOwnerId, impersonatedOwnerId]);
 
     const buildEmployeesApiUrl = useCallback((basePath = '/api/owner/employees', extraParams = {}) => {
         const url = new URL(basePath, window.location.origin);
@@ -612,13 +621,30 @@ export default function EmployeesPage() {
                 setPendingInvites(data.pendingInvites || []);
                 setInvitableRoles(data.invitableRoles || []);
                 setBusinessType(data.businessType || 'restaurant');
+                if (desktopRuntime) {
+                    await setOfflineNamespace('owner_employees', employeesCacheKey, {
+                        employees: employeesWithYou,
+                        pendingInvites: data.pendingInvites || [],
+                        invitableRoles: data.invitableRoles || [],
+                        businessType: data.businessType || 'restaurant',
+                    });
+                }
             }
         } catch (error) {
             console.error('Error fetching employees:', error);
+            if (desktopRuntime) {
+                const desktopPayload = await getOfflineNamespace('owner_employees', employeesCacheKey, null);
+                if (desktopPayload) {
+                    setEmployees(desktopPayload.employees || []);
+                    setPendingInvites(desktopPayload.pendingInvites || []);
+                    setInvitableRoles(desktopPayload.invitableRoles || []);
+                    setBusinessType(desktopPayload.businessType || 'restaurant');
+                }
+            }
         } finally {
             setLoading(false);
         }
-    }, [user, buildEmployeesApiUrl]);
+    }, [user, buildEmployeesApiUrl, desktopRuntime, employeesCacheKey]);
 
     useEffect(() => {
         fetchEmployees();
@@ -774,7 +800,8 @@ export default function EmployeesPage() {
                     </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <OfflineDesktopStatus />
                     <Button
                         variant="ghost"
                         size="icon"

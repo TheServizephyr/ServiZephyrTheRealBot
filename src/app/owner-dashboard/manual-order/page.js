@@ -9,6 +9,7 @@ import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import BillToPrint from '@/components/BillToPrint';
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { useReactToPrint } from 'react-to-print';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -30,6 +31,10 @@ import {
     OwnerDashboardShortcutsDialog,
     useOwnerDashboardShortcuts,
 } from '@/lib/ownerDashboardShortcuts';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { appendOfflineQueueItem, getOfflineNamespaces, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { getBestEffortIdToken } from '@/lib/client-session';
+import { silentPrintElement } from '@/lib/desktop/print';
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -66,6 +71,9 @@ const formatSuggestionAddressPreview = (addresses = []) => {
     if (!firstAddress) return '';
     return firstAddress.length > 64 ? `${firstAddress.slice(0, 61)}...` : firstAddress;
 };
+const sortManualTablesByName = (tables = []) => [...tables].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
+const DESKTOP_MUTATION_TIMEOUT_MS = 2500;
+const DESKTOP_TOKEN_TIMEOUT_MS = 1200;
 const getTableCustomerName = (table = {}) => {
     const customerName = table?.currentOrder?.customerDetails?.name;
     return String(customerName || '').trim();
@@ -108,6 +116,14 @@ const isStoreBusinessType = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
     return normalized === 'shop' || normalized === 'store';
 };
+
+const isDesktopOfflineMode = (desktopRuntime) => (
+    Boolean(
+        desktopRuntime &&
+        typeof navigator !== 'undefined' &&
+        navigator.onLine === false
+    )
+);
 const getItemAvailableStock = (item = {}) => {
     const raw = item?.availableStock ?? item?.available;
     const parsed = Number(raw);
@@ -336,6 +352,9 @@ function ManualOrderPage() {
         if (!businessId || !collectionName) return '';
         return `manual_order_customer_suggestions_v1_${collectionName}_${businessId}`;
     }, [callSyncTarget?.businessId, callSyncTarget?.collectionName]);
+    const manualTablesCacheKey = useMemo(() => `${cacheKey}__manual_tables_v1`, [cacheKey]);
+    const offlineQueueScope = useMemo(() => `${cacheKey}__queue`, [cacheKey]);
+    const desktopRuntime = useMemo(() => isDesktopApp(), []);
 
     const buildScopedUrl = useCallback((endpoint) => {
         const url = new URL(endpoint, window.location.origin);
@@ -358,6 +377,20 @@ function ManualOrderPage() {
         }
     }, [cacheKey]);
 
+    const resolveCachedPayload = useCallback(async () => {
+        const localPayload = readCachedPayload();
+        if (localPayload?.data) return localPayload;
+        if (!desktopRuntime) return null;
+        try {
+            const desktopPayload = (await getOfflineNamespaces([
+                { key: 'manualOrderCache', namespace: 'manual_order_cache', scope: cacheKey, fallback: null },
+            ])).manualOrderCache;
+            return desktopPayload?.data ? desktopPayload : null;
+        } catch {
+            return null;
+        }
+    }, [cacheKey, desktopRuntime, readCachedPayload]);
+
     const writeCachedPayload = useCallback((data = {}) => {
         try {
             localStorage.setItem(cacheKey, JSON.stringify({
@@ -367,7 +400,122 @@ function ManualOrderPage() {
         } catch {
             // Ignore storage errors
         }
-    }, [cacheKey]);
+        if (desktopRuntime) {
+            void setOfflineNamespace('manual_order_cache', cacheKey, {
+                ts: Date.now(),
+                data,
+            });
+        }
+    }, [cacheKey, desktopRuntime]);
+
+    const readCachedManualTables = useCallback(() => {
+        try {
+            const raw = localStorage.getItem(manualTablesCacheKey);
+            const parsed = raw ? JSON.parse(raw) : null;
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }, [manualTablesCacheKey]);
+
+    const resolveCachedManualTables = useCallback(async () => {
+        const localTables = readCachedManualTables();
+        if (localTables.length > 0) return localTables;
+        if (!desktopRuntime) return [];
+        try {
+            const desktopTables = (await getOfflineNamespaces([
+                { key: 'manualTables', namespace: 'manual_tables', scope: manualTablesCacheKey, fallback: [] },
+            ])).manualTables;
+            return Array.isArray(desktopTables) ? desktopTables : [];
+        } catch {
+            return [];
+        }
+    }, [desktopRuntime, manualTablesCacheKey, readCachedManualTables]);
+
+    const writeCachedManualTables = useCallback((tables = []) => {
+        const sortedTables = sortManualTablesByName(tables);
+        try {
+            localStorage.setItem(manualTablesCacheKey, JSON.stringify(sortedTables));
+        } catch {
+            // Ignore storage errors
+        }
+        if (desktopRuntime) {
+            void setOfflineNamespace('manual_tables', manualTablesCacheKey, sortedTables);
+        }
+        return sortedTables;
+    }, [desktopRuntime, manualTablesCacheKey]);
+
+    const queueOfflineAction = useCallback(async (action, payload) => {
+        const item = {
+            action,
+            payload,
+            scope: offlineQueueScope,
+            impersonatedOwnerId,
+            employeeOfOwnerId,
+            queuedAt: new Date().toISOString(),
+        };
+        try {
+            const raw = localStorage.getItem(offlineQueueScope);
+            const queue = raw ? JSON.parse(raw) : [];
+            const next = Array.isArray(queue) ? [...queue, item] : [item];
+            localStorage.setItem(offlineQueueScope, JSON.stringify(next));
+        } catch {
+            // Ignore storage errors
+        }
+        if (desktopRuntime) {
+            await appendOfflineQueueItem('owner_offline_sync_queue', item);
+        }
+    }, [desktopRuntime, employeeOfOwnerId, impersonatedOwnerId, offlineQueueScope]);
+
+    const canUseDesktopOfflineFallback = useCallback((error = null) => {
+        if (!desktopRuntime) return false;
+        if (isDesktopOfflineMode(desktopRuntime)) return true;
+        const message = String(error?.message || error || '').toLowerCase();
+        return (
+            message.includes('failed to fetch') ||
+            message.includes('network') ||
+            message.includes('timeout') ||
+            message.includes('auth') ||
+            message.includes('backend error') ||
+            message.includes('unavailable') ||
+            message.includes('ehostunreach') ||
+            message.includes('enotfound') ||
+            message.includes('identitytoolkit') ||
+            message.includes('no connection established') ||
+            message.includes('not authenticated') ||
+            message.includes('authentication required')
+        );
+    }, [desktopRuntime]);
+
+    const fetchWithDesktopMutationTimeout = useCallback(async (input, init = {}, timeoutMs = DESKTOP_MUTATION_TIMEOUT_MS) => {
+        if (!desktopRuntime) {
+            return fetch(input, init);
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            return await fetch(input, {
+                ...init,
+                signal: controller.signal,
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                throw new Error('desktop action timeout');
+            }
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
+    }, [desktopRuntime]);
+
+    const getDesktopActionIdToken = useCallback(async (user = auth.currentUser, options = {}) => {
+        const { timeoutMs = DESKTOP_TOKEN_TIMEOUT_MS } = options;
+        return getBestEffortIdToken(user, {
+            timeoutMs: desktopRuntime ? timeoutMs : 0,
+        });
+    }, [desktopRuntime]);
 
     const readCustomerSuggestionCache = useCallback(() => {
         if (!customerSuggestionCacheKey) return null;
@@ -624,13 +772,35 @@ function ManualOrderPage() {
     }, [searchParams]);
 
     useEffect(() => {
-        if (tableToPrint && handleTablePrint) {
-            handleTablePrint();
-            // Automatically clear after a short delay so consecutive prints work
-            const timer = setTimeout(() => setTableToPrint(null), 1000);
-            return () => clearTimeout(timer);
-        }
-    }, [tableToPrint, handleTablePrint]);
+        if (!tableToPrint) return undefined;
+
+        let cancelled = false;
+        const runPrint = async () => {
+            try {
+                if (desktopRuntime && tablePrintRef.current) {
+                    await silentPrintElement(tablePrintRef.current, {
+                        documentTitle: `Table-Bill-${Date.now()}`,
+                    });
+                } else if (handleTablePrint) {
+                    handleTablePrint();
+                }
+            } catch (error) {
+                console.error('[Manual Order] Auto table print failed:', error);
+                if (!cancelled && handleTablePrint) {
+                    handleTablePrint();
+                }
+            } finally {
+                if (!cancelled) {
+                    setTimeout(() => setTableToPrint(null), 300);
+                }
+            }
+        };
+
+        runPrint();
+        return () => {
+            cancelled = true;
+        };
+    }, [desktopRuntime, tableToPrint, handleTablePrint]);
 
     useEffect(() => {
         if (orderType !== 'dine-in') return undefined;
@@ -667,8 +837,8 @@ function ManualOrderPage() {
                 try {
                     const user = auth.currentUser;
                     if (!user) return;
-                    const idToken = await user.getIdToken();
-                    const inventoryRes = await fetch(buildScopedUrl('/api/owner/inventory?limit=500'), {
+                    const idToken = await getDesktopActionIdToken(user);
+                    const inventoryRes = await fetchWithDesktopMutationTimeout(buildScopedUrl('/api/owner/inventory?limit=500'), {
                         headers: { Authorization: `Bearer ${idToken}` },
                     });
                     if (!inventoryRes.ok) return;
@@ -691,17 +861,72 @@ function ManualOrderPage() {
     }, [buildScopedUrl, readCachedPayload]);
 
     useEffect(() => {
+        if (!desktopRuntime) return;
+        let cancelled = false;
+
+        const hydrateDesktopOfflineData = async () => {
+            try {
+                const desktopSnapshot = await getOfflineNamespaces([
+                    { key: 'manualOrderCache', namespace: 'manual_order_cache', scope: cacheKey, fallback: null },
+                    { key: 'manualTables', namespace: 'manual_tables', scope: manualTablesCacheKey, fallback: [] },
+                ]);
+                const desktopCache = desktopSnapshot?.manualOrderCache;
+                if (!cancelled && !readCachedPayload() && desktopCache?.data) {
+                    if (desktopCache.data.menu && typeof desktopCache.data.menu === 'object') setMenu(desktopCache.data.menu);
+                    if (Array.isArray(desktopCache.data.openItems)) setOpenItems(dedupeOpenItems(desktopCache.data.openItems));
+                    if (desktopCache.data.restaurant) setRestaurant(desktopCache.data.restaurant);
+                    if (desktopCache.data.businessType) {
+                        setBusinessType(desktopCache.data.businessType);
+                        setIsBusinessTypeResolved(true);
+                    }
+                    setCacheStatus('desktop-hit');
+                    setLoading(false);
+                }
+
+                const desktopTables = desktopSnapshot?.manualTables;
+                if (!cancelled && readCachedManualTables().length === 0 && Array.isArray(desktopTables) && desktopTables.length > 0) {
+                    const sortedTables = writeCachedManualTables(desktopTables);
+                    if (orderType === 'dine-in') {
+                        setManualTables(sortedTables);
+                    }
+                }
+            } catch (error) {
+                console.warn('[Manual Order] Failed to hydrate desktop offline data:', error);
+            }
+        };
+
+        hydrateDesktopOfflineData();
+        return () => {
+            cancelled = true;
+        };
+    }, [cacheKey, desktopRuntime, manualTablesCacheKey, orderType, readCachedManualTables, readCachedPayload, writeCachedManualTables]);
+
+    useEffect(() => {
         let isMounted = true;
 
         const fetchMenuAndSettings = async () => {
             // Only show loading spinner when there's no local cache yet
             // This prevents the loading flicker on every re-visit
-            const hasCachedMenu = !!readCachedPayload()?.data?.menu;
+            const cached = await resolveCachedPayload();
+            const hasCachedMenu = !!cached?.data?.menu;
             if (!hasCachedMenu) setLoading(true);
             try {
+                if (isDesktopOfflineMode(desktopRuntime) && hasCachedMenu) {
+                    setMenu(cached.data.menu || {});
+                    setOpenItems(Array.isArray(cached.data.openItems) ? dedupeOpenItems(cached.data.openItems) : []);
+                    if (cached.data.restaurant) setRestaurant(cached.data.restaurant);
+                    if (cached.data.businessType) {
+                        setBusinessType(cached.data.businessType);
+                        setIsBusinessTypeResolved(true);
+                    }
+                    setCacheStatus('offline-fallback');
+                    setLoading(false);
+                    return;
+                }
+
                 const user = auth.currentUser;
                 if (!user) throw new Error("Authentication required.");
-                const idToken = await user.getIdToken();
+                const idToken = await getDesktopActionIdToken(user);
 
                 const headers = { 'Authorization': `Bearer ${idToken}` };
                 const menuUrl = buildScopedUrl('/api/owner/menu?compact=1&includeOpenItems=1');
@@ -709,10 +934,9 @@ function ManualOrderPage() {
                 const settingsUrl = buildScopedUrl('/api/owner/settings');
                 const versionUrl = buildScopedUrl('/api/owner/menu?versionOnly=1');
 
-                const cached = readCachedPayload();
                 let shouldFetchFullMenu = true;
                 try {
-                    const versionRes = await fetch(versionUrl, { headers });
+                    const versionRes = await fetchWithDesktopMutationTimeout(versionUrl, { headers });
                     if (versionRes.ok) {
                         const versionData = await versionRes.json();
                         const latestVersion = Number(versionData?.menuVersion || 0);
@@ -743,7 +967,7 @@ function ManualOrderPage() {
                 if (!shouldFetchFullMenu) {
                     if (isStoreBusinessType(cached?.data?.businessType)) {
                         try {
-                            const inventoryRes = await fetch(inventoryUrl, { headers });
+                            const inventoryRes = await fetchWithDesktopMutationTimeout(inventoryUrl, { headers });
                             if (inventoryRes.ok && isMounted) {
                                 const inventoryData = await inventoryRes.json();
                                 const inventoryMap = Array.isArray(inventoryData?.items)
@@ -760,7 +984,7 @@ function ManualOrderPage() {
                         }
                     }
 
-                    const settingsPromise = fetch(settingsUrl, { headers });
+                    const settingsPromise = fetchWithDesktopMutationTimeout(settingsUrl, { headers });
                     // Keep settings fresh in background when menu version is unchanged.
                     try {
                         const settingsRes = await settingsPromise;
@@ -804,9 +1028,9 @@ function ManualOrderPage() {
                     return;
                 }
 
-                const menuPromise = fetch(menuUrl, { headers });
-                const settingsPromise = fetch(settingsUrl, { headers });
-                const inventoryPromise = fetch(inventoryUrl, { headers });
+                const menuPromise = fetchWithDesktopMutationTimeout(menuUrl, { headers });
+                const settingsPromise = fetchWithDesktopMutationTimeout(settingsUrl, { headers });
+                const inventoryPromise = fetchWithDesktopMutationTimeout(inventoryUrl, { headers });
                 const menuRes = await menuPromise;
 
                 if (!menuRes.ok) {
@@ -920,8 +1144,26 @@ function ManualOrderPage() {
                 }
             } catch (error) {
                 if (isMounted) {
-                    setCacheStatus('error');
-                    toast({ title: 'Error', description: `Could not load menu: ${error.message}`, variant: 'destructive' });
+                    const cached = await resolveCachedPayload();
+                    const hasCachedMenu = Boolean(cached?.data?.menu && typeof cached.data.menu === 'object' && Object.keys(cached.data.menu).length > 0);
+                    if (hasCachedMenu && canUseDesktopOfflineFallback(error)) {
+                        setCacheStatus('offline-fallback');
+                        setMenu(cached.data.menu || {});
+                        setOpenItems(Array.isArray(cached.data.openItems) ? dedupeOpenItems(cached.data.openItems) : []);
+                        if (cached.data.restaurant) setRestaurant(cached.data.restaurant);
+                        if (cached.data.businessType) {
+                            setBusinessType(cached.data.businessType);
+                            setIsBusinessTypeResolved(true);
+                        }
+                        toast({
+                            title: 'Offline Cache Active',
+                            description: 'Live menu could not be refreshed, so cached desktop menu is being used.',
+                            variant: 'warning',
+                        });
+                    } else {
+                        setCacheStatus('error');
+                        toast({ title: 'Error', description: `Could not load menu: ${error.message}`, variant: 'destructive' });
+                    }
                 }
             } finally {
                 if (isMounted) {
@@ -939,7 +1181,7 @@ function ManualOrderPage() {
             isMounted = false;
             unsubscribe();
         };
-    }, [accessQuery, buildScopedUrl, cacheKey, readCachedPayload, writeCachedPayload, toast]);
+    }, [accessQuery, buildScopedUrl, cacheKey, resolveCachedPayload, writeCachedPayload, toast, desktopRuntime, canUseDesktopOfflineFallback, readCachedPayload, fetchWithDesktopMutationTimeout, getDesktopActionIdToken]);
 
     useEffect(() => {
         if (!customerSuggestionCacheKey) {
@@ -1200,25 +1442,45 @@ function ManualOrderPage() {
     const fetchManualTables = useCallback(async () => {
         setIsLoadingTables(true);
         try {
+            const offlineTables = await resolveCachedManualTables();
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                if (offlineTables.length > 0) {
+                    setManualTables(sortManualTablesByName(offlineTables));
+                }
+                return;
+            }
             const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            const res = await fetch(buildScopedUrl('/api/owner/manual-tables'), {
+            if (!user) {
+                if (offlineTables.length > 0) {
+                    setManualTables(sortManualTablesByName(offlineTables));
+                }
+                return;
+            }
+            const idToken = await getDesktopActionIdToken(user);
+            const res = await fetchWithDesktopMutationTimeout(buildScopedUrl('/api/owner/manual-tables'), {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
             if (res.ok) {
                 const data = await res.json();
-                // Sort ascending by name (numeric sort)
-                const sortedTables = (data.tables || []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const sortedTables = sortManualTablesByName(data.tables || []);
                 setManualTables(sortedTables);
+                writeCachedManualTables(sortedTables);
             }
         } catch (error) {
             console.error('Error fetching manual tables:', error);
-            // Ignore toast or define later if we missed it
+            const offlineTables = await resolveCachedManualTables();
+            if (offlineTables.length > 0) {
+                setManualTables(sortManualTablesByName(offlineTables));
+                toast({
+                    title: 'Offline Tables Loaded',
+                    description: 'Using locally cached dine-in tables because the network is unavailable.',
+                    variant: 'warning',
+                });
+            }
         } finally {
             setIsLoadingTables(false);
         }
-    }, [buildScopedUrl]);
+    }, [buildScopedUrl, desktopRuntime, fetchWithDesktopMutationTimeout, resolveCachedManualTables, toast, writeCachedManualTables]);
 
     useEffect(() => {
         if (orderType === 'dine-in') {
@@ -1336,8 +1598,8 @@ function ManualOrderPage() {
         try {
             const user = auth.currentUser;
             if (!user) throw new Error("Not authenticated");
-            const idToken = await user.getIdToken();
-            const res = await fetch(buildScopedUrl('/api/owner/manual-tables'), {
+            const idToken = await getDesktopActionIdToken(user);
+            const res = await fetchWithDesktopMutationTimeout(buildScopedUrl('/api/owner/manual-tables'), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1357,7 +1619,22 @@ function ManualOrderPage() {
                 throw new Error(data.message || 'Failed to update table');
             }
         } catch (error) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            if (canUseDesktopOfflineFallback(error)) {
+                const nextTables = sortManualTablesByName(readCachedManualTables().map((table) => (
+                    table.id === tableToEdit.id
+                        ? { ...table, id: newTableName.trim(), name: newTableName.trim(), updatedAt: new Date().toISOString() }
+                        : table
+                )));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_update', { id: tableToEdit.id, name: newTableName.trim() });
+                toast({ title: 'Offline Saved', description: 'Table updated locally and queued for sync.', variant: 'warning' });
+                setIsEditTableModalOpen(false);
+                setTableToEdit(null);
+                setNewTableName('');
+            } else {
+                toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            }
         } finally {
             setTableActionLoading(false);
         }
@@ -1373,8 +1650,8 @@ function ManualOrderPage() {
         try {
             const user = auth.currentUser;
             if (!user) throw new Error("Not authenticated");
-            const idToken = await user.getIdToken();
-            const res = await fetch(buildScopedUrl(`/api/owner/manual-tables?tableId=${tableToDelete.id}`), {
+            const idToken = await getDesktopActionIdToken(user);
+            const res = await fetchWithDesktopMutationTimeout(buildScopedUrl(`/api/owner/manual-tables?tableId=${tableToDelete.id}`), {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
@@ -1388,7 +1665,17 @@ function ManualOrderPage() {
                 throw new Error(data.message || 'Failed to delete table');
             }
         } catch (error) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            if (canUseDesktopOfflineFallback(error)) {
+                const nextTables = sortManualTablesByName(readCachedManualTables().filter((table) => table.id !== tableToDelete.id));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_delete', { id: tableToDelete.id });
+                if (activeTable?.id === tableToDelete.id) setActiveTable(null);
+                setTableToDelete(null);
+                toast({ title: 'Offline Saved', description: 'Table deleted locally and queued for sync.', variant: 'warning' });
+            } else {
+                toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            }
         } finally {
             setTableActionLoading(false);
         }
@@ -1918,7 +2205,7 @@ function ManualOrderPage() {
     const saveCustomBillHistory = useCallback(async (printedVia = 'browser', typeOverride = null) => {
         const user = auth.currentUser;
         if (!user) throw new Error('Authentication required.');
-        const idToken = await user.getIdToken();
+        const idToken = await getDesktopActionIdToken(user);
 
         const historyItems = cart.map((item) => ({
             id: item.id,
@@ -1941,7 +2228,7 @@ function ManualOrderPage() {
         }));
 
         const endpoint = accessQuery ? `/api/owner/custom-bill/history?${accessQuery}` : '/api/owner/custom-bill/history';
-        const res = await fetch(endpoint, {
+        const res = await fetchWithDesktopMutationTimeout(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2085,20 +2372,38 @@ function ManualOrderPage() {
         }
         if (!validatePhoneNumber()) return;
         setTableActionLoading(true);
+        const currentOrder = {
+            items: cart,
+            customerDetails,
+            subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal,
+            orderType: 'dine-in',
+            orderDate: activeTable?.currentOrder?.orderDate || new Date().toISOString(),
+            occupiedAt: activeTable?.currentOrder?.occupiedAt || new Date().toISOString(),
+        };
         try {
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const nextTables = sortManualTablesByName(sourceTables.map((table) => (
+                    table.id === activeTable.id
+                        ? { ...table, currentOrder, isOccupied: true, updatedAt: new Date().toISOString() }
+                        : table
+                )));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_occupy', { tableId: activeTable.id, currentOrder });
+                toast({ title: 'Offline Saved', description: `Order saved locally to ${activeTable.name}.`, variant: 'warning' });
+                setTableToPrint({ ...activeTable, currentOrder });
+                setActiveTable(null);
+                handleClear();
+                return;
+            }
+
             const user = auth.currentUser;
-            const idToken = await user.getIdToken();
+            if (!user) throw new Error('Not authenticated');
+            const idToken = await getDesktopActionIdToken(user);
 
-            const currentOrder = {
-                items: cart,
-                customerDetails,
-                subtotal, cgst, sgst, deliveryCharge, additionalCharge, additionalChargeLabel, grandTotal,
-                orderType: 'dine-in',
-                orderDate: activeTable?.currentOrder?.orderDate || new Date().toISOString(),
-                occupiedAt: activeTable?.currentOrder?.occupiedAt || new Date().toISOString(),
-            };
-
-            const res = await fetch(buildScopedUrl(`/api/owner/manual-tables/${activeTable.id}`), {
+            const res = await fetchWithDesktopMutationTimeout(buildScopedUrl(`/api/owner/manual-tables/${activeTable.id}`), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ action: 'occupy', currentOrder })
@@ -2116,7 +2421,24 @@ function ManualOrderPage() {
             handleClear(); // Clear cart
             fetchManualTables();
         } catch (error) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            if (canUseDesktopOfflineFallback(error)) {
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const nextTables = sortManualTablesByName(sourceTables.map((table) => (
+                    table.id === activeTable.id
+                        ? { ...table, currentOrder, isOccupied: true, updatedAt: new Date().toISOString() }
+                        : table
+                )));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_occupy', { tableId: activeTable.id, currentOrder });
+                toast({ title: 'Offline Saved', description: `Order saved locally to ${activeTable.name}.`, variant: 'warning' });
+                setTableToPrint({ ...activeTable, currentOrder });
+                setActiveTable(null);
+                handleClear();
+            } else {
+                toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            }
         } finally {
             setTableActionLoading(false);
         }
@@ -2126,9 +2448,37 @@ function ManualOrderPage() {
         if (!newTableName.trim()) return;
         setTableActionLoading(true);
         try {
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                const tableName = newTableName.trim();
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const existing = sourceTables.some((table) => String(table?.id || '').trim().toLowerCase() === tableName.toLowerCase());
+                if (existing) {
+                    toast({ title: 'Duplicate Table', description: 'A table with this name already exists locally.', variant: 'destructive' });
+                    return;
+                }
+                const newTable = {
+                    id: tableName,
+                    name: tableName,
+                    isOccupied: false,
+                    currentOrder: null,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                };
+                const nextTables = sortManualTablesByName([...sourceTables, newTable]);
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_create', { name: tableName });
+                toast({ title: 'Offline Saved', description: 'Table created locally and queued for sync.', variant: 'warning' });
+                setIsCreateTableModalOpen(false);
+                setNewTableName('');
+                return;
+            }
+
             const user = auth.currentUser;
-            const idToken = await user.getIdToken();
-            const res = await fetch(buildScopedUrl('/api/owner/manual-tables'), {
+            if (!user) throw new Error('Not authenticated');
+            const idToken = await getDesktopActionIdToken(user);
+            const res = await fetchWithDesktopMutationTimeout(buildScopedUrl('/api/owner/manual-tables'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ name: newTableName })
@@ -2144,7 +2494,33 @@ function ManualOrderPage() {
             setNewTableName('');
             fetchManualTables();
         } catch (error) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            if (canUseDesktopOfflineFallback(error)) {
+                const tableName = newTableName.trim();
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const existing = sourceTables.some((table) => String(table?.id || '').trim().toLowerCase() === tableName.toLowerCase());
+                if (existing) {
+                    toast({ title: 'Duplicate Table', description: 'A table with this name already exists locally.', variant: 'destructive' });
+                } else {
+                    const newTable = {
+                        id: tableName,
+                        name: tableName,
+                        isOccupied: false,
+                        currentOrder: null,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    };
+                    const nextTables = sortManualTablesByName([...sourceTables, newTable]);
+                    setManualTables(nextTables);
+                    writeCachedManualTables(nextTables);
+                    await queueOfflineAction('manual_table_create', { name: tableName });
+                    toast({ title: 'Offline Saved', description: 'Table created locally and queued for sync.', variant: 'warning' });
+                    setIsCreateTableModalOpen(false);
+                    setNewTableName('');
+                }
+            } else {
+                toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            }
         } finally {
             setTableActionLoading(false);
         }
@@ -2156,9 +2532,34 @@ function ManualOrderPage() {
         if (tableToFinalize.currentOrder?.isFinalized) return;
         setTableActionLoading(true);
         try {
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const nextTables = sortManualTablesByName(sourceTables.map((table) => (
+                    table.id === tableToFinalize.id
+                        ? {
+                            ...table,
+                            currentOrder: {
+                                ...(table.currentOrder || {}),
+                                isFinalized: true,
+                                finalizedAt: new Date().toISOString(),
+                            },
+                            updatedAt: new Date().toISOString(),
+                        }
+                        : table
+                )));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_finalize', { tableId: tableToFinalize.id });
+                setSelectedOccupiedTable(null);
+                toast({ title: 'Offline Saved', description: `${tableToFinalize.name} finalized locally and queued for sync.`, variant: 'warning' });
+                return;
+            }
+
             const user = auth.currentUser;
-            const idToken = await user.getIdToken();
-            const res = await fetch(buildScopedUrl(`/api/owner/manual-tables/${tableToFinalize.id}`), {
+            if (!user) throw new Error('Not authenticated');
+            const idToken = await getDesktopActionIdToken(user);
+            const res = await fetchWithDesktopMutationTimeout(buildScopedUrl(`/api/owner/manual-tables/${tableToFinalize.id}`), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ action: 'finalize' })
@@ -2168,7 +2569,30 @@ function ManualOrderPage() {
             setSelectedOccupiedTable(null);
             fetchManualTables();
         } catch (error) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            if (canUseDesktopOfflineFallback(error)) {
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const nextTables = sortManualTablesByName(sourceTables.map((table) => (
+                    table.id === tableToFinalize.id
+                        ? {
+                            ...table,
+                            currentOrder: {
+                                ...(table.currentOrder || {}),
+                                isFinalized: true,
+                                finalizedAt: new Date().toISOString(),
+                            },
+                            updatedAt: new Date().toISOString(),
+                        }
+                        : table
+                )));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_finalize', { tableId: tableToFinalize.id });
+                setSelectedOccupiedTable(null);
+                toast({ title: 'Offline Saved', description: `${tableToFinalize.name} finalized locally and queued for sync.`, variant: 'warning' });
+            } else {
+                toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            }
         } finally {
             setTableActionLoading(false);
         }
@@ -2178,16 +2602,50 @@ function ManualOrderPage() {
         const tableToSettle = tableData?.id ? tableData : selectedOccupiedTable;
         if (!tableToSettle || !tableToSettle.currentOrder) return;
         setTableActionLoading(true);
+        const offlineBillPayload = {
+            billDraftId: createBillDraftId(),
+            printedVia: 'dine-in',
+            customerDetails: tableToSettle.currentOrder.customerDetails || {},
+            items: tableToSettle.currentOrder.items || [],
+            billDetails: {
+                subtotal: tableToSettle.currentOrder.subtotal,
+                cgst: tableToSettle.currentOrder.cgst,
+                sgst: tableToSettle.currentOrder.sgst,
+                deliveryCharge: tableToSettle.currentOrder.deliveryCharge,
+                serviceFee: tableToSettle.currentOrder.additionalCharge,
+                serviceFeeLabel: tableToSettle.currentOrder.additionalChargeLabel,
+                grandTotal: tableToSettle.currentOrder.grandTotal,
+            },
+        };
         try {
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const nextTables = sortManualTablesByName(sourceTables.map((table) => (
+                    table.id === tableToSettle.id
+                        ? { ...table, currentOrder: null, isOccupied: false, updatedAt: new Date().toISOString() }
+                        : table
+                )));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_settle', { tableId: tableToSettle.id, bill: offlineBillPayload });
+                if (!tableData?.id) {
+                    setSelectedOccupiedTable(null);
+                }
+                toast({ title: 'Offline Settled', description: `Table ${tableToSettle.name} settled locally and queued for sync.`, variant: 'warning' });
+                return;
+            }
+
             const user = auth.currentUser;
-            const idToken = await user.getIdToken();
+            if (!user) throw new Error('Not authenticated');
+            const idToken = await getDesktopActionIdToken(user);
 
             const historyItems = tableToSettle.currentOrder.items.map((item) => ({
                 id: item.id, name: item.name, categoryId: item.categoryId,
                 quantity: item.quantity, price: item.price, totalPrice: item.totalPrice, portion: item.portion || null,
             }));
 
-            const historyRes = await fetch(buildScopedUrl('/api/owner/custom-bill/history'), {
+            const historyRes = await fetchWithDesktopMutationTimeout(buildScopedUrl('/api/owner/custom-bill/history'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({
@@ -2213,7 +2671,7 @@ function ManualOrderPage() {
             const historyData = await historyRes.json();
             const savedHistoryId = historyData?.historyId;
             if (savedHistoryId) {
-                await fetch(buildScopedUrl('/api/owner/custom-bill/history'), {
+                await fetchWithDesktopMutationTimeout(buildScopedUrl('/api/owner/custom-bill/history'), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                     body: JSON.stringify({ action: 'settle', historyIds: [savedHistoryId] }),
@@ -2221,7 +2679,7 @@ function ManualOrderPage() {
             }
 
             // 2. Free the table
-            const freeRes = await fetch(buildScopedUrl(`/api/owner/manual-tables/${tableToSettle.id}`), {
+            const freeRes = await fetchWithDesktopMutationTimeout(buildScopedUrl(`/api/owner/manual-tables/${tableToSettle.id}`), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ action: 'free' })
@@ -2235,7 +2693,24 @@ function ManualOrderPage() {
             }
             fetchManualTables();
         } catch (error) {
-            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            if (canUseDesktopOfflineFallback(error)) {
+                const cachedTables = await resolveCachedManualTables();
+                const sourceTables = cachedTables.length > 0 ? cachedTables : manualTables;
+                const nextTables = sortManualTablesByName(sourceTables.map((table) => (
+                    table.id === tableToSettle.id
+                        ? { ...table, currentOrder: null, isOccupied: false, updatedAt: new Date().toISOString() }
+                        : table
+                )));
+                setManualTables(nextTables);
+                writeCachedManualTables(nextTables);
+                await queueOfflineAction('manual_table_settle', { tableId: tableToSettle.id, bill: offlineBillPayload });
+                if (!tableData?.id) {
+                    setSelectedOccupiedTable(null);
+                }
+                toast({ title: 'Offline Settled', description: `Table ${tableToSettle.name} settled locally and queued for sync.`, variant: 'warning' });
+            } else {
+                toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            }
         } finally {
             setTableActionLoading(false);
         }
@@ -2249,16 +2724,69 @@ function ManualOrderPage() {
         setIsSavingBillHistory(true);
         let saveError = null;
         try {
-            await saveCustomBillHistory('browser', orderType);
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                await queueOfflineAction('manual_bill_history_create', {
+                    billDraftId,
+                    printedVia: orderType,
+                    customerDetails,
+                    items: cart,
+                    billDetails: {
+                        subtotal,
+                        cgst,
+                        sgst,
+                        deliveryCharge,
+                        serviceFee: additionalCharge,
+                        serviceFeeLabel: additionalChargeLabel,
+                        discount,
+                        paymentMode,
+                        grandTotal,
+                    },
+                });
+            } else {
+                await saveCustomBillHistory('browser', orderType);
+            }
         } catch (error) {
-            saveError = error;
-            console.error('[Custom Bill] Failed to save browser-print history:', error);
+            if (canUseDesktopOfflineFallback(error)) {
+                await queueOfflineAction('manual_bill_history_create', {
+                    billDraftId,
+                    printedVia: orderType,
+                    customerDetails,
+                    items: cart,
+                    billDetails: {
+                        subtotal,
+                        cgst,
+                        sgst,
+                        deliveryCharge,
+                        serviceFee: additionalCharge,
+                        serviceFeeLabel: additionalChargeLabel,
+                        discount,
+                        paymentMode,
+                        grandTotal,
+                    },
+                });
+                saveError = null;
+            } else {
+                saveError = error;
+                console.error('[Custom Bill] Failed to save browser-print history:', error);
+            }
         } finally {
             setIsSavingBillHistory(false);
         }
 
-        if (billPrintRef.current && handlePrint) {
-            handlePrint();
+        if (billPrintRef.current) {
+            if (desktopRuntime) {
+                try {
+                    await silentPrintElement(billPrintRef.current, {
+                        documentTitle: `Bill-${Date.now()}`,
+                    });
+                    setIsBillModalOpen(false);
+                } catch (printError) {
+                    console.error('[Manual Order] Silent print failed, falling back to browser print:', printError);
+                    if (handlePrint) handlePrint();
+                }
+            } else if (handlePrint) {
+                handlePrint();
+            }
         }
 
         if (saveError) {
@@ -2358,9 +2886,9 @@ function ManualOrderPage() {
                             customerDetails={customerDetails}
                         />
                     </div>
-                    {isKioskPrintMode(preferredPrintMode) && (
+                    {(desktopRuntime || isKioskPrintMode(preferredPrintMode)) && (
                         <div className="px-4 py-2 text-xs text-emerald-700 bg-emerald-50 border-t border-emerald-200 no-print">
-                            Silent print mode active. System popups will not appear when printing from the Kiosk browser.
+                            Silent print mode active. System popups will not appear when printing from the desktop app or Kiosk browser.
                         </div>
                     )}
                     <div className="p-4 bg-muted border-t border-border flex justify-end gap-2 no-print">
@@ -2376,10 +2904,10 @@ function ManualOrderPage() {
                             onClick={handleBrowserPrintForBill}
                             className="bg-primary hover:bg-primary/90"
                             disabled={isSavingBillHistory}
-                            title={isKioskPrintMode(preferredPrintMode) ? 'Silent print via kiosk browser' : 'Standard browser print dialog'}
+                            title={desktopRuntime || isKioskPrintMode(preferredPrintMode) ? 'Silent print to the saved/default printer' : 'Standard browser print dialog'}
                         >
                             <Printer className="mr-2 h-4 w-4" />
-                            {isSavingBillHistory ? 'Saving...' : isKioskPrintMode(preferredPrintMode) ? 'Silent Print' : 'Browser Print'}
+                            {isSavingBillHistory ? 'Saving...' : (desktopRuntime || isKioskPrintMode(preferredPrintMode)) ? 'Silent Print' : 'Browser Print'}
                         </Button>
                     </div>
                 </DialogContent>
@@ -2690,6 +3218,7 @@ function ManualOrderPage() {
                             <h1 className="text-lg font-bold tracking-tight">
                                 {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
                             </h1>
+                            <OfflineDesktopStatus />
 
                             <div className="flex bg-muted p-1 rounded-lg ml-0 sm:ml-2">
                                 {(isStoreBusinessType(businessType) ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']).map(mode => (

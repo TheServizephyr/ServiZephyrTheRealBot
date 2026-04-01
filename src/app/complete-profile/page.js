@@ -10,6 +10,7 @@ import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
+import { persistResolvedAuthProfile, resolveBestEffortAuthRedirect } from '@/lib/authRoleCache';
 
 
 const cardVariants = {
@@ -70,7 +71,9 @@ export default function CompleteProfile() {
           });
 
           if (res.ok) {
-            const { role, businessType } = await res.json();
+            const data = await res.json();
+            const { role, businessType } = data;
+            persistResolvedAuthProfile(user, data);
             console.log(`[DEBUG] complete-profile: Fetched role from API: '${role}', BusinessType: '${businessType}'`);
             localStorage.setItem('role', role);
             if (businessType) {
@@ -93,17 +96,32 @@ export default function CompleteProfile() {
               router.push('/customer-dashboard');
             }
           } else if (res.status === 404) {
+            const fallbackRedirect = await resolveBestEffortAuthRedirect(user);
+            if (fallbackRedirect) {
+              router.push(fallbackRedirect);
+              return;
+            }
             console.log("[DEBUG] complete-profile: User has no role (404). Staying on page.");
             const urlParams = new URLSearchParams(window.location.search);
             const phoneFromUrl = urlParams.get('phone');
             setPhone(user.phoneNumber || phoneFromUrl || '');
             setLoading(false);
           } else {
+            const fallbackRedirect = await resolveBestEffortAuthRedirect(user);
+            if (fallbackRedirect) {
+              router.push(fallbackRedirect);
+              return;
+            }
             const errorData = await res.json();
             throw new Error(errorData.message || 'Failed to verify user status.');
           }
         } catch (error) {
           console.error("[DEBUG] complete-profile: Error in auth logic.", error);
+          const fallbackRedirect = await resolveBestEffortAuthRedirect(user);
+          if (fallbackRedirect) {
+            router.push(fallbackRedirect);
+            return;
+          }
           setError("Could not verify user status. Please try again.");
           setLoading(false);
         }

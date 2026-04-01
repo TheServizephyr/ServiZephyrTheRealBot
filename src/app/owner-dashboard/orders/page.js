@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import Table from "@/components/OwnerDashboard/Table";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
@@ -8,6 +8,9 @@ import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from "next/navigation";
 import InfoDialog from "@/components/InfoDialog";
+import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { isDesktopApp } from '@/lib/desktop/runtime';
+import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,8 +30,9 @@ function OrdersPageContent() {
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+  const ordersCacheKey = React.useMemo(() => `owner_orders::${impersonatedOwnerId || 'owner_self'}`, [impersonatedOwnerId]);
 
-  const loadData = async (isManualRefresh = false) => {
+  const loadData = useCallback(async (isManualRefresh = false) => {
     if (!isManualRefresh) {
       setLoading(true);
     }
@@ -51,14 +55,44 @@ function OrdersPageContent() {
         throw new Error(errorData.message || 'Failed to fetch orders');
       }
       const data = await res.json();
-      setOrders(data.orders || []);
+      const nextOrders = data.orders || [];
+      setOrders(nextOrders);
+      const cachePayload = { ts: Date.now(), data: { orders: nextOrders } };
+      try {
+        localStorage.setItem(ordersCacheKey, JSON.stringify(cachePayload));
+      } catch {
+        // Ignore local cache failures.
+      }
+      if (isDesktopApp()) {
+        await setOfflineNamespace('owner_orders', ordersCacheKey, cachePayload);
+      }
     } catch (error) {
       console.error("Error fetching orders:", error);
-      setInfoDialog({ isOpen: true, title: "Error", message: `Could not load orders: ${error.message}` });
+      let cached = null;
+      try {
+        const raw = localStorage.getItem(ordersCacheKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.data) cached = parsed.data;
+        }
+      } catch {
+        // Ignore malformed cache.
+      }
+      if (!cached && isDesktopApp()) {
+        const desktopPayload = await getOfflineNamespace('owner_orders', ordersCacheKey, null);
+        cached = desktopPayload?.data || null;
+      }
+
+      if (cached?.orders) {
+        setOrders(Array.isArray(cached.orders) ? cached.orders : []);
+        setInfoDialog({ isOpen: true, title: "Offline Cache Active", message: "Could not load live orders, so cached desktop data is being shown." });
+      } else {
+        setInfoDialog({ isOpen: true, title: "Error", message: `Could not load orders: ${error.message}` });
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [impersonatedOwnerId, ordersCacheKey]);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
@@ -66,7 +100,7 @@ function OrdersPageContent() {
       else setLoading(false);
     });
     return () => unsubscribe();
-  }, [impersonatedOwnerId]);
+  }, [loadData]);
 
   const handleStatusChange = async (orderId, newStatus) => {
     // Optimistic Update
@@ -116,9 +150,14 @@ function OrdersPageContent() {
         message={infoDialog.message}
       />
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">
-          All Orders
-        </h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            All Orders
+          </h1>
+          <div className="mt-2">
+            <OfflineDesktopStatus />
+          </div>
+        </div>
         <motion.button
           whileTap={{ scale: 0.95, rotate: -15 }}
           whileHover={{ scale: 1.05 }}
