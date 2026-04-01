@@ -189,6 +189,7 @@ function ManualOrderPage() {
     const [isAddressSuggestionOpen, setIsAddressSuggestionOpen] = useState(false);
     const [activePhoneSuggestionIndex, setActivePhoneSuggestionIndex] = useState(-1);
     const [activeAddressSuggestionIndex, setActiveAddressSuggestionIndex] = useState(-1);
+    const [isCustomerNameInputPrimed, setIsCustomerNameInputPrimed] = useState(false);
     const [orderType, setOrderType] = useState('dine-in'); // 'delivery', 'dine-in', 'pickup'
     const [phoneError, setPhoneError] = useState(false);
     const [activeTable, setActiveTable] = useState(null);
@@ -3271,11 +3272,18 @@ function ManualOrderPage() {
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><User size={13} /> Name</Label>
                                         <input
-                                            name="manual-order-customer-name"
-                                            autoComplete="off"
+                                            name="manual-order-entry-name"
+                                            autoComplete="new-password"
                                             autoCorrect="off"
                                             autoCapitalize="words"
                                             spellCheck={false}
+                                            aria-autocomplete="none"
+                                            data-form-type="other"
+                                            data-lpignore="true"
+                                            data-1p-ignore="true"
+                                            readOnly={!isCustomerNameInputPrimed}
+                                            onPointerDown={() => setIsCustomerNameInputPrimed(true)}
+                                            onFocus={() => setIsCustomerNameInputPrimed(true)}
                                             value={customerDetails.name}
                                             onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })}
                                             className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border"
