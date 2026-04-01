@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronLeft, RefreshCw, Printer } from 'lucide-react';
+import { ChevronLeft, RefreshCw, Printer, Search, X } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 
@@ -231,6 +231,7 @@ export default function ManualOrderHistoryPage() {
 
     const [fromDate, setFromDate] = useState(() => toDateInput(new Date()));
     const [toDate, setToDate] = useState(() => toDateInput(new Date()));
+    const [searchTerm, setSearchTerm] = useState('');
 
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
@@ -450,11 +451,28 @@ export default function ManualOrderHistoryPage() {
         run();
     }, [pendingRebillPrint, printBillData, handleRebillPrint]);
 
-    // Filter by tab - "all" shows everything
-    const filteredHistory = useMemo(
-        () => history.filter(bill => activeTab === 'all' || bill.orderType === activeTab),
-        [history, activeTab]
-    );
+    // Filter by tab + Search term
+    const filteredHistory = useMemo(() => {
+        let result = history.filter(bill => activeTab === 'all' || bill.orderType === activeTab);
+
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase().trim();
+            result = result.filter(bill => {
+                const name = (bill.customerName || '').toLowerCase();
+                const orderId = String(bill.customerOrderId || bill.historyId || bill.id).toLowerCase();
+                const address = (bill.customerAddress || '').toLowerCase();
+                const phone = (bill.customerPhone || '').toLowerCase();
+                const amount = String(bill.totalAmount || '').toLowerCase();
+
+                return name.includes(term) ||
+                    orderId.includes(term) ||
+                    address.includes(term) ||
+                    phone.includes(term) ||
+                    amount.includes(term);
+            });
+        }
+        return result;
+    }, [history, activeTab, searchTerm]);
 
     const selectableBillIds = useMemo(
         () => filteredHistory.filter(b => b?.settlementEligible && !b?.isSettled).map(b => b.id),
@@ -755,9 +773,10 @@ export default function ManualOrderHistoryPage() {
                 </div>
             </div>
 
-            {/* Cross-type breakdown bar (only visible on 'all' tab) */}
+            {/* Cross-type breakdown + cancellation (only visible on 'all' tab) */}
             {activeTab === 'all' && !loading && history.length > 0 && (
-                <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="bg-card border border-border rounded-xl p-4 mb-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-stretch">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {[
                         { key: 'delivery', label: '📦 Delivery', color: 'border-blue-500/30 bg-blue-500/5 text-blue-400' },
                         { key: 'dine-in',  label: '🍽️ Dine-In',  color: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-400' },
@@ -765,17 +784,30 @@ export default function ManualOrderHistoryPage() {
                     ].map(({ key, label, color }) => (
                         <button key={key}
                             onClick={() => setActiveTab(key)}
-                            className={`border rounded-xl p-3 text-left transition-all hover:opacity-80 ${color}`}>
-                            <p className="text-xs font-semibold mb-1">{label}</p>
-                            <p className="text-lg font-bold">{tabStats[key].count} orders</p>
-                            <p className="text-xs opacity-80">{formatCurrency(tabStats[key].total)}</p>
+                            className={`border rounded-xl px-4 py-3 text-left transition-all hover:opacity-80 ${color}`}>
+                            <p className="text-xs font-semibold mb-2">{label}</p>
+                            <p className="text-xl font-bold leading-tight">{tabStats[key].count} orders</p>
+                            <p className="text-sm opacity-80 mt-1">{formatCurrency(tabStats[key].total)}</p>
                         </button>
                     ))}
+                    </div>
+                    <div className="xl:border-l xl:border-border/70 xl:pl-4">
+                        <OrderCancellationTool
+                            accessParams={{
+                                impersonate_owner_id: impersonatedOwnerId || '',
+                                employee_of: employeeOfOwnerId || '',
+                            }}
+                            onCancelled={() => fetchHistory()}
+                            title="Cancel Manual Order By ID"
+                            helperText="Looks up the saved manual bill, asks for a reason, sends OTP to the owner's personal WhatsApp, then cancels after verification."
+                            compact
+                        />
+                    </div>
                 </div>
             )}
 
             {/* Date Range + Refresh */}
-            <div className="bg-card border border-border rounded-xl p-4 mb-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-end">
+            <div className="bg-card border border-border rounded-xl p-4 mb-4">
                 <div className="flex flex-col md:flex-row md:items-end gap-3">
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-muted-foreground font-semibold">From</label>
@@ -791,29 +823,56 @@ export default function ManualOrderHistoryPage() {
                         <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
                         {loading ? 'Loading...' : 'Refresh'}
                     </Button>
+
+                    <div className="flex flex-col gap-1 flex-1 min-w-[240px]">
+                        <label className="text-xs text-muted-foreground font-semibold">Search Orders</label>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <input 
+                                type="text" 
+                                placeholder="Name, Order ID, Address, Phone, Amount..." 
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-9 py-2 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            />
+                            {searchTerm && (
+                                <button 
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
-                <div className="xl:border-l xl:border-border/70 xl:pl-4">
-                    <OrderCancellationTool
-                        accessParams={{
-                            impersonate_owner_id: impersonatedOwnerId || '',
-                            employee_of: employeeOfOwnerId || '',
-                        }}
-                        onCancelled={() => fetchHistory()}
-                        title="Cancel Manual Order By ID"
-                        helperText="Looks up the saved manual bill, asks for a reason, sends OTP to the owner's personal WhatsApp, then cancels after verification."
-                        compact
-                    />
-                </div>
             </div>
 
-            {/* Settlement Bar */}
-            <div className="bg-card border border-border rounded-xl p-4 mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div>
-                    <p className="text-sm font-semibold">Selected for settlement: {selectedBillIds.length} bill(s)</p>
-                    <p className="text-xs text-muted-foreground">Selected Amount: {formatCurrency(selectedSettleAmount)}</p>
+            {/* Tabs + Settlement Row */}
+            <div className="bg-card border border-border rounded-xl p-3 mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:flex-1 min-w-0">
+                    <div className="flex flex-wrap bg-muted/30 p-1 rounded-xl w-fit">
+                        {TABS.map(tab => (
+                            <button key={tab} onClick={() => setActiveTab(tab)}
+                                className={cn(
+                                    'px-6 py-2.5 rounded-lg text-sm font-semibold capitalize transition-all',
+                                    activeTab === tab
+                                        ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
+                                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                                )}>
+                                {tab === 'dine-in' ? 'Dine-in' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="min-w-0 lg:pl-2">
+                        <p className="text-sm font-semibold whitespace-nowrap">Selected for settlement: {selectedBillIds.length} bill(s)</p>
+                        <p className="text-xs text-muted-foreground whitespace-nowrap">Selected Amount: {formatCurrency(selectedSettleAmount)}</p>
+                    </div>
                 </div>
-                <div className="flex gap-2">
+
+                <div className="flex flex-wrap gap-2 xl:justify-end">
                     <Button variant="outline" onClick={toggleSelectAll} disabled={loading || selectableBillIds.length === 0} className="text-sm">
                         {allSelectableSelected ? 'Deselect All' : 'Select All Pending'}
                     </Button>
@@ -821,21 +880,6 @@ export default function ManualOrderHistoryPage() {
                         {isSettling ? 'Settling...' : 'Settle Selected'}
                     </Button>
                 </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex flex-wrap bg-muted/30 p-1 rounded-xl w-fit mb-4">
-                {TABS.map(tab => (
-                    <button key={tab} onClick={() => setActiveTab(tab)}
-                        className={cn(
-                            'px-6 py-2.5 rounded-lg text-sm font-semibold capitalize transition-all',
-                            activeTab === tab
-                                ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                        )}>
-                        {tab === 'dine-in' ? 'Dine-in' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    </button>
-                ))}
             </div>
 
             {/* Table */}

@@ -359,7 +359,8 @@ export default function OrderHistoryPage() {
                 (item.customerOrderId || '').toString().toLowerCase().includes(q) ||
                 (item.historyId || item.id || '').toString().toLowerCase().includes(q) ||
                 (item.customer || item.customerName || '').toLowerCase().includes(q) ||
-                (item.customerPhone || '').includes(q)
+                (item.customerPhone || '').includes(q) ||
+                (item.totalAmount || '').toString().toLowerCase().includes(q)
             );
         }
 
@@ -500,24 +501,44 @@ export default function OrderHistoryPage() {
             {/* Filters */}
             <div className="bg-card border border-border rounded-xl p-4 mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
                 <div className="space-y-4">
-                    {/* Date Presets */}
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-muted-foreground mr-1">Quick:</span>
-                        {DATE_PRESETS.map((preset) => (
-                            <Button key={preset.label} variant="outline" size="sm" onClick={() => setDateRange(preset.getValue())} className="text-xs">
-                                {preset.label}
-                            </Button>
-                        ))}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        {/* Date Presets */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-muted-foreground mr-1">Quick:</span>
+                            {DATE_PRESETS.map((preset) => (
+                                <Button key={preset.label} variant="outline" size="sm" onClick={() => setDateRange(preset.getValue())} className="text-xs">
+                                    {preset.label}
+                                </Button>
+                            ))}
+                        </div>
+
+                        {/* Settlement Filter - Moved Above Search */}
+                        <div className="flex flex-col gap-1.5 w-full md:w-auto">
+                            <label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground ml-1">Settlement</label>
+                            <div className="flex rounded-lg border border-border overflow-hidden h-9 bg-muted/20">
+                                {[['all','All'],['pending','Pending'],['settled','Settled']].map(([val, label]) => (
+                                    <button key={val} onClick={() => setSettlementFilter(val)}
+                                        className={cn(
+                                            "px-4 text-xs font-semibold transition-all min-w-[70px]", 
+                                            settlementFilter === val 
+                                                ? "bg-primary text-primary-foreground shadow-sm" 
+                                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                        )}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Date Pickers + Search + Settlement Filter */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Date Pickers + Search */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                            <label className="text-xs font-medium mb-1 block text-muted-foreground">From</label>
+                            <label className="text-xs font-medium mb-1.5 block text-muted-foreground">From</label>
                             <Popover>
                                 <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-start text-sm">
-                                        <Calendar className="mr-2 h-4 w-4" />{format(dateRange.from, 'PP')}
+                                    <Button variant="outline" className="w-full justify-start text-sm h-10 border-border/60 hover:border-primary/40 transition-colors">
+                                        <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />{format(dateRange.from, 'PP')}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0" align="start">
@@ -527,11 +548,11 @@ export default function OrderHistoryPage() {
                         </div>
 
                         <div>
-                            <label className="text-xs font-medium mb-1 block text-muted-foreground">To</label>
+                            <label className="text-xs font-medium mb-1.5 block text-muted-foreground">To</label>
                             <Popover>
                                 <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-start text-sm">
-                                        <Calendar className="mr-2 h-4 w-4" />{format(dateRange.to, 'PP')}
+                                    <Button variant="outline" className="w-full justify-start text-sm h-10 border-border/60 hover:border-primary/40 transition-colors">
+                                        <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />{format(dateRange.to, 'PP')}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0" align="start">
@@ -541,23 +562,24 @@ export default function OrderHistoryPage() {
                         </div>
 
                         <div>
-                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Search</label>
+                            <label className="text-xs font-medium mb-1.5 block text-muted-foreground">Search History</label>
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <input type="text" placeholder="ID, name, phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-2 h-10 rounded-md bg-input border border-border text-sm" />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Settlement</label>
-                            <div className="flex rounded-md border border-border overflow-hidden h-10">
-                                {[['all','All'],['pending','Pending'],['settled','Settled']].map(([val, label]) => (
-                                    <button key={val} onClick={() => setSettlementFilter(val)}
-                                        className={cn("flex-1 text-xs font-medium transition-colors", settlementFilter === val ? "bg-primary text-primary-foreground" : "bg-input text-muted-foreground hover:bg-muted")}>
-                                        {label}
+                                <input 
+                                    type="text" 
+                                    placeholder="ID, Name, Phone, Amount..." 
+                                    value={searchQuery} 
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 h-10 rounded-md bg-input border border-border/60 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground/60" 
+                                />
+                                {searchQuery && (
+                                    <button 
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        <X className="h-4 w-4" />
                                     </button>
-                                ))}
+                                )}
                             </div>
                         </div>
                     </div>
