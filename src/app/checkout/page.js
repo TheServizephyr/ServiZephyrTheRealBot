@@ -56,6 +56,9 @@ const normalizeCoupon = (coupon) => {
     };
 };
 
+const RUPEE_SYMBOL = '\u20B9';
+const formatCurrency = (amount, digits = 2) => `${RUPEE_SYMBOL}${Number(amount || 0).toFixed(digits)}`;
+
 const applyCheckoutPaymentSettings = (paymentData, deliveryType, setters) => {
     const {
         setCodEnabled,
@@ -1163,12 +1166,12 @@ const CheckoutPageInternal = () => {
             rewardText = `${normalizedPercent}% OFF`;
         } else if (couponType === 'flat') {
             const flatValue = Math.max(0, Math.round(Number(coupon.value) || 0));
-            rewardText = `Rs ${flatValue} OFF`;
+            rewardText = `${formatCurrency(flatValue, 0)} OFF`;
         } else if (couponType === 'free_delivery') {
             rewardText = 'FREE delivery';
         }
 
-        return `Add Rs ${shortAmount} more to get ${rewardText}`;
+        return `Add ${formatCurrency(shortAmount, 0)} more to get ${rewardText}`;
     }, [cartData, currentSubtotal, deliveryType]);
 
     const getCouponEligibility = (coupon) => {
@@ -1189,7 +1192,7 @@ const CheckoutPageInternal = () => {
             const shortBy = Math.max(0, normalizedCoupon.minOrder - currentSubtotal);
             return {
                 eligible: false,
-                message: `Coupon valid on Rs ${normalizedCoupon.minOrder}+ order. Add Rs ${shortBy.toFixed(0)} more.`
+                message: `Coupon valid on ${formatCurrency(normalizedCoupon.minOrder, 0)}+ order. Add ${formatCurrency(shortBy, 0)} more.`
             };
         }
 
@@ -2031,7 +2034,7 @@ const CheckoutPageInternal = () => {
 
                 {/* Refund & Cancellation Policy */}
                 <div className="mt-6 p-4 border border-yellow-500/30 rounded-lg bg-yellow-500/5">
-                    <p className="text-xs font-semibold text-yellow-400 mb-2">Ã¢Å¡Â Ã¯Â¸Â Refund & Cancellation Policy</p>
+                    <p className="text-xs font-semibold text-yellow-400 mb-2">Refund & Cancellation Policy</p>
                     <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
                         <li><span className="font-semibold">Vendor Discretion:</span> Refunds are processed at the vendor&apos;s sole discretion based on the cancellation reason.</li>
                         <li><span className="font-semibold">Fake/Fraudulent Orders:</span> Orders placed with wrong details, duplicate orders, or customer-initiated cancellations may not be eligible for refund.</li>
@@ -2265,22 +2268,20 @@ const CheckoutPageInternal = () => {
                                                     {getItemVariantLabel(item)}
                                                 </span>
                                                 {/* NEW: Base Price Display */}
-                                                <div className="text-xs text-muted-foreground">
-                                                    Ã¢â€šÂ¹{parseFloat(item.portion?.price || item.price || 0).toFixed(2)}
-                                                </div>
+                                                <div className="text-xs text-muted-foreground">{formatCurrency(parseFloat(item.portion?.price || item.price || 0))}</div>
                                                 {/* FIXED: Show Add-ons as proper sub-items with specific prices */}
                                                 {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
                                                     <div className="flex flex-col gap-0.5 mt-0.5 pl-2 border-l-2 border-muted">
                                                         {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
                                                             <div key={aIdx} className="text-xs text-muted-foreground flex justify-between">
                                                                 <span>+ {addon.name}</span>
-                                                                <span>Ã¢â€šÂ¹{parseFloat(addon.price || 0).toFixed(2)}</span>
+                                                                <span>{formatCurrency(parseFloat(addon.price || 0))}</span>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 )}
                                                 {/* Line Total: (Base + Addons) * Qty */}
-                                                <span className="font-bold mt-1">Ã¢â€šÂ¹{((item.totalPrice || item.price || 0) * item.quantity).toFixed(2)}</span>
+                                                <span className="font-bold mt-1">{formatCurrency((item.totalPrice || item.price || 0) * item.quantity)}</span>
                                             </div>
 
                                             <div className="flex items-center gap-2">
@@ -2347,7 +2348,7 @@ const CheckoutPageInternal = () => {
                                 <div className="flex flex-col">
                                     <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Use Coupons / View Offers</span>
                                     <span className="text-[11px] text-emerald-500 font-semibold mt-0.5">
-                                        {nextCouponUnlockMessage || (maxSavings > 0 ? `Save up to Rs ${maxSavings.toFixed(0)} on this order` : 'View available offers')}
+                                        {nextCouponUnlockMessage || (maxSavings > 0 ? `Save up to ${formatCurrency(maxSavings, 0)} on this order` : 'View available offers')}
                                     </span>
                                 </div>
                             </div>
@@ -2379,7 +2380,7 @@ const CheckoutPageInternal = () => {
                                                 : 'border-border bg-white text-muted-foreground hover:border-primary/50'
                                                 }`}
                                         >
-                                            Ã¢â€šÂ¹{amount}
+                                            {formatCurrency(amount, 0)}
                                         </button>
                                     ))}
                                     <button
@@ -2440,7 +2441,7 @@ const CheckoutPageInternal = () => {
                             {!isBillSummaryExpanded && (
                                 <div className="flex justify-between text-xl font-bold mt-3">
                                     <span>You Pay</span>
-                                    <span className="text-primary">Ã¢â€šÂ¹{Math.round(grandTotal)}</span>
+                                    <span className="text-primary">{formatCurrency(Math.round(grandTotal), 0)}</span>
                                 </div>
                             )}
 
@@ -2449,12 +2450,12 @@ const CheckoutPageInternal = () => {
                                 <div className="space-y-2 mt-4">
                                     <div className="flex justify-between text-sm">
                                         <span>Subtotal</span>
-                                        <span>Ã¢â€šÂ¹{subtotal.toFixed(2)}</span>
+                                        <span>{formatCurrency(subtotal)}</span>
                                     </div>
                                     {Number(totalDiscount) > 0 && (
                                         <div className="flex justify-between text-sm text-green-600">
                                             <span>Coupon Discount {appliedCoupons[0]?.code ? `(${appliedCoupons[0].code})` : ''}</span>
-                                            <span>- Ã¢â€šÂ¹{Number(totalDiscount).toFixed(2)}</span>
+                                            <span>- {formatCurrency(Number(totalDiscount))}</span>
                                         </div>
                                     )}
                                     {/* DELIVERY CHARGE ROW */}
@@ -2470,7 +2471,7 @@ const CheckoutPageInternal = () => {
                                                         <span className="text-muted-foreground font-normal italic animate-pulse">Calculating...</span>
                                                     ) : (
                                                         <div className="flex flex-col items-end">
-                                                            <span>{isDeliveryOutOfRange ? 'Not Serviceable' : (isDeliveryFree ? 'FREE' : `Ã¢â€šÂ¹${finalDeliveryCharge.toFixed(2)}`)}</span>
+                                                            <span>{isDeliveryOutOfRange ? 'Not Serviceable' : (isDeliveryFree ? 'FREE' : formatCurrency(finalDeliveryCharge))}</span>
                                                             {isEstimated && !isDeliveryFree && !isDeliveryOutOfRange && (
                                                                 <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-tight">Estimated</span>
                                                             )}
@@ -2489,18 +2490,18 @@ const CheckoutPageInternal = () => {
                                     {selectedTipAmount > 0 && (
                                         <div className="flex justify-between text-sm text-green-600">
                                             <span>Delivery Tip</span>
-                                            <span className="font-medium">+ Ã¢â€šÂ¹{selectedTipAmount.toFixed(2)}</span>
+                                            <span className="font-medium">+ {formatCurrency(selectedTipAmount)}</span>
                                         </div>
                                     )}
                                     {cgst > 0 && (
                                         <>
                                             <div className="flex justify-between text-sm">
                                                 <span>CGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
-                                                <span>Ã¢â€šÂ¹{cgst.toFixed(2)}</span>
+                                                <span>{formatCurrency(cgst)}</span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span>SGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
-                                                <span>Ã¢â€šÂ¹{sgst.toFixed(2)}</span>
+                                                <span>{formatCurrency(sgst)}</span>
                                             </div>
                                         </>
                                     )}
@@ -2508,7 +2509,7 @@ const CheckoutPageInternal = () => {
                                     {packagingCharge > 0 && (
                                         <div className="flex justify-between text-sm text-primary">
                                             <span>Packaging Charges</span>
-                                            <span>Ã¢â€šÂ¹{packagingCharge.toFixed(2)}</span>
+                                            <span>{formatCurrency(packagingCharge)}</span>
                                         </div>
                                     )}
                                     {serviceFee > 0 && (
@@ -2519,19 +2520,19 @@ const CheckoutPageInternal = () => {
                                                     ? ` (${Number(vendorCharges?.serviceFeeValue || 0)}%)`
                                                     : ''}
                                             </span>
-                                            <span>Ã¢â€šÂ¹{serviceFee.toFixed(2)}</span>
+                                            <span>{formatCurrency(serviceFee)}</span>
                                         </div>
                                     )}
                                     <div className="border-t border-dashed pt-2 mt-2" />
                                     <div className="flex justify-between text-sm">
                                         <span>Order Total</span>
-                                        <span className="font-semibold">Ã¢â€šÂ¹{(Math.max(0, subtotal - Number(totalDiscount || 0)) + finalDeliveryCharge + cgst + sgst + packagingCharge + serviceFee + tipAmount).toFixed(2)}</span>
+                                        <span className="font-semibold">{formatCurrency(Math.max(0, subtotal - Number(totalDiscount || 0)) + finalDeliveryCharge + cgst + sgst + packagingCharge + serviceFee + tipAmount)}</span>
                                     </div>
                                     {convenienceFee > 0 && (
                                         <>
                                             <div className="flex justify-between text-sm text-orange-600">
                                                 <span>{vendorCharges?.convenienceFeeLabel || 'Payment Processing Fee'} ({vendorCharges?.convenienceFeeRate || 2.5}%)</span>
-                                                <span>Ã¢â€šÂ¹{convenienceFee.toFixed(2)}</span>
+                                                <span>{formatCurrency(convenienceFee)}</span>
                                             </div>
                                         </>
                                     )}
@@ -2539,9 +2540,9 @@ const CheckoutPageInternal = () => {
                                     <div className="flex justify-between text-xl font-bold">
                                         <span>You Pay</span>
                                         <div className="flex flex-col items-end">
-                                            <span className="text-primary leading-none">Ã¢â€šÂ¹{Math.round(grandTotal)}</span>
+                                            <span className="text-primary leading-none">{formatCurrency(Math.round(grandTotal), 0)}</span>
                                             <span className="text-[10px] text-muted-foreground font-normal mt-1">
-                                                (Exact: Ã¢â€šÂ¹{grandTotal.toFixed(2)})
+                                                (Exact: {formatCurrency(grandTotal)})
                                             </span>
                                         </div>
                                     </div>
@@ -2637,7 +2638,7 @@ const CheckoutPageInternal = () => {
                                 <div className="flex items-center justify-between w-full">
                                     <div className="flex flex-col items-start pr-3 border-r border-white/20 mr-3 min-w-[3rem]">
                                         <span className="text-[9px] font-medium opacity-80 uppercase tracking-wide leading-none mb-0.5">TOTAL</span>
-                                        <span className="text-base font-extrabold leading-none">Ã¢â€šÂ¹{grandTotal.toFixed(0)}</span>
+                                        <span className="text-base font-extrabold leading-none">{formatCurrency(grandTotal, 0)}</span>
                                     </div>
                                     <div className="flex items-center gap-1 flex-1 justify-center whitespace-nowrap">
                                         <span>{ctaLabel}</span>
@@ -2734,7 +2735,7 @@ const CheckoutPageInternal = () => {
 
                                 {selectedPaymentMethod === 'online' && convenienceFee > 0 && (
                                     <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
-                                        Ã¢Å¡Â Ã¯Â¸Â +Ã¢â€šÂ¹{convenienceFee.toFixed(2)} payment processing fee will be added
+                                        +{formatCurrency(convenienceFee)} payment processing fee will be added
                                     </div>
                                 )}
                             </div>
@@ -2921,7 +2922,7 @@ const CheckoutPageInternal = () => {
                                                                     <p className="font-bold text-sm">
                                                                         {coupon.description || `Get ${coupon.value}${normalizeCouponType(coupon.type) === 'percentage' ? '%' : ' OFF'}`}
                                                                     </p>
-                                                                    <p className="text-xs text-muted-foreground mt-1">Min order: Ã¢â€šÂ¹{Number(coupon.minOrder) || 0}</p>
+                                                                    <p className="text-xs text-muted-foreground mt-1">Min order: {formatCurrency(Number(coupon.minOrder) || 0, 0)}</p>
                                                                     {!eligibility.eligible && (
                                                                         <p className="text-xs text-amber-500 mt-1">{eligibility.message}</p>
                                                                     )}
