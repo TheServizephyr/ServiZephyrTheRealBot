@@ -724,6 +724,9 @@ export async function GET(req, { params }) {
             deliveryOrderSlabAboveFee: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabAboveFee || 0) : (businessData.deliveryOrderSlabAboveFee || 0),
             deliveryOrderSlabBaseDistance: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabBaseDistance || 1) : (businessData.deliveryOrderSlabBaseDistance || 1),
             deliveryOrderSlabPerKmFee: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabPerKmFee || 15) : (businessData.deliveryOrderSlabPerKmFee || 15),
+            deliveryEngineMode: deliveryConfigSnap.exists ? (deliveryConfig.deliveryEngineMode || 'legacy') : (businessData.deliveryEngineMode || 'legacy'),
+            deliveryUseZones: deliveryConfigSnap.exists ? (deliveryConfig.deliveryUseZones === true) : (businessData.deliveryUseZones === true),
+            zoneFallbackToLegacy: deliveryConfigSnap.exists ? (deliveryConfig.zoneFallbackToLegacy !== false) : (businessData.zoneFallbackToLegacy !== false),
 
             menu: menuData,
             customCategories: customCategories,

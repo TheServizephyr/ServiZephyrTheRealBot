@@ -2,24 +2,13 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, GeoPoint, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
-import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import { findBusinessById } from '@/services/business/businessService';
+import { calculateDeliveryChargeForBusiness } from '@/services/delivery/deliveryCharge.service';
 import { readSignedGuestSessionCookie, resolveGuestAccessRef } from '@/lib/public-auth';
-
-function toFiniteNumber(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-}
 
 function toNum(value, fallback = 0) {
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
-}
-
-function getBusinessLabel(businessType = 'restaurant') {
-    if (businessType === 'store' || businessType === 'shop') return 'store';
-    if (businessType === 'street-vendor') return 'stall';
-    return 'restaurant';
 }
 
 const COORD_EPSILON = 0.00005;
@@ -267,66 +256,18 @@ export async function POST(req) {
                                 }
 
                                 const businessData = business.data || {};
-                                const businessLabel = getBusinessLabel(business.type);
                                 const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
                                 const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
-                                const getSetting = (key, fallback) => deliveryConfig[key] ?? businessData[key] ?? fallback;
-
-                                const settings = {
-                                    deliveryEnabled: getSetting('deliveryEnabled', true),
-                                    deliveryRadius: getSetting('deliveryRadius', 10),
-                                    deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
-                                    fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
-                                    perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
-                                    baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
-                                    freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
-                                    freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
-                                    freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
-                                    roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
-                                    deliveryTiers: getSetting('deliveryTiers', []),
-                                    orderSlabRules: getSetting('deliveryOrderSlabRules', getSetting('orderSlabRules', [])),
-                                    orderSlabAboveFee: getSetting('deliveryOrderSlabAboveFee', getSetting('orderSlabAboveFee', 0)),
-                                    orderSlabBaseDistance: getSetting('deliveryOrderSlabBaseDistance', getSetting('orderSlabBaseDistance', 1)),
-                                    orderSlabPerKmFee: getSetting('deliveryOrderSlabPerKmFee', getSetting('orderSlabPerKmFee', 15)),
-                                };
-
-                                const restaurantLat = toFiniteNumber(
-                                    businessData.coordinates?.lat ??
-                                    businessData.address?.latitude ??
-                                    businessData.businessAddress?.latitude
-                                );
-                                const restaurantLng = toFiniteNumber(
-                                    businessData.coordinates?.lng ??
-                                    businessData.address?.longitude ??
-                                    businessData.businessAddress?.longitude
-                                );
-
-                                if (restaurantLat === null || restaurantLng === null) {
-                                    throw new Error(`${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} coordinates are not configured.`);
-                                }
 
                                 const subtotalAmount = toNum(orderData.subtotal, 0);
-                                let deliveryResult;
-
-                                if (settings.deliveryEnabled === false) {
-                                    deliveryResult = {
-                                        allowed: false,
-                                        charge: 0,
-                                        aerialDistance: 0,
-                                        roadDistance: 0,
-                                        roadFactor: settings.roadDistanceFactor,
-                                        message: `Delivery is currently disabled for this ${businessLabel}.`,
-                                        reason: 'delivery-disabled'
-                                    };
-                                } else {
-                                    const aerialDistance = calculateHaversineDistance(
-                                        restaurantLat,
-                                        restaurantLng,
-                                        toNum(addressToPersist.latitude, 0),
-                                        toNum(addressToPersist.longitude, 0)
-                                    );
-                                    deliveryResult = calculateDeliveryCharge(aerialDistance, subtotalAmount, settings);
-                                }
+                                const { result: deliveryResult } = calculateDeliveryChargeForBusiness({
+                                    businessData,
+                                    businessType: business.type,
+                                    deliveryConfig,
+                                    addressLat: toNum(addressToPersist.latitude, 0),
+                                    addressLng: toNum(addressToPersist.longitude, 0),
+                                    subtotal: subtotalAmount,
+                                });
 
                                 const isManualCallOrder = Boolean(orderData.isManualCallOrder) || String(orderData.orderSource || '').toLowerCase() === 'manual_call';
                                 const currentOrderCharge = toNum(orderData.deliveryCharge, toNum(orderData.billDetails?.deliveryCharge, 0));

@@ -114,7 +114,7 @@ const TokenVerificationLock = ({ message }) => (
     </div>
 );
 
-// ✅ NEW: Helper for managing Back Button state for modals
+// Ã¢Å“â€¦ NEW: Helper for managing Back Button state for modals
 const BackButtonHandler = ({ onClose }) => {
     useEffect(() => {
         // Push state on mount
@@ -275,7 +275,7 @@ const CheckoutPageInternal = () => {
         toast({ title: "Item Updated", description: "Your changes have been saved." });
     };
 
-    // ✅ NEW: Dynamic Delivery Validation
+    // Ã¢Å“â€¦ NEW: Dynamic Delivery Validation
     const [deliveryValidation, setDeliveryValidation] = useState(null);
     const [isValidatingDelivery, setIsValidatingDelivery] = useState(false);
     const validationRequestSeqRef = useRef(0);
@@ -524,7 +524,7 @@ const CheckoutPageInternal = () => {
                 hasTrackedCheckoutOpenRef.current = true;
             }
 
-            // ✅ RESTORE CAR DETAILS if present in saved cart
+            // Ã¢Å“â€¦ RESTORE CAR DETAILS if present in saved cart
             if (deliveryType === 'car-order' && (savedCart.carSpot || savedCart.carDetails)) {
                 setCarOrderDetails({
                     carSpot: savedCart.carSpot || null,
@@ -807,7 +807,7 @@ const CheckoutPageInternal = () => {
         }
     }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled, selectedPaymentMethod]);
 
-    // 🎯 NEW: Load saved address from localStorage and pre-select it
+    // Ã°Å¸Å½Â¯ NEW: Load saved address from localStorage and pre-select it
     useEffect(() => {
         // Wait for userAddresses to load before trying to select
         if (userAddresses.length === 0) return;
@@ -816,16 +816,16 @@ const CheckoutPageInternal = () => {
         if (savedLocation && !selectedAddress) {
             try {
                 const parsedLocation = JSON.parse(savedLocation);
-                console.log('[Checkout] 📍 Restoring saved address from order page:', parsedLocation);
-                console.log('[Checkout] 📍 Matching against', userAddresses.length, 'loaded addresses');
+                console.log('[Checkout] Ã°Å¸â€œÂ Restoring saved address from order page:', parsedLocation);
+                console.log('[Checkout] Ã°Å¸â€œÂ Matching against', userAddresses.length, 'loaded addresses');
 
                 // Find matching address in userAddresses by ID
                 const matchingAddress = userAddresses.find(addr => addr.id === parsedLocation.id);
                 if (matchingAddress) {
-                    console.log('[Checkout] ✅ Found matching address, selecting:', matchingAddress.label);
+                    console.log('[Checkout] Ã¢Å“â€¦ Found matching address, selecting:', matchingAddress.label);
                     setSelectedAddress(matchingAddress);
                 } else {
-                    console.warn('[Checkout] ⚠️ Saved address not found in user addresses, using saved version');
+                    console.warn('[Checkout] Ã¢Å¡Â Ã¯Â¸Â Saved address not found in user addresses, using saved version');
                     setSelectedAddress(parsedLocation);
                 }
             } catch (e) {
@@ -863,9 +863,10 @@ const CheckoutPageInternal = () => {
         }, 0);
     }, [cart]);
 
-    // 🚀 INSTANT SHADOW CALCULATION
+    // Ã°Å¸Å¡â‚¬ INSTANT SHADOW CALCULATION
     const shadowDeliveryResult = useMemo(() => {
         if (deliveryType !== 'delivery' || !selectedAddress || !cartData?.latitude) return null;
+        if (cartData?.deliveryEngineMode === 'hybrid-zones' || cartData?.deliveryUseZones === true) return null;
 
         const custLat = selectedAddress.lat ?? selectedAddress.latitude;
         const custLng = selectedAddress.lng ?? selectedAddress.longitude;
@@ -898,27 +899,27 @@ const CheckoutPageInternal = () => {
 
         try {
             const result = calculateDeliveryCharge(aerialDist, currentSubtotal, settings);
-            console.log('[Checkout Debug] ⚡ Shadow Calculation result:', result);
+            console.log('[Checkout Debug] Ã¢Å¡Â¡ Shadow Calculation result:', result);
             return result;
         } catch (e) {
-            console.error('[Checkout Debug] ❌ Shadow Calculation failed:', e);
+            console.error('[Checkout Debug] Ã¢ÂÅ’ Shadow Calculation failed:', e);
             return null;
         }
     }, [deliveryType, selectedAddress, cartData, currentSubtotal]);
 
     const diningPreference = cartData?.diningPreference || 'dine-in';
 
-    // ✅ TRIGGER VALIDATION: When Address or Subtotal changes
+    // Ã¢Å“â€¦ TRIGGER VALIDATION: When Address or Subtotal changes
     useEffect(() => {
         if (deliveryType === 'delivery' && selectedAddress) {
             // Clear previous address/subtotal validation immediately to avoid stale "allowed" state.
             setDeliveryValidation(null);
-            console.log('[Checkout] ⏲️ Setting Validation Timer for:', selectedAddress.label);
+            console.log('[Checkout] Ã¢ÂÂ²Ã¯Â¸Â Setting Validation Timer for:', selectedAddress.label);
             const timer = setTimeout(() => {
                 validateDelivery(selectedAddress, currentSubtotal);
             }, 100); // Debounce reduced to 100ms for responsiveness
             return () => {
-                console.log('[Checkout] 🧹 Clearing Validation Timer');
+                console.log('[Checkout] Ã°Å¸Â§Â¹ Clearing Validation Timer');
                 clearTimeout(timer);
             };
         }
@@ -997,29 +998,34 @@ const CheckoutPageInternal = () => {
             console.log('[Checkout Debug] Validation in progress...');
         } else {
             // Fallback to static charge (or cart setting)
-            // ONLY apply simple threshold if NOT in tiered mode
             const deliveryFeeType = cartData?.deliveryFeeType;
+            const isHybridZonesEnabled = cartData?.deliveryEngineMode === 'hybrid-zones' || cartData?.deliveryUseZones === true;
             const isComplexMode = deliveryFeeType === 'tiered' || deliveryFeeType === 'order-slab-distance';
             const isThresholdMet = !isComplexMode && cartData?.deliveryFreeThreshold && currentSubtotal >= cartData.deliveryFreeThreshold;
 
-            // ✅ Robust fallback: Use deliveryFixedFee -> fixedCharge -> deliveryCharge -> 0
-            let baseFee = Number(cartData?.deliveryFixedFee ?? cartData?.fixedCharge ?? cartData?.deliveryCharge ?? 0);
-            if (deliveryFeeType === 'order-slab-distance') {
-                const rules = Array.isArray(cartData?.deliveryOrderSlabRules)
-                    ? [...cartData.deliveryOrderSlabRules]
-                        .map((rule) => ({
-                            maxOrder: Number(rule?.maxOrder) || 0,
-                            fee: Number(rule?.fee) || 0
-                        }))
-                        .filter((rule) => rule.maxOrder > 0)
-                        .sort((a, b) => a.maxOrder - b.maxOrder)
-                    : [];
-                const aboveFee = Number(cartData?.deliveryOrderSlabAboveFee) || 0;
-                const matchedRule = rules.find((rule) => currentSubtotal < rule.maxOrder);
-                baseFee = matchedRule ? matchedRule.fee : aboveFee;
+            if (isHybridZonesEnabled) {
+                deliveryCharge = 0;
+                deliveryReason = isValidatingDelivery ? 'Checking delivery zone...' : '';
+            } else {
+                // Legacy fallback only when hybrid zones are not enabled.
+                let baseFee = Number(cartData?.deliveryFixedFee ?? cartData?.fixedCharge ?? cartData?.deliveryCharge ?? 0);
+                if (deliveryFeeType === 'order-slab-distance') {
+                    const rules = Array.isArray(cartData?.deliveryOrderSlabRules)
+                        ? [...cartData.deliveryOrderSlabRules]
+                            .map((rule) => ({
+                                maxOrder: Number(rule?.maxOrder) || 0,
+                                fee: Number(rule?.fee) || 0
+                            }))
+                            .filter((rule) => rule.maxOrder > 0)
+                            .sort((a, b) => a.maxOrder - b.maxOrder)
+                        : [];
+                    const aboveFee = Number(cartData?.deliveryOrderSlabAboveFee) || 0;
+                    const matchedRule = rules.find((rule) => currentSubtotal < rule.maxOrder);
+                    baseFee = matchedRule ? matchedRule.fee : aboveFee;
+                }
+                deliveryCharge = isThresholdMet ? 0 : baseFee;
+                console.log('[Checkout Debug] Using Fallback Charge:', deliveryCharge, 'deliveryFeeType:', deliveryFeeType);
             }
-            deliveryCharge = isThresholdMet ? 0 : baseFee;
-            console.log('[Checkout Debug] Using Fallback Charge:', deliveryCharge, 'deliveryFeeType:', deliveryFeeType);
         }
 
         const isDeliveryFree = deliveryCharge === 0 && deliveryType === 'delivery' && !isDeliveryOutOfRange;
@@ -1359,7 +1365,7 @@ const CheckoutPageInternal = () => {
             serviceFeeType: vendorCharges?.serviceFeeType || 'fixed',
             serviceFeeValue: Number(vendorCharges?.serviceFeeValue) || 0,
             serviceFeeApplyOn: vendorCharges?.serviceFeeApplyOn || 'all',
-            // ✅ Car Order fields
+            // Ã¢Å“â€¦ Car Order fields
             ...(deliveryType === 'car-order' && {
                 carSpot: cartData.carSpot || null,
                 carDetails: cartData.carDetails || null,
@@ -1379,7 +1385,7 @@ const CheckoutPageInternal = () => {
                 // ... (Settlement logic remains largely same, just check redirects) ...
                 // Note: Settlement API might need update too, but let's assume it keeps using tabId mainly.
 
-                // ✅ Using new dine-in settlement endpoint
+                // Ã¢Å“â€¦ Using new dine-in settlement endpoint
                 const settlementEndpoint = '/api/dine-in/initiate-payment';
                 const settlementData = {
                     idempotencyKey,
@@ -1482,8 +1488,8 @@ const CheckoutPageInternal = () => {
                 return;
             }
 
-            /* ⚠️ TEMPORARILY DISABLED - Blocking orders
-            // 🚨 CRITICAL: Validate delivery distance BEFORE creating order
+            /* Ã¢Å¡Â Ã¯Â¸Â TEMPORARILY DISABLED - Blocking orders
+            // Ã°Å¸Å¡Â¨ CRITICAL: Validate delivery distance BEFORE creating order
             if (deliveryType === 'delivery' && selectedAddress) {
                 console.log('[Checkout] Validating delivery distance...');
                 try {
@@ -1504,7 +1510,7 @@ const CheckoutPageInternal = () => {
                         console.error('[Checkout] Delivery validation failed:', errorMsg);
                         setInfoDialog({
                             isOpen: true,
-                            title: '🚫 Delivery Not Available',
+                            title: 'Ã°Å¸Å¡Â« Delivery Not Available',
                             message: `${errorMsg}\n\nPlease select a different address or choose pickup/dine-in.`
                         });
                         setIsProcessingPayment(false);
@@ -1517,7 +1523,7 @@ const CheckoutPageInternal = () => {
                         orderData.grandTotal = subtotal + cgst + sgst + validationData.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
     
-                    console.log('[Checkout] ✅ Delivery validated:', validationData);
+                    console.log('[Checkout] Ã¢Å“â€¦ Delivery validated:', validationData);
                 } catch (validationErr) {
                     console.error('[Checkout] Delivery validation error:', validationErr);
                     setInfoDialog({
@@ -1531,7 +1537,7 @@ const CheckoutPageInternal = () => {
             }
             */
 
-            // ⚡ OPTIMIZED: Use cached delivery validation only (server validates in /api/order/create)
+            // Ã¢Å¡Â¡ OPTIMIZED: Use cached delivery validation only (server validates in /api/order/create)
             // This eliminates a redundant ~2-3 second network call before order creation
             if (deliveryType === 'delivery' && selectedAddress) {
                 if (isValidatingDelivery) {
@@ -1557,7 +1563,7 @@ const CheckoutPageInternal = () => {
                     return;
                 }
 
-                // ⚡ Only use CACHED result — no new network call
+                // Ã¢Å¡Â¡ Only use CACHED result Ã¢â‚¬â€ no new network call
                 // Server-side validation in /api/order/create is the source of truth
                 const validationKey = buildDeliveryValidationKey(validationPayload);
                 const cachedValidation = getCachedDeliveryValidation(validationKey);
@@ -1567,7 +1573,7 @@ const CheckoutPageInternal = () => {
                         const errorMsg = cachedValidation.message || 'Your address is beyond our delivery range.';
                         setInfoDialog({
                             isOpen: true,
-                            title: '🚫 Delivery Not Available',
+                            title: 'Ã°Å¸Å¡Â« Delivery Not Available',
                             message: `${errorMsg}\n\nPlease select a different address or choose pickup/dine-in.`
                         });
                         setIsProcessingPayment(false);
@@ -1578,13 +1584,13 @@ const CheckoutPageInternal = () => {
                         orderData.grandTotal = subtotal + cgst + sgst + cachedValidation.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
                 }
-                // If no cache, let the server handle it — don't block the order
+                // If no cache, let the server handle it Ã¢â‚¬â€ don't block the order
             }
 
             // NEW ORDER CREATION (original flow)
             console.log(`[Checkout Page] Sending order to /api/order/create. PaymentMethod: ${paymentMethod}, ExistingOrderId: ${orderData.existingOrderId}`);
 
-            // ⚡ PREFETCH: Preload tracking page WHILE API is in flight
+            // Ã¢Å¡Â¡ PREFETCH: Preload tracking page WHILE API is in flight
             // This makes the redirect feel instant after order is created
             const trackingPath = cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery';
             if (deliveryType === 'dine-in' || deliveryType === 'car-order') {
@@ -1772,12 +1778,12 @@ const CheckoutPageInternal = () => {
                 console.warn(`[Checkout Page] NO Razorpay ID found in response!`);
                 console.log("[Checkout Page] No Razorpay ID. Clearing cart and handling redirection.");
 
-                // ✅ CRITICAL: Use NEW order ID from response (not activeOrderId!)
+                // Ã¢Å“â€¦ CRITICAL: Use NEW order ID from response (not activeOrderId!)
                 // For street vendors, even if activeOrderId exists, NEW order was created
                 const finalOrderId = data.order_id || data.firestore_order_id;
 
                 if (finalOrderId) {
-                    // ⚡ OPTIMIZED: Build redirect URL first, then do cleanup in background
+                    // Ã¢Å¡Â¡ OPTIMIZED: Build redirect URL first, then do cleanup in background
                     const dineInLikeTabId = data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null;
                     const dineInLikeTabParam = dineInLikeTabId ? `&tabId=${encodeURIComponent(dineInLikeTabId)}` : '';
                     const redirectUrl =
@@ -1785,11 +1791,11 @@ const CheckoutPageInternal = () => {
                             ? `/track/dine-in/${finalOrderId}?token=${data.token}${dineInLikeTabParam}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`
                             : `/track/${cartData.businessType === 'street-vendor' ? 'pre-order' : 'delivery'}/${finalOrderId}?token=${data.token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}${ref ? `&ref=${ref}` : ''}`;
 
-                    // ⚡ REDIRECT IMMEDIATELY — don't wait for localStorage
-                    console.log(`[Checkout] ⚡ Fast redirect to: ${finalOrderId}`);
+                    // Ã¢Å¡Â¡ REDIRECT IMMEDIATELY Ã¢â‚¬â€ don't wait for localStorage
+                    console.log(`[Checkout] Ã¢Å¡Â¡ Fast redirect to: ${finalOrderId}`);
                     router.replace(redirectUrl);
 
-                    // ⚡ Cleanup in background (non-blocking)
+                    // Ã¢Å¡Â¡ Cleanup in background (non-blocking)
                     queueMicrotask(() => {
                         try {
                             localStorage.removeItem(`cart_${restaurantId}`);
@@ -1825,7 +1831,7 @@ const CheckoutPageInternal = () => {
                 }
 
                 localStorage.removeItem(`cart_${restaurantId}`);
-                localStorage.removeItem('current_order_key'); // ← Clear idempotency key
+                localStorage.removeItem('current_order_key'); // Ã¢â€ Â Clear idempotency key
                 console.log('[Idempotency] Key cleared after successful order creation');
 
                 if (orderData.deliveryType === 'dine-in') {
@@ -2025,7 +2031,7 @@ const CheckoutPageInternal = () => {
 
                 {/* Refund & Cancellation Policy */}
                 <div className="mt-6 p-4 border border-yellow-500/30 rounded-lg bg-yellow-500/5">
-                    <p className="text-xs font-semibold text-yellow-400 mb-2">⚠️ Refund & Cancellation Policy</p>
+                    <p className="text-xs font-semibold text-yellow-400 mb-2">Ã¢Å¡Â Ã¯Â¸Â Refund & Cancellation Policy</p>
                     <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
                         <li><span className="font-semibold">Vendor Discretion:</span> Refunds are processed at the vendor&apos;s sole discretion based on the cancellation reason.</li>
                         <li><span className="font-semibold">Fake/Fraudulent Orders:</span> Orders placed with wrong details, duplicate orders, or customer-initiated cancellations may not be eligible for refund.</li>
@@ -2260,7 +2266,7 @@ const CheckoutPageInternal = () => {
                                                 </span>
                                                 {/* NEW: Base Price Display */}
                                                 <div className="text-xs text-muted-foreground">
-                                                    ₹{parseFloat(item.portion?.price || item.price || 0).toFixed(2)}
+                                                    Ã¢â€šÂ¹{parseFloat(item.portion?.price || item.price || 0).toFixed(2)}
                                                 </div>
                                                 {/* FIXED: Show Add-ons as proper sub-items with specific prices */}
                                                 {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
@@ -2268,13 +2274,13 @@ const CheckoutPageInternal = () => {
                                                         {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
                                                             <div key={aIdx} className="text-xs text-muted-foreground flex justify-between">
                                                                 <span>+ {addon.name}</span>
-                                                                <span>₹{parseFloat(addon.price || 0).toFixed(2)}</span>
+                                                                <span>Ã¢â€šÂ¹{parseFloat(addon.price || 0).toFixed(2)}</span>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 )}
                                                 {/* Line Total: (Base + Addons) * Qty */}
-                                                <span className="font-bold mt-1">₹{((item.totalPrice || item.price || 0) * item.quantity).toFixed(2)}</span>
+                                                <span className="font-bold mt-1">Ã¢â€šÂ¹{((item.totalPrice || item.price || 0) * item.quantity).toFixed(2)}</span>
                                             </div>
 
                                             <div className="flex items-center gap-2">
@@ -2373,7 +2379,7 @@ const CheckoutPageInternal = () => {
                                                 : 'border-border bg-white text-muted-foreground hover:border-primary/50'
                                                 }`}
                                         >
-                                            ₹{amount}
+                                            Ã¢â€šÂ¹{amount}
                                         </button>
                                     ))}
                                     <button
@@ -2434,7 +2440,7 @@ const CheckoutPageInternal = () => {
                             {!isBillSummaryExpanded && (
                                 <div className="flex justify-between text-xl font-bold mt-3">
                                     <span>You Pay</span>
-                                    <span className="text-primary">₹{Math.round(grandTotal)}</span>
+                                    <span className="text-primary">Ã¢â€šÂ¹{Math.round(grandTotal)}</span>
                                 </div>
                             )}
 
@@ -2443,12 +2449,12 @@ const CheckoutPageInternal = () => {
                                 <div className="space-y-2 mt-4">
                                     <div className="flex justify-between text-sm">
                                         <span>Subtotal</span>
-                                        <span>₹{subtotal.toFixed(2)}</span>
+                                        <span>Ã¢â€šÂ¹{subtotal.toFixed(2)}</span>
                                     </div>
                                     {Number(totalDiscount) > 0 && (
                                         <div className="flex justify-between text-sm text-green-600">
                                             <span>Coupon Discount {appliedCoupons[0]?.code ? `(${appliedCoupons[0].code})` : ''}</span>
-                                            <span>- ₹{Number(totalDiscount).toFixed(2)}</span>
+                                            <span>- Ã¢â€šÂ¹{Number(totalDiscount).toFixed(2)}</span>
                                         </div>
                                     )}
                                     {/* DELIVERY CHARGE ROW */}
@@ -2464,7 +2470,7 @@ const CheckoutPageInternal = () => {
                                                         <span className="text-muted-foreground font-normal italic animate-pulse">Calculating...</span>
                                                     ) : (
                                                         <div className="flex flex-col items-end">
-                                                            <span>{isDeliveryOutOfRange ? 'Not Serviceable' : (isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`)}</span>
+                                                            <span>{isDeliveryOutOfRange ? 'Not Serviceable' : (isDeliveryFree ? 'FREE' : `Ã¢â€šÂ¹${finalDeliveryCharge.toFixed(2)}`)}</span>
                                                             {isEstimated && !isDeliveryFree && !isDeliveryOutOfRange && (
                                                                 <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-tight">Estimated</span>
                                                             )}
@@ -2483,18 +2489,18 @@ const CheckoutPageInternal = () => {
                                     {selectedTipAmount > 0 && (
                                         <div className="flex justify-between text-sm text-green-600">
                                             <span>Delivery Tip</span>
-                                            <span className="font-medium">+ ₹{selectedTipAmount.toFixed(2)}</span>
+                                            <span className="font-medium">+ Ã¢â€šÂ¹{selectedTipAmount.toFixed(2)}</span>
                                         </div>
                                     )}
                                     {cgst > 0 && (
                                         <>
                                             <div className="flex justify-between text-sm">
                                                 <span>CGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
-                                                <span>₹{cgst.toFixed(2)}</span>
+                                                <span>Ã¢â€šÂ¹{cgst.toFixed(2)}</span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span>SGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
-                                                <span>₹{sgst.toFixed(2)}</span>
+                                                <span>Ã¢â€šÂ¹{sgst.toFixed(2)}</span>
                                             </div>
                                         </>
                                     )}
@@ -2502,7 +2508,7 @@ const CheckoutPageInternal = () => {
                                     {packagingCharge > 0 && (
                                         <div className="flex justify-between text-sm text-primary">
                                             <span>Packaging Charges</span>
-                                            <span>₹{packagingCharge.toFixed(2)}</span>
+                                            <span>Ã¢â€šÂ¹{packagingCharge.toFixed(2)}</span>
                                         </div>
                                     )}
                                     {serviceFee > 0 && (
@@ -2513,19 +2519,19 @@ const CheckoutPageInternal = () => {
                                                     ? ` (${Number(vendorCharges?.serviceFeeValue || 0)}%)`
                                                     : ''}
                                             </span>
-                                            <span>₹{serviceFee.toFixed(2)}</span>
+                                            <span>Ã¢â€šÂ¹{serviceFee.toFixed(2)}</span>
                                         </div>
                                     )}
                                     <div className="border-t border-dashed pt-2 mt-2" />
                                     <div className="flex justify-between text-sm">
                                         <span>Order Total</span>
-                                        <span className="font-semibold">₹{(Math.max(0, subtotal - Number(totalDiscount || 0)) + finalDeliveryCharge + cgst + sgst + packagingCharge + serviceFee + tipAmount).toFixed(2)}</span>
+                                        <span className="font-semibold">Ã¢â€šÂ¹{(Math.max(0, subtotal - Number(totalDiscount || 0)) + finalDeliveryCharge + cgst + sgst + packagingCharge + serviceFee + tipAmount).toFixed(2)}</span>
                                     </div>
                                     {convenienceFee > 0 && (
                                         <>
                                             <div className="flex justify-between text-sm text-orange-600">
                                                 <span>{vendorCharges?.convenienceFeeLabel || 'Payment Processing Fee'} ({vendorCharges?.convenienceFeeRate || 2.5}%)</span>
-                                                <span>₹{convenienceFee.toFixed(2)}</span>
+                                                <span>Ã¢â€šÂ¹{convenienceFee.toFixed(2)}</span>
                                             </div>
                                         </>
                                     )}
@@ -2533,9 +2539,9 @@ const CheckoutPageInternal = () => {
                                     <div className="flex justify-between text-xl font-bold">
                                         <span>You Pay</span>
                                         <div className="flex flex-col items-end">
-                                            <span className="text-primary leading-none">₹{Math.round(grandTotal)}</span>
+                                            <span className="text-primary leading-none">Ã¢â€šÂ¹{Math.round(grandTotal)}</span>
                                             <span className="text-[10px] text-muted-foreground font-normal mt-1">
-                                                (Exact: ₹{grandTotal.toFixed(2)})
+                                                (Exact: Ã¢â€šÂ¹{grandTotal.toFixed(2)})
                                             </span>
                                         </div>
                                     </div>
@@ -2631,7 +2637,7 @@ const CheckoutPageInternal = () => {
                                 <div className="flex items-center justify-between w-full">
                                     <div className="flex flex-col items-start pr-3 border-r border-white/20 mr-3 min-w-[3rem]">
                                         <span className="text-[9px] font-medium opacity-80 uppercase tracking-wide leading-none mb-0.5">TOTAL</span>
-                                        <span className="text-base font-extrabold leading-none">₹{grandTotal.toFixed(0)}</span>
+                                        <span className="text-base font-extrabold leading-none">Ã¢â€šÂ¹{grandTotal.toFixed(0)}</span>
                                     </div>
                                     <div className="flex items-center gap-1 flex-1 justify-center whitespace-nowrap">
                                         <span>{ctaLabel}</span>
@@ -2728,7 +2734,7 @@ const CheckoutPageInternal = () => {
 
                                 {selectedPaymentMethod === 'online' && convenienceFee > 0 && (
                                     <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
-                                        ⚠️ +₹{convenienceFee.toFixed(2)} payment processing fee will be added
+                                        Ã¢Å¡Â Ã¯Â¸Â +Ã¢â€šÂ¹{convenienceFee.toFixed(2)} payment processing fee will be added
                                     </div>
                                 )}
                             </div>
@@ -2915,7 +2921,7 @@ const CheckoutPageInternal = () => {
                                                                     <p className="font-bold text-sm">
                                                                         {coupon.description || `Get ${coupon.value}${normalizeCouponType(coupon.type) === 'percentage' ? '%' : ' OFF'}`}
                                                                     </p>
-                                                                    <p className="text-xs text-muted-foreground mt-1">Min order: ₹{Number(coupon.minOrder) || 0}</p>
+                                                                    <p className="text-xs text-muted-foreground mt-1">Min order: Ã¢â€šÂ¹{Number(coupon.minOrder) || 0}</p>
                                                                     {!eligibility.eligible && (
                                                                         <p className="text-xs text-amber-500 mt-1">{eligibility.message}</p>
                                                                     )}

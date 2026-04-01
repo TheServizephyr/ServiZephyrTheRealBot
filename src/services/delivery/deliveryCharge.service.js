@@ -1,4 +1,4 @@
-import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
+import { calculateHybridDeliveryCharge } from '@/lib/deliveryZones';
 import { findBusinessById } from '@/services/business/businessService';
 
 function toFiniteNumber(value) {
@@ -44,39 +44,56 @@ export async function calculateDeliveryChargeForAddress(firestore, {
 
     const restaurantRef = business.ref;
     const restaurantData = business.data;
-    const businessLabel = getBusinessLabel(business.type);
+    const deliveryConfigSnap = await restaurantRef.collection('delivery_settings').doc('config').get();
+    const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
 
-    const restaurantLat = toFiniteNumber(
-        restaurantData.coordinates?.lat ??
-        restaurantData.address?.latitude ??
-        restaurantData.businessAddress?.latitude
-    );
-    const restaurantLng = toFiniteNumber(
-        restaurantData.coordinates?.lng ??
-        restaurantData.address?.longitude ??
-        restaurantData.businessAddress?.longitude
-    );
-
-    if (restaurantLat === null || restaurantLng === null) {
+    let result;
+    try {
+        ({ result } = calculateDeliveryChargeForBusiness({
+            businessData: restaurantData,
+            businessType: business.type,
+            deliveryConfig,
+            addressLat: addressLatNum,
+            addressLng: addressLngNum,
+            subtotal: subtotalNum,
+        }));
+    } catch (error) {
         return {
             ok: false,
             status: 400,
-            payload: { error: `${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} coordinates not configured` },
+            payload: { error: error.message || 'Delivery charge calculation failed' },
         };
     }
 
-    const aerialDistance = calculateHaversineDistance(
-        restaurantLat,
-        restaurantLng,
-        addressLatNum,
-        addressLngNum
-    );
+    return {
+        ok: true,
+        status: 200,
+        payload: {
+            success: true,
+            ...result,
+        },
+    };
+}
 
-    const deliveryConfigSnap = await restaurantRef.collection('delivery_settings').doc('config').get();
-    const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
-    const getSetting = (key, defaultVal) => deliveryConfig[key] ?? restaurantData[key] ?? defaultVal;
+export function getBusinessDeliveryCoordinates(businessData = {}) {
+    return {
+        lat: toFiniteNumber(
+            businessData.coordinates?.lat ??
+            businessData.address?.latitude ??
+            businessData.businessAddress?.latitude
+        ),
+        lng: toFiniteNumber(
+            businessData.coordinates?.lng ??
+            businessData.address?.longitude ??
+            businessData.businessAddress?.longitude
+        ),
+    };
+}
 
-    const settings = {
+export function buildDeliverySettings(deliveryConfig = {}, businessData = {}) {
+    const getSetting = (key, defaultVal) => deliveryConfig[key] ?? businessData[key] ?? defaultVal;
+
+    return {
         deliveryEnabled: getSetting('deliveryEnabled', true),
         deliveryRadius: getSetting('deliveryRadius', 10),
         deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
@@ -92,31 +109,55 @@ export async function calculateDeliveryChargeForAddress(firestore, {
         orderSlabAboveFee: getSetting('deliveryOrderSlabAboveFee', getSetting('orderSlabAboveFee', 0)),
         orderSlabBaseDistance: getSetting('deliveryOrderSlabBaseDistance', getSetting('orderSlabBaseDistance', 1)),
         orderSlabPerKmFee: getSetting('deliveryOrderSlabPerKmFee', getSetting('orderSlabPerKmFee', 15)),
+        deliveryEngineMode: getSetting('deliveryEngineMode', 'legacy'),
+        deliveryUseZones: getSetting('deliveryUseZones', false),
+        zoneFallbackToLegacy: getSetting('zoneFallbackToLegacy', true),
+        deliveryZones: getSetting('deliveryZones', []),
     };
+}
+
+export function calculateDeliveryChargeForBusiness({
+    businessData = {},
+    businessType = 'restaurant',
+    deliveryConfig = {},
+    addressLat,
+    addressLng,
+    subtotal,
+}) {
+    const businessLabel = getBusinessLabel(businessType);
+    const settings = buildDeliverySettings(deliveryConfig, businessData);
+    const restaurantCoords = getBusinessDeliveryCoordinates(businessData);
+
+    if (restaurantCoords.lat === null || restaurantCoords.lng === null) {
+        throw new Error(`${businessLabel.charAt(0).toUpperCase() + businessLabel.slice(1)} coordinates not configured`);
+    }
 
     if (settings.deliveryEnabled === false) {
         return {
-            ok: true,
-            status: 200,
-            payload: {
-                success: true,
+            businessLabel,
+            settings,
+            result: {
                 allowed: false,
                 charge: 0,
                 aerialDistance: 0,
                 roadDistance: 0,
                 roadFactor: settings.roadDistanceFactor,
                 message: `Delivery is currently disabled for this ${businessLabel}.`,
+                reason: 'delivery-disabled',
             },
         };
     }
 
-    const result = calculateDeliveryCharge(aerialDistance, subtotalNum, settings);
     return {
-        ok: true,
-        status: 200,
-        payload: {
-            success: true,
-            ...result,
-        },
+        businessLabel,
+        settings,
+        result: calculateHybridDeliveryCharge({
+            restaurantLat: restaurantCoords.lat,
+            restaurantLng: restaurantCoords.lng,
+            addressLat: Number(addressLat),
+            addressLng: Number(addressLng),
+            subtotal: Number(subtotal) || 0,
+            settings,
+        }),
     };
 }

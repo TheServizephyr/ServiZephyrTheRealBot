@@ -24,7 +24,6 @@ import { getFirestore, FieldValue, GeoPoint, verifyIdToken } from '@/lib/firebas
 import { createOrderV1, processOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
-import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
@@ -34,6 +33,7 @@ import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 // Services
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from './orderPricing';
 import { findBusinessById } from '@/services/business/businessService';
+import { calculateDeliveryChargeForBusiness } from '@/services/delivery/deliveryCharge.service';
 import { paymentService } from '@/services/payment/payment.service';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
@@ -108,12 +108,6 @@ const optimizeItemSnapshot = (item) => {
 const toFiniteNumber = (value) => {
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
-};
-
-const getBusinessLabel = (businessType = 'restaurant') => {
-    if (businessType === 'store' || businessType === 'shop') return 'store';
-    if (businessType === 'street-vendor') return 'stall';
-    return 'restaurant';
 };
 
 const normalizeCouponType = (couponType) => {
@@ -806,41 +800,15 @@ export async function createOrderV2(req, options = {}) {
 
                 const deliveryConfigSnap = await deliveryConfigPromise;
                 const deliveryConfig = (deliveryConfigSnap && deliveryConfigSnap.exists) ? deliveryConfigSnap.data() : {};
-                const getSetting = (key, fallback) => deliveryConfig[key] ?? business.data[key] ?? fallback;
+                const { result: deliveryResult } = calculateDeliveryChargeForBusiness({
+                    businessData: business.data,
+                    businessType: business.type,
+                    deliveryConfig,
+                    addressLat: customerLat,
+                    addressLng: customerLng,
+                    subtotal: pricing.serverSubtotal,
+                });
 
-                const settings = {
-                    deliveryEnabled: getSetting('deliveryEnabled', true),
-                    deliveryRadius: getSetting('deliveryRadius', 10),
-                    deliveryChargeType: getSetting('deliveryFeeType', getSetting('deliveryChargeType', 'fixed')),
-                    fixedCharge: getSetting('deliveryFixedFee', getSetting('fixedCharge', 0)),
-                    perKmCharge: getSetting('deliveryPerKmFee', getSetting('perKmCharge', 0)),
-                    baseDistance: getSetting('deliveryBaseDistance', getSetting('baseDistance', 0)),
-                    freeDeliveryThreshold: getSetting('deliveryFreeThreshold', getSetting('freeDeliveryThreshold', 0)),
-                    freeDeliveryRadius: getSetting('freeDeliveryRadius', 0),
-                    freeDeliveryMinOrder: getSetting('freeDeliveryMinOrder', 0),
-                    roadDistanceFactor: getSetting('roadDistanceFactor', 1.0),
-                    deliveryTiers: getSetting('deliveryTiers', []),
-                    orderSlabRules: getSetting('deliveryOrderSlabRules', getSetting('orderSlabRules', [])),
-                    orderSlabAboveFee: getSetting('deliveryOrderSlabAboveFee', getSetting('orderSlabAboveFee', 0)),
-                    orderSlabBaseDistance: getSetting('deliveryOrderSlabBaseDistance', getSetting('orderSlabBaseDistance', 1)),
-                    orderSlabPerKmFee: getSetting('deliveryOrderSlabPerKmFee', getSetting('orderSlabPerKmFee', 15)),
-                };
-
-                if (settings.deliveryEnabled === false) {
-                    await idempotencyRepository.fail(idempotencyKey, new Error('Delivery disabled'));
-                    return buildErrorResponse({
-                        message: `Delivery is currently disabled for this ${businessLabel}.`,
-                        status: 400
-                    });
-                }
-
-                const aerialDistance = calculateHaversineDistance(
-                    restaurantLat,
-                    restaurantLng,
-                    customerLat,
-                    customerLng
-                );
-                const deliveryResult = calculateDeliveryCharge(aerialDistance, pricing.serverSubtotal, settings);
                 if (!deliveryResult.allowed) {
                     await idempotencyRepository.fail(idempotencyKey, new Error(deliveryResult.message || 'Out of delivery range'));
                     return buildErrorResponse({

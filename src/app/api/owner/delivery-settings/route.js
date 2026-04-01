@@ -88,6 +88,10 @@ export async function GET(req) {
             deliveryOrderSlabAboveFee: 0,
             deliveryOrderSlabBaseDistance: 1,
             deliveryOrderSlabPerKmFee: 15,
+            deliveryEngineMode: 'legacy',
+            deliveryUseZones: false,
+            zoneFallbackToLegacy: true,
+            deliveryZones: [],
         };
 
         const configData = configDoc.exists ? configDoc.data() || {} : {};
@@ -110,6 +114,12 @@ export async function PATCH(req) {
         const { businessRef, businessId } = await verifyUserAndGetData(req);
         const updates = await req.json();
         const toFiniteNumber = (value, fallback = 0) => {
+            if (value === '' || value === undefined) return fallback;
+            const n = Number(value);
+            return Number.isFinite(n) ? n : fallback;
+        };
+        const toNullableFiniteNumber = (value, fallback = null) => {
+            if (value === '' || value === null || value === undefined) return fallback;
             const n = Number(value);
             return Number.isFinite(n) ? n : fallback;
         };
@@ -124,7 +134,9 @@ export async function PATCH(req) {
             // NEW: Tiered charges
             'deliveryTiers',
             // NEW: Order slab + distance mode
-            'deliveryOrderSlabRules', 'deliveryOrderSlabAboveFee', 'deliveryOrderSlabBaseDistance', 'deliveryOrderSlabPerKmFee'
+            'deliveryOrderSlabRules', 'deliveryOrderSlabAboveFee', 'deliveryOrderSlabBaseDistance', 'deliveryOrderSlabPerKmFee',
+            // Hybrid zone engine
+            'deliveryEngineMode', 'deliveryUseZones', 'zoneFallbackToLegacy', 'deliveryZones'
         ];
 
         const cleanUpdates = {};
@@ -159,12 +171,38 @@ export async function PATCH(req) {
                 .filter(rule => rule.maxOrder > 0)
                 .sort((a, b) => a.maxOrder - b.maxOrder);
         }
+        if (cleanUpdates.deliveryEngineMode !== undefined) cleanUpdates.deliveryEngineMode = String(cleanUpdates.deliveryEngineMode || 'legacy').trim() || 'legacy';
+        if (cleanUpdates.deliveryUseZones !== undefined) cleanUpdates.deliveryUseZones = cleanUpdates.deliveryUseZones === true;
+        if (cleanUpdates.zoneFallbackToLegacy !== undefined) cleanUpdates.zoneFallbackToLegacy = cleanUpdates.zoneFallbackToLegacy !== false;
+        if (Array.isArray(cleanUpdates.deliveryZones)) {
+            cleanUpdates.deliveryZones = cleanUpdates.deliveryZones.map((zone, index) => ({
+                zone_id: String(zone?.zone_id || zone?.zoneId || zone?.id || ('zone_' + (index + 1))).trim(),
+                name: String(zone?.name || zone?.zoneName || ('Zone ' + (index + 1))).trim(),
+                boundary: Array.isArray(zone?.boundary) ? zone.boundary : [],
+                geojson: zone?.geojson && typeof zone.geojson === 'object' ? zone.geojson : null,
+                is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
+                is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
+                priority: toFiniteNumber(zone?.priority, index),
+                baseFee: toFiniteNumber(zone?.baseFee, 0),
+                maxServiceRadiusKm: toNullableFiniteNumber(zone?.maxServiceRadiusKm, null),
+                color: String(zone?.color || '').trim() || null,
+                pricingTiers: Array.isArray(zone?.pricingTiers)
+                    ? zone.pricingTiers.map((tier) => ({
+                        minOrder: toFiniteNumber(tier?.minOrder, 0),
+                        maxOrder: tier?.maxOrder === -1 ? -1 : toFiniteNumber(tier?.maxOrder, -1),
+                        deliveryFee: toNullableFiniteNumber(tier?.deliveryFee ?? tier?.fee ?? tier?.amount, null),
+                        feeAdjustment: toNullableFiniteNumber(tier?.feeAdjustment ?? tier?.adjustment, null),
+                        label: String(tier?.label || '').trim(),
+                    }))
+                    : [],
+            }));
+        }
 
         cleanUpdates.updatedAt = new Date();
 
         await businessRef.collection('delivery_settings').doc('config').set(cleanUpdates, { merge: true });
 
-        // ✅ CRITICAL: Increment menuVersion to invalidate public menu cache
+        // âœ… CRITICAL: Increment menuVersion to invalidate public menu cache
         // We fetch the current business doc to get the current version
         const businessSnap = await businessRef.get();
         const businessData = businessSnap.data() || {};
@@ -179,7 +217,7 @@ export async function PATCH(req) {
             const { kv } = await import('@vercel/kv');
             if (process.env.KV_REST_API_URL) {
                 await kv.del(`menu:${businessId}`);
-                console.log(`[Delivery Settings] 🧹 Invalidated cache for ${businessId}`);
+                console.log(`[Delivery Settings] ðŸ§¹ Invalidated cache for ${businessId}`);
             }
         } catch (e) {
             console.warn("Cache invalidation failed", e);

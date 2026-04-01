@@ -3,14 +3,17 @@
 
 import { useState, useEffect, Suspense, useMemo } from 'react';
 import { motion } from 'framer-motion';
+import dynamicImport from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings, Loader2, XCircle } from 'lucide-react';
+import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings, Loader2, XCircle, Maximize2, PencilLine, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import { auth } from '@/lib/firebase';
@@ -20,9 +23,54 @@ import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineS
 
 export const dynamic = 'force-dynamic';
 
+const DeliveryZoneMapEditor = dynamicImport(
+    () => import('@/components/OwnerDashboard/DeliveryZoneMapEditor'),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="h-[420px] rounded-2xl border bg-muted/20 flex items-center justify-center text-sm text-muted-foreground">
+                Loading map editor...
+            </div>
+        ),
+    }
+);
+
 const DEFAULT_ORDER_SLAB_RULES = [
     { maxOrder: 100, fee: 10 },
     { maxOrder: 200, fee: 20 }
+];
+
+const DEFAULT_MAP_CENTER = { lat: 28.6139, lng: 77.2090 };
+const ZONE_COLOR_OPTIONS = [
+    '#0f766e',
+    '#2563eb',
+    '#7c3aed',
+    '#db2777',
+    '#ea580c',
+    '#ca8a04',
+];
+
+const DEFAULT_ZONE_SAMPLE = [
+    {
+        zone_id: 'SEC_62_NOIDA',
+        name: 'Noida Sector 62',
+        priority: 1,
+        is_active: true,
+        is_blocked: false,
+        baseFee: 20,
+        color: ZONE_COLOR_OPTIONS[0],
+        boundary: [
+            [28.628, 77.361],
+            [28.629, 77.372],
+            [28.621, 77.377],
+            [28.618, 77.366]
+        ],
+        pricingTiers: [
+            { minOrder: 0, maxOrder: 200, deliveryFee: 50, label: 'Starter orders' },
+            { minOrder: 201, maxOrder: 500, deliveryFee: 30, label: 'Growth basket' },
+            { minOrder: 501, maxOrder: -1, deliveryFee: 0, label: 'Free delivery' }
+        ]
+    }
 ];
 
 const normalizeOrderSlabRules = (rules = []) => {
@@ -49,6 +97,123 @@ const normalizeOrderSlabRules = (rules = []) => {
     }
 
     return normalized.slice(0, 2);
+};
+
+const normalizePricingTier = (tier = {}) => {
+    const minOrder = Number(tier?.minOrder);
+    const parsedMaxOrder = Number(tier?.maxOrder);
+    const parsedDeliveryFee = Number(tier?.deliveryFee ?? tier?.fee ?? tier?.amount);
+    const parsedFeeAdjustment = Number(tier?.feeAdjustment ?? tier?.adjustment);
+
+    return {
+        minOrder: Number.isFinite(minOrder) ? minOrder : 0,
+        maxOrder: tier?.maxOrder === -1 || parsedMaxOrder === -1
+            ? -1
+            : (Number.isFinite(parsedMaxOrder) ? parsedMaxOrder : -1),
+        deliveryFee: Number.isFinite(parsedDeliveryFee) ? parsedDeliveryFee : null,
+        feeAdjustment: Number.isFinite(parsedFeeAdjustment) ? parsedFeeAdjustment : null,
+        label: String(tier?.label || '').trim(),
+    };
+};
+
+const toBoundaryPoint = (point) => {
+    if (!Array.isArray(point) || point.length < 2) return null;
+    const lat = Number(point[0]);
+    const lng = Number(point[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return [lat, lng];
+};
+
+const extractBoundaryFromGeojson = (geojson) => {
+    if (!geojson || typeof geojson !== 'object') return [];
+
+    if (geojson.type === 'Polygon' && Array.isArray(geojson.coordinates?.[0])) {
+        return geojson.coordinates[0]
+            .map((pair) => Array.isArray(pair) && pair.length >= 2 ? toBoundaryPoint([pair[1], pair[0]]) : null)
+            .filter(Boolean);
+    }
+
+    if (geojson.type === 'MultiPolygon' && Array.isArray(geojson.coordinates?.[0]?.[0])) {
+        return geojson.coordinates[0][0]
+            .map((pair) => Array.isArray(pair) && pair.length >= 2 ? toBoundaryPoint([pair[1], pair[0]]) : null)
+            .filter(Boolean);
+    }
+
+    return [];
+};
+
+const buildZoneDraft = (zone = {}, index = 0) => ({
+    zone_id: String(zone?.zone_id || zone?.zoneId || zone?.id || `zone_${index + 1}`).trim(),
+    name: String(zone?.name || zone?.zoneName || `Zone ${index + 1}`).trim(),
+    priority: Number.isFinite(Number(zone?.priority)) ? String(Number(zone.priority)) : String(index),
+    is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
+    is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
+    baseFee: Number.isFinite(Number(zone?.baseFee)) ? String(Number(zone.baseFee)) : '0',
+    maxServiceRadiusKm:
+        zone?.maxServiceRadiusKm === null || zone?.maxServiceRadiusKm === undefined || zone?.maxServiceRadiusKm === ''
+            ? ''
+            : String(Number(zone.maxServiceRadiusKm)),
+    color: String(zone?.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
+});
+
+const normalizeDeliveryZonesForForm = (zones = []) => {
+    if (!Array.isArray(zones)) return [];
+
+    return zones
+        .map((zone, index) => {
+            const explicitBoundary = Array.isArray(zone?.boundary)
+                ? zone.boundary
+                    .map(toBoundaryPoint)
+                    .filter(Boolean)
+                : [];
+            const fallbackBoundary = explicitBoundary.length >= 3 ? explicitBoundary : extractBoundaryFromGeojson(zone?.geojson);
+            const boundary = fallbackBoundary.length >= 3 ? fallbackBoundary : [];
+
+            return {
+                zone_id: String(zone?.zone_id || zone?.zoneId || zone?.id || `zone_${index + 1}`).trim(),
+                name: String(zone?.name || zone?.zoneName || `Zone ${index + 1}`).trim(),
+                priority: Number.isFinite(Number(zone?.priority)) ? Number(zone.priority) : index,
+                is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
+                is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
+                baseFee: Number.isFinite(Number(zone?.baseFee)) ? Number(zone.baseFee) : 0,
+                maxServiceRadiusKm: Number.isFinite(Number(zone?.maxServiceRadiusKm)) ? Number(zone.maxServiceRadiusKm) : null,
+                color: String(zone?.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
+                boundary,
+                geojson: zone?.geojson && typeof zone.geojson === 'object' ? zone.geojson : null,
+                pricingTiers: Array.isArray(zone?.pricingTiers) ? zone.pricingTiers.map(normalizePricingTier) : [],
+            };
+        })
+        .filter((zone) => zone.boundary.length >= 3 || zone.geojson);
+};
+
+const serializeDeliveryZones = (zones = []) => JSON.stringify(normalizeDeliveryZonesForForm(zones), null, 2);
+
+const parseDeliveryZonesEditor = (value) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return { zones: [], error: null };
+
+    let parsed;
+    try {
+        parsed = JSON.parse(trimmed);
+    } catch (error) {
+        return { zones: [], error: 'Zone JSON is not valid. Please check commas, quotes, and brackets.' };
+    }
+
+    if (!Array.isArray(parsed)) {
+        return { zones: [], error: 'Zone JSON must be an array of zones.' };
+    }
+
+    const zones = normalizeDeliveryZonesForForm(parsed);
+    if (parsed.length > 0 && zones.length === 0) {
+        return { zones: [], error: 'Each zone needs either a valid boundary with 3+ points or a GeoJSON polygon.' };
+    }
+
+    const invalidTier = zones.some((zone) => zone.pricingTiers.some((tier) => tier.maxOrder !== -1 && tier.maxOrder < tier.minOrder));
+    if (invalidTier) {
+        return { zones: [], error: 'A pricing tier has `maxOrder` smaller than `minOrder`.' };
+    }
+
+    return { zones, error: null };
 };
 
 function DeliverySettingsPageContent() {
@@ -82,10 +247,21 @@ function DeliverySettingsPageContent() {
         deliveryOrderSlabAboveFee: 0,
         deliveryOrderSlabBaseDistance: 1,
         deliveryOrderSlabPerKmFee: 15,
+        deliveryEngineMode: 'legacy',
+        deliveryUseZones: false,
+        zoneFallbackToLegacy: true,
+        deliveryZones: [],
+        businessCoordinates: null,
     });
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [zoneEditorValue, setZoneEditorValue] = useState('[]');
+    const [zoneEditorError, setZoneEditorError] = useState('');
+    const [isZoneStudioOpen, setIsZoneStudioOpen] = useState(false);
+    const [isZoneDetailsOpen, setIsZoneDetailsOpen] = useState(false);
+    const [zoneDraft, setZoneDraft] = useState(null);
+    const [resumeZoneStudioAfterEdit, setResumeZoneStudioAfterEdit] = useState(false);
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -112,6 +288,8 @@ function DeliverySettingsPageContent() {
                     const n = Number(value);
                     return Number.isFinite(n) ? n : fallback;
                 };
+                const lat = Number(data?.coordinates?.lat ?? data?.latitude ?? data?.address?.latitude ?? data?.businessAddress?.latitude);
+                const lng = Number(data?.coordinates?.lng ?? data?.longitude ?? data?.address?.longitude ?? data?.businessAddress?.longitude);
                 const normalizedSettings = {
                     // Keep threshold unified across "Free Over" and "Bonus Min Order".
                     // Prefer explicit free-over value, fallback to global min-order override.
@@ -140,8 +318,15 @@ function DeliverySettingsPageContent() {
                     deliveryOrderSlabAboveFee: toNum(data.deliveryOrderSlabAboveFee, 0),
                     deliveryOrderSlabBaseDistance: Math.max(0, toNum(data.deliveryOrderSlabBaseDistance, 1)),
                     deliveryOrderSlabPerKmFee: Math.max(0, toNum(data.deliveryOrderSlabPerKmFee, 15)),
+                    deliveryEngineMode: data.deliveryEngineMode || 'legacy',
+                    deliveryUseZones: data.deliveryUseZones === true,
+                    zoneFallbackToLegacy: data.zoneFallbackToLegacy !== false,
+                    deliveryZones: normalizeDeliveryZonesForForm(data.deliveryZones || []),
+                    businessCoordinates: Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null,
                 };
                 setSettings(normalizedSettings);
+                setZoneEditorValue(serializeDeliveryZones(normalizedSettings.deliveryZones));
+                setZoneEditorError('');
                 if (desktopRuntime) {
                     await setOfflineNamespace('owner_delivery_settings', deliverySettingsCacheKey, normalizedSettings);
                 }
@@ -150,7 +335,17 @@ function DeliverySettingsPageContent() {
                 if (desktopRuntime) {
                     const desktopPayload = await getOfflineNamespace('owner_delivery_settings', deliverySettingsCacheKey, null);
                     if (desktopPayload) {
-                        setSettings(desktopPayload);
+                        const restoredSettings = {
+                            ...desktopPayload,
+                            deliveryEngineMode: desktopPayload.deliveryEngineMode || 'legacy',
+                            deliveryUseZones: desktopPayload.deliveryUseZones === true,
+                            zoneFallbackToLegacy: desktopPayload.zoneFallbackToLegacy !== false,
+                            deliveryZones: normalizeDeliveryZonesForForm(desktopPayload.deliveryZones || []),
+                            businessCoordinates: desktopPayload.businessCoordinates || null,
+                        };
+                        setSettings(restoredSettings);
+                        setZoneEditorValue(serializeDeliveryZones(restoredSettings.deliveryZones));
+                        setZoneEditorError('');
                         restored = true;
                     }
                 }
@@ -182,6 +377,15 @@ function DeliverySettingsPageContent() {
                 return Number.isFinite(n) ? n : fallback;
             };
 
+            const deliveryUseZones = settings.deliveryUseZones === true;
+            const { zones: parsedDeliveryZones, error: parsedDeliveryZoneError } = parseDeliveryZonesEditor(zoneEditorValue);
+            if (deliveryUseZones && parsedDeliveryZoneError) {
+                throw new Error(parsedDeliveryZoneError);
+            }
+            if (deliveryUseZones && parsedDeliveryZones.length === 0) {
+                throw new Error('Hybrid zone mode is enabled, but no valid delivery zones are configured yet.');
+            }
+
             const payload = {
                 deliveryEnabled: settings.deliveryEnabled,
                 deliveryRadius: toNum(settings.deliveryRadius[0], 5),
@@ -205,6 +409,10 @@ function DeliverySettingsPageContent() {
                 deliveryOrderSlabAboveFee: toNum(settings.deliveryOrderSlabAboveFee, 0),
                 deliveryOrderSlabBaseDistance: Math.max(0, toNum(settings.deliveryOrderSlabBaseDistance, 1)),
                 deliveryOrderSlabPerKmFee: Math.max(0, toNum(settings.deliveryOrderSlabPerKmFee, 15)),
+                deliveryEngineMode: deliveryUseZones ? 'hybrid-zones' : 'legacy',
+                deliveryUseZones,
+                zoneFallbackToLegacy: settings.zoneFallbackToLegacy !== false,
+                deliveryZones: deliveryUseZones ? parsedDeliveryZones : settings.deliveryZones,
             };
 
             const queryParams = new URLSearchParams();
@@ -226,8 +434,25 @@ function DeliverySettingsPageContent() {
                 throw new Error(errorData.message || 'Failed to save settings');
             }
 
+            setSettings(prev => ({
+                ...prev,
+                deliveryEngineMode: payload.deliveryEngineMode,
+                deliveryUseZones: payload.deliveryUseZones,
+                zoneFallbackToLegacy: payload.zoneFallbackToLegacy,
+                    deliveryZones: payload.deliveryZones,
+                    businessCoordinates: prev.businessCoordinates || null,
+                }));
+            setZoneEditorValue(serializeDeliveryZones(payload.deliveryZones));
+            setZoneEditorError('');
             if (desktopRuntime) {
-                await setOfflineNamespace('owner_delivery_settings', deliverySettingsCacheKey, settings);
+                await setOfflineNamespace('owner_delivery_settings', deliverySettingsCacheKey, {
+                    ...settings,
+                    deliveryEngineMode: payload.deliveryEngineMode,
+                    deliveryUseZones: payload.deliveryUseZones,
+                    zoneFallbackToLegacy: payload.zoneFallbackToLegacy,
+                    deliveryZones: payload.deliveryZones,
+                    businessCoordinates: settings.businessCoordinates || null,
+                });
             }
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Delivery settings saved successfully!' });
         } catch (error) {
@@ -272,9 +497,135 @@ function DeliverySettingsPageContent() {
                     : 15;
             }
 
+            if (key === 'deliveryUseZones') {
+                next.deliveryUseZones = value === true;
+                next.deliveryEngineMode = value === true ? 'hybrid-zones' : 'legacy';
+            }
+
             return next;
         });
     }
+
+    const applyZonesToState = (zones = []) => {
+        const normalizedZones = normalizeDeliveryZonesForForm(zones);
+        setSettings(prev => ({ ...prev, deliveryZones: normalizedZones }));
+        setZoneEditorValue(serializeDeliveryZones(normalizedZones));
+        setZoneEditorError('');
+        if (zoneDraft?.zone_id && !normalizedZones.some((zone) => zone.zone_id === zoneDraft.zone_id)) {
+            setIsZoneDetailsOpen(false);
+            setZoneDraft(null);
+        }
+    };
+
+    const openZoneDetailsEditor = (zoneOrId) => {
+        const selectedZone = typeof zoneOrId === 'string'
+            ? settings.deliveryZones.find((zone) => zone.zone_id === zoneOrId)
+            : zoneOrId;
+
+        if (!selectedZone) return;
+
+        const zoneIndex = settings.deliveryZones.findIndex((zone) => zone.zone_id === selectedZone.zone_id);
+        setZoneDraft(buildZoneDraft(selectedZone, zoneIndex >= 0 ? zoneIndex : 0));
+        if (isZoneStudioOpen) {
+            setResumeZoneStudioAfterEdit(true);
+            setIsZoneStudioOpen(false);
+        } else {
+            setResumeZoneStudioAfterEdit(false);
+        }
+        setIsZoneDetailsOpen(true);
+    };
+
+    const closeZoneDetailsEditor = (open) => {
+        setIsZoneDetailsOpen(open);
+        if (!open) {
+            setZoneDraft(null);
+            if (resumeZoneStudioAfterEdit) {
+                setIsZoneStudioOpen(true);
+                setResumeZoneStudioAfterEdit(false);
+            }
+        }
+    };
+
+    const handleZoneDraftChange = (field, value) => {
+        setZoneDraft((prev) => prev ? { ...prev, [field]: value } : prev);
+    };
+
+    const handleSaveZoneDetails = () => {
+        if (!zoneDraft?.zone_id) return;
+
+        const normalizedName = String(zoneDraft.name || '').trim();
+        if (!normalizedName) {
+            setInfoDialog({ isOpen: true, title: 'Zone Name Required', message: 'Please add a zone name before saving zone details.' });
+            return;
+        }
+
+        const priority = Number(zoneDraft.priority);
+        const baseFee = Number(zoneDraft.baseFee);
+        const radiusRaw = String(zoneDraft.maxServiceRadiusKm || '').trim();
+        const maxServiceRadiusKm = radiusRaw === '' ? null : Number(radiusRaw);
+
+        const nextZones = settings.deliveryZones.map((zone, index) => {
+            if (zone.zone_id !== zoneDraft.zone_id) return zone;
+
+            return {
+                ...zone,
+                name: normalizedName,
+                priority: Number.isFinite(priority) ? priority : index,
+                is_active: zoneDraft.is_active !== false,
+                is_blocked: zoneDraft.is_blocked === true,
+                baseFee: Number.isFinite(baseFee) ? baseFee : 0,
+                maxServiceRadiusKm: Number.isFinite(maxServiceRadiusKm) ? maxServiceRadiusKm : null,
+                color: String(zoneDraft.color || zone.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
+            };
+        });
+
+        applyZonesToState(nextZones);
+        setIsZoneDetailsOpen(false);
+        setZoneDraft(null);
+        if (resumeZoneStudioAfterEdit) {
+            setIsZoneStudioOpen(true);
+            setResumeZoneStudioAfterEdit(false);
+        }
+    };
+
+    const handleNewZoneCreated = (zone) => {
+        if (!zone) return;
+        const zoneIndex = Array.isArray(settings.deliveryZones) ? settings.deliveryZones.length : 0;
+        setZoneDraft(buildZoneDraft(zone, zoneIndex));
+        setIsZoneDetailsOpen(true);
+    };
+
+    const handleApplyZoneJson = () => {
+        const { zones, error } = parseDeliveryZonesEditor(zoneEditorValue);
+        if (error) {
+            setZoneEditorError(error);
+            return;
+        }
+        applyZonesToState(zones);
+    };
+
+    const handleLoadSampleZones = () => {
+        applyZonesToState(DEFAULT_ZONE_SAMPLE);
+        setSettings(prev => ({
+            ...prev,
+            deliveryUseZones: true,
+            deliveryEngineMode: 'hybrid-zones',
+        }));
+    };
+
+    const handleFormatZoneJson = () => {
+        const { zones, error } = parseDeliveryZonesEditor(zoneEditorValue);
+        if (error) {
+            setZoneEditorError(error);
+            return;
+        }
+        setZoneEditorValue(serializeDeliveryZones(zones));
+        setZoneEditorError('');
+    };
+
+    const handleClearZones = () => {
+        applyZonesToState([]);
+    };
 
     const addTier = () => {
         setSettings(prev => ({
@@ -325,6 +676,16 @@ function DeliverySettingsPageContent() {
         });
     };
 
+    const zoneSummary = useMemo(() => {
+        const zones = Array.isArray(settings.deliveryZones) ? settings.deliveryZones : [];
+        return {
+            total: zones.length,
+            blocked: zones.filter((zone) => zone.is_blocked === true).length,
+            tiers: zones.reduce((count, zone) => count + (Array.isArray(zone.pricingTiers) ? zone.pricingTiers.length : 0), 0),
+            points: zones.reduce((count, zone) => count + (Array.isArray(zone.boundary) ? zone.boundary.length : 0), 0),
+        };
+    }, [settings.deliveryZones]);
+
     if (loading) {
         return (
             <div className="flex h-screen w-full items-center justify-center">
@@ -352,6 +713,169 @@ function DeliverySettingsPageContent() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
+
+            <Dialog open={isZoneStudioOpen} onOpenChange={setIsZoneStudioOpen}>
+                <DialogContent className="w-[96vw] max-w-[96vw] h-[94vh] p-0 overflow-hidden sm:rounded-2xl">
+                    <div className="flex h-full flex-col">
+                        <DialogHeader className="border-b px-6 py-5 pr-14">
+                            <DialogTitle className="flex items-center gap-2 text-xl">
+                                <MapIcon className="h-5 w-5 text-primary" />
+                                Fullscreen Zone Studio
+                            </DialogTitle>
+                            <DialogDescription>
+                                Pick a pen color, draw a polygon, then click the created zone or its card to edit name, priority, active status, blocked status, and base fee.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
+                            <DeliveryZoneMapEditor
+                                center={settings.businessCoordinates || DEFAULT_MAP_CENTER}
+                                deliveryRadiusKm={Number(settings.deliveryRadius?.[0]) || 5}
+                                zones={settings.deliveryZones}
+                                onZonesChange={applyZonesToState}
+                                onZoneCreated={handleNewZoneCreated}
+                                onZoneSelect={openZoneDetailsEditor}
+                                selectedZoneId={zoneDraft?.zone_id || null}
+                                heightClass="h-[68vh]"
+                            />
+                        </div>
+
+                        <DialogFooter className="border-t px-6 py-4">
+                            <div className="flex w-full flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                    <span className="rounded-full border px-3 py-1">Zones: {zoneSummary.total}</span>
+                                    <span className="rounded-full border px-3 py-1">Blocked: {zoneSummary.blocked}</span>
+                                    <span className="rounded-full border px-3 py-1">Points: {zoneSummary.points}</span>
+                                </div>
+                                <Button type="button" variant="outline" onClick={() => setIsZoneStudioOpen(false)}>
+                                    Close Studio
+                                </Button>
+                            </div>
+                        </DialogFooter>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isZoneDetailsOpen} onOpenChange={closeZoneDetailsEditor}>
+                <DialogContent className="sm:max-w-xl z-[1200]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <PencilLine className="h-4 w-4 text-primary" />
+                            Edit Zone Details
+                        </DialogTitle>
+                        <DialogDescription>
+                            Update the business rules attached to this polygon. Shape editing stays inside the map studio.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {zoneDraft && (
+                        <div className="space-y-5">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-2 sm:col-span-2">
+                                    <Label htmlFor="zone-name">Zone Name</Label>
+                                    <Input
+                                        id="zone-name"
+                                        value={zoneDraft.name}
+                                        onChange={(e) => handleZoneDraftChange('name', e.target.value)}
+                                        placeholder="Zone 1"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="zone-priority">Priority</Label>
+                                    <Input
+                                        id="zone-priority"
+                                        type="number"
+                                        value={zoneDraft.priority}
+                                        onChange={(e) => handleZoneDraftChange('priority', e.target.value)}
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="zone-base-fee">Base Fee</Label>
+                                    <Input
+                                        id="zone-base-fee"
+                                        type="number"
+                                        value={zoneDraft.baseFee}
+                                        onChange={(e) => handleZoneDraftChange('baseFee', e.target.value)}
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="zone-radius">Max Service Radius (km)</Label>
+                                    <Input
+                                        id="zone-radius"
+                                        type="number"
+                                        value={zoneDraft.maxServiceRadiusKm}
+                                        onChange={(e) => handleZoneDraftChange('maxServiceRadiusKm', e.target.value)}
+                                        placeholder="Optional"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="zone-id">Zone ID</Label>
+                                    <Input id="zone-id" value={zoneDraft.zone_id} readOnly className="bg-muted/40" />
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="flex items-center justify-between rounded-2xl border p-4">
+                                    <div>
+                                        <p className="font-semibold">Active Zone</p>
+                                        <p className="text-xs text-muted-foreground">Off karoge to system is zone ko matching ke time poora ignore karega.</p>
+                                    </div>
+                                    <Switch
+                                        checked={zoneDraft.is_active}
+                                        onCheckedChange={(checked) => handleZoneDraftChange('is_active', checked)}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between rounded-2xl border p-4">
+                                    <div>
+                                        <p className="font-semibold">Blocked Zone</p>
+                                        <p className="text-xs text-muted-foreground">On karoge to ye zone match hone par delivery reject ho jayegi.</p>
+                                    </div>
+                                    <Switch
+                                        checked={zoneDraft.is_blocked}
+                                        onCheckedChange={(checked) => handleZoneDraftChange('is_blocked', checked)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Palette className="h-4 w-4 text-primary" />
+                                    <Label>Zone Color</Label>
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    {ZONE_COLOR_OPTIONS.map((color) => (
+                                        <button
+                                            key={color}
+                                            type="button"
+                                            onClick={() => handleZoneDraftChange('color', color)}
+                                            className={cn(
+                                                'h-10 w-10 rounded-full border-2 transition-transform hover:scale-105',
+                                                zoneDraft.color === color ? 'border-foreground scale-105' : 'border-border'
+                                            )}
+                                            style={{ backgroundColor: color }}
+                                            aria-label={`Use ${color} zone color`}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => closeZoneDetailsEditor(false)}>
+                            Cancel
+                        </Button>
+                        <Button type="button" onClick={handleSaveZoneDetails}>
+                            Save Zone Details
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
@@ -434,6 +958,212 @@ function DeliverySettingsPageContent() {
                                     className="py-4"
                                 />
                             </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </motion.div>
+
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+                <Card className="overflow-hidden border-2 shadow-sm">
+                    <CardHeader className="bg-muted/30 pb-8">
+                        <CardTitle className="flex items-center gap-3 text-xl">
+                            <div className="p-2 bg-primary/10 rounded-xl">
+                                <MapIcon className="h-5 w-5 text-primary" />
+                            </div>
+                            Hybrid Geofencing
+                        </CardTitle>
+                        <CardDescription className="text-base">
+                            Layer global radius, mapped zones, and zone-level pricing without relying on external distance APIs.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-6 md:p-8 -mt-6 space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="rounded-2xl border bg-card p-5 space-y-4">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                        <Label className="text-base font-bold">Enable Hybrid Zone Engine</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Global radius stays as the first filter. Matching zones then decide pricing or blocking.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={settings.deliveryUseZones}
+                                        onCheckedChange={(val) => handleSettingChange('deliveryUseZones', val)}
+                                        className="data-[state=checked]:bg-primary"
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                        <Label className="text-sm font-bold">Allow Orders Outside Drawn Zones</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            On rahega to outside-zone orders legacy pricing se chalenge. Off karoge to drawn zones ke bahar ke sab orders block ho jayenge.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={settings.zoneFallbackToLegacy}
+                                        onCheckedChange={(val) => handleSettingChange('zoneFallbackToLegacy', val)}
+                                        disabled={!settings.deliveryUseZones}
+                                        className="data-[state=checked]:bg-green-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="rounded-2xl border bg-card p-4">
+                                    <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">Zones</p>
+                                    <p className="text-3xl font-black text-primary mt-2">{zoneSummary.total}</p>
+                                </div>
+                                <div className="rounded-2xl border bg-card p-4">
+                                    <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">Blocked</p>
+                                    <p className="text-3xl font-black text-destructive mt-2">{zoneSummary.blocked}</p>
+                                </div>
+                                <div className="rounded-2xl border bg-card p-4">
+                                    <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">Pricing Tiers</p>
+                                    <p className="text-3xl font-black text-primary mt-2">{zoneSummary.tiers}</p>
+                                </div>
+                                <div className="rounded-2xl border bg-card p-4">
+                                    <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">Boundary Points</p>
+                                    <p className="text-3xl font-black text-primary mt-2">{zoneSummary.points}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-3">
+                                    <Label className="text-base font-bold">Visual Zone Drawing Tool</Label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] uppercase tracking-widest font-black text-muted-foreground">
+                                            Open studio, pick pen color, then draw
+                                        </span>
+                                        <Button type="button" onClick={() => setIsZoneStudioOpen(true)} className="gap-2">
+                                            <Maximize2 className="h-4 w-4" />
+                                            Fullscreen Zone Studio
+                                        </Button>
+                                    </div>
+                                </div>
+                                {isZoneStudioOpen ? (
+                                    <div className="rounded-2xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
+                                        Fullscreen studio open hai, isliye niche wala preview map temporarily hide kiya gaya hai taaki Leaflet controls overlap na karein.
+                                    </div>
+                                ) : (
+                                    <>
+                                        <DeliveryZoneMapEditor
+                                            center={settings.businessCoordinates || DEFAULT_MAP_CENTER}
+                                            deliveryRadiusKm={Number(settings.deliveryRadius?.[0]) || 5}
+                                            zones={settings.deliveryZones}
+                                            onZonesChange={applyZonesToState}
+                                            selectedZoneId={zoneDraft?.zone_id || null}
+                                            onZoneSelect={openZoneDetailsEditor}
+                                            readOnly
+                                            heightClass="h-[320px]"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Preview only here. Drawing, shape editing, delete mode, and pen color selection all happen inside the fullscreen studio.
+                                        </p>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3">
+                                <Button type="button" variant="outline" onClick={handleLoadSampleZones}>
+                                    Load Sample Zone
+                                </Button>
+                                <Button type="button" variant="outline" onClick={handleFormatZoneJson}>
+                                    Format JSON
+                                </Button>
+                                <Button type="button" variant="outline" onClick={handleApplyZoneJson}>
+                                    Apply JSON
+                                </Button>
+                                <Button type="button" variant="ghost" onClick={handleClearZones} className="text-destructive hover:text-destructive">
+                                    Clear Zones
+                                </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-base font-bold">Delivery Zone JSON</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Paste an array of zones using `boundary: [[lat, lng], ...]` and optional `pricingTiers`.
+                                </p>
+                                <Textarea
+                                    value={zoneEditorValue}
+                                    onChange={(e) => {
+                                        setZoneEditorValue(e.target.value);
+                                        if (zoneEditorError) setZoneEditorError('');
+                                    }}
+                                    className="min-h-[320px] font-mono text-xs"
+                                    placeholder='[{"zone_id":"SEC_62_NOIDA","name":"Noida Sector 62","boundary":[[28.628,77.361],[28.629,77.372],[28.621,77.377]],"pricingTiers":[{"minOrder":0,"maxOrder":200,"deliveryFee":50}]}]'
+                                />
+                                {zoneEditorError && (
+                                    <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                                        {zoneEditorError}
+                                    </div>
+                                )}
+                            </div>
+
+                            {settings.deliveryZones.length > 0 && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {settings.deliveryZones.map((zone, index) => (
+                                        <div
+                                            key={zone.zone_id || index}
+                                            className={cn(
+                                                'rounded-2xl border bg-muted/20 p-4 space-y-3 transition-colors',
+                                                zoneDraft?.zone_id === zone.zone_id ? 'border-primary bg-primary/5' : 'border-border'
+                                            )}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-start gap-3">
+                                                    <span
+                                                        className="mt-1 h-3.5 w-3.5 rounded-full border border-white/40"
+                                                        style={{ backgroundColor: zone.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length] }}
+                                                    />
+                                                    <div>
+                                                        <p className="font-bold">{zone.name || `Zone ${index + 1}`}</p>
+                                                        <p className="text-xs text-muted-foreground">{zone.zone_id || `zone_${index + 1}`}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right text-xs space-y-1">
+                                                    <p className={cn('font-bold', zone.is_blocked ? 'text-destructive' : (zone.is_active ? 'text-green-600' : 'text-amber-600'))}>
+                                                        {zone.is_blocked ? 'Blocked' : (zone.is_active ? 'Active' : 'Inactive')}
+                                                    </p>
+                                                    <p className="text-muted-foreground">{Array.isArray(zone.boundary) ? zone.boundary.length : 0} points</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                                                <p>
+                                                    Base fee: {Number.isFinite(Number(zone.baseFee)) ? `Rs ${Number(zone.baseFee)}` : 'Use legacy fee'}
+                                                </p>
+                                                <p>
+                                                    Priority: {Number.isFinite(Number(zone.priority)) ? Number(zone.priority) : index}
+                                                </p>
+                                                <p>
+                                                    Pricing tiers: {Array.isArray(zone.pricingTiers) ? zone.pricingTiers.length : 0}
+                                                </p>
+                                                <p>
+                                                    Max radius: {Number.isFinite(Number(zone.maxServiceRadiusKm)) ? `${Number(zone.maxServiceRadiusKm)} km` : 'None'}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    Click edit to manage `name`, `priority`, `is_active`, `is_blocked`, and `baseFee`.
+                                                </p>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="gap-2"
+                                                    onClick={() => openZoneDetailsEditor(zone)}
+                                                >
+                                                    <PencilLine className="h-3.5 w-3.5" />
+                                                    Edit
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
