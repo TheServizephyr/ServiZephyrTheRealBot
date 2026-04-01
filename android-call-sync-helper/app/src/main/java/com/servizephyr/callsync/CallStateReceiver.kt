@@ -10,6 +10,10 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class CallStateReceiver : BroadcastReceiver() {
+    companion object {
+        private const val TRACKED_INCOMING_TTL_MS = 2 * 60 * 1000L
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
 
@@ -55,10 +59,49 @@ class CallStateReceiver : BroadcastReceiver() {
             else -> return
         }
 
+        val trackedIncoming = CallSyncStore.loadTrackedIncomingCall(context)?.takeIf {
+            (System.currentTimeMillis() - it.trackedAt) <= TRACKED_INCOMING_TTL_MS
+        } ?: run {
+            CallSyncStore.clearTrackedIncomingCall(context)
+            null
+        }
+
+        val resolvedPhone = when (normalizedState) {
+            "ringing" -> incomingNumber.trim()
+            "offhook", "ended" -> trackedIncoming?.phone.orEmpty()
+            else -> incomingNumber.trim()
+        }
+
+        if (normalizedState == "ringing") {
+            if (resolvedPhone.isBlank()) {
+                CallSyncStore.saveDebugSnapshot(
+                    context = context,
+                    lastEvent = normalizedState,
+                    lastNumber = incomingNumber,
+                    lastResult = "Ignored incoming call without caller number"
+                )
+                return
+            }
+            CallSyncStore.saveTrackedIncomingCall(context, resolvedPhone)
+        }
+
+        if ((normalizedState == "offhook" || normalizedState == "ended") && trackedIncoming == null) {
+            CallSyncStore.saveDebugSnapshot(
+                context = context,
+                lastEvent = normalizedState,
+                lastNumber = incomingNumber,
+                lastResult = "Ignored non-incoming call state"
+            )
+            return
+        }
+
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                pushCallEvent(context, config, incomingNumber, normalizedState)
+                pushCallEvent(context, config, resolvedPhone, normalizedState)
+                if (normalizedState == "ended") {
+                    CallSyncStore.clearTrackedIncomingCall(context)
+                }
             } finally {
                 pendingResult.finish()
             }

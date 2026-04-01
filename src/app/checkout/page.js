@@ -794,6 +794,19 @@ const CheckoutPageInternal = () => {
         }
     }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled, selectedPaymentMethod]);
 
+    useEffect(() => {
+        if (!paymentOptionsLoaded) return;
+
+        const enabledMethods = [
+            codEnabled ? 'counter' : null,
+            onlinePaymentEnabled ? 'online' : null,
+        ].filter(Boolean);
+
+        if (enabledMethods.length === 1 && selectedPaymentMethod !== enabledMethods[0]) {
+            setSelectedPaymentMethod(enabledMethods[0]);
+        }
+    }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled, selectedPaymentMethod]);
+
     // 🎯 NEW: Load saved address from localStorage and pre-select it
     useEffect(() => {
         // Wait for userAddresses to load before trying to select

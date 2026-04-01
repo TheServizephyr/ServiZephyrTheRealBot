@@ -30,12 +30,19 @@ object CallSyncStore {
     private const val KEY_LAST_NUMBER = "last_number"
     private const val KEY_LAST_RESULT = "last_result"
     private const val KEY_LAST_UPDATED_AT = "last_updated_at"
+    private const val KEY_TRACKED_INCOMING_PHONE = "tracked_incoming_phone"
+    private const val KEY_TRACKED_INCOMING_AT = "tracked_incoming_at"
 
     data class DebugSnapshot(
         val lastEvent: String,
         val lastNumber: String,
         val lastResult: String,
         val lastUpdatedAt: Long
+    )
+
+    data class TrackedIncomingCall(
+        val phone: String,
+        val trackedAt: Long
     )
 
     fun load(context: Context): CallSyncConfig {
@@ -133,6 +140,32 @@ object CallSyncStore {
             .apply()
     }
 
+    fun saveTrackedIncomingCall(context: Context, phone: String) {
+        val normalizedPhone = phone.trim()
+        if (normalizedPhone.isBlank()) return
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_TRACKED_INCOMING_PHONE, normalizedPhone)
+            .putLong(KEY_TRACKED_INCOMING_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun loadTrackedIncomingCall(context: Context): TrackedIncomingCall? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val phone = prefs.getString(KEY_TRACKED_INCOMING_PHONE, "")?.trim().orEmpty()
+        val trackedAt = prefs.getLong(KEY_TRACKED_INCOMING_AT, 0L)
+        if (phone.isBlank() || trackedAt <= 0L) return null
+        return TrackedIncomingCall(phone = phone, trackedAt = trackedAt)
+    }
+
+    fun clearTrackedIncomingCall(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_TRACKED_INCOMING_PHONE)
+            .remove(KEY_TRACKED_INCOMING_AT)
+            .apply()
+    }
+
     fun loadDebugSnapshot(context: Context): DebugSnapshot {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return DebugSnapshot(
@@ -143,4 +176,3 @@ object CallSyncStore {
         )
     }
 }
-

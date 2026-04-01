@@ -522,8 +522,8 @@ const AddAddressPageInternal = () => {
 
 
     const handleConfirmLocation = async () => {
-        if (!addressDetails || !recipientName.trim() || !recipientPhone.trim() || !fullAddress.trim() || !addressDetail.trim()) {
-            setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, Map Address, and Address Details." });
+        if (!addressDetails || !recipientName.trim() || !recipientPhone.trim() || !fullAddress.trim()) {
+            setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, and Complete Address." });
             return;
         }
         if (!/^\d{10}$/.test(recipientPhone.trim())) {
@@ -535,9 +535,8 @@ const AddAddressPageInternal = () => {
 
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
 
-        const cleanedAddressDetail = addressDetail.trim();
         const cleanedFullAddress = fullAddress.trim();
-        const combinedAddress = [cleanedAddressDetail, cleanedFullAddress].filter(Boolean).join(', ');
+        const combinedAddress = cleanedFullAddress;
 
         const addressToSave = {
             id: editId || `addr_${Date.now()}`,
@@ -545,8 +544,8 @@ const AddAddressPageInternal = () => {
             name: recipientName.trim(),
             phone: recipientPhone.trim(),
             street: addressDetails.street,
-            addressDetail: cleanedAddressDetail,
-            landmark: landmark.trim(),
+            addressDetail: '',
+            landmark: '',
             city: addressDetails.city,
             state: addressDetails.state,
             pincode: addressDetails.pincode,
@@ -606,7 +605,6 @@ const AddAddressPageInternal = () => {
     }
 
     const isFullAddressMissing = !fullAddress.trim();
-    const isAddressDetailMissing = !addressDetail.trim();
     const isRecipientNameMissing = !recipientName.trim();
     const isRecipientPhoneMissing = !recipientPhone.trim();
     const requiredFieldClassName =
@@ -702,19 +700,7 @@ const AddAddressPageInternal = () => {
                                 <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} required rows={3} className={isFullAddressMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
                                 <p className="text-xs text-muted-foreground mt-1">Drag the map pin to get the address, then edit it here if needed.</p>
                             </div>
-                            <div>
-                                <Label htmlFor="addressDetail">Address Details *</Label>
-                                <p className="mt-1 text-xs text-muted-foreground">House no, floor, apartment, block, street, or gali name.</p>
-                                <Input
-                                    id="addressDetail"
-                                    value={addressDetail}
-                                    onChange={e => setAddressDetail(e.target.value)}
-                                    required
-                                    className={isAddressDetailMissing ? requiredFieldClassName : filledRequiredFieldClassName}
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">Eg: Floor, house no, street/gali, apartment/block - this helps rider find exact drop point.</p>
-                            </div>
-                            <div><Label htmlFor="landmark">Landmark (Optional)</Label><Input id="landmark" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder="e.g., Near Post Office" /></div>
+                            {/* Address Details and Landmark intentionally hidden for now. */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label htmlFor="recipientName">Contact Person *</Label>
@@ -743,7 +729,7 @@ const AddAddressPageInternal = () => {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-border mt-4">
-                                <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails || !addressDetail.trim() || !fullAddress.trim()} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails || !fullAddress.trim()} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                     {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
                                 </Button>
                             </div>
