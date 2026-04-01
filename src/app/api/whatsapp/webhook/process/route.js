@@ -14,7 +14,7 @@ import { nanoid } from 'nanoid';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime } from '@/lib/whatsapp-realtime';
 import { issueGuestAccessRef, WHATSAPP_GUEST_SESSION_TTL_MS } from '@/lib/public-auth';
-import { getAdminSystemConfig } from '@/lib/admin-system';
+import { getAdminSystemConfig, storeAdminInboundMessage } from '@/lib/admin-system';
 import { handleAdminOwnerReportMessage } from '@/lib/owner-whatsapp-reports';
 
 
@@ -1065,6 +1065,14 @@ export async function POST(request) {
             if (isAdminBot && !business) {
                 for (const message of change.value.messages) {
                     if (message.type !== 'text') continue;
+                    await storeAdminInboundMessage({
+                        phoneNumber: message.from,
+                        messageText: message.text?.body || '',
+                        customerName: change.value.contacts?.[0]?.profile?.name || '',
+                        metadata: {
+                            type: 'owner_report_request',
+                        },
+                    });
                     await handleAdminOwnerReportMessage({
                         firestore,
                         fromNumber: message.from,
