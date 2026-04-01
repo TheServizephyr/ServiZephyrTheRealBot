@@ -159,6 +159,9 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
     };
 
     const handleBellClick = () => {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => { });
+        }
         setIsOpen((prev) => !prev);
         markAllRead();
         stopAlarm();
@@ -467,22 +470,6 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             document.removeEventListener('visibilitychange', handleVisibilityResume);
         };
     }, [scope]);
-
-    useEffect(() => {
-        if (typeof window === 'undefined' || !('Notification' in window)) return;
-        const requestPermission = () => {
-            if (Notification.permission === 'default') {
-                Notification.requestPermission().catch(() => { });
-            }
-        };
-        requestPermission();
-        window.addEventListener('pointerdown', requestPermission, { once: true });
-        window.addEventListener('keydown', requestPermission, { once: true });
-        return () => {
-            window.removeEventListener('pointerdown', requestPermission);
-            window.removeEventListener('keydown', requestPermission);
-        };
-    }, []);
 
     const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 

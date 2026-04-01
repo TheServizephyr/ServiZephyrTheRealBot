@@ -1,8 +1,10 @@
 {
     "name": "ServiZephyr",
     "short_name": "ServiZephyr",
+    "id": "/",
     "description": "Street food vendor management and ordering platform",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#0a0a0a",
     "theme_color": "#0a0a0a",
