@@ -1553,6 +1553,9 @@ function ManualOrderPage() {
         setLastSavedOrderData(null);
         setCurrentBillCustomerOrderId(generateCustomerOrderId());
         setCustomerDetails({ name: '', phone: '', address: '', notes: '' });
+        setDeliveryChargeInput('0');
+        setAdditionalChargeNameInput('');
+        setAdditionalChargeInput('0');
         setSelectedCustomerSuggestion(null);
         setIsPhoneSuggestionOpen(false);
         setIsAddressSuggestionOpen(false);
@@ -1588,6 +1591,9 @@ function ManualOrderPage() {
     const switchOrderMode = useCallback((mode) => {
         setOrderType(mode);
         if (mode !== 'dine-in') setActiveTable(null);
+        if (mode !== 'delivery') {
+            setDeliveryChargeInput('0');
+        }
     }, []);
 
     const openPrintShortcut = useCallback(() => {
