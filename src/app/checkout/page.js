@@ -472,6 +472,52 @@ const CheckoutPageInternal = () => {
         router.push(`/add-address?${currentParamsString}&useCurrent=true&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
     };
 
+    const handleDeleteAddress = async (addressId) => {
+        if (!addressId) return;
+
+        const confirmed = window.confirm('Are you sure you want to delete this address?');
+        if (!confirmed) return;
+
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (user?.getIdToken) {
+                headers.Authorization = `Bearer ${await user.getIdToken()}`;
+            }
+
+            const fallbackPhone = String(phoneFromUrl || orderPhone || selectedAddress?.phone || '').trim();
+            const response = await fetch('/api/user/addresses', {
+                method: 'DELETE',
+                headers,
+                body: JSON.stringify({
+                    addressId,
+                    ...(fallbackPhone ? { phone: fallbackPhone } : {}),
+                }),
+            });
+
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.message || 'Failed to delete address.');
+            }
+
+            setUserAddresses((prev) => {
+                const nextAddresses = prev.filter((addr) => addr.id !== addressId);
+                if (selectedAddress?.id === addressId) {
+                    setSelectedAddress(nextAddresses[0] || null);
+                }
+                return nextAddresses;
+            });
+
+            toast({ title: 'Address Deleted', description: 'The saved address was removed successfully.' });
+        } catch (deleteError) {
+            console.error('[Checkout] Failed to delete address:', deleteError);
+            toast({
+                title: 'Delete Failed',
+                description: deleteError.message || 'Could not delete the address right now.',
+                variant: 'destructive',
+            });
+        }
+    };
+
 
     // Initialize Idempotency Key (Persist across reloads)
     useEffect(() => {
@@ -2795,6 +2841,7 @@ const CheckoutPageInternal = () => {
                                             }}
                                             onUseCurrentLocation={handleUseCurrentLocation}
                                             onAddNewAddress={handleAddNewAddress}
+                                            onDelete={handleDeleteAddress}
                                             onEdit={(addr) => {
                                                 const editData = encodeURIComponent(JSON.stringify(addr));
                                                 router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);

@@ -4079,12 +4079,28 @@ const OrderPageInternal = () => {
                                             if (confirm('Are you sure you want to delete this address?')) {
                                                 setAddressLoading(true);
                                                 try {
-                                                    await fetch(`/api/user/addresses?id=${id}`, { method: 'DELETE' });
-                                                    // Refresh logic (simplified: close and reopen or just refetch if logic separated)
-                                                    // ideally we should have a refetch function, but for now we might need to close/open
-                                                    // or just manually remove from local state
+                                                    const headers = { 'Content-Type': 'application/json' };
+                                                    if (auth.currentUser) {
+                                                        headers.Authorization = `Bearer ${await auth.currentUser.getIdToken()}`;
+                                                    }
+                                                    const response = await fetch('/api/user/addresses', {
+                                                        method: 'DELETE',
+                                                        headers,
+                                                        body: JSON.stringify({
+                                                            addressId: id,
+                                                            ...(phone ? { phone } : {}),
+                                                        }),
+                                                    });
+                                                    const payload = await response.json().catch(() => ({}));
+                                                    if (!response.ok) {
+                                                        throw new Error(payload.message || 'Failed to delete address.');
+                                                    }
                                                     setUserAddresses(prev => prev.filter(a => a.id !== id));
-                                                } catch (e) { console.error(e) } finally { setAddressLoading(false); }
+                                                    if (customerLocation?.id === id) {
+                                                        setCustomerLocation(null);
+                                                        localStorage.removeItem('customerLocation');
+                                                    }
+                                                } catch (e) { console.error(e); } finally { setAddressLoading(false); }
                                             }
                                         }}
                                         onEdit={(addr) => {
