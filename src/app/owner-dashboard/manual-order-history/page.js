@@ -453,6 +453,7 @@ export default function ManualOrderHistoryPage() {
             const nextRestaurant = {
                 name: data.restaurantName || 'Outlet',
                 address: data.address || '',
+                botDisplayNumber: data.botDisplayNumber || '',
                 gstin: data.gstin || '',
                 gstEnabled: !!data.gstEnabled,
                 gstPercentage: Number(data.gstPercentage ?? data.gstRate ?? 0),
@@ -687,14 +688,25 @@ export default function ManualOrderHistoryPage() {
         const run = async () => {
             try {
                 if (desktopRuntime && rebillPrintRef.current) {
-                    await silentPrintElement(rebillPrintRef.current, {
-                        documentTitle: `Re-Bill-${Date.now()}`,
-                    });
+                    try {
+                        await silentPrintElement(rebillPrintRef.current, {
+                            documentTitle: `Re-Bill-${Date.now()}`,
+                        });
+                    } catch (error) {
+                        console.warn('[Manual Order History] Silent reprint failed, falling back to browser print:', error);
+                        await handleRebillPrint?.();
+                    }
                 } else {
                     await handleRebillPrint?.();
                 }
             }
-            catch (e) { setInfoDialog({ isOpen: true, title: 'Re-Bill Failed', message: e?.message }); }
+            catch (e) {
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Re-Bill Failed',
+                    message: 'Unable to print the bill. Please try again or use the browser print dialog.',
+                });
+            }
             finally { setPendingRebillPrint(false); }
         };
         run();
@@ -872,8 +884,17 @@ export default function ManualOrderHistoryPage() {
         }
     };
 
-    const triggerRebill = (bill) => {
+    const triggerRebill = async (bill) => {
         if (!bill) return;
+
+        try {
+            if (!restaurant?.botDisplayNumber) {
+                await fetchRestaurantDetails();
+            }
+        } catch (error) {
+            console.warn('[Manual Order History] Could not refresh restaurant details before reprint:', error?.message || error);
+        }
+
         setPrintBillData(bill);
         setPendingRebillPrint(true);
     };
@@ -889,8 +910,10 @@ export default function ManualOrderHistoryPage() {
                             <BillToPrint
                                 order={{ 
                                     orderDate: printBillData.printedAt || printBillData.createdAt,
+                                    orderType: printBillData.orderType || printBillData.printedVia || 'dine-in',
                                     customerOrderId: printBillData.customerOrderId,
-                                    id: printBillData.id || printBillData.historyId
+                                    id: printBillData.id || printBillData.historyId,
+                                    notes: printBillData.notes || '',
                                 }}
                                 restaurant={restaurant}
                                 billDetails={{

@@ -76,7 +76,8 @@ const formatSuggestionAddressPreview = (addresses = []) => {
 };
 const sortManualTablesByName = (tables = []) => [...tables].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
 const IS_DEV_BUILD = process.env.NODE_ENV !== 'production';
-const DESKTOP_MUTATION_TIMEOUT_MS = IS_DEV_BUILD ? 30000 : 2500;
+const DESKTOP_MUTATION_TIMEOUT_MS = IS_DEV_BUILD ? 30000 : 12000;
+const DESKTOP_MUTATION_RETRY_TIMEOUT_MS = IS_DEV_BUILD ? 45000 : 20000;
 const DESKTOP_TOKEN_TIMEOUT_MS = IS_DEV_BUILD ? 5000 : 1200;
 const getTableCustomerName = (table = {}) => {
     const customerName = table?.currentOrder?.customerDetails?.name;
@@ -497,21 +498,37 @@ function ManualOrderPage() {
             return fetch(input, init);
         }
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        const runTimedFetch = async (requestTimeoutMs) => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+
+            try {
+                return await fetch(input, {
+                    ...init,
+                    signal: controller.signal,
+                });
+            } finally {
+                clearTimeout(timer);
+            }
+        };
 
         try {
-            return await fetch(input, {
-                ...init,
-                signal: controller.signal,
-            });
+            return await runTimedFetch(timeoutMs);
         } catch (error) {
             if (error?.name === 'AbortError') {
-                throw new Error('desktop action timeout');
+                try {
+                    console.warn('[Manual Order] Desktop fetch timed out, retrying once with a longer timeout.');
+                    return await runTimedFetch(Math.max(timeoutMs, DESKTOP_MUTATION_RETRY_TIMEOUT_MS));
+                } catch (retryError) {
+                    if (retryError?.name === 'AbortError') {
+                        const timeoutError = new Error('desktop action timeout');
+                        timeoutError.code = 'desktop_action_timeout';
+                        throw timeoutError;
+                    }
+                    throw retryError;
+                }
             }
             throw error;
-        } finally {
-            clearTimeout(timer);
         }
     }, [desktopRuntime]);
 

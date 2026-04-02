@@ -230,9 +230,14 @@ export default function CustomBillHistoryPage() {
         const runPrint = async () => {
             try {
                 if (isDesktopApp() && rebillPrintRef.current) {
-                    await silentPrintElement(rebillPrintRef.current, {
-                        documentTitle: `Re-Bill-${Date.now()}`,
-                    });
+                    try {
+                        await silentPrintElement(rebillPrintRef.current, {
+                            documentTitle: `Re-Bill-${Date.now()}`,
+                        });
+                    } catch (error) {
+                        console.warn('[Custom Bill History] Silent reprint failed, falling back to browser print:', error);
+                        await handleRebillPrint?.();
+                    }
                 } else {
                     await handleRebillPrint?.();
                 }
@@ -240,7 +245,7 @@ export default function CustomBillHistoryPage() {
                 setInfoDialog({
                     isOpen: true,
                     title: 'Re-Bill Failed',
-                    message: error?.message || 'Unable to print bill.',
+                    message: 'Unable to print the bill. Please try again or use the browser print dialog.',
                 });
             } finally {
                 setPendingRebillPrint(false);
@@ -398,8 +403,17 @@ export default function CustomBillHistoryPage() {
             ? `/owner-dashboard/manual-order?employee_of=${encodeURIComponent(employeeOfOwnerId)}`
             : '/owner-dashboard/manual-order';
 
-    const triggerRebill = (bill) => {
+    const triggerRebill = async (bill) => {
         if (!bill) return;
+
+        try {
+            if (!restaurant?.botDisplayNumber) {
+                await fetchRestaurantDetails();
+            }
+        } catch (error) {
+            console.warn('[Custom Bill History] Could not refresh restaurant details before reprint:', error?.message || error);
+        }
+
         setPrintBillData(bill);
         setPendingRebillPrint(true);
     };
@@ -828,7 +842,13 @@ export default function CustomBillHistoryPage() {
                 <div ref={rebillPrintRef}>
                     {printBillData && (
                         <BillToPrint
-                            order={{ orderDate: printBillData.printedAt ? new Date(printBillData.printedAt) : new Date() }}
+                            order={{
+                                orderDate: printBillData.printedAt ? new Date(printBillData.printedAt) : new Date(),
+                                orderType: printBillData.orderType || printBillData.printedVia || 'dine-in',
+                                customerOrderId: printBillData.customerOrderId || null,
+                                id: printBillData.historyId || printBillData.id || null,
+                                notes: printBillData.notes || '',
+                            }}
                             restaurant={restaurant || { name: 'Outlet', address: '' }}
                             billDetails={{
                                 subtotal: Number(printBillData.subtotal || 0),

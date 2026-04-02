@@ -1,5 +1,10 @@
 import { isDesktopApp } from './runtime';
 import { silentPrintDesktopHtml } from './offlineStore';
+function toPrintableError(error, fallbackMessage) {
+  if (error instanceof Error) return error;
+  const message = typeof error === 'string' && error ? error : fallbackMessage;
+  return new Error(message);
+}
 
 function safeReadStylesheet(stylesheet) {
   try {
@@ -56,17 +61,23 @@ export async function silentPrintElement(element, {
   printerName = '',
 } = {}) {
   if (!isDesktopApp()) {
-    return { ok: false, error: 'desktop_runtime_unavailable' };
+    throw new Error('desktop_runtime_unavailable');
   }
 
   if (!element?.outerHTML) {
-    return { ok: false, error: 'printable_element_missing' };
+    throw new Error('printable_element_missing');
   }
 
   const html = buildPrintableHtml(element.outerHTML, { title: documentTitle });
-  return silentPrintDesktopHtml({
+  const result = await silentPrintDesktopHtml({
     html,
     documentTitle,
     printerName,
   });
+
+  if (result?.ok === false) {
+    throw toPrintableError(result?.error, 'desktop_print_failed');
+  }
+
+  return result;
 }
