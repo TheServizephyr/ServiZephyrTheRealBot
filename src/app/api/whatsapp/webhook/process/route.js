@@ -411,12 +411,14 @@ const sendWelcomeMessageWithOptions = async (
         `1️⃣ Tap on *Order Now* to view menu and place Order.\n` +
         `2️⃣ Type *Need Help* for assistance.\n\n` +
         `👇👇 Click below to start 👇👇`;
-    const welcomeBody = customMessage || `Welcome to *${business.data.name}*\n\nOpen the menu and place your order using the short link below.\n\nReply with *Need Help* if you need assistance.`;
+    const welcomeBody = (customMessage || defaultWelcomeBody)
+        .replace(/\*Order Now\*/g, '*link*')
+        .replace(/Tap on \*link\*/g, 'Tap on the *link* below');
     const collectionName = business.ref.parent.id;
 
     // ⚡ OPTIMIZATION: Firestore save + Realtime mirror run in parallel after message is sent
     const orderUrl = toAbsoluteWelcomeUrl(builtPaths.orderShortPath || builtPaths.orderPath);
-    const finalWelcomeMessage = `${welcomeBody}\n\n*Order Link:*\n${orderUrl}`;
+    const finalWelcomeMessage = `${welcomeBody}\n\n${orderUrl}`;
 
     console.log(`[Webhook WA] Sending text welcome with short link to ${customerPhoneWithCode}`);
 
