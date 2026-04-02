@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { memo, useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, useMap, AdvancedMarker } from '@vis.gl/react-google-maps';
 import { Loader2, Globe, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -52,7 +52,7 @@ const MapControls = () => {
 
 
 // Main GoogleMap Component (This is where the fix is)
-const GoogleMap = ({ center, onIdle }) => {
+const GoogleMap = ({ center, onIdle, zoom = 15 }) => {
     const mapRef = useRef(null);
 
     // This handler will be called *after* the drag (pan) or zoom finishes
@@ -77,6 +77,12 @@ const GoogleMap = ({ center, onIdle }) => {
         }
     }, [center]); // <-- Runs only when 'center' prop changes
 
+    useEffect(() => {
+        if (mapRef.current && Number.isFinite(Number(zoom)) && typeof mapRef.current.setZoom === 'function') {
+            mapRef.current.setZoom(Number(zoom));
+        }
+    }, [zoom]);
+
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
@@ -92,7 +98,7 @@ const GoogleMap = ({ center, onIdle }) => {
                     // This sets the map's position ONLY on the first load.
                     defaultCenter={center} 
 
-                    defaultZoom={15}
+                    defaultZoom={zoom}
                     gestureHandling={'greedy'}
                     disableDefaultUI={true}
                     tilt={0}
@@ -113,4 +119,4 @@ const GoogleMap = ({ center, onIdle }) => {
     );
 };
 
-export default GoogleMap;
+export default memo(GoogleMap);

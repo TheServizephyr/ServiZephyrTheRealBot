@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock } from 'lucide-react';
+import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,6 +29,38 @@ const TokenVerificationLock = ({ message }) => (
 );
 
 const DEFAULT_MAP_CENTER = { lat: 22.9734, lng: 78.6569 }; // India center fallback
+const DEFAULT_EXACT_ZOOM = 16;
+const DEFAULT_APPROX_ZOOM = 11;
+const INDIA_FALLBACK_ZOOM = 5;
+const PIN_GEOCODE_MIN_DELTA = 0.00003;
+const PIN_GEOCODE_COOLDOWN_MS = 1500;
+const INDIA_GEO_BOUNDS = {
+    minLat: 6,
+    maxLat: 38,
+    minLng: 68,
+    maxLng: 98,
+};
+
+const normalizeCoords = (coords = {}) => ({
+    lat: Number(Number(coords?.lat || 0).toFixed(6)),
+    lng: Number(Number(coords?.lng || 0).toFixed(6)),
+});
+
+const hasMeaningfulPinMove = (prev, next, threshold = PIN_GEOCODE_MIN_DELTA) => {
+    if (!prev || !next) return true;
+    return Math.abs(Number(prev.lat) - Number(next.lat)) > threshold || Math.abs(Number(prev.lng) - Number(next.lng)) > threshold;
+};
+
+const isUsableIndiaLocation = (lat, lng) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (Math.abs(lat) < 0.5 && Math.abs(lng) < 0.5) return false;
+    return (
+        lat >= INDIA_GEO_BOUNDS.minLat &&
+        lat <= INDIA_GEO_BOUNDS.maxLat &&
+        lng >= INDIA_GEO_BOUNDS.minLng &&
+        lng <= INDIA_GEO_BOUNDS.maxLng
+    );
+};
 
 const getNestedParamFromReturnUrl = (returnUrl, key) => {
     const safeReturnUrl = String(returnUrl || '').trim();
@@ -41,11 +73,82 @@ const getNestedParamFromReturnUrl = (returnUrl, key) => {
     }
 };
 
+const extractRestaurantIdFromReturnUrl = (returnUrl = '') => {
+    const safeReturnUrl = String(returnUrl || '').trim();
+    if (!safeReturnUrl) return '';
+    try {
+        const nestedUrl = new URL(safeReturnUrl, 'http://localhost');
+        const match = nestedUrl.pathname.match(/^\/order\/([^/?#]+)/i);
+        return match?.[1] ? decodeURIComponent(match[1]) : '';
+    } catch {
+        return '';
+    }
+};
+
+const toRadians = (value) => (Number(value) * Math.PI) / 180;
+const toDegrees = (value) => (Number(value) * 180) / Math.PI;
+const EARTH_RADIUS_KM = 6371;
+
+const haversineDistanceKm = (from, to) => {
+    if (!from || !to) return Infinity;
+    const dLat = toRadians(Number(to.lat) - Number(from.lat));
+    const dLng = toRadians(Number(to.lng) - Number(from.lng));
+    const lat1 = toRadians(from.lat);
+    const lat2 = toRadians(to.lat);
+
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * EARTH_RADIUS_KM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const computeBearingDegrees = (from, to) => {
+    const lat1 = toRadians(from.lat);
+    const lat2 = toRadians(to.lat);
+    const dLng = toRadians(Number(to.lng) - Number(from.lng));
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) -
+        Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+    return (toDegrees(Math.atan2(y, x)) + 360) % 360;
+};
+
+const projectPointFromCenter = (center, bearingDeg, distanceKm) => {
+    const angularDistance = Number(distanceKm) / EARTH_RADIUS_KM;
+    const bearing = toRadians(bearingDeg);
+    const lat1 = toRadians(center.lat);
+    const lng1 = toRadians(center.lng);
+
+    const lat2 = Math.asin(
+        Math.sin(lat1) * Math.cos(angularDistance) +
+        Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing)
+    );
+    const lng2 = lng1 + Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
+        Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2)
+    );
+
+    return normalizeCoords({ lat: toDegrees(lat2), lng: toDegrees(lng2) });
+};
+
+const getRadiusZoom = (radiusKm = 5) => {
+    const radius = Number(radiusKm);
+    if (!Number.isFinite(radius) || radius <= 0.8) return 16;
+    if (radius <= 1.5) return 15;
+    if (radius <= 3) return 14;
+    if (radius <= 5) return 13;
+    if (radius <= 8) return 12;
+    return DEFAULT_APPROX_ZOOM;
+};
+
 const AddAddressPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const geocodeTimeoutRef = useRef(null);
-    const searchDebounceRef = useRef(null);
+    const geocodeAbortRef = useRef(null);
+    const geocodeRequestIdRef = useRef(0);
+    const lastQueuedCoordsRef = useRef(null);
+    const lastResolvedCoordsRef = useRef(null);
+    const lastGeocodeStartAtRef = useRef(0);
+    const idleSuppressionCenterRef = useRef(normalizeCoords(DEFAULT_MAP_CENTER));
     const initialLocationResolvedRef = useRef(false);
 
     const { user, isUserLoading } = useUser();
@@ -74,13 +177,19 @@ const AddAddressPageInternal = () => {
         searchParams.get('name') ||
         getNestedParamFromReturnUrl(rawReturnUrl, 'name') ||
         '';
+    const restaurantIdFromReturnUrl = extractRestaurantIdFromReturnUrl(rawReturnUrl);
 
     const [mapCenter, setMapCenter] = useState(DEFAULT_MAP_CENTER);
+    const [mapZoom, setMapZoom] = useState(DEFAULT_EXACT_ZOOM);
+    const [serviceArea, setServiceArea] = useState(null);
+    const [serviceAreaResolved, setServiceAreaResolved] = useState(false);
     const [addressDetails, setAddressDetails] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [permissionError, setPermissionError] = useState(null); // NEW: Persistent permission error
+    const [locationHint, setLocationHint] = useState('');
+    const [isPinAddressLoading, setIsPinAddressLoading] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const [recipientName, setRecipientName] = useState('');
@@ -90,15 +199,93 @@ const AddAddressPageInternal = () => {
     const [landmark, setLandmark] = useState('');
     const [addressLabel, setAddressLabel] = useState('Home');
     const [customAddressLabel, setCustomAddressLabel] = useState('');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [suggestions, setSuggestions] = useState([]);
-    const [isSearchingAddress, setIsSearchingAddress] = useState(false);
-    const [searchFeedback, setSearchFeedback] = useState('');
 
     const returnUrl = rawReturnUrl;
     const useCurrent =
         searchParams.get('useCurrent') === 'true' ||
         searchParams.get('currentLocation') === 'true';
+    const editId = searchParams.get('editId');
+    const editDataRaw = searchParams.get('editData');
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadServiceArea = async () => {
+            if (!isTokenValid || editDataRaw) {
+                if (isMounted) setServiceAreaResolved(true);
+                return;
+            }
+
+            try {
+                let resolvedRestaurantId = restaurantIdFromReturnUrl;
+                let fallbackCenter = null;
+
+                if (!resolvedRestaurantId && activeOrderId && token) {
+                    const statusRes = await fetch(`/api/order/status/${activeOrderId}?token=${encodeURIComponent(token)}`, {
+                        cache: 'no-store',
+                    });
+                    const statusData = await statusRes.json().catch(() => ({}));
+                    if (statusRes.ok) {
+                        resolvedRestaurantId = String(statusData?.order?.restaurantId || '').trim();
+                        const statusRestaurantLocation = statusData?.order?.restaurantLocation;
+                        const fallbackLat = Number(statusRestaurantLocation?.lat ?? statusRestaurantLocation?.latitude);
+                        const fallbackLng = Number(statusRestaurantLocation?.lng ?? statusRestaurantLocation?.longitude);
+                        if (isUsableIndiaLocation(fallbackLat, fallbackLng)) {
+                            fallbackCenter = normalizeCoords({ lat: fallbackLat, lng: fallbackLng });
+                        }
+                    }
+                }
+
+                if (!resolvedRestaurantId) {
+                    if (isMounted) setServiceArea(null);
+                    return;
+                }
+
+                const menuRes = await fetch(`/api/public/menu/${encodeURIComponent(resolvedRestaurantId)}`, {
+                    cache: 'no-store',
+                });
+                const menuData = await menuRes.json().catch(() => ({}));
+                if (!menuRes.ok) {
+                    throw new Error(menuData?.message || 'Failed to resolve restaurant delivery area.');
+                }
+
+                const restaurantLat = Number(menuData?.latitude);
+                const restaurantLng = Number(menuData?.longitude);
+                const radiusKm = Number(menuData?.deliveryRadius);
+                const safeRadiusKm = Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : 5;
+
+                if (!isUsableIndiaLocation(restaurantLat, restaurantLng)) {
+                    if (isMounted && fallbackCenter) {
+                        setServiceArea({
+                            center: fallbackCenter,
+                            radiusKm: safeRadiusKm,
+                            restaurantId: resolvedRestaurantId,
+                        });
+                    }
+                    return;
+                }
+
+                if (isMounted) {
+                    setServiceArea({
+                        center: normalizeCoords({ lat: restaurantLat, lng: restaurantLng }),
+                        radiusKm: safeRadiusKm,
+                        restaurantId: resolvedRestaurantId,
+                    });
+                }
+            } catch (error) {
+                console.warn('[Add Address] Failed to resolve restaurant service area:', error?.message || error);
+                if (isMounted) setServiceArea(null);
+            } finally {
+                if (isMounted) setServiceAreaResolved(true);
+            }
+        };
+
+        loadServiceArea();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [activeOrderId, editDataRaw, isTokenValid, restaurantIdFromReturnUrl, token]);
 
     useEffect(() => {
         const verifySessionToken = async () => {
@@ -140,9 +327,6 @@ const AddAddressPageInternal = () => {
         verifySessionToken();
     }, [token, phone, ref, tableId]);
 
-    const editId = searchParams.get('editId');
-    const editDataRaw = searchParams.get('editData');
-
     // Initialize edit data
     useEffect(() => {
         if (!editDataRaw || !isTokenValid) return;
@@ -158,8 +342,9 @@ const AddAddressPageInternal = () => {
                 longitude: data.longitude
             });
             setMapCenter({ lat: data.latitude, lng: data.longitude });
+            setMapZoom(DEFAULT_EXACT_ZOOM);
+            idleSuppressionCenterRef.current = normalizeCoords({ lat: data.latitude, lng: data.longitude });
             setFullAddress(data.mapAddress || data.full || '');
-            setSearchQuery(data.mapAddress || data.full || '');
             setAddressDetail(data.addressDetail || '');
             setLandmark(data.landmark || '');
             setRecipientName(data.name || '');
@@ -177,36 +362,159 @@ const AddAddressPageInternal = () => {
             console.error('[Add Address] Failed to parse editData:', e);
         }
     }, [editDataRaw, isTokenValid]);
-    const reverseGeocode = useCallback(async (coords) => {
+
+    useEffect(() => () => {
+        if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
+        if (geocodeAbortRef.current) geocodeAbortRef.current.abort();
+    }, []);
+
+    const getSavedCustomerLocation = useCallback(() => {
+        try {
+            const raw = localStorage.getItem('customerLocation');
+            if (!raw) return null;
+
+            const parsed = JSON.parse(raw);
+            const lat = Number(parsed?.latitude ?? parsed?.lat);
+            const lng = Number(parsed?.longitude ?? parsed?.lng);
+            if (!isUsableIndiaLocation(lat, lng)) return null;
+
+            return {
+                coords: { lat, lng },
+                full: String(parsed?.full || parsed?.mapAddress || '').trim(),
+            };
+        } catch {
+            return null;
+        }
+    }, []);
+
+    const reverseGeocode = useCallback(async (coords, options = {}) => {
+        const { background = false, hint = '', force = false } = options;
+        const normalizedCoords = normalizeCoords(coords);
+
+        if (!force) {
+            const requestStartedRecently = Date.now() - lastGeocodeStartAtRef.current < PIN_GEOCODE_COOLDOWN_MS;
+            const matchesQueuedTarget = !hasMeaningfulPinMove(lastQueuedCoordsRef.current, normalizedCoords);
+            const matchesResolvedTarget = !hasMeaningfulPinMove(lastResolvedCoordsRef.current, normalizedCoords);
+            const matchesCurrentAddress =
+                !!addressDetails &&
+                !hasMeaningfulPinMove(
+                    normalizeCoords({
+                        lat: addressDetails.latitude,
+                        lng: addressDetails.longitude,
+                    }),
+                    normalizedCoords
+                );
+
+            if (matchesCurrentAddress || matchesResolvedTarget || (matchesQueuedTarget && requestStartedRecently)) {
+                return;
+            }
+        }
+
+        lastQueuedCoordsRef.current = normalizedCoords;
+
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
         geocodeTimeoutRef.current = setTimeout(async () => {
-            setLoading(true); setError('');
-            // Note: We do NOT clear permissionError here, so it persists until manual retry
+            if (geocodeAbortRef.current) geocodeAbortRef.current.abort();
+
+            const controller = new AbortController();
+            geocodeAbortRef.current = controller;
+            const requestId = geocodeRequestIdRef.current + 1;
+            geocodeRequestIdRef.current = requestId;
+            lastGeocodeStartAtRef.current = Date.now();
+
+            const shouldKeepMapInteractive = background && !!addressDetails;
+            if (shouldKeepMapInteractive) {
+                setIsPinAddressLoading(true);
+            } else {
+                setLoading(true);
+            }
+
+            setError('');
             try {
-                const res = await fetch(`/api/public/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
+                const res = await fetch(`/api/public/location/geocode?lat=${normalizedCoords.lat}&lng=${normalizedCoords.lng}`, {
+                    signal: controller.signal,
+                    cache: 'no-store',
+                });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
+                if (requestId !== geocodeRequestIdRef.current) return;
+
                 setAddressDetails({
                     street: data.street || '',
                     city: data.city || data.town || data.village || '',
                     pincode: data.pincode || '',
                     state: data.state || '',
                     country: data.country || 'IN',
-                    latitude: coords.lat,
-                    longitude: coords.lng
+                    latitude: normalizedCoords.lat,
+                    longitude: normalizedCoords.lng
                 });
                 setFullAddress(data.formatted_address || '');
-                setSearchQuery(data.formatted_address || '');
+                lastResolvedCoordsRef.current = normalizedCoords;
+                if (hint) setLocationHint(hint);
             } catch (err) {
-                setError('Could not fetch address details for this pin location.');
-                setAddressDetails(null);
+                if (controller.signal.aborted || requestId !== geocodeRequestIdRef.current) return;
+                if (shouldKeepMapInteractive && addressDetails) {
+                    setLocationHint('Pin moved, but address update failed. Try dropping the pin again.');
+                } else {
+                    setError('Could not fetch address details for this pin location.');
+                    setAddressDetails(null);
+                }
             } finally {
-                setLoading(false);
+                if (requestId === geocodeRequestIdRef.current) {
+                    setIsPinAddressLoading(false);
+                    setLoading(false);
+                }
             }
-        }, 500);
-    }, []);
+        }, background ? 250 : 0);
+    }, [addressDetails]);
 
-    const handleMapIdle = useCallback((coords) => reverseGeocode(coords), [reverseGeocode]);
+    const applyRestaurantServiceAreaFallback = useCallback((hintMessage) => {
+        if (!serviceArea?.center || !Number.isFinite(Number(serviceArea?.radiusKm))) {
+            return false;
+        }
+
+        setMapCenter(serviceArea.center);
+        setMapZoom(getRadiusZoom(serviceArea.radiusKm));
+        idleSuppressionCenterRef.current = normalizeCoords(serviceArea.center);
+        setLocationHint(hintMessage || 'Location permission is blocked, so we opened the restaurant delivery area. Keep the pin inside this service range.');
+        reverseGeocode(serviceArea.center, {
+            background: false,
+            force: true,
+        });
+        return true;
+    }, [reverseGeocode, serviceArea]);
+
+    const handleMapIdle = useCallback((coords) => {
+        const normalizedCoords = normalizeCoords(coords);
+        if (
+            idleSuppressionCenterRef.current &&
+            !hasMeaningfulPinMove(idleSuppressionCenterRef.current, normalizedCoords)
+        ) {
+            idleSuppressionCenterRef.current = null;
+            return;
+        }
+
+        if (permissionError && serviceArea?.center && Number.isFinite(Number(serviceArea?.radiusKm))) {
+            const distanceFromRestaurant = haversineDistanceKm(serviceArea.center, normalizedCoords);
+            const radiusKm = Number(serviceArea.radiusKm);
+            if (distanceFromRestaurant > radiusKm) {
+                const snapBearing = computeBearingDegrees(serviceArea.center, normalizedCoords);
+                const snappedCoords = projectPointFromCenter(
+                    serviceArea.center,
+                    snapBearing,
+                    Math.max(radiusKm - 0.03, 0.05)
+                );
+                idleSuppressionCenterRef.current = normalizeCoords(snappedCoords);
+                setMapCenter(snappedCoords);
+                setMapZoom(getRadiusZoom(radiusKm));
+                setLocationHint(`Location permission is blocked, so the pin stays inside ${radiusKm} km delivery radius.`);
+                reverseGeocode(snappedCoords, { background: false, force: true });
+                return;
+            }
+        }
+
+        reverseGeocode(normalizedCoords, { background: true });
+    }, [permissionError, reverseGeocode, serviceArea]);
 
     const getIpApproximateLocation = useCallback(async () => {
         setLoading(true);
@@ -221,20 +529,27 @@ const AddAddressPageInternal = () => {
 
             const lat = Number(data?.lat);
             const lng = Number(data?.lng);
-            if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-                throw new Error('IP location did not return valid coordinates.');
+            if (!isUsableIndiaLocation(lat, lng)) {
+                throw new Error('IP location did not return a usable India coordinate.');
             }
 
             const coords = { lat, lng };
             setMapCenter(coords);
-            setSearchFeedback('Approximate location detected from network. You can adjust pin.');
-            reverseGeocode(coords);
+            setMapZoom(DEFAULT_APPROX_ZOOM);
+            idleSuppressionCenterRef.current = normalizeCoords(coords);
+            reverseGeocode(coords, {
+                background: false,
+                hint: 'Approximate location detected from network. You can fine-tune the pin without reloading the map.',
+                force: true,
+            });
         } catch (ipErr) {
             console.warn('[Add Address] IP location failed:', ipErr?.message || ipErr);
             setMapCenter(DEFAULT_MAP_CENTER);
-            setSearchFeedback('');
+            setMapZoom(INDIA_FALLBACK_ZOOM);
+            idleSuppressionCenterRef.current = normalizeCoords(DEFAULT_MAP_CENTER);
+            setLocationHint('Location permission is blocked, so we opened a safe India map view. Move the pin to your address.');
             setLoading(false);
-            setError('Could not detect location from network. Please search manually or use current location.');
+            setError('');
         }
     }, [reverseGeocode]);
 
@@ -246,11 +561,19 @@ const AddAddressPageInternal = () => {
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
-                setMapCenter(coords); reverseGeocode(coords); setError('');
+                setMapCenter(coords);
+                setMapZoom(DEFAULT_EXACT_ZOOM);
+                idleSuppressionCenterRef.current = normalizeCoords(coords);
+                reverseGeocode(coords, {
+                    background: false,
+                    hint: 'Current location detected. You can fine-tune the pin without reloading the map.',
+                    force: true,
+                });
+                setError('');
             },
             (err) => {
                 setLoading(false);
-                let message = "Could not fetch location. Please search manually.";
+                let message = "Could not fetch location. Please move the map pin manually.";
                 let isPermIssue = false;
 
                 if (err.code === 1) {
@@ -263,106 +586,16 @@ const AddAddressPageInternal = () => {
 
                 if (isPermIssue) {
                     setPermissionError(message); // Persist this!
-                    getIpApproximateLocation();
+                    if (!applyRestaurantServiceAreaFallback(`Location access is blocked, so you can set the pin only inside the restaurant's delivery radius.`)) {
+                        getIpApproximateLocation();
+                    }
                 } else {
                     setError(message);
                 }
             },
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
         );
-    }, [reverseGeocode, getIpApproximateLocation]);
-
-    const fetchLocationSuggestions = useCallback(async (query, options = {}) => {
-        const { showFeedback = false } = options;
-        const trimmed = String(query || '').trim();
-        if (trimmed.length < 3) {
-            setSuggestions([]);
-            if (showFeedback) {
-                setSearchFeedback('Please type at least 3 characters to search.');
-            }
-            return [];
-        }
-
-        try {
-            setIsSearchingAddress(true);
-            if (showFeedback) setSearchFeedback('Searching address...');
-            const res = await fetch(`/api/public/location/search?query=${encodeURIComponent(trimmed)}`);
-            const data = await res.json().catch(() => ([]));
-            if (!res.ok) {
-                const msg = data?.message || 'Search failed.';
-                throw new Error(msg);
-            }
-            const safe = Array.isArray(data) ? data : [];
-            setSuggestions(safe);
-            if (showFeedback) {
-                setSearchFeedback(safe.length > 0 ? `Found ${safe.length} result${safe.length > 1 ? 's' : ''}.` : 'No matching address found. Try nearby landmark/locality.');
-            }
-            return safe;
-        } catch (err) {
-            console.error('[Add Address] Search API error:', err);
-            setSuggestions([]);
-            if (showFeedback) {
-                setSearchFeedback(`Search failed: ${err?.message || 'Unknown error'}`);
-            }
-            return [];
-        } finally {
-            setIsSearchingAddress(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-
-        const normalizedSearch = searchQuery.trim();
-        const normalizedFull = fullAddress.trim();
-
-        if (normalizedSearch.length > 2 && normalizedSearch !== normalizedFull) {
-            searchDebounceRef.current = setTimeout(() => {
-                fetchLocationSuggestions(normalizedSearch, { showFeedback: false });
-            }, 300);
-        } else {
-            setSuggestions([]);
-            if (normalizedSearch.length === 0) setSearchFeedback('');
-        }
-
-        return () => {
-            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-        };
-    }, [searchQuery, fullAddress, fetchLocationSuggestions]);
-
-    const handleSuggestionClick = useCallback((suggestion) => {
-        const displayAddress = [suggestion?.placeName, suggestion?.placeAddress].filter(Boolean).join(', ');
-        setSearchQuery(displayAddress || suggestion?.placeAddress || suggestion?.placeName || '');
-        setSuggestions([]);
-        setSearchFeedback('Address selected. Map updated.');
-        setPermissionError(null);
-        setError('');
-
-        const lat = Number(suggestion?.latitude);
-        const lng = Number(suggestion?.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            setError('Selected address is missing coordinates. Please pick another result.');
-            return;
-        }
-
-        const coords = { lat, lng };
-        setMapCenter(coords);
-        reverseGeocode(coords);
-    }, [reverseGeocode]);
-
-    const handleManualSearchSubmit = useCallback(async (e) => {
-        e.preventDefault();
-        const query = searchQuery.trim();
-        if (query.length < 3) return;
-
-        const results = await fetchLocationSuggestions(query, { showFeedback: true });
-
-        if (Array.isArray(results) && results.length > 0) {
-            handleSuggestionClick(results[0]);
-        } else {
-            setSearchFeedback('No address match found. Try a nearby landmark or area name.');
-        }
-    }, [searchQuery, fetchLocationSuggestions, handleSuggestionClick]);
+    }, [applyRestaurantServiceAreaFallback, getIpApproximateLocation, reverseGeocode]);
 
     // Separate effect for initial data prefill to prevent overwriting user input
     useEffect(() => {
@@ -510,7 +743,7 @@ const AddAddressPageInternal = () => {
 
     // Effect for initial location resolution (only once after token validation)
     useEffect(() => {
-        if (!isTokenValid || initialLocationResolvedRef.current || editDataRaw) return;
+        if (!isTokenValid || !serviceAreaResolved || initialLocationResolvedRef.current || editDataRaw) return;
 
         initialLocationResolvedRef.current = true;
         if (useCurrent) {
@@ -518,7 +751,7 @@ const AddAddressPageInternal = () => {
         } else {
             getIpApproximateLocation();
         }
-    }, [isTokenValid, useCurrent, getCurrentGeolocation, getIpApproximateLocation, editDataRaw]);
+    }, [editDataRaw, getCurrentGeolocation, getIpApproximateLocation, isTokenValid, serviceAreaResolved, useCurrent]);
 
 
     const handleConfirmLocation = async () => {
@@ -611,6 +844,7 @@ const AddAddressPageInternal = () => {
         'mt-1 border-red-300 bg-red-50/80 focus-visible:ring-red-400 dark:border-red-900 dark:bg-red-950/30';
     const filledRequiredFieldClassName =
         'mt-1 border-border bg-background';
+    const showBlockingMapOverlay = loading && !addressDetails;
 
     return (
         <div className="h-screen w-screen flex flex-col bg-background text-foreground">
@@ -622,62 +856,29 @@ const AddAddressPageInternal = () => {
 
             <div className="flex-grow flex flex-col md:flex-row">
                 <div className="md:w-1/2 h-64 md:h-full flex-shrink-0 relative">
-                    {/* Show Loading Overlay over map while fetching location */}
-                    {loading && (
+                    {showBlockingMapOverlay && (
                         <div className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white">
                             <GoldenCoinSpinner />
                             <p className="mt-4 font-semibold text-lg animate-pulse">Fetching your location...</p>
                         </div>
                     )}
-                    <GoogleMap center={mapCenter} onIdle={handleMapIdle} />
+                    <GoogleMap center={mapCenter} zoom={mapZoom} onIdle={handleMapIdle} />
                 </div>
 
                 <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
-                    <form onSubmit={handleManualSearchSubmit} className="space-y-2">
-                        <Label htmlFor="addressSearch">Search address manually (if location permission denied)</Label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                id="addressSearch"
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Type address and press Enter"
-                                className="pl-9 pr-20 h-11"
-                            />
-                            <Button
-                                type="submit"
-                                variant="outline"
-                                size="sm"
-                                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8"
-                                disabled={searchQuery.trim().length < 3 || isSearchingAddress}
-                            >
-                                {isSearchingAddress ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
-                            </Button>
-                        </div>
-                        {searchFeedback && (
-                            <p className="text-xs text-muted-foreground">{searchFeedback}</p>
-                        )}
-                        {suggestions.length > 0 && (
-                            <div className="border border-border rounded-lg bg-card shadow-md max-h-52 overflow-y-auto">
-                                {suggestions.map((s) => (
-                                    <button
-                                        type="button"
-                                        key={s.eLoc}
-                                        onClick={() => handleSuggestionClick(s)}
-                                        className="w-full text-left p-3 hover:bg-muted border-b border-border last:border-b-0"
-                                    >
-                                        <p className="text-sm font-semibold">{s.placeName}</p>
-                                        <p className="text-xs text-muted-foreground">{s.placeAddress}</p>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </form>
+                    <div className="rounded-xl border border-border bg-muted/30 p-3">
+                        <p className="text-sm font-medium">Set address directly from the map pin</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Move the map, leave the pin where you want, and we&apos;ll update the address in the background without refreshing the map.
+                        </p>
+                    </div>
 
-                    <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading && error.includes('Fetching')}>
-                        {(loading && error.includes('Fetching')) ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
+                    <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading || isPinAddressLoading}>
+                        {loading ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>
+                    {locationHint && (
+                        <p className="text-xs text-muted-foreground">{locationHint}</p>
+                    )}
                     {permissionError && (
                         <div className="text-amber-700 dark:text-amber-300 text-sm font-medium p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
                             {permissionError}
@@ -695,10 +896,18 @@ const AddAddressPageInternal = () => {
                     ) : addressDetails ? (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
                             <div>
-                                <Label htmlFor="fullAddress">Complete Address *</Label>
+                                <div className="flex items-center justify-between gap-3">
+                                    <Label htmlFor="fullAddress">Complete Address *</Label>
+                                    {isPinAddressLoading && (
+                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            Updating from pin...
+                                        </div>
+                                    )}
+                                </div>
                                 <p className="mt-1 text-xs text-muted-foreground">Full address from map. Edit if house number, locality, or pin needs correction.</p>
                                 <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} required rows={3} className={isFullAddressMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
-                                <p className="text-xs text-muted-foreground mt-1">Drag the map pin to get the address, then edit it here if needed.</p>
+                                <p className="text-xs text-muted-foreground mt-1">Move the map and leave the pin where you want. The address updates automatically here in the background.</p>
                             </div>
                             {/* Address Details and Landmark intentionally hidden for now. */}
                             <div className="grid grid-cols-2 gap-4">
@@ -729,7 +938,7 @@ const AddAddressPageInternal = () => {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-border mt-4">
-                                <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails || !fullAddress.trim()} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                <Button onClick={handleConfirmLocation} disabled={loading || isPinAddressLoading || isSaving || !addressDetails || !fullAddress.trim()} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                     {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
                                 </Button>
                             </div>
