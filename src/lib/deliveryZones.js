@@ -112,18 +112,17 @@ export function normalizeDeliveryZones(zones = []) {
             return {
                 id: String(zone.zone_id || zone.zoneId || zone.id || `zone_${index + 1}`).trim(),
                 name: String(zone.name || zone.zoneName || `Zone ${index + 1}`).trim(),
-                isActive: zone.is_active !== undefined ? zone.is_active !== false : zone.isActive !== false,
+                isActive: true,
                 isBlocked: zone.is_blocked === true || zone.isBlocked === true || String(zone.status || '').toLowerCase() === 'blocked',
                 priority: toFiniteNumber(zone.priority, index) ?? index,
                 baseFee: toNullableFiniteNumber(zone.baseFee, null),
-                maxServiceRadiusKm: toNullableFiniteNumber(zone.maxServiceRadiusKm, null),
                 pricingTiers,
                 polygons,
             };
         })
         .filter(Boolean)
         .sort((a, b) => {
-            if (a.priority !== b.priority) return a.priority - b.priority;
+            if (a.priority !== b.priority) return b.priority - a.priority;
             if (a.isBlocked !== b.isBlocked) return a.isBlocked ? -1 : 1;
             return a.name.localeCompare(b.name);
         });
@@ -149,13 +148,27 @@ function isPointInRing(point, ring) {
     return inside;
 }
 
+function doesZoneMatchPoint(zone, point) {
+    return Array.isArray(zone?.polygons) && zone.polygons.some((ring) => isPointInRing(point, ring));
+}
+
+export function findMatchingBlockedDeliveryZone(zones = [], point = null) {
+    if (!point) return null;
+
+    for (const zone of zones) {
+        if (!zone?.isActive || !zone?.isBlocked) continue;
+        if (doesZoneMatchPoint(zone, point)) return zone;
+    }
+
+    return null;
+}
+
 export function findMatchingDeliveryZone(zones = [], point = null) {
     if (!point) return null;
 
     for (const zone of zones) {
-        if (!zone?.isActive) continue;
-        const matches = Array.isArray(zone.polygons) && zone.polygons.some((ring) => isPointInRing(point, ring));
-        if (matches) return zone;
+        if (!zone?.isActive || zone?.isBlocked) continue;
+        if (doesZoneMatchPoint(zone, point)) return zone;
     }
 
     return null;
@@ -249,8 +262,15 @@ export function calculateHybridDeliveryCharge({
     }
 
     const customerPoint = { lat: addressLat, lng: addressLng };
-    const matchedZone = findMatchingDeliveryZone(normalizedZones, customerPoint);
+    const blockedZone = findMatchingBlockedDeliveryZone(normalizedZones, customerPoint);
+    if (blockedZone) {
+        return {
+            ...buildBlockedZoneResponse({ zone: blockedZone, aerialDistance, roadDistance, roadFactor }),
+            engineMode: 'hybrid-zones',
+        };
+    }
 
+    const matchedZone = findMatchingDeliveryZone(normalizedZones, customerPoint);
     if (!matchedZone) {
         if (settings.zoneFallbackToLegacy === false) {
             return {
@@ -270,35 +290,6 @@ export function calculateHybridDeliveryCharge({
             ...legacyResult,
             pricingSource: 'legacy-fallback',
             engineMode: 'hybrid-zones',
-        };
-    }
-
-    if (matchedZone.isBlocked) {
-        return {
-            ...buildBlockedZoneResponse({ zone: matchedZone, aerialDistance, roadDistance, roadFactor }),
-            engineMode: 'hybrid-zones',
-        };
-    }
-
-    if (
-        matchedZone.maxServiceRadiusKm !== null &&
-        matchedZone.maxServiceRadiusKm >= 0 &&
-        roadDistance > matchedZone.maxServiceRadiusKm
-    ) {
-        return {
-            allowed: false,
-            charge: 0,
-            aerialDistance: parseFloat(aerialDistance.toFixed(1)),
-            roadDistance,
-            roadFactor,
-            type: 'hybrid-zone-radius',
-            pricingSource: 'zone-radius',
-            engineMode: 'hybrid-zones',
-            zone: {
-                id: matchedZone.id,
-                name: matchedZone.name,
-            },
-            message: `${matchedZone.name} is currently serviced only up to ${matchedZone.maxServiceRadiusKm}km.`,
         };
     }
 
@@ -323,3 +314,4 @@ export function calculateHybridDeliveryCharge({
         },
     };
 }
+

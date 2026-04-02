@@ -208,11 +208,10 @@ export async function PATCH(req) {
                 boundary: normalizeBoundary(zone?.boundary),
                 // Firestore rejects nested arrays, so we persist the flattened boundary source of truth.
                 geojson: null,
-                is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
+                is_active: true,
                 is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
                 priority: toFiniteNumber(zone?.priority, index),
                 baseFee: toFiniteNumber(zone?.baseFee, 0),
-                maxServiceRadiusKm: toNullableFiniteNumber(zone?.maxServiceRadiusKm, null),
                 color: String(zone?.color || '').trim() || null,
                 pricingTiers: Array.isArray(zone?.pricingTiers)
                     ? zone.pricingTiers.map((tier) => ({

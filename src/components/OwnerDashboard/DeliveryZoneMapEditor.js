@@ -29,6 +29,23 @@ function createZoneId() {
     return `zone_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function isPointInsideRadius(point, center, radiusMeters) {
+    if (!Array.isArray(point) || point.length < 2 || !Number.isFinite(radiusMeters) || radiusMeters <= 0) {
+        return false;
+    }
+
+    const lat = Number(point[0]);
+    const lng = Number(point[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+    return L.latLng(Number(center?.lat), Number(center?.lng)).distanceTo(L.latLng(lat, lng)) <= radiusMeters;
+}
+
+function isBoundaryInsideRadius(boundary = [], center, radiusMeters) {
+    if (!Array.isArray(boundary) || boundary.length < 3) return false;
+    return boundary.every((point) => isPointInsideRadius(point, center, radiusMeters));
+}
+
 function normalizeBoundaryFromLayer(layer) {
     const latLngs = layer.getLatLngs();
     const ring = Array.isArray(latLngs?.[0]) ? latLngs[0] : latLngs;
@@ -49,10 +66,9 @@ function normalizeZoneForMap(zone = {}, index = 0, fallbackBoundary = [], fallba
         zone_id: String(zone?.zone_id || zone?.zoneId || zone?.id || createZoneId()).trim(),
         name: String(zone?.name || `Zone ${index + 1}`).trim(),
         priority: Number.isFinite(Number(zone?.priority)) ? Number(zone.priority) : index,
-        is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
+        is_active: true,
         is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
         baseFee: Number.isFinite(Number(zone?.baseFee)) ? Number(zone.baseFee) : 0,
-        maxServiceRadiusKm: Number.isFinite(Number(zone?.maxServiceRadiusKm)) ? Number(zone.maxServiceRadiusKm) : null,
         color: String(zone?.color || fallbackColor).trim() || fallbackColor,
         boundary: Array.isArray(zone?.boundary) && zone.boundary.length >= 3 ? zone.boundary : fallbackBoundary,
         geojson: null,
@@ -78,6 +94,7 @@ export default function DeliveryZoneMapEditor({
     onZonesChange,
     onZoneCreated,
     onZoneSelect,
+    onValidationError,
     selectedZoneId = null,
     readOnly = false,
     heightClass = 'h-[420px]',
@@ -94,9 +111,13 @@ export default function DeliveryZoneMapEditor({
     const onZonesChangeRef = useRef(onZonesChange);
     const onZoneCreatedRef = useRef(onZoneCreated);
     const onZoneSelectRef = useRef(onZoneSelect);
+    const onValidationErrorRef = useRef(onValidationError);
     const selectedColorRef = useRef(COLOR_OPTIONS[0]);
     const activeToolRef = useRef('pan');
     const hasFitBoundsRef = useRef(false);
+    const safeCenterRef = useRef(toMapCenter(center));
+    const deliveryRadiusKmRef = useRef(Number(deliveryRadiusKm) || 0);
+    const selectedZoneIdRef = useRef(selectedZoneId);
 
     const safeCenter = useMemo(() => toMapCenter(center), [center]);
     const [selectedColor, setSelectedColor] = useState(
@@ -121,12 +142,74 @@ export default function DeliveryZoneMapEditor({
     }, [onZoneSelect]);
 
     useEffect(() => {
+        onValidationErrorRef.current = onValidationError;
+    }, [onValidationError]);
+
+    useEffect(() => {
+        safeCenterRef.current = safeCenter;
+    }, [safeCenter]);
+
+    useEffect(() => {
+        deliveryRadiusKmRef.current = Number(deliveryRadiusKm) || 0;
+    }, [deliveryRadiusKm]);
+
+    useEffect(() => {
+        selectedZoneIdRef.current = selectedZoneId;
+    }, [selectedZoneId]);
+
+    useEffect(() => {
         selectedColorRef.current = selectedColor;
     }, [selectedColor]);
 
     useEffect(() => {
         activeToolRef.current = activeTool;
     }, [activeTool]);
+
+    const getRadiusMeters = () => Math.max(0, Number(deliveryRadiusKmRef.current) || 0) * 1000;
+
+    const notifyRadiusViolation = () => {
+        onValidationErrorRef.current?.('Global radius ke bahar polygon draw ya edit nahi kar sakte.');
+    };
+
+    const renderZonesOnMap = (nextZones = []) => {
+        const map = mapRef.current;
+        const featureGroup = featureGroupRef.current;
+        if (!map || !featureGroup) return;
+
+        featureGroup.clearLayers();
+
+        (nextZones || []).forEach((zone, index) => {
+            if (!Array.isArray(zone?.boundary) || zone.boundary.length < 3) return;
+
+            const polygon = L.polygon(zone.boundary, {
+                ...getPolygonStyle(zone, selectedZoneIdRef.current === zone.zone_id),
+                zoneId: zone.zone_id,
+                zoneColor: zone.color,
+            });
+
+            polygon.bindTooltip(
+                `${zone?.name || `Zone ${index + 1}`}${zone?.is_blocked ? ' (Blocked)' : ''}`,
+                { sticky: true }
+            );
+
+            polygon.on('click', () => {
+                if (activeToolRef.current !== 'pan') return;
+                onZoneSelectRef.current?.(zone.zone_id);
+            });
+
+            featureGroup.addLayer(polygon);
+        });
+
+        if ((nextZones || []).length > 0) {
+            const bounds = featureGroup.getBounds();
+            if (bounds.isValid()) {
+                map.fitBounds(bounds.pad(0.12));
+                hasFitBoundsRef.current = true;
+            }
+        } else {
+            hasFitBoundsRef.current = false;
+        }
+    };
 
     const disableAllTools = () => {
         drawHandlerRef.current?.disable();
@@ -246,6 +329,11 @@ export default function DeliveryZoneMapEditor({
             const layer = event.layer;
             const boundary = normalizeBoundaryFromLayer(layer);
             if (boundary.length < 3) return;
+            if (!isBoundaryInsideRadius(boundary, safeCenterRef.current, getRadiusMeters())) {
+                notifyRadiusViolation();
+                setActiveTool('pan');
+                return;
+            }
 
             const nextZoneIndex = (zonesRef.current || []).length;
             const zoneColor = selectedColorRef.current;
@@ -271,6 +359,19 @@ export default function DeliveryZoneMapEditor({
         });
 
         map.on(L.Draw.Event.EDITED, () => {
+            const editedLayers = featureGroup.getLayers().filter((layer) => layer instanceof L.Polygon);
+            const hasOutsidePolygon = editedLayers.some((layer) => {
+                const boundary = normalizeBoundaryFromLayer(layer);
+                return !isBoundaryInsideRadius(boundary, safeCenterRef.current, getRadiusMeters());
+            });
+
+            if (hasOutsidePolygon) {
+                notifyRadiusViolation();
+                renderZonesOnMap(zonesRef.current || []);
+                setActiveTool('pan');
+                return;
+            }
+
             syncZonesFromLayers();
             setActiveTool('pan');
         });
@@ -365,43 +466,7 @@ export default function DeliveryZoneMapEditor({
     }, [heightClass, readOnly]);
 
     useEffect(() => {
-        const map = mapRef.current;
-        const featureGroup = featureGroupRef.current;
-        if (!map || !featureGroup) return;
-
-        featureGroup.clearLayers();
-
-        (zones || []).forEach((zone, index) => {
-            if (!Array.isArray(zone?.boundary) || zone.boundary.length < 3) return;
-
-            const polygon = L.polygon(zone.boundary, {
-                ...getPolygonStyle(zone, selectedZoneId === zone.zone_id),
-                zoneId: zone.zone_id,
-                zoneColor: zone.color,
-            });
-
-            polygon.bindTooltip(
-                `${zone?.name || `Zone ${index + 1}`}${zone?.is_blocked ? ' (Blocked)' : ''}`,
-                { sticky: true }
-            );
-
-            polygon.on('click', () => {
-                if (activeToolRef.current !== 'pan') return;
-                onZoneSelectRef.current?.(zone.zone_id);
-            });
-
-            featureGroup.addLayer(polygon);
-        });
-
-        if ((zones || []).length > 0) {
-            const bounds = featureGroup.getBounds();
-            if (bounds.isValid()) {
-                map.fitBounds(bounds.pad(0.12));
-                hasFitBoundsRef.current = true;
-            }
-        } else {
-            hasFitBoundsRef.current = false;
-        }
+        renderZonesOnMap(zones);
     }, [selectedZoneId, zones]);
 
     return (
@@ -471,6 +536,7 @@ export default function DeliveryZoneMapEditor({
 
             <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                 <span className="rounded-full border px-3 py-1 bg-background">Blue circle: Global Radius Filter</span>
+                <span className="rounded-full border px-3 py-1 bg-background">Radius ke bahar polygon draw/edit block hai</span>
                 <span className="rounded-full border px-3 py-1 bg-background">Selected pen sets the next zone color</span>
                 <span className="rounded-full border px-3 py-1 bg-background">Click a zone in pan mode to open its details</span>
             </div>

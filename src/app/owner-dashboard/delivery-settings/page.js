@@ -154,13 +154,8 @@ const buildZoneDraft = (zone = {}, index = 0) => ({
     zone_id: String(zone?.zone_id || zone?.zoneId || zone?.id || `zone_${index + 1}`).trim(),
     name: String(zone?.name || zone?.zoneName || `Zone ${index + 1}`).trim(),
     priority: Number.isFinite(Number(zone?.priority)) ? String(Number(zone.priority)) : String(index),
-    is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
-    is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
-    baseFee: Number.isFinite(Number(zone?.baseFee)) ? String(Number(zone.baseFee)) : '0',
-    maxServiceRadiusKm:
-        zone?.maxServiceRadiusKm === null || zone?.maxServiceRadiusKm === undefined || zone?.maxServiceRadiusKm === ''
-            ? ''
-            : String(Number(zone.maxServiceRadiusKm)),
+    status: zone?.is_blocked === true || zone?.isBlocked === true ? 'blocked' : 'active',
+    deliveryFee: Number.isFinite(Number(zone?.baseFee)) ? String(Number(zone.baseFee)) : '0',
     color: String(zone?.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
 });
 
@@ -181,10 +176,9 @@ const normalizeDeliveryZonesForForm = (zones = []) => {
                 zone_id: String(zone?.zone_id || zone?.zoneId || zone?.id || `zone_${index + 1}`).trim(),
                 name: String(zone?.name || zone?.zoneName || `Zone ${index + 1}`).trim(),
                 priority: Number.isFinite(Number(zone?.priority)) ? Number(zone.priority) : index,
-                is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
+                is_active: true,
                 is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
                 baseFee: Number.isFinite(Number(zone?.baseFee)) ? Number(zone.baseFee) : 0,
-                maxServiceRadiusKm: Number.isFinite(Number(zone?.maxServiceRadiusKm)) ? Number(zone.maxServiceRadiusKm) : null,
                 color: String(zone?.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
                 boundary,
                 geojson: zone?.geojson && typeof zone.geojson === 'object' ? zone.geojson : null,
@@ -222,6 +216,49 @@ const parseDeliveryZonesEditor = (value) => {
     }
 
     return { zones, error: null };
+};
+
+const toFiniteCoordinate = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+};
+
+const calculateHaversineKm = (start, end) => {
+    const startLat = toFiniteCoordinate(start?.lat);
+    const startLng = toFiniteCoordinate(start?.lng);
+    const endLat = toFiniteCoordinate(end?.lat);
+    const endLng = toFiniteCoordinate(end?.lng);
+    if ([startLat, startLng, endLat, endLng].some((value) => value === null)) return null;
+
+    const toRadians = (value) => (value * Math.PI) / 180;
+    const dLat = toRadians(endLat - startLat);
+    const dLng = toRadians(endLng - startLng);
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRadians(startLat)) * Math.cos(toRadians(endLat)) * Math.sin(dLng / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getAutoFittedGlobalRadiusKm = (businessCoordinates, zones = [], fallbackRadius = 5) => {
+    if (!businessCoordinates || !Array.isArray(zones)) return fallbackRadius;
+
+    const activeZones = zones.filter((zone) => zone?.is_blocked !== true && Array.isArray(zone?.boundary) && zone.boundary.length >= 3);
+    if (activeZones.length === 0) return fallbackRadius;
+
+    let maxDistanceKm = 0;
+    for (const zone of activeZones) {
+        for (const point of zone.boundary) {
+            const distanceKm = calculateHaversineKm(
+                businessCoordinates,
+                { lat: point?.[0], lng: point?.[1] }
+            );
+            if (distanceKm !== null) {
+                maxDistanceKm = Math.max(maxDistanceKm, distanceKm);
+            }
+        }
+    }
+
+    if (maxDistanceKm <= 0) return fallbackRadius;
+    return Math.max(0.5, Number((maxDistanceKm + 0.15).toFixed(2)));
 };
 
 function DeliverySettingsPageContent() {
@@ -394,9 +431,17 @@ function DeliverySettingsPageContent() {
                 throw new Error('Hybrid zone mode is enabled, but no valid delivery zones are configured yet.');
             }
 
+            const autoFittedRadiusKm = deliveryUseZones
+                ? getAutoFittedGlobalRadiusKm(
+                    settings.businessCoordinates,
+                    parsedDeliveryZones,
+                    toNum(settings.deliveryRadius[0], 5)
+                )
+                : toNum(settings.deliveryRadius[0], 5);
+
             const payload = {
                 deliveryEnabled: settings.deliveryEnabled,
-                deliveryRadius: toNum(settings.deliveryRadius[0], 5),
+                deliveryRadius: autoFittedRadiusKm,
                 deliveryFeeType: settings.deliveryFeeType,
                 deliveryFixedFee: toNum(settings.deliveryFixedFee, 0),
                 deliveryBaseDistance: toNum(settings.deliveryBaseDistance, 0),
@@ -442,11 +487,12 @@ function DeliverySettingsPageContent() {
                 throw new Error(errorData.message || 'Failed to save settings');
             }
 
-            setSettings(prev => ({
-                ...prev,
-                deliveryEngineMode: payload.deliveryEngineMode,
-                deliveryUseZones: payload.deliveryUseZones,
-                zoneFallbackToLegacy: payload.zoneFallbackToLegacy,
+                setSettings(prev => ({
+                    ...prev,
+                    deliveryRadius: [payload.deliveryRadius],
+                    deliveryEngineMode: payload.deliveryEngineMode,
+                    deliveryUseZones: payload.deliveryUseZones,
+                    zoneFallbackToLegacy: payload.zoneFallbackToLegacy,
                     deliveryZones: payload.deliveryZones,
                     businessCoordinates: prev.businessCoordinates || null,
                 }));
@@ -462,7 +508,13 @@ function DeliverySettingsPageContent() {
                     businessCoordinates: settings.businessCoordinates || null,
                 });
             }
-            setInfoDialog({ isOpen: true, title: 'Success', message: 'Delivery settings saved successfully!' });
+            setInfoDialog({
+                isOpen: true,
+                title: 'Success',
+                message: deliveryUseZones
+                    ? `Delivery settings saved successfully! The global radius was auto-fitted to ${payload.deliveryRadius} km.`
+                    : 'Delivery settings saved successfully!'
+            });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save settings: ${error.message}` });
         } finally {
@@ -555,7 +607,13 @@ function DeliverySettingsPageContent() {
     };
 
     const handleZoneDraftChange = (field, value) => {
-        setZoneDraft((prev) => prev ? { ...prev, [field]: value } : prev);
+        setZoneDraft((prev) => {
+            if (!prev) return prev;
+            if (field === 'status') {
+                return { ...prev, status: value === 'blocked' ? 'blocked' : 'active' };
+            }
+            return { ...prev, [field]: value };
+        });
     };
 
     const handleSaveZoneDetails = () => {
@@ -568,9 +626,8 @@ function DeliverySettingsPageContent() {
         }
 
         const priority = Number(zoneDraft.priority);
-        const baseFee = Number(zoneDraft.baseFee);
-        const radiusRaw = String(zoneDraft.maxServiceRadiusKm || '').trim();
-        const maxServiceRadiusKm = radiusRaw === '' ? null : Number(radiusRaw);
+        const baseFee = Number(zoneDraft.deliveryFee);
+        const isBlocked = zoneDraft.status === 'blocked';
 
         const nextZones = settings.deliveryZones.map((zone, index) => {
             if (zone.zone_id !== zoneDraft.zone_id) return zone;
@@ -579,10 +636,9 @@ function DeliverySettingsPageContent() {
                 ...zone,
                 name: normalizedName,
                 priority: Number.isFinite(priority) ? priority : index,
-                is_active: zoneDraft.is_active !== false,
-                is_blocked: zoneDraft.is_blocked === true,
+                is_active: true,
+                is_blocked: isBlocked,
                 baseFee: Number.isFinite(baseFee) ? baseFee : 0,
-                maxServiceRadiusKm: Number.isFinite(maxServiceRadiusKm) ? maxServiceRadiusKm : null,
                 color: String(zoneDraft.color || zone.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
             };
         });
@@ -731,7 +787,7 @@ function DeliverySettingsPageContent() {
                                 Fullscreen Zone Studio
                             </DialogTitle>
                             <DialogDescription>
-                                Pick a pen color, draw a polygon, then click the created zone or its card to edit name, priority, active status, blocked status, and base fee.
+                                Pick a pen color, draw a polygon, then click the created zone or its card to edit name, priority, delivery status, and delivery fee.
                             </DialogDescription>
                         </DialogHeader>
 
@@ -743,6 +799,7 @@ function DeliverySettingsPageContent() {
                                 onZonesChange={applyZonesToState}
                                 onZoneCreated={handleNewZoneCreated}
                                 onZoneSelect={openZoneDetailsEditor}
+                                onValidationError={(message) => setInfoDialog({ isOpen: true, title: 'Polygon Outside Radius', message })}
                                 selectedZoneId={zoneDraft?.zone_id || null}
                                 heightClass="h-[68vh]"
                             />
@@ -800,23 +857,12 @@ function DeliverySettingsPageContent() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="zone-base-fee">Base Fee</Label>
+                                    <Label htmlFor="zone-base-fee">Delivery Fee</Label>
                                     <Input
                                         id="zone-base-fee"
                                         type="number"
-                                        value={zoneDraft.baseFee}
-                                        onChange={(e) => handleZoneDraftChange('baseFee', e.target.value)}
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="zone-radius">Max Service Radius (km)</Label>
-                                    <Input
-                                        id="zone-radius"
-                                        type="number"
-                                        value={zoneDraft.maxServiceRadiusKm}
-                                        onChange={(e) => handleZoneDraftChange('maxServiceRadiusKm', e.target.value)}
-                                        placeholder="Optional"
+                                        value={zoneDraft.deliveryFee}
+                                        onChange={(e) => handleZoneDraftChange('deliveryFee', e.target.value)}
                                     />
                                 </div>
 
@@ -826,27 +872,28 @@ function DeliverySettingsPageContent() {
                                 </div>
                             </div>
 
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="flex items-center justify-between rounded-2xl border p-4">
-                                    <div>
-                                        <p className="font-semibold">Active Zone</p>
-                                        <p className="text-xs text-muted-foreground">Off karoge to system is zone ko matching ke time poora ignore karega.</p>
-                                    </div>
-                                    <Switch
-                                        checked={zoneDraft.is_active}
-                                        onCheckedChange={(checked) => handleZoneDraftChange('is_active', checked)}
-                                    />
+                            <div className="space-y-3 rounded-2xl border p-4">
+                                <div>
+                                    <p className="font-semibold">Zone Status</p>
+                                    <p className="text-xs text-muted-foreground">Each polygon either allows delivery or blocks it entirely.</p>
                                 </div>
-
-                                <div className="flex items-center justify-between rounded-2xl border p-4">
-                                    <div>
-                                        <p className="font-semibold">Blocked Zone</p>
-                                        <p className="text-xs text-muted-foreground">On karoge to ye zone match hone par delivery reject ho jayegi.</p>
-                                    </div>
-                                    <Switch
-                                        checked={zoneDraft.is_blocked}
-                                        onCheckedChange={(checked) => handleZoneDraftChange('is_blocked', checked)}
-                                    />
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <Button
+                                        type="button"
+                                        variant={zoneDraft.status === 'active' ? 'default' : 'outline'}
+                                        className="justify-start rounded-xl"
+                                        onClick={() => handleZoneDraftChange('status', 'active')}
+                                    >
+                                        Active
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant={zoneDraft.status === 'blocked' ? 'destructive' : 'outline'}
+                                        className="justify-start rounded-xl"
+                                        onClick={() => handleZoneDraftChange('status', 'blocked')}
+                                    >
+                                        Blocked
+                                    </Button>
                                 </div>
                             </div>
 
@@ -993,6 +1040,9 @@ function DeliverySettingsPageContent() {
                                         <p className="text-xs text-muted-foreground mt-1">
                                             Global radius stays as the first filter. Matching zones then decide pricing or blocking.
                                         </p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            When you click Apply Settings, the system also auto-optimizes the global radius to fit the active polygons.
+                                        </p>
                                     </div>
                                     <Switch
                                         checked={settings.deliveryUseZones}
@@ -1000,19 +1050,33 @@ function DeliverySettingsPageContent() {
                                         className="data-[state=checked]:bg-primary"
                                     />
                                 </div>
-                                <div className="flex items-center justify-between gap-4">
+                                <div className="space-y-3">
                                     <div>
-                                        <Label className="text-sm font-bold">Allow Orders Outside Drawn Zones</Label>
+                                        <Label className="text-sm font-bold">Outside Polygon Orders</Label>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                            On rahega to outside-zone orders legacy pricing se chalenge. Off karoge to drawn zones ke bahar ke sab orders block ho jayenge.
+                                            If an order is inside the global radius but outside every polygon, either apply fallback pricing or reject it.
                                         </p>
                                     </div>
-                                    <Switch
-                                        checked={settings.zoneFallbackToLegacy}
-                                        onCheckedChange={(val) => handleSettingChange('zoneFallbackToLegacy', val)}
-                                        disabled={!settings.deliveryUseZones}
-                                        className="data-[state=checked]:bg-green-500"
-                                    />
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <Button
+                                            type="button"
+                                            variant={settings.zoneFallbackToLegacy ? 'default' : 'outline'}
+                                            disabled={!settings.deliveryUseZones}
+                                            className="justify-start rounded-xl"
+                                            onClick={() => handleSettingChange('zoneFallbackToLegacy', true)}
+                                        >
+                                            Fallback Pricing
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant={!settings.zoneFallbackToLegacy ? 'destructive' : 'outline'}
+                                            disabled={!settings.deliveryUseZones}
+                                            className="justify-start rounded-xl"
+                                            onClick={() => handleSettingChange('zoneFallbackToLegacy', false)}
+                                        >
+                                            Reject Outside
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1063,6 +1127,7 @@ function DeliverySettingsPageContent() {
                                             onZonesChange={applyZonesToState}
                                             selectedZoneId={zoneDraft?.zone_id || null}
                                             onZoneSelect={openZoneDetailsEditor}
+                                            onValidationError={(message) => setInfoDialog({ isOpen: true, title: 'Polygon Outside Radius', message })}
                                             readOnly
                                             heightClass="h-[320px]"
                                         />
@@ -1131,8 +1196,8 @@ function DeliverySettingsPageContent() {
                                                     </div>
                                                 </div>
                                                 <div className="text-right text-xs space-y-1">
-                                                    <p className={cn('font-bold', zone.is_blocked ? 'text-destructive' : (zone.is_active ? 'text-green-600' : 'text-amber-600'))}>
-                                                        {zone.is_blocked ? 'Blocked' : (zone.is_active ? 'Active' : 'Inactive')}
+                                                    <p className={cn('font-bold', zone.is_blocked ? 'text-destructive' : 'text-green-600')}>
+                                                        {zone.is_blocked ? 'Blocked' : 'Active'}
                                                     </p>
                                                     <p className="text-muted-foreground">{Array.isArray(zone.boundary) ? zone.boundary.length : 0} points</p>
                                                 </div>
@@ -1140,7 +1205,7 @@ function DeliverySettingsPageContent() {
 
                                             <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                                                 <p>
-                                                    Base fee: {Number.isFinite(Number(zone.baseFee)) ? `Rs ${Number(zone.baseFee)}` : 'Use legacy fee'}
+                                                    Delivery fee: {Number.isFinite(Number(zone.baseFee)) ? `Rs ${Number(zone.baseFee)}` : 'Use legacy fee'}
                                                 </p>
                                                 <p>
                                                     Priority: {Number.isFinite(Number(zone.priority)) ? Number(zone.priority) : index}
@@ -1148,14 +1213,12 @@ function DeliverySettingsPageContent() {
                                                 <p>
                                                     Pricing tiers: {Array.isArray(zone.pricingTiers) ? zone.pricingTiers.length : 0}
                                                 </p>
-                                                <p>
-                                                    Max radius: {Number.isFinite(Number(zone.maxServiceRadiusKm)) ? `${Number(zone.maxServiceRadiusKm)} km` : 'None'}
-                                                </p>
+                                                <p>Applies only inside this polygon</p>
                                             </div>
 
                                             <div className="flex flex-wrap items-center justify-between gap-3">
                                                 <p className="text-[11px] text-muted-foreground">
-                                                    Click edit to manage `name`, `priority`, `is_active`, `is_blocked`, and `baseFee`.
+                                                    Click edit to manage `name`, `priority`, `status`, and `deliveryFee`.
                                                 </p>
                                                 <Button
                                                     type="button"
@@ -1722,3 +1785,4 @@ export default function DeliverySettingsPage() {
         </Suspense>
     )
 }
+
