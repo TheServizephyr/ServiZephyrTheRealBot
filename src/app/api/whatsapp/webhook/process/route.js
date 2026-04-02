@@ -411,9 +411,13 @@ const sendWelcomeMessageWithOptions = async (
         `1️⃣ Tap on *Order Now* to view menu and place Order.\n` +
         `2️⃣ Type *Need Help* for assistance.\n\n` +
         `👇👇 Click below to start 👇👇`;
-    const welcomeBody = (customMessage || defaultWelcomeBody)
-        .replace(/\*Order Now\*/g, '*link*')
-        .replace(/Tap on \*link\*/g, 'Tap on the *link* below');
+    const exactWelcomeBody =
+        `Welcome to *${business.data.name}* \n\n` +
+        `मेनू देखने और ऑर्डर करने के लिए नीचे दिए गए *link*  पर टैप करें। ✨ \n\n` +
+        `1️⃣ Tap on the *link* below to view menu and place Order.\n` +
+        `2️⃣ Type *Need Help* for assistance.\n\n` +
+        `👇👇 Click below to start 👇👇`;
+    const welcomeBody = customMessage || exactWelcomeBody;
     const collectionName = business.ref.parent.id;
 
     // ⚡ OPTIMIZATION: Firestore save + Realtime mirror run in parallel after message is sent
