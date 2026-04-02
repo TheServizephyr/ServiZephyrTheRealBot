@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock } from 'lucide-react';
+import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock, Maximize2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -177,7 +177,11 @@ const AddAddressPageInternal = () => {
         searchParams.get('name') ||
         getNestedParamFromReturnUrl(rawReturnUrl, 'name') ||
         '';
-    const restaurantIdFromReturnUrl = extractRestaurantIdFromReturnUrl(rawReturnUrl);
+    const restaurantIdFromReturnUrl =
+        extractRestaurantIdFromReturnUrl(rawReturnUrl) ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'restaurantId') ||
+        searchParams.get('restaurantId') ||
+        '';
 
     const [mapCenter, setMapCenter] = useState(DEFAULT_MAP_CENTER);
     const [mapZoom, setMapZoom] = useState(DEFAULT_EXACT_ZOOM);
@@ -188,8 +192,9 @@ const AddAddressPageInternal = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [permissionError, setPermissionError] = useState(null); // NEW: Persistent permission error
-    const [locationHint, setLocationHint] = useState('');
+    const [, setLocationHint] = useState('');
     const [isPinAddressLoading, setIsPinAddressLoading] = useState(false);
+    const [isMapExpanded, setIsMapExpanded] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const [recipientName, setRecipientName] = useState('');
@@ -211,10 +216,17 @@ const AddAddressPageInternal = () => {
         let isMounted = true;
 
         const loadServiceArea = async () => {
-            if (!isTokenValid || editDataRaw) {
+            if (editDataRaw) {
                 if (isMounted) setServiceAreaResolved(true);
                 return;
             }
+
+            if (!isTokenValid) {
+                if (isMounted) setServiceAreaResolved(false);
+                return;
+            }
+
+            if (isMounted) setServiceAreaResolved(false);
 
             try {
                 let resolvedRestaurantId = restaurantIdFromReturnUrl;
@@ -368,6 +380,20 @@ const AddAddressPageInternal = () => {
         if (geocodeAbortRef.current) geocodeAbortRef.current.abort();
     }, []);
 
+    useEffect(() => {
+        if (!isMapExpanded) return undefined;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousHtmlOverflow = document.documentElement.style.overflow;
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.documentElement.style.overflow = previousHtmlOverflow;
+        };
+    }, [isMapExpanded]);
+
     const getSavedCustomerLocation = useCallback(() => {
         try {
             const raw = localStorage.getItem('customerLocation');
@@ -517,6 +543,11 @@ const AddAddressPageInternal = () => {
     }, [permissionError, reverseGeocode, serviceArea]);
 
     const getIpApproximateLocation = useCallback(async () => {
+        if (serviceArea?.center && Number.isFinite(Number(serviceArea?.radiusKm))) {
+            applyRestaurantServiceAreaFallback();
+            return;
+        }
+
         setLoading(true);
         setError('Detecting your approximate location...');
 
@@ -551,7 +582,7 @@ const AddAddressPageInternal = () => {
             setLoading(false);
             setError('');
         }
-    }, [reverseGeocode]);
+    }, [applyRestaurantServiceAreaFallback, reverseGeocode, serviceArea]);
 
     const getCurrentGeolocation = useCallback(() => {
         setLoading(true);
@@ -748,10 +779,12 @@ const AddAddressPageInternal = () => {
         initialLocationResolvedRef.current = true;
         if (useCurrent) {
             getCurrentGeolocation();
+        } else if (serviceArea?.center && Number.isFinite(Number(serviceArea?.radiusKm))) {
+            applyRestaurantServiceAreaFallback();
         } else {
             getIpApproximateLocation();
         }
-    }, [editDataRaw, getCurrentGeolocation, getIpApproximateLocation, isTokenValid, serviceAreaResolved, useCurrent]);
+    }, [applyRestaurantServiceAreaFallback, editDataRaw, getCurrentGeolocation, getIpApproximateLocation, isTokenValid, serviceArea, serviceAreaResolved, useCurrent]);
 
 
     const handleConfirmLocation = async () => {
@@ -845,9 +878,12 @@ const AddAddressPageInternal = () => {
     const filledRequiredFieldClassName =
         'mt-1 border-border bg-background';
     const showBlockingMapOverlay = loading && !addressDetails;
+    const mapShellClassName = isMapExpanded
+        ? 'fixed inset-0 z-[80] h-[100dvh] w-screen bg-background'
+        : 'md:w-1/2 h-[48dvh] min-h-[340px] md:h-full flex-shrink-0 relative';
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+        <div className="h-screen min-h-[100dvh] w-screen flex flex-col bg-background text-foreground">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '', type: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft /></Button>
@@ -855,30 +891,30 @@ const AddAddressPageInternal = () => {
             </header>
 
             <div className="flex-grow flex flex-col md:flex-row">
-                <div className="md:w-1/2 h-64 md:h-full flex-shrink-0 relative">
+                <div className={mapShellClassName}>
                     {showBlockingMapOverlay && (
                         <div className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white">
                             <GoldenCoinSpinner />
                             <p className="mt-4 font-semibold text-lg animate-pulse">Fetching your location...</p>
                         </div>
                     )}
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => setIsMapExpanded((prev) => !prev)}
+                        className="absolute top-4 right-4 z-20 h-12 w-12 rounded-full shadow-lg"
+                        aria-label={isMapExpanded ? 'Close full screen map' : 'Open full screen map'}
+                    >
+                        {isMapExpanded ? <X /> : <Maximize2 />}
+                    </Button>
                     <GoogleMap center={mapCenter} zoom={mapZoom} onIdle={handleMapIdle} />
                 </div>
 
                 <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
-                    <div className="rounded-xl border border-border bg-muted/30 p-3">
-                        <p className="text-sm font-medium">Set address directly from the map pin</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Move the map, leave the pin where you want, and we&apos;ll update the address in the background without refreshing the map.
-                        </p>
-                    </div>
-
                     <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading || isPinAddressLoading}>
                         {loading ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>
-                    {locationHint && (
-                        <p className="text-xs text-muted-foreground">{locationHint}</p>
-                    )}
                     {permissionError && (
                         <div className="text-amber-700 dark:text-amber-300 text-sm font-medium p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
                             {permissionError}
@@ -905,20 +941,16 @@ const AddAddressPageInternal = () => {
                                         </div>
                                     )}
                                 </div>
-                                <p className="mt-1 text-xs text-muted-foreground">Full address from map. Edit if house number, locality, or pin needs correction.</p>
                                 <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} required rows={3} className={isFullAddressMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
-                                <p className="text-xs text-muted-foreground mt-1">Move the map and leave the pin where you want. The address updates automatically here in the background.</p>
                             </div>
                             {/* Address Details and Landmark intentionally hidden for now. */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label htmlFor="recipientName">Contact Person *</Label>
-                                    <p className="mt-1 text-xs text-muted-foreground">Name of the person receiving the order.</p>
                                     <Input id="recipientName" value={recipientName} onChange={e => setRecipientName(e.target.value)} required className={isRecipientNameMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
                                 </div>
                                 <div>
                                     <Label htmlFor="recipientPhone">Contact Number *</Label>
-                                    <p className="mt-1 text-xs text-muted-foreground">Enter the 10-digit number rider should call.</p>
                                     <Input id="recipientPhone" type="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} required className={isRecipientPhoneMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
                                 </div>
                             </div>

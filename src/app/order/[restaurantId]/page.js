@@ -4027,7 +4027,7 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            <div className="min-h-screen bg-background text-foreground green-theme overflow-x-hidden max-w-full">
+            <div className="min-h-screen min-h-[100dvh] bg-background text-foreground green-theme overflow-x-hidden max-w-full">
                 <DineInModal
                     isOpen={isDineInModalOpen}
                     onClose={handleCloseDineInModal}
@@ -4080,7 +4080,7 @@ const OrderPageInternal = () => {
                                 onClick={() => window.history.back()}
                             />
                             <motion.div
-                                className="fixed top-0 left-0 right-0 h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden"
+                                className="fixed top-0 left-0 right-0 h-screen h-[100dvh] max-h-[100dvh] bg-background z-[70] shadow-2xl flex flex-col overflow-hidden"
                                 initial={{ y: '-100%' }}
                                 animate={{ y: 0 }}
                                 exit={{ y: '-100%' }}
@@ -4291,7 +4291,7 @@ const OrderPageInternal = () => {
                                         placeholder='Search "atta, dal, soap and more"'
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                                        className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-base md:text-sm outline-none focus:ring-2 focus:ring-primary/40"
                                     />
                                 </div>
                                 <Popover>
@@ -4392,7 +4392,7 @@ const OrderPageInternal = () => {
                                                         <select
                                                             value={storeFilters.brand}
                                                             onChange={(event) => handleStoreFilterValueChange('brand', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
                                                         >
                                                             <option value="all">All brands</option>
                                                             {storeBrandOptions.map((option) => (
@@ -4408,7 +4408,7 @@ const OrderPageInternal = () => {
                                                         <select
                                                             value={storeFilters.type}
                                                             onChange={(event) => handleStoreFilterValueChange('type', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
                                                         >
                                                             <option value="all">All types</option>
                                                             {storeTypeOptions.map((option) => (
@@ -4424,7 +4424,7 @@ const OrderPageInternal = () => {
                                                         <select
                                                             value={storeFilters.priceRange}
                                                             onChange={(event) => handleStoreFilterValueChange('priceRange', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
                                                         >
                                                             <option value="all">All prices</option>
                                                             <option value="under-100">Under Rs 100</option>
@@ -4803,7 +4803,7 @@ const OrderPageInternal = () => {
                                     placeholder={searchPlaceholder}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                                    className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-base md:text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                                 />
                             </div>
                         </div >
