@@ -100,7 +100,7 @@ const AddressSelectionList = ({
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            onDelete(addr.id);
+                                            onDelete(addr);
                                         }}
                                         className="p-2 text-muted-foreground hover:text-destructive transition-colors"
                                     >

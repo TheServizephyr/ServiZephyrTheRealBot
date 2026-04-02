@@ -11,6 +11,29 @@ function toNum(value, fallback = 0) {
     return Number.isFinite(n) ? n : fallback;
 }
 
+function normalizePhone(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.slice(-10);
+}
+
+function pickProfilePhone(profileData = {}, fallback = '') {
+    const candidates = [
+        profileData?.phone,
+        profileData?.phoneNumber,
+        profileData?.whatsappNumber,
+        ...(Array.isArray(profileData?.addresses) ? profileData.addresses.map((address) => address?.phone) : []),
+        fallback,
+    ];
+
+    for (const candidate of candidates) {
+        const normalized = normalizePhone(candidate);
+        if (normalized.length === 10) return normalized;
+    }
+
+    return normalizePhone(fallback);
+}
+
 const COORD_EPSILON = 0.00005;
 
 function normalizeText(value) {
@@ -393,10 +416,10 @@ export async function DELETE(req) {
         }
 
         let targetRef;
+        let normalizedPhone = normalizePhone(phone);
 
         // Scenario 1: Request is from a WhatsApp user, identified by phone number
         if (phone) {
-            const normalizedPhone = phone.slice(-10);
             console.log(`[API][user/addresses] DELETE request for phone number: ${normalizedPhone}`);
 
             // CRITICAL: Use UID-first priority
@@ -421,30 +444,63 @@ export async function DELETE(req) {
             targetRef = firestore.collection('users').doc(uid);
         }
 
-        const docSnap = await targetRef.get();
-        if (!docSnap.exists) {
+        const candidateRefs = [targetRef];
+        const primarySnap = await targetRef.get();
+        if (!primarySnap.exists) {
             console.warn(`[API][user/addresses] DELETE failed: User document not found at path: ${targetRef.path}.`);
             return NextResponse.json({ message: 'User profile not found.' }, { status: 404 });
         }
 
-        const userData = docSnap.data();
-        const currentAddresses = userData.addresses || [];
+        const primaryData = primarySnap.data() || {};
+        normalizedPhone = pickProfilePhone(primaryData, normalizedPhone);
 
-        const addressExists = currentAddresses.some(addr => addr.id === addressId);
-        if (!addressExists) {
-            console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in profile for document: ${targetRef.path}.`);
-            return NextResponse.json({ message: 'Address not found in user profile.' }, { status: 404 });
+        if (normalizedPhone) {
+            const counterpartCollections = ['users', 'guest_profiles'];
+            for (const collectionName of counterpartCollections) {
+                const snap = await firestore
+                    .collection(collectionName)
+                    .where('phone', '==', normalizedPhone)
+                    .limit(5)
+                    .get();
+
+                snap.docs.forEach((doc) => {
+                    if (doc.ref.path !== targetRef.path) {
+                        candidateRefs.push(doc.ref);
+                    }
+                });
+            }
         }
 
-        const updatedAddresses = currentAddresses.filter(addr => addr.id !== addressId);
-
-        console.log(`[API][user/addresses] Attempting to remove address ID ${addressId} for document ${targetRef.path}.`);
-        await targetRef.update({
-            addresses: updatedAddresses
+        const seenPaths = new Set();
+        const uniqueRefs = candidateRefs.filter((ref) => {
+            if (seenPaths.has(ref.path)) return false;
+            seenPaths.add(ref.path);
+            return true;
         });
 
-        console.log(`[API][user/addresses] Address ID ${addressId} removed successfully for document ${targetRef.path}.`);
-        return NextResponse.json({ message: 'Address removed successfully!' }, { status: 200 });
+        let removedFromCount = 0;
+        for (const ref of uniqueRefs) {
+            const docSnap = ref.path === targetRef.path ? primarySnap : await ref.get();
+            if (!docSnap.exists) continue;
+
+            const profileData = docSnap.data() || {};
+            const currentAddresses = Array.isArray(profileData.addresses) ? profileData.addresses : [];
+            const addressExists = currentAddresses.some((addr) => addr.id === addressId);
+            if (!addressExists) continue;
+
+            const updatedAddresses = currentAddresses.filter((addr) => addr.id !== addressId);
+            console.log(`[API][user/addresses] Removing address ID ${addressId} from document ${ref.path}.`);
+            await ref.update({ addresses: updatedAddresses });
+            removedFromCount += 1;
+        }
+
+        if (removedFromCount === 0) {
+            console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in any merged profile for ${targetRef.path}.`);
+            return NextResponse.json({ message: 'Address not found in saved profiles.' }, { status: 404 });
+        }
+
+        console.log(`[API][user/addresses] Address ID ${addressId} removed successfully from ${removedFromCount} profile(s).`);
+        return NextResponse.json({ message: 'Address removed successfully!', removedFromCount }, { status: 200 });
 
     } catch (error) {
         console.error("DELETE /api/user/addresses ERROR:", error);

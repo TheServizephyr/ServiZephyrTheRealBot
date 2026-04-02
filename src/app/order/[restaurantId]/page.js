@@ -1464,6 +1464,7 @@ const OrderPageInternal = () => {
     const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
     const [userAddresses, setUserAddresses] = useState([]);
     const [addressLoading, setAddressLoading] = useState(false);
+    const [addressPendingDelete, setAddressPendingDelete] = useState(null);
 
     // NEW: Delivery Distance Validation
     const [deliveryValidation, setDeliveryValidation] = useState(null);
@@ -1564,6 +1565,48 @@ const OrderPageInternal = () => {
             setAddressLoading(false);
         }
     }, [tableIdFromUrl, deliveryType, phone, ref, auth.currentUser]);
+
+    const handleDeleteSavedAddress = async (addressToDelete) => {
+        const addressId = addressToDelete?.id;
+        if (!addressId) return;
+
+        setAddressLoading(true);
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (auth.currentUser) {
+                headers.Authorization = `Bearer ${await auth.currentUser.getIdToken()}`;
+            }
+
+            const response = await fetch('/api/user/addresses', {
+                method: 'DELETE',
+                headers,
+                body: JSON.stringify({
+                    addressId,
+                    ...(phone ? { phone } : {}),
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.message || 'Failed to delete address.');
+            }
+
+            setUserAddresses((prev) => prev.filter((address) => address.id !== addressId));
+            if (customerLocation?.id === addressId) {
+                setCustomerLocation(null);
+                localStorage.removeItem('customerLocation');
+            }
+        } catch (error) {
+            console.error('[Order Page] Failed to delete address:', error);
+            setInfoDialog({
+                isOpen: true,
+                title: 'Delete Failed',
+                message: error.message || 'Could not delete the address right now.',
+            });
+        } finally {
+            setAddressPendingDelete(null);
+            setAddressLoading(false);
+        }
+    };
 
     // ✅ NEW: Reusable validation function (separated from UI logic)
     const validateDelivery = async (addr, currentSubtotal) => {
@@ -4075,34 +4118,7 @@ const OrderPageInternal = () => {
                                         onAddNewAddress={() => {
                                             router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
-                                        onDelete={async (id) => {
-                                            if (confirm('Are you sure you want to delete this address?')) {
-                                                setAddressLoading(true);
-                                                try {
-                                                    const headers = { 'Content-Type': 'application/json' };
-                                                    if (auth.currentUser) {
-                                                        headers.Authorization = `Bearer ${await auth.currentUser.getIdToken()}`;
-                                                    }
-                                                    const response = await fetch('/api/user/addresses', {
-                                                        method: 'DELETE',
-                                                        headers,
-                                                        body: JSON.stringify({
-                                                            addressId: id,
-                                                            ...(phone ? { phone } : {}),
-                                                        }),
-                                                    });
-                                                    const payload = await response.json().catch(() => ({}));
-                                                    if (!response.ok) {
-                                                        throw new Error(payload.message || 'Failed to delete address.');
-                                                    }
-                                                    setUserAddresses(prev => prev.filter(a => a.id !== id));
-                                                    if (customerLocation?.id === id) {
-                                                        setCustomerLocation(null);
-                                                        localStorage.removeItem('customerLocation');
-                                                    }
-                                                } catch (e) { console.error(e); } finally { setAddressLoading(false); }
-                                            }
-                                        }}
+                                        onDelete={(addr) => setAddressPendingDelete(addr)}
                                         onEdit={(addr) => {
                                             const editData = encodeURIComponent(JSON.stringify(addr));
                                             router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
@@ -5011,6 +5027,18 @@ const OrderPageInternal = () => {
                     cancelText="Cancel"
                     variant="destructive"
                     icon={LogOut}
+                />
+                <ConfirmationDialog
+                    isOpen={Boolean(addressPendingDelete)}
+                    onClose={() => setAddressPendingDelete(null)}
+                    onConfirm={() => handleDeleteSavedAddress(addressPendingDelete)}
+                    title="Delete Address?"
+                    description={addressPendingDelete?.full
+                        ? `This will remove "${addressPendingDelete.label || addressPendingDelete.name || 'saved address'}" from your saved addresses.`
+                        : 'This will remove the selected address from your saved addresses.'}
+                    confirmText="Delete"
+                    cancelText="Keep"
+                    variant="destructive"
                 />
             </div >
         </>

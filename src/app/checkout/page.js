@@ -18,6 +18,7 @@ import { useUser } from '@/firebase';
 
 import AddressSelectionList from '@/components/AddressSelectionList';
 import InfoDialog from '@/components/InfoDialog';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
@@ -194,6 +195,7 @@ const CheckoutPageInternal = () => {
     const [error, setError] = useState('');
     const [idempotencyKey, setIdempotencyKey] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [addressPendingDelete, setAddressPendingDelete] = useState(null);
 
     const [vendorCharges, setVendorCharges] = useState({
         gstEnabled: false, gstRate: 5, gstMinAmount: 0,
@@ -472,11 +474,9 @@ const CheckoutPageInternal = () => {
         router.push(`/add-address?${currentParamsString}&useCurrent=true&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
     };
 
-    const handleDeleteAddress = async (addressId) => {
+    const handleDeleteAddress = async (addressToDelete) => {
+        const addressId = addressToDelete?.id;
         if (!addressId) return;
-
-        const confirmed = window.confirm('Are you sure you want to delete this address?');
-        if (!confirmed) return;
 
         try {
             const headers = { 'Content-Type': 'application/json' };
@@ -484,7 +484,7 @@ const CheckoutPageInternal = () => {
                 headers.Authorization = `Bearer ${await user.getIdToken()}`;
             }
 
-            const fallbackPhone = String(phoneFromUrl || orderPhone || selectedAddress?.phone || '').trim();
+            const fallbackPhone = String(phoneFromUrl || orderPhone || addressToDelete?.phone || selectedAddress?.phone || '').trim();
             const response = await fetch('/api/user/addresses', {
                 method: 'DELETE',
                 headers,
@@ -515,6 +515,8 @@ const CheckoutPageInternal = () => {
                 description: deleteError.message || 'Could not delete the address right now.',
                 variant: 'destructive',
             });
+        } finally {
+            setAddressPendingDelete(null);
         }
     };
 
@@ -2190,6 +2192,18 @@ const CheckoutPageInternal = () => {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
+            <ConfirmationDialog
+                isOpen={Boolean(addressPendingDelete)}
+                onClose={() => setAddressPendingDelete(null)}
+                onConfirm={() => handleDeleteAddress(addressPendingDelete)}
+                title="Delete Address?"
+                description={addressPendingDelete?.full
+                    ? `This will remove "${addressPendingDelete.label || addressPendingDelete.name || 'saved address'}" from your saved addresses.`
+                    : 'This will remove the selected address from your saved addresses.'}
+                confirmText="Delete"
+                cancelText="Keep"
+                variant="destructive"
+            />
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <Script src="https://mercury.phonepe.com/web/bundle/checkout.js" />
             <Dialog open={isDineInModalOpen} onOpenChange={setDineInModalOpen}>
@@ -2841,7 +2855,7 @@ const CheckoutPageInternal = () => {
                                             }}
                                             onUseCurrentLocation={handleUseCurrentLocation}
                                             onAddNewAddress={handleAddNewAddress}
-                                            onDelete={handleDeleteAddress}
+                                            onDelete={(addr) => setAddressPendingDelete(addr)}
                                             onEdit={(addr) => {
                                                 const editData = encodeURIComponent(JSON.stringify(addr));
                                                 router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
