@@ -31,7 +31,16 @@ export function generateShortCode(length = SHORT_LINK_LENGTH) {
  * @param {string} [params.customerPhone]
  * @returns {Promise<string>} The generated short code
  */
-export async function createShortBillLink({ firestore, targetPath, orderId, businessId, customerPhone }) {
+export async function createShortLink({
+    firestore,
+    targetPath,
+    orderId,
+    businessId,
+    customerPhone,
+    purpose = 'generic',
+    ttlMs = BILL_LINK_TTL_MS,
+    extraData = {},
+}) {
     for (let attempt = 0; attempt < SHORT_LINK_MAX_ATTEMPTS; attempt += 1) {
         const code = generateShortCode();
         const docRef = firestore.collection(SHORT_LINK_COLLECTION).doc(code);
@@ -39,14 +48,15 @@ export async function createShortBillLink({ firestore, targetPath, orderId, busi
             await docRef.create({
                 code,
                 targetPath,
-                purpose: 'bill_view',
+                purpose,
                 orderId: orderId || null,
                 businessId: businessId || null,
                 customerPhone: customerPhone || null,
                 accessCount: 0,
                 status: 'active',
                 createdAt: new Date(),
-                expiresAt: new Date(Date.now() + BILL_LINK_TTL_MS),
+                expiresAt: new Date(Date.now() + ttlMs),
+                ...extraData,
             });
             return code;
         } catch (error) {
@@ -59,4 +69,16 @@ export async function createShortBillLink({ firestore, targetPath, orderId, busi
         }
     }
     throw new Error('Unable to generate short link code after max attempts.');
+}
+
+export async function createShortBillLink({ firestore, targetPath, orderId, businessId, customerPhone }) {
+    return createShortLink({
+        firestore,
+        targetPath,
+        orderId,
+        businessId,
+        customerPhone,
+        purpose: 'bill_view',
+        ttlMs: BILL_LINK_TTL_MS,
+    });
 }

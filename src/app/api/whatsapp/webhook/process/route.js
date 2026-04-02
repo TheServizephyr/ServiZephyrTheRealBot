@@ -16,6 +16,7 @@ import { mirrorWhatsAppMessageToRealtime, updateWhatsAppMessageStatusInRealtime 
 import { issueGuestAccessRef, WHATSAPP_GUEST_SESSION_TTL_MS } from '@/lib/public-auth';
 import { getAdminSystemConfig, storeAdminInboundMessage } from '@/lib/admin-system';
 import { handleAdminOwnerReportMessage } from '@/lib/owner-whatsapp-reports';
+import { createShortLink } from '@/lib/short-link';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -24,10 +25,7 @@ const WELCOME_CTA_TEMPLATE_NAME = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_NAM
 const WELCOME_CTA_TEMPLATE_LANGUAGE = (process.env.WHATSAPP_WELCOME_CTA_TEMPLATE_LANGUAGE || 'en').trim();
 const WELCOME_TEMPLATE_FALLBACK_COOLDOWN_MS = 15000;
 const WELCOME_CTA_BASE_URL = String(process.env.WHATSAPP_CTA_BASE_URL || 'https://www.servizephyr.com').trim().replace(/\/+$/g, '');
-// Session CTA sends 3 separate messages (Order CTA + Track CTA + Need Help quick reply).
-// Keep it opt-in only. Default to template-first single-message flow.
-const USE_SESSION_CTA_WELCOME = String(process.env.WHATSAPP_USE_SESSION_CTA_WELCOME || 'false').trim().toLowerCase() === 'true';
-const ORDER_NOW_BUTTON_TEXT = 'Order Now';
+const WHATSAPP_SHORT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Normalizes phone numbers to 10 digits (removes +91 or 91 prefix)
@@ -258,7 +256,37 @@ const buildWelcomeCtaPaths = async (firestore, business, customerPhoneWithCode) 
         }
     }
 
-    return { orderPath, trackPath };
+    let orderShortPath = null;
+    let trackShortPath = null;
+
+    try {
+        const [orderCode, trackCode] = await Promise.all([
+            createShortLink({
+                firestore,
+                targetPath: orderPath,
+                businessId: business.id,
+                customerPhone: normalizedPhone,
+                purpose: 'whatsapp_order',
+                ttlMs: WHATSAPP_SHORT_LINK_TTL_MS,
+                extraData: { userId: userId || null },
+            }),
+            createShortLink({
+                firestore,
+                targetPath: trackPath,
+                businessId: business.id,
+                customerPhone: normalizedPhone,
+                purpose: 'whatsapp_track',
+                ttlMs: WHATSAPP_SHORT_LINK_TTL_MS,
+                extraData: { userId: userId || null },
+            }),
+        ]);
+        orderShortPath = `/a/${orderCode}`;
+        trackShortPath = `/a/${trackCode}`;
+    } catch (shortLinkError) {
+        console.warn('[Webhook WA] Failed to create short welcome links:', shortLinkError?.message || shortLinkError);
+    }
+
+    return { orderPath, trackPath, orderShortPath, trackShortPath };
 };
 
 const toAbsoluteWelcomeUrl = (pathOrUrl = '') => {
@@ -350,7 +378,6 @@ const sendWelcomeMessageWithOptions = async (
     const firestore = await getFirestore();
     const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
     const bypassRateLimit = options?.bypassRateLimit === true;
-    const forceInteractive = options?.forceInteractive === true;
 
     // ⚡ OPTIMIZATION: Rate-limit check and path building run in parallel
     const [conversationDoc, builtPaths] = await Promise.all([
@@ -378,111 +405,33 @@ const sendWelcomeMessageWithOptions = async (
         return;
     }
 
-    const supportLabel = getBusinessSupportLabel(business);
     const defaultWelcomeBody =
         `Welcome to *${business.data.name}* \n\n` +
         `मेनू देखने और ऑर्डर करने के लिए नीचे दिए गए *Order Now* बटन पर टैप करें। ✨\n\n` +
         `1️⃣ Tap on *Order Now* to view menu and place Order.\n` +
         `2️⃣ Type *Need Help* for assistance.\n\n` +
         `👇👇 Click below to start 👇👇`;
-    const welcomeBody = customMessage || defaultWelcomeBody;
+    const welcomeBody = customMessage || `Welcome to *${business.data.name}*\n\nOpen the menu and place your order using the short link below.\n\nReply with *Need Help* if you need assistance.`;
     const collectionName = business.ref.parent.id;
 
     // ⚡ OPTIMIZATION: Firestore save + Realtime mirror run in parallel after message is sent
-    const sendInteractiveMessageWithLogging = async (payload, fallbackText) => {
-        const response = await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
-        const wamid = response?.messages?.[0]?.id;
-        if (wamid) {
-            await Promise.all([
-                conversationRef.collection('messages').doc(wamid).set({
-                    id: wamid,
-                    sender: 'system',
-                    type: 'system',
-                    text: fallbackText || welcomeBody,
-                    interactive_type: payload?.interactive?.type || 'interactive',
-                    timestamp: FieldValue.serverTimestamp(),
-                    status: 'sent',
-                    isSystem: true
-                }),
-                mirrorWhatsAppMessageToRealtime({
-                    businessId: business.id,
-                    conversationId: fromPhoneNumber,
-                    messageId: wamid,
-                    message: {
-                        id: wamid,
-                        sender: 'system',
-                        type: 'system',
-                        text: fallbackText || welcomeBody,
-                        interactive_type: payload?.interactive?.type || 'interactive',
-                        status: 'sent',
-                        isSystem: true,
-                        timestamp: new Date().toISOString(),
-                    }
-                }),
-            ]);
+    const orderUrl = toAbsoluteWelcomeUrl(builtPaths.orderShortPath || builtPaths.orderPath);
+    const finalWelcomeMessage = `${welcomeBody}\n\n*Order Link:*\n${orderUrl}`;
+
+    console.log(`[Webhook WA] Sending text welcome with short link to ${customerPhoneWithCode}`);
+
+    await sendSystemMessage(
+        customerPhoneWithCode,
+        finalWelcomeMessage,
+        botPhoneNumberId,
+        business.id,
+        business.data.name,
+        collectionName,
+        {
+            customerName: options?.customerName || fromPhoneNumber,
+            conversationPreview: 'Welcome message with order link',
         }
-        return response;
-    };
-
-    // Use already-computed paths in both branches (no duplicate buildWelcomeCtaPaths call)
-    const { orderPath } = builtPaths;
-    const headerText = String(business.data.name || 'ServiZephyr').slice(0, 60);
-
-    if (USE_SESSION_CTA_WELCOME && !forceInteractive) {
-        try {
-            const orderUrl = toAbsoluteWelcomeUrl(orderPath);
-            const orderCtaPayload = {
-                type: 'interactive',
-                interactive: {
-                    type: 'cta_url',
-                    header: { type: 'text', text: headerText },
-                    body: { text: welcomeBody },
-                    footer: { text: 'Powered by ServiZephyr' },
-                    action: {
-                        name: 'cta_url',
-                        parameters: {
-                            display_text: ORDER_NOW_BUTTON_TEXT,
-                            url: orderUrl
-                        }
-                    }
-                }
-            };
-            await sendInteractiveMessageWithLogging(orderCtaPayload, `Order now: ${orderUrl}`);
-            await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
-            console.log(`[Webhook WA] Session CTA welcome sent to ${customerPhoneWithCode}`);
-            return;
-        } catch (sessionCtaError) {
-            console.warn(`[Webhook WA] Session CTA welcome failed. Falling back to interactive.`, sessionCtaError?.message || sessionCtaError);
-        }
-    }
-
-    console.log(`[Webhook WA] Sending interactive welcome CTA message to ${customerPhoneWithCode}`);
-
-    const orderUrl = toAbsoluteWelcomeUrl(orderPath);
-    const payload = {
-        type: "interactive",
-        interactive: {
-            type: "cta_url",
-            header: { type: 'text', text: headerText },
-            body: {
-                text: welcomeBody
-            },
-            footer: { text: 'Powered by ServiZephyr' },
-            action: {
-                name: 'cta_url',
-                parameters: {
-                    display_text: ORDER_NOW_BUTTON_TEXT,
-                    url: orderUrl
-                }
-            }
-        }
-    };
-
-    const response = await sendInteractiveMessageWithLogging(payload, welcomeBody);
-
-    if (response && response.messages && response.messages[0]) {
-        console.log(`[Webhook WA] Welcome message saved to Firestore: ${response.messages[0].id}`);
-    }
+    );
 
     await conversationRef.set({ lastWelcomeSent: FieldValue.serverTimestamp() }, { merge: true });
 }
@@ -657,8 +606,23 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 });
                 console.log(`[Webhook WA] ✅ Obfuscated Ref: ${publicRef} ← from userId: ${userId}`);
 
-                // 3. Generate Link with only ref (no token)
-                const link = `https://servizephyr.com/order/${encodeURIComponent(String(businessId || '').trim())}?ref=${encodeURIComponent(publicRef)}`;
+                // 3. Generate short order link
+                const targetPath = `/order/${encodeURIComponent(String(businessId || '').trim())}?ref=${encodeURIComponent(publicRef)}`;
+                let link = `https://servizephyr.com${targetPath}`;
+                try {
+                    const shortCode = await createShortLink({
+                        firestore,
+                        targetPath,
+                        businessId,
+                        customerPhone,
+                        purpose: 'whatsapp_order',
+                        ttlMs: WHATSAPP_SHORT_LINK_TTL_MS,
+                        extraData: { userId: userId || null },
+                    });
+                    link = `https://servizephyr.com/a/${shortCode}`;
+                } catch (shortLinkError) {
+                    console.warn('[Webhook WA] Failed to shorten order link:', shortLinkError?.message || shortLinkError);
+                }
 
                 const collectionName = business.ref.parent.id;
                 await sendSystemMessage(fromNumber, `Here is your personal secure link to place an order:\n\n${link}`, botPhoneNumberId, business.id, business.data.name, collectionName);
@@ -718,7 +682,23 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     }
 
                     // Format: /track/[type]/[orderId]?token=...&ref=...&activeOrderId=...
-                    const link = `https://www.servizephyr.com/track/${trackingPath}${encodeURIComponent(orderId)}?token=${encodeURIComponent(token)}&ref=${encodeURIComponent(publicRef)}&activeOrderId=${encodeURIComponent(orderId)}`;
+                    const targetPath = `/track/${trackingPath}${encodeURIComponent(orderId)}?token=${encodeURIComponent(token)}&ref=${encodeURIComponent(publicRef)}&activeOrderId=${encodeURIComponent(orderId)}`;
+                    let link = `https://www.servizephyr.com${targetPath}`;
+                    try {
+                        const shortCode = await createShortLink({
+                            firestore,
+                            targetPath,
+                            orderId,
+                            businessId: business.id,
+                            customerPhone,
+                            purpose: 'whatsapp_track',
+                            ttlMs: WHATSAPP_SHORT_LINK_TTL_MS,
+                            extraData: { userId: userId || null },
+                        });
+                        link = `https://www.servizephyr.com/a/${shortCode}`;
+                    } catch (shortLinkError) {
+                        console.warn('[Webhook WA] Failed to shorten tracking link:', shortLinkError?.message || shortLinkError);
+                    }
 
                     const displayOrderId = latestOrder.customerOrderId ? `#${latestOrder.customerOrderId}` : `#${orderId.substring(0, 8)}`;
                     const collectionName = business.ref.parent.id;

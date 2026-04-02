@@ -14,7 +14,7 @@ function coerceDate(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-const ALLOWED_PATH_PREFIXES = ['/add-address', '/public/bill/'];
+const ALLOWED_PATH_PREFIXES = ['/add-address', '/public/bill/', '/order/', '/track/'];
 
 function normalizeTargetPath(targetPath) {
     if (typeof targetPath !== 'string') return null;
@@ -70,4 +70,3 @@ export async function GET(request, { params }) {
         return new NextResponse('Unable to open link right now. Please try again.', { status: 500 });
     }
 }
-
