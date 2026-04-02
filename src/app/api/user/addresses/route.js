@@ -45,15 +45,23 @@ function toCoordinate(value) {
     return Number.isFinite(n) ? n : null;
 }
 
+function getAddressLat(address = {}) {
+    return toCoordinate(address.latitude ?? address.lat);
+}
+
+function getAddressLng(address = {}) {
+    return toCoordinate(address.longitude ?? address.lng);
+}
+
 function hasValidCoordinatePair(lat, lng) {
     return lat !== null && lng !== null;
 }
 
 function addressesMatch(existingAddress = {}, incomingAddress = {}) {
-    const existingLat = toCoordinate(existingAddress.latitude);
-    const existingLng = toCoordinate(existingAddress.longitude);
-    const incomingLat = toCoordinate(incomingAddress.latitude);
-    const incomingLng = toCoordinate(incomingAddress.longitude);
+    const existingLat = getAddressLat(existingAddress);
+    const existingLng = getAddressLng(existingAddress);
+    const incomingLat = getAddressLat(incomingAddress);
+    const incomingLng = getAddressLng(incomingAddress);
 
     const sameCoordinates =
         hasValidCoordinatePair(existingLat, existingLng) &&
@@ -71,6 +79,15 @@ function addressesMatch(existingAddress = {}, incomingAddress = {}) {
         normalizeText(existingAddress.phone) === normalizeText(incomingAddress.phone);
 
     return sameFullAddress && samePhone;
+}
+
+function addressesMatchForDelete(existingAddress = {}, addressId = '', candidateAddress = {}) {
+    const normalizedId = String(addressId || candidateAddress?.id || '').trim();
+    if (normalizedId && String(existingAddress?.id || '').trim() === normalizedId) {
+        return true;
+    }
+
+    return addressesMatch(existingAddress, candidateAddress);
 }
 
 function orderHasSameLocation(orderData = {}, incomingAddress = {}) {
@@ -408,11 +425,11 @@ export async function DELETE(req) {
     console.log("[API][user/addresses] DELETE request received.");
     try {
         const firestore = await getFirestore();
-        const { addressId, phone } = await req.json();
+        const { addressId, phone, address } = await req.json();
 
-        if (!addressId) {
-            console.error("[API][user/addresses] DELETE validation failed: Address ID is required.");
-            return NextResponse.json({ message: 'Address ID is required.' }, { status: 400 });
+        if (!addressId && !address) {
+            console.error("[API][user/addresses] DELETE validation failed: Address identifier is required.");
+            return NextResponse.json({ message: 'Address identifier is required.' }, { status: 400 });
         }
 
         let targetRef;
@@ -485,21 +502,21 @@ export async function DELETE(req) {
 
             const profileData = docSnap.data() || {};
             const currentAddresses = Array.isArray(profileData.addresses) ? profileData.addresses : [];
-            const addressExists = currentAddresses.some((addr) => addr.id === addressId);
+            const addressExists = currentAddresses.some((addr) => addressesMatchForDelete(addr, addressId, address));
             if (!addressExists) continue;
 
-            const updatedAddresses = currentAddresses.filter((addr) => addr.id !== addressId);
-            console.log(`[API][user/addresses] Removing address ID ${addressId} from document ${ref.path}.`);
+            const updatedAddresses = currentAddresses.filter((addr) => !addressesMatchForDelete(addr, addressId, address));
+            console.log(`[API][user/addresses] Removing address ${addressId || address?.full || 'unknown'} from document ${ref.path}.`);
             await ref.update({ addresses: updatedAddresses });
             removedFromCount += 1;
         }
 
         if (removedFromCount === 0) {
-            console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in any merged profile for ${targetRef.path}.`);
+            console.warn(`[API][user/addresses] DELETE failed: Address ${addressId || address?.full || 'unknown'} not found in any merged profile for ${targetRef.path}.`);
             return NextResponse.json({ message: 'Address not found in saved profiles.' }, { status: 404 });
         }
 
-        console.log(`[API][user/addresses] Address ID ${addressId} removed successfully from ${removedFromCount} profile(s).`);
+        console.log(`[API][user/addresses] Address ${addressId || address?.full || 'unknown'} removed successfully from ${removedFromCount} profile(s).`);
         return NextResponse.json({ message: 'Address removed successfully!', removedFromCount }, { status: 200 });
 
     } catch (error) {

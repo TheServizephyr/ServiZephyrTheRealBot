@@ -727,6 +727,7 @@ export async function GET(req, { params }) {
             deliveryEngineMode: deliveryConfigSnap.exists ? (deliveryConfig.deliveryEngineMode || 'legacy') : (businessData.deliveryEngineMode || 'legacy'),
             deliveryUseZones: deliveryConfigSnap.exists ? (deliveryConfig.deliveryUseZones === true) : (businessData.deliveryUseZones === true),
             zoneFallbackToLegacy: deliveryConfigSnap.exists ? (deliveryConfig.zoneFallbackToLegacy !== false) : (businessData.zoneFallbackToLegacy !== false),
+            deliveryZones: deliveryConfigSnap.exists ? (deliveryConfig.deliveryZones || []) : (businessData.deliveryZones || []),
 
             menu: menuData,
             customCategories: customCategories,

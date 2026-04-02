@@ -59,6 +59,31 @@ const normalizeCoupon = (coupon) => {
 
 const RUPEE_SYMBOL = '\u20B9';
 const formatCurrency = (amount, digits = 2) => `${RUPEE_SYMBOL}${Number(amount || 0).toFixed(digits)}`;
+const normalizeSavedAddressText = (value) => String(value || '').trim().toLowerCase();
+const normalizeSavedAddressPhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+const normalizeSavedAddressCoord = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Number(n.toFixed(5)) : null;
+};
+const isSameSavedAddress = (left = {}, right = {}) => {
+    const leftId = String(left?.id || '').trim();
+    const rightId = String(right?.id || '').trim();
+    if (leftId && rightId && leftId === rightId) return true;
+
+    const leftLat = normalizeSavedAddressCoord(left?.latitude ?? left?.lat);
+    const leftLng = normalizeSavedAddressCoord(left?.longitude ?? left?.lng);
+    const rightLat = normalizeSavedAddressCoord(right?.latitude ?? right?.lat);
+    const rightLng = normalizeSavedAddressCoord(right?.longitude ?? right?.lng);
+    if (leftLat !== null && leftLng !== null && rightLat !== null && rightLng !== null && leftLat === rightLat && leftLng === rightLng) {
+        return true;
+    }
+
+    const leftFull = normalizeSavedAddressText(left?.full);
+    const rightFull = normalizeSavedAddressText(right?.full);
+    const leftPhone = normalizeSavedAddressPhone(left?.phone);
+    const rightPhone = normalizeSavedAddressPhone(right?.phone);
+    return Boolean(leftFull && rightFull && leftFull === rightFull && leftPhone && rightPhone && leftPhone === rightPhone);
+};
 
 const applyCheckoutPaymentSettings = (paymentData, deliveryType, setters) => {
     const {
@@ -476,7 +501,7 @@ const CheckoutPageInternal = () => {
 
     const handleDeleteAddress = async (addressToDelete) => {
         const addressId = addressToDelete?.id;
-        if (!addressId) return;
+        if (!addressId && !addressToDelete) return;
 
         try {
             const headers = { 'Content-Type': 'application/json' };
@@ -490,6 +515,7 @@ const CheckoutPageInternal = () => {
                 headers,
                 body: JSON.stringify({
                     addressId,
+                    address: addressToDelete,
                     ...(fallbackPhone ? { phone: fallbackPhone } : {}),
                 }),
             });
@@ -500,8 +526,8 @@ const CheckoutPageInternal = () => {
             }
 
             setUserAddresses((prev) => {
-                const nextAddresses = prev.filter((addr) => addr.id !== addressId);
-                if (selectedAddress?.id === addressId) {
+                const nextAddresses = prev.filter((addr) => !isSameSavedAddress(addr, addressToDelete));
+                if (selectedAddress && isSameSavedAddress(selectedAddress, addressToDelete)) {
                     setSelectedAddress(nextAddresses[0] || null);
                 }
                 return nextAddresses;

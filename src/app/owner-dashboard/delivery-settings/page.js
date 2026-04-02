@@ -20,6 +20,7 @@ import { auth } from '@/lib/firebase';
 import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { getDeliveryZoneOptimizationCircle } from '@/lib/deliveryZoneOptimization';
 
 export const dynamic = 'force-dynamic';
 
@@ -218,49 +219,6 @@ const parseDeliveryZonesEditor = (value) => {
     return { zones, error: null };
 };
 
-const toFiniteCoordinate = (value) => {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : null;
-};
-
-const calculateHaversineKm = (start, end) => {
-    const startLat = toFiniteCoordinate(start?.lat);
-    const startLng = toFiniteCoordinate(start?.lng);
-    const endLat = toFiniteCoordinate(end?.lat);
-    const endLng = toFiniteCoordinate(end?.lng);
-    if ([startLat, startLng, endLat, endLng].some((value) => value === null)) return null;
-
-    const toRadians = (value) => (value * Math.PI) / 180;
-    const dLat = toRadians(endLat - startLat);
-    const dLng = toRadians(endLng - startLng);
-    const a = Math.sin(dLat / 2) ** 2
-        + Math.cos(toRadians(startLat)) * Math.cos(toRadians(endLat)) * Math.sin(dLng / 2) ** 2;
-    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const getAutoFittedGlobalRadiusKm = (businessCoordinates, zones = [], fallbackRadius = 5) => {
-    if (!businessCoordinates || !Array.isArray(zones)) return fallbackRadius;
-
-    const activeZones = zones.filter((zone) => zone?.is_blocked !== true && Array.isArray(zone?.boundary) && zone.boundary.length >= 3);
-    if (activeZones.length === 0) return fallbackRadius;
-
-    let maxDistanceKm = 0;
-    for (const zone of activeZones) {
-        for (const point of zone.boundary) {
-            const distanceKm = calculateHaversineKm(
-                businessCoordinates,
-                { lat: point?.[0], lng: point?.[1] }
-            );
-            if (distanceKm !== null) {
-                maxDistanceKm = Math.max(maxDistanceKm, distanceKm);
-            }
-        }
-    }
-
-    if (maxDistanceKm <= 0) return fallbackRadius;
-    return Math.max(0.5, Number((maxDistanceKm + 0.15).toFixed(2)));
-};
-
 function DeliverySettingsPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -307,6 +265,10 @@ function DeliverySettingsPageContent() {
     const [isZoneDetailsOpen, setIsZoneDetailsOpen] = useState(false);
     const [zoneDraft, setZoneDraft] = useState(null);
     const [resumeZoneStudioAfterEdit, setResumeZoneStudioAfterEdit] = useState(false);
+    const optimizationCircle = useMemo(
+        () => settings.deliveryUseZones ? getDeliveryZoneOptimizationCircle(settings.deliveryZones) : null,
+        [settings.deliveryUseZones, settings.deliveryZones]
+    );
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -431,17 +393,9 @@ function DeliverySettingsPageContent() {
                 throw new Error('Hybrid zone mode is enabled, but no valid delivery zones are configured yet.');
             }
 
-            const autoFittedRadiusKm = deliveryUseZones
-                ? getAutoFittedGlobalRadiusKm(
-                    settings.businessCoordinates,
-                    parsedDeliveryZones,
-                    toNum(settings.deliveryRadius[0], 5)
-                )
-                : toNum(settings.deliveryRadius[0], 5);
-
             const payload = {
                 deliveryEnabled: settings.deliveryEnabled,
-                deliveryRadius: autoFittedRadiusKm,
+                deliveryRadius: toNum(settings.deliveryRadius[0], 5),
                 deliveryFeeType: settings.deliveryFeeType,
                 deliveryFixedFee: toNum(settings.deliveryFixedFee, 0),
                 deliveryBaseDistance: toNum(settings.deliveryBaseDistance, 0),
@@ -512,7 +466,7 @@ function DeliverySettingsPageContent() {
                 isOpen: true,
                 title: 'Success',
                 message: deliveryUseZones
-                    ? `Delivery settings saved successfully! The global radius was auto-fitted to ${payload.deliveryRadius} km.`
+                    ? 'Delivery settings saved successfully! Brown dashed circle now shows the optimized polygon envelope.'
                     : 'Delivery settings saved successfully!'
             });
         } catch (error) {
@@ -795,6 +749,7 @@ function DeliverySettingsPageContent() {
                             <DeliveryZoneMapEditor
                                 center={settings.businessCoordinates || DEFAULT_MAP_CENTER}
                                 deliveryRadiusKm={Number(settings.deliveryRadius?.[0]) || 5}
+                                optimizationCircle={optimizationCircle}
                                 zones={settings.deliveryZones}
                                 onZonesChange={applyZonesToState}
                                 onZoneCreated={handleNewZoneCreated}
@@ -1041,7 +996,7 @@ function DeliverySettingsPageContent() {
                                             Global radius stays as the first filter. Matching zones then decide pricing or blocking.
                                         </p>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                            When you click Apply Settings, the system also auto-optimizes the global radius to fit the active polygons.
+                                            Brown dashed circle is calculated automatically from all saved zones and is used only as the polygon optimization envelope.
                                         </p>
                                     </div>
                                     <Switch
@@ -1116,13 +1071,14 @@ function DeliverySettingsPageContent() {
                                 </div>
                                 {isZoneStudioOpen ? (
                                     <div className="rounded-2xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
-                                        Fullscreen studio open hai, isliye niche wala preview map temporarily hide kiya gaya hai taaki Leaflet controls overlap na karein.
+                                        Preview map is temporarily hidden while the fullscreen studio is open so the Leaflet controls do not overlap.
                                     </div>
                                 ) : (
                                     <>
                                         <DeliveryZoneMapEditor
                                             center={settings.businessCoordinates || DEFAULT_MAP_CENTER}
                                             deliveryRadiusKm={Number(settings.deliveryRadius?.[0]) || 5}
+                                            optimizationCircle={optimizationCircle}
                                             zones={settings.deliveryZones}
                                             onZonesChange={applyZonesToState}
                                             selectedZoneId={zoneDraft?.zone_id || null}
@@ -1132,7 +1088,7 @@ function DeliverySettingsPageContent() {
                                             heightClass="h-[320px]"
                                         />
                                         <p className="text-xs text-muted-foreground">
-                                            Preview only here. Drawing, shape editing, delete mode, and pen color selection all happen inside the fullscreen studio.
+                                            Preview only here. Blue circle is the restaurant-centered global radius. Brown dashed circle is the optimized polygon envelope used to skip unnecessary polygon checks.
                                         </p>
                                     </>
                                 )}

@@ -1,10 +1,10 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock } from 'lucide-react';
+import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock, Maximize2, X, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import { useUser } from '@/firebase';
 import { Textarea } from '@/components/ui/textarea';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { normalizeDeliveryZones, findMatchingBlockedDeliveryZone, findMatchingDeliveryZone } from '@/lib/deliveryZones';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
     ssr: false,
@@ -139,6 +140,70 @@ const getRadiusZoom = (radiusKm = 5) => {
     return DEFAULT_APPROX_ZOOM;
 };
 
+const getZoneValidationState = ({ coords, serviceArea, normalizedZones }) => {
+    if (!coords || !serviceArea) {
+        return {
+            allowed: true,
+            state: 'unknown',
+            message: '',
+        };
+    }
+
+    const radiusKm = Number(serviceArea?.radiusKm);
+    if (serviceArea?.center && Number.isFinite(radiusKm) && radiusKm > 0) {
+        const distanceFromRestaurant = haversineDistanceKm(serviceArea.center, coords);
+        if (distanceFromRestaurant > radiusKm) {
+            return {
+                allowed: false,
+                state: 'outside-radius',
+                message: `This pin is outside the ${radiusKm} km global delivery radius.`,
+            };
+        }
+    }
+
+    const hybridZonesEnabled = serviceArea?.deliveryUseZones === true && normalizedZones.length > 0;
+    if (!hybridZonesEnabled) {
+        return {
+            allowed: true,
+            state: 'legacy-radius',
+            message: 'This address is inside the restaurant delivery radius.',
+        };
+    }
+
+    const blockedZone = findMatchingBlockedDeliveryZone(normalizedZones, coords);
+    if (blockedZone) {
+        return {
+            allowed: false,
+            state: 'blocked-zone',
+            message: `${blockedZone.name} is currently blocked for delivery.`,
+        };
+    }
+
+    const matchedZone = findMatchingDeliveryZone(normalizedZones, coords);
+    if (matchedZone) {
+        return {
+            allowed: true,
+            state: 'active-zone',
+            zone: matchedZone,
+            message: `${matchedZone.name} delivery zone matched successfully.`,
+        };
+    }
+
+    if (serviceArea?.zoneFallbackToLegacy === false) {
+        return {
+            allowed: false,
+            state: 'strict-zone-miss',
+            message: 'This pin is outside the mapped delivery zones for this restaurant.',
+        };
+    }
+
+    return {
+        allowed: true,
+        state: 'fallback-zone-miss',
+        message: 'This pin is outside the mapped delivery zones, so fallback delivery pricing will apply.',
+    };
+};
+
 const AddAddressPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -177,7 +242,11 @@ const AddAddressPageInternal = () => {
         searchParams.get('name') ||
         getNestedParamFromReturnUrl(rawReturnUrl, 'name') ||
         '';
-    const restaurantIdFromReturnUrl = extractRestaurantIdFromReturnUrl(rawReturnUrl);
+    const restaurantIdFromReturnUrl =
+        extractRestaurantIdFromReturnUrl(rawReturnUrl) ||
+        getNestedParamFromReturnUrl(rawReturnUrl, 'restaurantId') ||
+        searchParams.get('restaurantId') ||
+        '';
 
     const [mapCenter, setMapCenter] = useState(DEFAULT_MAP_CENTER);
     const [mapZoom, setMapZoom] = useState(DEFAULT_EXACT_ZOOM);
@@ -188,8 +257,9 @@ const AddAddressPageInternal = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [permissionError, setPermissionError] = useState(null); // NEW: Persistent permission error
-    const [locationHint, setLocationHint] = useState('');
+    const [, setLocationHint] = useState('');
     const [isPinAddressLoading, setIsPinAddressLoading] = useState(false);
+    const [isMapExpanded, setIsMapExpanded] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const [recipientName, setRecipientName] = useState('');
@@ -199,6 +269,24 @@ const AddAddressPageInternal = () => {
     const [landmark, setLandmark] = useState('');
     const [addressLabel, setAddressLabel] = useState('Home');
     const [customAddressLabel, setCustomAddressLabel] = useState('');
+
+    const normalizedDeliveryZones = useMemo(
+        () => normalizeDeliveryZones(serviceArea?.deliveryZones || []),
+        [serviceArea?.deliveryZones]
+    );
+    const currentPinValidation = useMemo(() => {
+        if (!addressDetails) return null;
+        const coords = {
+            lat: Number(addressDetails.latitude),
+            lng: Number(addressDetails.longitude),
+        };
+        if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return null;
+        return getZoneValidationState({
+            coords,
+            serviceArea,
+            normalizedZones: normalizedDeliveryZones,
+        });
+    }, [addressDetails, normalizedDeliveryZones, serviceArea]);
 
     const returnUrl = rawReturnUrl;
     const useCurrent =
@@ -211,10 +299,17 @@ const AddAddressPageInternal = () => {
         let isMounted = true;
 
         const loadServiceArea = async () => {
-            if (!isTokenValid || editDataRaw) {
+            if (editDataRaw) {
                 if (isMounted) setServiceAreaResolved(true);
                 return;
             }
+
+            if (!isTokenValid) {
+                if (isMounted) setServiceAreaResolved(false);
+                return;
+            }
+
+            if (isMounted) setServiceAreaResolved(false);
 
             try {
                 let resolvedRestaurantId = restaurantIdFromReturnUrl;
@@ -260,6 +355,9 @@ const AddAddressPageInternal = () => {
                             center: fallbackCenter,
                             radiusKm: safeRadiusKm,
                             restaurantId: resolvedRestaurantId,
+                            deliveryUseZones: menuData?.deliveryUseZones === true,
+                            zoneFallbackToLegacy: menuData?.zoneFallbackToLegacy !== false,
+                            deliveryZones: Array.isArray(menuData?.deliveryZones) ? menuData.deliveryZones : [],
                         });
                     }
                     return;
@@ -270,6 +368,9 @@ const AddAddressPageInternal = () => {
                         center: normalizeCoords({ lat: restaurantLat, lng: restaurantLng }),
                         radiusKm: safeRadiusKm,
                         restaurantId: resolvedRestaurantId,
+                        deliveryUseZones: menuData?.deliveryUseZones === true,
+                        zoneFallbackToLegacy: menuData?.zoneFallbackToLegacy !== false,
+                        deliveryZones: Array.isArray(menuData?.deliveryZones) ? menuData.deliveryZones : [],
                     });
                 }
             } catch (error) {
@@ -367,6 +468,20 @@ const AddAddressPageInternal = () => {
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
         if (geocodeAbortRef.current) geocodeAbortRef.current.abort();
     }, []);
+
+    useEffect(() => {
+        if (!isMapExpanded) return undefined;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousHtmlOverflow = document.documentElement.style.overflow;
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.documentElement.style.overflow = previousHtmlOverflow;
+        };
+    }, [isMapExpanded]);
 
     const getSavedCustomerLocation = useCallback(() => {
         try {
@@ -517,6 +632,11 @@ const AddAddressPageInternal = () => {
     }, [permissionError, reverseGeocode, serviceArea]);
 
     const getIpApproximateLocation = useCallback(async () => {
+        if (serviceArea?.center && Number.isFinite(Number(serviceArea?.radiusKm))) {
+            applyRestaurantServiceAreaFallback();
+            return;
+        }
+
         setLoading(true);
         setError('Detecting your approximate location...');
 
@@ -551,7 +671,7 @@ const AddAddressPageInternal = () => {
             setLoading(false);
             setError('');
         }
-    }, [reverseGeocode]);
+    }, [applyRestaurantServiceAreaFallback, reverseGeocode, serviceArea]);
 
     const getCurrentGeolocation = useCallback(() => {
         setLoading(true);
@@ -748,15 +868,21 @@ const AddAddressPageInternal = () => {
         initialLocationResolvedRef.current = true;
         if (useCurrent) {
             getCurrentGeolocation();
+        } else if (serviceArea?.center && Number.isFinite(Number(serviceArea?.radiusKm))) {
+            applyRestaurantServiceAreaFallback();
         } else {
             getIpApproximateLocation();
         }
-    }, [editDataRaw, getCurrentGeolocation, getIpApproximateLocation, isTokenValid, serviceAreaResolved, useCurrent]);
+    }, [applyRestaurantServiceAreaFallback, editDataRaw, getCurrentGeolocation, getIpApproximateLocation, isTokenValid, serviceArea, serviceAreaResolved, useCurrent]);
 
 
     const handleConfirmLocation = async () => {
         if (!addressDetails || !recipientName.trim() || !recipientPhone.trim() || !fullAddress.trim()) {
             setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, and Complete Address." });
+            return;
+        }
+        if (currentPinValidation && currentPinValidation.allowed === false) {
+            setInfoDialog({ isOpen: true, title: 'Delivery Not Available', message: currentPinValidation.message });
             return;
         }
         if (!/^\d{10}$/.test(recipientPhone.trim())) {
@@ -845,9 +971,12 @@ const AddAddressPageInternal = () => {
     const filledRequiredFieldClassName =
         'mt-1 border-border bg-background';
     const showBlockingMapOverlay = loading && !addressDetails;
+    const mapShellClassName = isMapExpanded
+        ? 'fixed inset-0 z-[80] h-[100dvh] w-screen bg-background'
+        : 'md:w-1/2 h-[48dvh] min-h-[340px] md:h-full flex-shrink-0 relative';
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+        <div className="h-screen min-h-[100dvh] w-screen flex flex-col bg-background text-foreground">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '', type: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft /></Button>
@@ -855,29 +984,49 @@ const AddAddressPageInternal = () => {
             </header>
 
             <div className="flex-grow flex flex-col md:flex-row">
-                <div className="md:w-1/2 h-64 md:h-full flex-shrink-0 relative">
+                <div className={mapShellClassName}>
                     {showBlockingMapOverlay && (
                         <div className="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white">
                             <GoldenCoinSpinner />
                             <p className="mt-4 font-semibold text-lg animate-pulse">Fetching your location...</p>
                         </div>
                     )}
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => setIsMapExpanded((prev) => !prev)}
+                        className="absolute top-4 right-4 z-20 h-12 w-12 rounded-full shadow-lg"
+                        aria-label={isMapExpanded ? 'Close full screen map' : 'Open full screen map'}
+                    >
+                        {isMapExpanded ? <X /> : <Maximize2 />}
+                    </Button>
                     <GoogleMap center={mapCenter} zoom={mapZoom} onIdle={handleMapIdle} />
                 </div>
 
                 <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
-                    <div className="rounded-xl border border-border bg-muted/30 p-3">
-                        <p className="text-sm font-medium">Set address directly from the map pin</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Move the map, leave the pin where you want, and we&apos;ll update the address in the background without refreshing the map.
-                        </p>
-                    </div>
-
                     <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading || isPinAddressLoading}>
                         {loading ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>
-                    {locationHint && (
-                        <p className="text-xs text-muted-foreground">{locationHint}</p>
+                    {currentPinValidation?.message && (
+                        <div className={[
+                            'rounded-xl border p-3 text-sm font-medium',
+                            currentPinValidation.allowed
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                : 'border-destructive/30 bg-destructive/10 text-destructive'
+                        ].join(' ')}>
+                            <div className="flex items-start gap-2">
+                                {currentPinValidation.allowed ? <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" /> : <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />}
+                                <div className="space-y-1">
+                                    <p>{currentPinValidation.message}</p>
+                                    {currentPinValidation.state === 'fallback-zone-miss' && (
+                                        <p className="text-xs opacity-80">
+                                            You can still save this address because the restaurant allows fallback pricing outside the drawn polygons.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     )}
                     {permissionError && (
                         <div className="text-amber-700 dark:text-amber-300 text-sm font-medium p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
@@ -905,20 +1054,16 @@ const AddAddressPageInternal = () => {
                                         </div>
                                     )}
                                 </div>
-                                <p className="mt-1 text-xs text-muted-foreground">Full address from map. Edit if house number, locality, or pin needs correction.</p>
                                 <Textarea id="fullAddress" value={fullAddress} onChange={e => setFullAddress(e.target.value)} required rows={3} className={isFullAddressMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
-                                <p className="text-xs text-muted-foreground mt-1">Move the map and leave the pin where you want. The address updates automatically here in the background.</p>
                             </div>
                             {/* Address Details and Landmark intentionally hidden for now. */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label htmlFor="recipientName">Contact Person *</Label>
-                                    <p className="mt-1 text-xs text-muted-foreground">Name of the person receiving the order.</p>
                                     <Input id="recipientName" value={recipientName} onChange={e => setRecipientName(e.target.value)} required className={isRecipientNameMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
                                 </div>
                                 <div>
                                     <Label htmlFor="recipientPhone">Contact Number *</Label>
-                                    <p className="mt-1 text-xs text-muted-foreground">Enter the 10-digit number rider should call.</p>
                                     <Input id="recipientPhone" type="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} required className={isRecipientPhoneMissing ? requiredFieldClassName : filledRequiredFieldClassName} />
                                 </div>
                             </div>
@@ -938,7 +1083,7 @@ const AddAddressPageInternal = () => {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-border mt-4">
-                                <Button onClick={handleConfirmLocation} disabled={loading || isPinAddressLoading || isSaving || !addressDetails || !fullAddress.trim()} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                <Button onClick={handleConfirmLocation} disabled={loading || isPinAddressLoading || isSaving || !addressDetails || !fullAddress.trim() || currentPinValidation?.allowed === false} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                     {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
                                 </Button>
                             </div>

@@ -117,6 +117,32 @@ const DEFAULT_STORE_FILTERS = {
     priceRange: 'all',
 };
 
+const normalizeSavedAddressText = (value) => String(value || '').trim().toLowerCase();
+const normalizeSavedAddressPhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+const normalizeSavedAddressCoord = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Number(n.toFixed(5)) : null;
+};
+const isSameSavedAddress = (left = {}, right = {}) => {
+    const leftId = String(left?.id || '').trim();
+    const rightId = String(right?.id || '').trim();
+    if (leftId && rightId && leftId === rightId) return true;
+
+    const leftLat = normalizeSavedAddressCoord(left?.latitude ?? left?.lat);
+    const leftLng = normalizeSavedAddressCoord(left?.longitude ?? left?.lng);
+    const rightLat = normalizeSavedAddressCoord(right?.latitude ?? right?.lat);
+    const rightLng = normalizeSavedAddressCoord(right?.longitude ?? right?.lng);
+    if (leftLat !== null && leftLng !== null && rightLat !== null && rightLng !== null && leftLat === rightLat && leftLng === rightLng) {
+        return true;
+    }
+
+    const leftFull = normalizeSavedAddressText(left?.full);
+    const rightFull = normalizeSavedAddressText(right?.full);
+    const leftPhone = normalizeSavedAddressPhone(left?.phone);
+    const rightPhone = normalizeSavedAddressPhone(right?.phone);
+    return Boolean(leftFull && rightFull && leftFull === rightFull && leftPhone && rightPhone && leftPhone === rightPhone);
+};
+
 const normalizeTextValue = (value) => String(value || '').trim();
 const normalizeFilterKey = (value) => normalizeTextValue(value).toLowerCase();
 
@@ -1568,7 +1594,7 @@ const OrderPageInternal = () => {
 
     const handleDeleteSavedAddress = async (addressToDelete) => {
         const addressId = addressToDelete?.id;
-        if (!addressId) return;
+        if (!addressId && !addressToDelete) return;
 
         setAddressLoading(true);
         try {
@@ -1582,6 +1608,7 @@ const OrderPageInternal = () => {
                 headers,
                 body: JSON.stringify({
                     addressId,
+                    address: addressToDelete,
                     ...(phone ? { phone } : {}),
                 }),
             });
@@ -1590,8 +1617,8 @@ const OrderPageInternal = () => {
                 throw new Error(payload.message || 'Failed to delete address.');
             }
 
-            setUserAddresses((prev) => prev.filter((address) => address.id !== addressId));
-            if (customerLocation?.id === addressId) {
+            setUserAddresses((prev) => prev.filter((address) => !isSameSavedAddress(address, addressToDelete)));
+            if (customerLocation && isSameSavedAddress(customerLocation, addressToDelete)) {
                 setCustomerLocation(null);
                 localStorage.removeItem('customerLocation');
             }
@@ -4027,7 +4054,7 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            <div className="min-h-screen bg-background text-foreground green-theme overflow-x-hidden max-w-full">
+            <div className="min-h-screen min-h-[100dvh] bg-background text-foreground green-theme overflow-x-hidden max-w-full">
                 <DineInModal
                     isOpen={isDineInModalOpen}
                     onClose={handleCloseDineInModal}
@@ -4080,7 +4107,7 @@ const OrderPageInternal = () => {
                                 onClick={() => window.history.back()}
                             />
                             <motion.div
-                                className="fixed top-0 left-0 right-0 h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden"
+                                className="fixed top-0 left-0 right-0 h-screen h-[100dvh] max-h-[100dvh] bg-background z-[70] shadow-2xl flex flex-col overflow-hidden"
                                 initial={{ y: '-100%' }}
                                 animate={{ y: 0 }}
                                 exit={{ y: '-100%' }}
@@ -4291,7 +4318,7 @@ const OrderPageInternal = () => {
                                         placeholder='Search "atta, dal, soap and more"'
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                                        className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-base md:text-sm outline-none focus:ring-2 focus:ring-primary/40"
                                     />
                                 </div>
                                 <Popover>
@@ -4392,7 +4419,7 @@ const OrderPageInternal = () => {
                                                         <select
                                                             value={storeFilters.brand}
                                                             onChange={(event) => handleStoreFilterValueChange('brand', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
                                                         >
                                                             <option value="all">All brands</option>
                                                             {storeBrandOptions.map((option) => (
@@ -4408,7 +4435,7 @@ const OrderPageInternal = () => {
                                                         <select
                                                             value={storeFilters.type}
                                                             onChange={(event) => handleStoreFilterValueChange('type', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
                                                         >
                                                             <option value="all">All types</option>
                                                             {storeTypeOptions.map((option) => (
@@ -4424,7 +4451,7 @@ const OrderPageInternal = () => {
                                                         <select
                                                             value={storeFilters.priceRange}
                                                             onChange={(event) => handleStoreFilterValueChange('priceRange', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
                                                         >
                                                             <option value="all">All prices</option>
                                                             <option value="under-100">Under Rs 100</option>
@@ -4803,7 +4830,7 @@ const OrderPageInternal = () => {
                                     placeholder={searchPlaceholder}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                                    className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-base md:text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                                 />
                             </div>
                         </div >

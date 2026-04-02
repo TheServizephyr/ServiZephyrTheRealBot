@@ -90,6 +90,7 @@ function getPolygonStyle(zone = {}, isSelected = false) {
 export default function DeliveryZoneMapEditor({
     center,
     deliveryRadiusKm = 5,
+    optimizationCircle = null,
     zones = [],
     onZonesChange,
     onZoneCreated,
@@ -104,6 +105,7 @@ export default function DeliveryZoneMapEditor({
     const featureGroupRef = useRef(null);
     const restaurantMarkerRef = useRef(null);
     const radiusCircleRef = useRef(null);
+    const optimizationCircleRef = useRef(null);
     const drawHandlerRef = useRef(null);
     const editHandlerRef = useRef(null);
     const deleteHandlerRef = useRef(null);
@@ -168,7 +170,7 @@ export default function DeliveryZoneMapEditor({
     const getRadiusMeters = () => Math.max(0, Number(deliveryRadiusKmRef.current) || 0) * 1000;
 
     const notifyRadiusViolation = () => {
-        onValidationErrorRef.current?.('Global radius ke bahar polygon draw ya edit nahi kar sakte.');
+        onValidationErrorRef.current?.('You cannot draw or edit polygons outside the global radius.');
     };
 
     const renderZonesOnMap = (nextZones = []) => {
@@ -393,6 +395,7 @@ export default function DeliveryZoneMapEditor({
             featureGroupRef.current = null;
             restaurantMarkerRef.current = null;
             radiusCircleRef.current = null;
+            optimizationCircleRef.current = null;
         };
         // We intentionally initialize Leaflet only once and keep reactive updates in separate effects.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -449,10 +452,39 @@ export default function DeliveryZoneMapEditor({
             radiusCircleRef.current.setRadius(radiusMeters);
         }
 
+        if (optimizationCircle?.center && Number.isFinite(Number(optimizationCircle.radiusKm)) && Number(optimizationCircle.radiusKm) > 0) {
+            const optimizedCenter = L.latLng(
+                Number(optimizationCircle.center.lat),
+                Number(optimizationCircle.center.lng)
+            );
+            const optimizedRadiusMeters = Number(optimizationCircle.radiusKm) * 1000;
+
+            if (!optimizationCircleRef.current) {
+                optimizationCircleRef.current = L.circle(optimizedCenter, {
+                    radius: optimizedRadiusMeters,
+                    color: '#92400e',
+                    weight: 2,
+                    fillOpacity: 0,
+                    dashArray: '10 6',
+                }).addTo(map);
+                optimizationCircleRef.current.bindTooltip('Optimized Polygon Envelope', {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -6],
+                });
+            } else {
+                optimizationCircleRef.current.setLatLng(optimizedCenter);
+                optimizationCircleRef.current.setRadius(optimizedRadiusMeters);
+            }
+        } else if (optimizationCircleRef.current) {
+            optimizationCircleRef.current.removeFrom(map);
+            optimizationCircleRef.current = null;
+        }
+
         if (!hasFitBoundsRef.current && !(zones?.length > 0)) {
             map.setView(latLng, 13);
         }
-    }, [deliveryRadiusKm, safeCenter.lat, safeCenter.lng, zones?.length]);
+    }, [deliveryRadiusKm, optimizationCircle, safeCenter.lat, safeCenter.lng, zones?.length]);
 
     useEffect(() => {
         const map = mapRef.current;
@@ -536,7 +568,8 @@ export default function DeliveryZoneMapEditor({
 
             <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                 <span className="rounded-full border px-3 py-1 bg-background">Blue circle: Global Radius Filter</span>
-                <span className="rounded-full border px-3 py-1 bg-background">Radius ke bahar polygon draw/edit block hai</span>
+                <span className="rounded-full border px-3 py-1 bg-background">Brown dashed circle: Optimized Polygon Envelope</span>
+                <span className="rounded-full border px-3 py-1 bg-background">Polygon drawing and editing stay inside the blue radius</span>
                 <span className="rounded-full border px-3 py-1 bg-background">Selected pen sets the next zone color</span>
                 <span className="rounded-full border px-3 py-1 bg-background">Click a zone in pan mode to open its details</span>
             </div>

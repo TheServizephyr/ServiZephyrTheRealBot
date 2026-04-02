@@ -1,4 +1,5 @@
 import { calculateDeliveryCharge, calculateHaversineDistance } from '@/lib/distance';
+import { getDeliveryZoneOptimizationCircle, isPointInsideOptimizationCircle } from '@/lib/deliveryZoneOptimization';
 
 function toFiniteNumber(value, fallback = null) {
     if (value === '' || value === undefined) return fallback;
@@ -262,6 +263,33 @@ export function calculateHybridDeliveryCharge({
     }
 
     const customerPoint = { lat: addressLat, lng: addressLng };
+    const optimizationCircle = getDeliveryZoneOptimizationCircle(normalizedZones);
+    const isOutsideOptimizationCircle = optimizationCircle
+        ? !isPointInsideOptimizationCircle(customerPoint, optimizationCircle)
+        : false;
+
+    if (isOutsideOptimizationCircle) {
+        if (settings.zoneFallbackToLegacy === false) {
+            return {
+                allowed: false,
+                charge: 0,
+                aerialDistance: parseFloat(aerialDistance.toFixed(1)),
+                roadDistance,
+                roadFactor,
+                type: 'hybrid-zone-miss',
+                pricingSource: 'zone-miss',
+                engineMode: 'hybrid-zones',
+                message: 'This address is outside our mapped delivery zones.',
+            };
+        }
+
+        return {
+            ...legacyResult,
+            pricingSource: 'legacy-fallback',
+            engineMode: 'hybrid-zones',
+        };
+    }
+
     const blockedZone = findMatchingBlockedDeliveryZone(normalizedZones, customerPoint);
     if (blockedZone) {
         return {
