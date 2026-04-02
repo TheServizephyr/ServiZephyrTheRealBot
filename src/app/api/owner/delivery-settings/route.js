@@ -5,6 +5,33 @@ import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 
 export const dynamic = 'force-dynamic';
 
+function toFiniteCoordinate(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function normalizeBoundaryPoint(point) {
+    if (Array.isArray(point) && point.length >= 2) {
+        const lat = toFiniteCoordinate(point[0]);
+        const lng = toFiniteCoordinate(point[1]);
+        if (lat === null || lng === null) return null;
+        return { lat, lng };
+    }
+
+    if (!point || typeof point !== 'object') return null;
+
+    const lat = toFiniteCoordinate(point.lat ?? point.latitude);
+    const lng = toFiniteCoordinate(point.lng ?? point.lon ?? point.longitude);
+    if (lat === null || lng === null) return null;
+
+    return { lat, lng };
+}
+
+function normalizeBoundary(boundary = []) {
+    if (!Array.isArray(boundary)) return [];
+    return boundary.map(normalizeBoundaryPoint).filter(Boolean);
+}
+
 async function verifyUserAndGetData(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req);
@@ -178,8 +205,9 @@ export async function PATCH(req) {
             cleanUpdates.deliveryZones = cleanUpdates.deliveryZones.map((zone, index) => ({
                 zone_id: String(zone?.zone_id || zone?.zoneId || zone?.id || ('zone_' + (index + 1))).trim(),
                 name: String(zone?.name || zone?.zoneName || ('Zone ' + (index + 1))).trim(),
-                boundary: Array.isArray(zone?.boundary) ? zone.boundary : [],
-                geojson: zone?.geojson && typeof zone.geojson === 'object' ? zone.geojson : null,
+                boundary: normalizeBoundary(zone?.boundary),
+                // Firestore rejects nested arrays, so we persist the flattened boundary source of truth.
+                geojson: null,
                 is_active: zone?.is_active !== undefined ? zone.is_active !== false : zone?.isActive !== false,
                 is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
                 priority: toFiniteNumber(zone?.priority, index),

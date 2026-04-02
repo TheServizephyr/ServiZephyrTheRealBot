@@ -117,9 +117,17 @@ const normalizePricingTier = (tier = {}) => {
 };
 
 const toBoundaryPoint = (point) => {
-    if (!Array.isArray(point) || point.length < 2) return null;
-    const lat = Number(point[0]);
-    const lng = Number(point[1]);
+    if (Array.isArray(point) && point.length >= 2) {
+        const lat = Number(point[0]);
+        const lng = Number(point[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        return [lat, lng];
+    }
+
+    if (!point || typeof point !== 'object') return null;
+
+    const lat = Number(point.lat ?? point.latitude);
+    const lng = Number(point.lng ?? point.lon ?? point.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     return [lat, lng];
 };
