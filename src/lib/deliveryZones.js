@@ -1,6 +1,17 @@
 import { calculateDeliveryCharge, calculateHaversineDistance } from '@/lib/distance';
 import { getDeliveryZoneOptimizationCircle, isPointInsideOptimizationCircle } from '@/lib/deliveryZoneOptimization';
 
+const DEFAULT_ZONE_TIMEZONE = 'Asia/Kolkata';
+const DAY_TO_INDEX = {
+    sun: 0,
+    mon: 1,
+    tue: 2,
+    wed: 3,
+    thu: 4,
+    fri: 5,
+    sat: 6,
+};
+
 function toFiniteNumber(value, fallback = null) {
     if (value === '' || value === undefined) return fallback;
     const num = Number(value);
@@ -98,6 +109,104 @@ function normalizePricingTier(tier = {}) {
     };
 }
 
+function normalizeScheduleDays(days) {
+    if (!Array.isArray(days)) return [0, 1, 2, 3, 4, 5, 6];
+    const normalized = days
+        .map((day) => {
+            if (Number.isFinite(Number(day))) {
+                const num = Number(day);
+                return num >= 0 && num <= 6 ? num : null;
+            }
+            const key = String(day || '').trim().toLowerCase().slice(0, 3);
+            return Object.prototype.hasOwnProperty.call(DAY_TO_INDEX, key) ? DAY_TO_INDEX[key] : null;
+        })
+        .filter((day) => day !== null);
+    return normalized.length > 0 ? Array.from(new Set(normalized)).sort((a, b) => a - b) : [0, 1, 2, 3, 4, 5, 6];
+}
+
+function normalizeZoneSchedule(zone = {}) {
+    const schedule = zone.schedule && typeof zone.schedule === 'object' ? zone.schedule : {};
+    const modeRaw = String(
+        zone.scheduleMode ??
+        schedule.mode ??
+        schedule.type ??
+        'always'
+    ).trim().toLowerCase();
+    const mode = modeRaw === 'scheduled' ? 'scheduled' : 'always';
+
+    return {
+        mode,
+        startTime: String(zone.scheduleStartTime ?? schedule.startTime ?? '09:00').trim() || '09:00',
+        endTime: String(zone.scheduleEndTime ?? schedule.endTime ?? '21:00').trim() || '21:00',
+        days: normalizeScheduleDays(zone.scheduleDays ?? schedule.days),
+        timezone: String(zone.scheduleTimezone ?? schedule.timezone ?? DEFAULT_ZONE_TIMEZONE).trim() || DEFAULT_ZONE_TIMEZONE,
+    };
+}
+
+function parseTimeStringToMinutes(value) {
+    const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
+}
+
+function getNowPartsInTimezone(timezone, now = new Date()) {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone || DEFAULT_ZONE_TIMEZONE,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+
+    const parts = formatter.formatToParts(now);
+    const weekday = String(parts.find((part) => part.type === 'weekday')?.value || '').trim().toLowerCase().slice(0, 3);
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+
+    if (!Object.prototype.hasOwnProperty.call(DAY_TO_INDEX, weekday)) return null;
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+
+    return {
+        day: DAY_TO_INDEX[weekday],
+        previousDay: (DAY_TO_INDEX[weekday] + 6) % 7,
+        minutes: (hour * 60) + minute,
+    };
+}
+
+function isZoneScheduleOpen(schedule, now = new Date()) {
+    if (!schedule || schedule.mode !== 'scheduled') return true;
+
+    const startMinutes = parseTimeStringToMinutes(schedule.startTime);
+    const endMinutes = parseTimeStringToMinutes(schedule.endTime);
+    const nowParts = getNowPartsInTimezone(schedule.timezone, now);
+    const allowedDays = Array.isArray(schedule.days) ? schedule.days : [];
+
+    if (startMinutes === null || endMinutes === null || !nowParts || allowedDays.length === 0) return false;
+    if (startMinutes === endMinutes) return allowedDays.includes(nowParts.day);
+
+    if (startMinutes < endMinutes) {
+        return allowedDays.includes(nowParts.day)
+            && nowParts.minutes >= startMinutes
+            && nowParts.minutes < endMinutes;
+    }
+
+    return (
+        (allowedDays.includes(nowParts.day) && nowParts.minutes >= startMinutes) ||
+        (allowedDays.includes(nowParts.previousDay) && nowParts.minutes < endMinutes)
+    );
+}
+
+function getZoneBlockReason(zone, now = new Date()) {
+    if (!zone?.isActive) return 'inactive';
+    if (zone.isBlocked) return 'manual-blocked';
+    if (!isZoneScheduleOpen(zone.schedule, now)) return 'outside-schedule';
+    return null;
+}
+
 export function normalizeDeliveryZones(zones = []) {
     if (!Array.isArray(zones)) return [];
 
@@ -113,12 +222,13 @@ export function normalizeDeliveryZones(zones = []) {
             return {
                 id: String(zone.zone_id || zone.zoneId || zone.id || `zone_${index + 1}`).trim(),
                 name: String(zone.name || zone.zoneName || `Zone ${index + 1}`).trim(),
-                isActive: true,
+                isActive: zone.isActive !== false && zone.is_active !== false,
                 isBlocked: zone.is_blocked === true || zone.isBlocked === true || String(zone.status || '').toLowerCase() === 'blocked',
                 priority: toFiniteNumber(zone.priority, index) ?? index,
                 baseFee: toNullableFiniteNumber(zone.baseFee, null),
                 pricingTiers,
                 polygons,
+                schedule: normalizeZoneSchedule(zone),
             };
         })
         .filter(Boolean)
@@ -153,22 +263,23 @@ function doesZoneMatchPoint(zone, point) {
     return Array.isArray(zone?.polygons) && zone.polygons.some((ring) => isPointInRing(point, ring));
 }
 
-export function findMatchingBlockedDeliveryZone(zones = [], point = null) {
+export function findMatchingBlockedDeliveryZone(zones = [], point = null, now = new Date()) {
     if (!point) return null;
 
     for (const zone of zones) {
-        if (!zone?.isActive || !zone?.isBlocked) continue;
-        if (doesZoneMatchPoint(zone, point)) return zone;
+        const blockReason = getZoneBlockReason(zone, now);
+        if (!blockReason || blockReason === 'inactive') continue;
+        if (doesZoneMatchPoint(zone, point)) return { ...zone, blockReason };
     }
 
     return null;
 }
 
-export function findMatchingDeliveryZone(zones = [], point = null) {
+export function findMatchingDeliveryZone(zones = [], point = null, now = new Date()) {
     if (!point) return null;
 
     for (const zone of zones) {
-        if (!zone?.isActive || zone?.isBlocked) continue;
+        if (getZoneBlockReason(zone, now)) continue;
         if (doesZoneMatchPoint(zone, point)) return zone;
     }
 
@@ -209,6 +320,7 @@ function resolveZoneTierFee(zone, subtotal) {
 }
 
 function buildBlockedZoneResponse({ zone, aerialDistance, roadDistance, roadFactor }) {
+    const isScheduledBlock = zone?.blockReason === 'outside-schedule';
     return {
         allowed: false,
         charge: 0,
@@ -221,7 +333,9 @@ function buildBlockedZoneResponse({ zone, aerialDistance, roadDistance, roadFact
             id: zone.id,
             name: zone.name,
         },
-        message: `${zone.name} is temporarily unavailable for delivery.`,
+        message: isScheduledBlock
+            ? `${zone.name} is not available for delivery at this time.`
+            : `${zone.name} is temporarily unavailable for delivery.`,
     };
 }
 
@@ -263,6 +377,7 @@ export function calculateHybridDeliveryCharge({
     }
 
     const customerPoint = { lat: addressLat, lng: addressLng };
+    const now = new Date();
     const optimizationCircle = getDeliveryZoneOptimizationCircle(normalizedZones);
     const isOutsideOptimizationCircle = optimizationCircle
         ? !isPointInsideOptimizationCircle(customerPoint, optimizationCircle)
@@ -290,7 +405,7 @@ export function calculateHybridDeliveryCharge({
         };
     }
 
-    const blockedZone = findMatchingBlockedDeliveryZone(normalizedZones, customerPoint);
+    const blockedZone = findMatchingBlockedDeliveryZone(normalizedZones, customerPoint, now);
     if (blockedZone) {
         return {
             ...buildBlockedZoneResponse({ zone: blockedZone, aerialDistance, roadDistance, roadFactor }),
@@ -298,7 +413,7 @@ export function calculateHybridDeliveryCharge({
         };
     }
 
-    const matchedZone = findMatchingDeliveryZone(normalizedZones, customerPoint);
+    const matchedZone = findMatchingDeliveryZone(normalizedZones, customerPoint, now);
     if (!matchedZone) {
         if (settings.zoneFallbackToLegacy === false) {
             return {

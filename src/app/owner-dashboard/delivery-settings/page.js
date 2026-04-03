@@ -5,7 +5,7 @@ import { useState, useEffect, Suspense, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import dynamicImport from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings, Loader2, XCircle, Maximize2, PencilLine, Palette } from 'lucide-react';
+import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings, Loader2, XCircle, Maximize2, PencilLine, Palette, Clock3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -49,6 +49,15 @@ const ZONE_COLOR_OPTIONS = [
     '#db2777',
     '#ea580c',
     '#ca8a04',
+];
+const ZONE_DAY_OPTIONS = [
+    { value: 0, label: 'Sun' },
+    { value: 1, label: 'Mon' },
+    { value: 2, label: 'Tue' },
+    { value: 3, label: 'Wed' },
+    { value: 4, label: 'Thu' },
+    { value: 5, label: 'Fri' },
+    { value: 6, label: 'Sat' },
 ];
 
 const DEFAULT_ZONE_SAMPLE = [
@@ -158,6 +167,12 @@ const buildZoneDraft = (zone = {}, index = 0) => ({
     status: zone?.is_blocked === true || zone?.isBlocked === true ? 'blocked' : 'active',
     deliveryFee: Number.isFinite(Number(zone?.baseFee)) ? String(Number(zone.baseFee)) : '0',
     color: String(zone?.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
+    availabilityMode: String(zone?.scheduleMode || zone?.schedule?.mode || 'always').trim().toLowerCase() === 'scheduled' ? 'scheduled' : 'always',
+    scheduleStartTime: String(zone?.scheduleStartTime || zone?.schedule?.startTime || '09:00').trim() || '09:00',
+    scheduleEndTime: String(zone?.scheduleEndTime || zone?.schedule?.endTime || '21:00').trim() || '21:00',
+    scheduleDays: Array.isArray(zone?.scheduleDays || zone?.schedule?.days)
+        ? (zone?.scheduleDays || zone?.schedule?.days).map((day) => Number(day)).filter((day) => Number.isFinite(day) && day >= 0 && day <= 6)
+        : [0, 1, 2, 3, 4, 5, 6],
 });
 
 const normalizeDeliveryZonesForForm = (zones = []) => {
@@ -181,6 +196,14 @@ const normalizeDeliveryZonesForForm = (zones = []) => {
                 is_blocked: zone?.is_blocked === true || zone?.isBlocked === true,
                 baseFee: Number.isFinite(Number(zone?.baseFee)) ? Number(zone.baseFee) : 0,
                 color: String(zone?.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
+                scheduleMode: String(zone?.scheduleMode || zone?.schedule?.mode || 'always').trim().toLowerCase() === 'scheduled' ? 'scheduled' : 'always',
+                scheduleStartTime: String(zone?.scheduleStartTime || zone?.schedule?.startTime || '09:00').trim() || '09:00',
+                scheduleEndTime: String(zone?.scheduleEndTime || zone?.schedule?.endTime || '21:00').trim() || '21:00',
+                scheduleDays: Array.isArray(zone?.scheduleDays || zone?.schedule?.days)
+                    ? (zone?.scheduleDays || zone?.schedule?.days)
+                        .map((day) => Number(day))
+                        .filter((day) => Number.isFinite(day) && day >= 0 && day <= 6)
+                    : [0, 1, 2, 3, 4, 5, 6],
                 boundary,
                 geojson: zone?.geojson && typeof zone.geojson === 'object' ? zone.geojson : null,
                 pricingTiers: Array.isArray(zone?.pricingTiers) ? zone.pricingTiers.map(normalizePricingTier) : [],
@@ -214,6 +237,16 @@ const parseDeliveryZonesEditor = (value) => {
     const invalidTier = zones.some((zone) => zone.pricingTiers.some((tier) => tier.maxOrder !== -1 && tier.maxOrder < tier.minOrder));
     if (invalidTier) {
         return { zones: [], error: 'A pricing tier has `maxOrder` smaller than `minOrder`.' };
+    }
+
+    const invalidSchedule = zones.some((zone) => {
+        if (zone.scheduleMode !== 'scheduled') return false;
+        if (!/^\d{2}:\d{2}$/.test(zone.scheduleStartTime || '')) return true;
+        if (!/^\d{2}:\d{2}$/.test(zone.scheduleEndTime || '')) return true;
+        return !Array.isArray(zone.scheduleDays) || zone.scheduleDays.length === 0;
+    });
+    if (invalidSchedule) {
+        return { zones: [], error: 'Scheduled zones need valid HH:MM start and end times plus at least one active day.' };
     }
 
     return { zones, error: null };
@@ -566,6 +599,18 @@ function DeliverySettingsPageContent() {
             if (field === 'status') {
                 return { ...prev, status: value === 'blocked' ? 'blocked' : 'active' };
             }
+            if (field === 'availabilityMode') {
+                return { ...prev, availabilityMode: value === 'scheduled' ? 'scheduled' : 'always' };
+            }
+            if (field === 'scheduleDays') {
+                const currentDays = Array.isArray(prev.scheduleDays) ? prev.scheduleDays : [];
+                const dayValue = Number(value);
+                if (!Number.isFinite(dayValue)) return prev;
+                const nextDays = currentDays.includes(dayValue)
+                    ? currentDays.filter((day) => day !== dayValue)
+                    : [...currentDays, dayValue].sort((a, b) => a - b);
+                return { ...prev, scheduleDays: nextDays };
+            }
             return { ...prev, [field]: value };
         });
     };
@@ -582,6 +627,15 @@ function DeliverySettingsPageContent() {
         const priority = Number(zoneDraft.priority);
         const baseFee = Number(zoneDraft.deliveryFee);
         const isBlocked = zoneDraft.status === 'blocked';
+        const isScheduled = zoneDraft.availabilityMode === 'scheduled';
+        const scheduleDays = Array.isArray(zoneDraft.scheduleDays) && zoneDraft.scheduleDays.length > 0
+            ? [...zoneDraft.scheduleDays].sort((a, b) => a - b)
+            : [0, 1, 2, 3, 4, 5, 6];
+
+        if (isScheduled && (!/^\d{2}:\d{2}$/.test(zoneDraft.scheduleStartTime) || !/^\d{2}:\d{2}$/.test(zoneDraft.scheduleEndTime))) {
+            setInfoDialog({ isOpen: true, title: 'Zone Schedule Incomplete', message: 'Please enter valid start and end times in HH:MM format.' });
+            return;
+        }
 
         const nextZones = settings.deliveryZones.map((zone, index) => {
             if (zone.zone_id !== zoneDraft.zone_id) return zone;
@@ -594,6 +648,10 @@ function DeliverySettingsPageContent() {
                 is_blocked: isBlocked,
                 baseFee: Number.isFinite(baseFee) ? baseFee : 0,
                 color: String(zoneDraft.color || zone.color || ZONE_COLOR_OPTIONS[index % ZONE_COLOR_OPTIONS.length]).trim() || ZONE_COLOR_OPTIONS[0],
+                scheduleMode: isScheduled ? 'scheduled' : 'always',
+                scheduleStartTime: isScheduled ? zoneDraft.scheduleStartTime : '09:00',
+                scheduleEndTime: isScheduled ? zoneDraft.scheduleEndTime : '21:00',
+                scheduleDays,
             };
         });
 
@@ -850,6 +908,91 @@ function DeliverySettingsPageContent() {
                                         Blocked
                                     </Button>
                                 </div>
+                            </div>
+
+                            <div className="space-y-3 rounded-2xl border p-4">
+                                <div className="flex items-center gap-2">
+                                    <Clock3 className="h-4 w-4 text-primary" />
+                                    <div>
+                                        <p className="font-semibold">Availability Window</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Keep the zone always available, or let it become blocked automatically outside selected hours.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <Button
+                                        type="button"
+                                        variant={zoneDraft.availabilityMode === 'always' ? 'default' : 'outline'}
+                                        className="justify-start rounded-xl"
+                                        disabled={zoneDraft.status === 'blocked'}
+                                        onClick={() => handleZoneDraftChange('availabilityMode', 'always')}
+                                    >
+                                        Always Active
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant={zoneDraft.availabilityMode === 'scheduled' ? 'default' : 'outline'}
+                                        className="justify-start rounded-xl"
+                                        disabled={zoneDraft.status === 'blocked'}
+                                        onClick={() => handleZoneDraftChange('availabilityMode', 'scheduled')}
+                                    >
+                                        Schedule Based
+                                    </Button>
+                                </div>
+
+                                {zoneDraft.status === 'blocked' ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        This zone is manually blocked, so its schedule is ignored until you switch the status back to Active.
+                                    </p>
+                                ) : zoneDraft.availabilityMode === 'scheduled' ? (
+                                    <div className="space-y-4">
+                                        <div className="grid gap-4 sm:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="zone-start-time">Start Time</Label>
+                                                <Input
+                                                    id="zone-start-time"
+                                                    type="time"
+                                                    value={zoneDraft.scheduleStartTime}
+                                                    onChange={(e) => handleZoneDraftChange('scheduleStartTime', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="zone-end-time">End Time</Label>
+                                                <Input
+                                                    id="zone-end-time"
+                                                    type="time"
+                                                    value={zoneDraft.scheduleEndTime}
+                                                    onChange={(e) => handleZoneDraftChange('scheduleEndTime', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Active Days</Label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {ZONE_DAY_OPTIONS.map((day) => (
+                                                    <Button
+                                                        key={day.value}
+                                                        type="button"
+                                                        size="sm"
+                                                        variant={zoneDraft.scheduleDays?.includes(day.value) ? 'default' : 'outline'}
+                                                        className="rounded-full"
+                                                        onClick={() => handleZoneDraftChange('scheduleDays', day.value)}
+                                                    >
+                                                        {day.label}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Outside this window, the zone will behave like a blocked area during delivery matching.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                        This zone stays deliverable all day unless you manually switch it to Blocked.
+                                    </p>
+                                )}
                             </div>
 
                             <div className="space-y-3">
@@ -1169,7 +1312,11 @@ function DeliverySettingsPageContent() {
                                                 <p>
                                                     Pricing tiers: {Array.isArray(zone.pricingTiers) ? zone.pricingTiers.length : 0}
                                                 </p>
-                                                <p>Applies only inside this polygon</p>
+                                                <p>
+                                                    {zone.scheduleMode === 'scheduled'
+                                                        ? `Schedule: ${zone.scheduleStartTime || '09:00'}-${zone.scheduleEndTime || '21:00'}`
+                                                        : 'Schedule: Always active'}
+                                                </p>
                                             </div>
 
                                             <div className="flex flex-wrap items-center justify-between gap-3">

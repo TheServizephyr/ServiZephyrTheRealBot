@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock, Maximize2, X, CheckCircle2 } from 'lucide-react';
+import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock, Maximize2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -180,6 +180,8 @@ const getRadiusZoom = (radiusKm = 5) => {
     return DEFAULT_APPROX_ZOOM;
 };
 
+const NON_DELIVERABLE_LOCATION_MESSAGE = 'Sorry, your location is currently outside our delivery zone.';
+
 const getZoneValidationState = ({ coords, serviceArea, normalizedZones }) => {
     if (!coords || !serviceArea) {
         return {
@@ -196,7 +198,7 @@ const getZoneValidationState = ({ coords, serviceArea, normalizedZones }) => {
             return {
                 allowed: false,
                 state: 'outside-radius',
-                message: `This pin is outside the ${radiusKm} km global delivery radius.`,
+                message: NON_DELIVERABLE_LOCATION_MESSAGE,
             };
         }
     }
@@ -206,7 +208,7 @@ const getZoneValidationState = ({ coords, serviceArea, normalizedZones }) => {
         return {
             allowed: true,
             state: 'legacy-radius',
-            message: 'This address is inside the restaurant delivery radius.',
+            message: '',
         };
     }
 
@@ -215,7 +217,7 @@ const getZoneValidationState = ({ coords, serviceArea, normalizedZones }) => {
         return {
             allowed: false,
             state: 'blocked-zone',
-            message: `${blockedZone.name} is currently blocked for delivery.`,
+            message: NON_DELIVERABLE_LOCATION_MESSAGE,
         };
     }
 
@@ -225,7 +227,7 @@ const getZoneValidationState = ({ coords, serviceArea, normalizedZones }) => {
             allowed: true,
             state: 'active-zone',
             zone: matchedZone,
-            message: `${matchedZone.name} delivery zone matched successfully.`,
+            message: '',
         };
     }
 
@@ -233,14 +235,14 @@ const getZoneValidationState = ({ coords, serviceArea, normalizedZones }) => {
         return {
             allowed: false,
             state: 'strict-zone-miss',
-            message: 'This pin is outside the mapped delivery zones for this restaurant.',
+            message: NON_DELIVERABLE_LOCATION_MESSAGE,
         };
     }
 
     return {
         allowed: true,
         state: 'fallback-zone-miss',
-        message: 'This pin is outside the mapped delivery zones, so fallback delivery pricing will apply.',
+        message: '',
     };
 };
 
@@ -327,6 +329,17 @@ const AddAddressPageInternal = () => {
             normalizedZones: normalizedDeliveryZones,
         });
     }, [addressDetails, normalizedDeliveryZones, serviceArea]);
+
+    const requiresDeliveryValidation = Boolean(restaurantIdFromReturnUrl || activeOrderId);
+    const isDeliveryValidationPending = requiresDeliveryValidation && !serviceAreaResolved;
+    const canSaveAddress =
+        !loading &&
+        !isPinAddressLoading &&
+        !isSaving &&
+        !!addressDetails &&
+        !!fullAddress.trim() &&
+        !isDeliveryValidationPending &&
+        currentPinValidation?.allowed !== false;
 
     const returnUrl = rawReturnUrl;
     const useCurrent =
@@ -868,6 +881,9 @@ const AddAddressPageInternal = () => {
             setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, and Complete Address." });
             return;
         }
+        if (isDeliveryValidationPending) {
+            return;
+        }
         if (currentPinValidation && currentPinValidation.allowed === false) {
             setInfoDialog({ isOpen: true, title: 'Delivery Not Available', message: currentPinValidation.message });
             return;
@@ -997,23 +1013,14 @@ const AddAddressPageInternal = () => {
                     <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading || isPinAddressLoading}>
                         {loading ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>
-                    {currentPinValidation?.message && (
+                    {currentPinValidation?.allowed === false && currentPinValidation?.message && (
                         <div className={[
                             'rounded-xl border p-3 text-sm font-medium',
-                            currentPinValidation.allowed
-                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                : 'border-destructive/30 bg-destructive/10 text-destructive'
+                            'border-destructive/30 bg-destructive/10 text-destructive'
                         ].join(' ')}>
                             <div className="flex items-start gap-2">
-                                {currentPinValidation.allowed ? <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" /> : <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />}
-                                <div className="space-y-1">
-                                    <p>{currentPinValidation.message}</p>
-                                    {currentPinValidation.state === 'fallback-zone-miss' && (
-                                        <p className="text-xs opacity-80">
-                                            You can still save this address because the restaurant allows fallback pricing outside the drawn polygons.
-                                        </p>
-                                    )}
-                                </div>
+                                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                                <p>{currentPinValidation.message}</p>
                             </div>
                         </div>
                     )}
@@ -1072,7 +1079,7 @@ const AddAddressPageInternal = () => {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-border mt-4">
-                                <Button onClick={handleConfirmLocation} disabled={loading || isPinAddressLoading || isSaving || !addressDetails || !fullAddress.trim() || currentPinValidation?.allowed === false} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                <Button onClick={handleConfirmLocation} disabled={!canSaveAddress} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                     {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
                                 </Button>
                             </div>

@@ -3519,6 +3519,14 @@ const OrderPageInternal = () => {
         return `${restaurantData.name} is currently not available. Please check back later or contact this ${businessLabel} for more information.`;
     }, [businessLabel, isBusinessClosed, nextOpeningTimeLabel, restaurantData.name]);
 
+    const showDeliveryUnavailableDialog = useCallback(() => {
+        setInfoDialog({
+            isOpen: true,
+            title: 'Delivery Not Available',
+            message: deliveryValidation?.message || 'Sorry, your selected location is currently outside our delivery zone. Please choose a different address.',
+            type: 'warning'
+        });
+    }, [deliveryValidation]);
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
         if (restaurantData.isOpen === false) {
             setInfoDialog({
@@ -3541,14 +3549,9 @@ const OrderPageInternal = () => {
             return;
         }
 
-        // 🚨 CRITICAL: Block adding to cart if delivery not allowed
         if (deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
-            setInfoDialog({
-                isOpen: true,
-                title: '🚫 Delivery Not Available',
-                message: deliveryValidation.message || 'Your selected address is beyond our delivery range. Please select a different address or choose pickup/dine-in.'
-            });
-            return; // Block add to cart
+            showDeliveryUnavailableDialog();
+            return;
         }
 
         const portionName = String(portion?.name || '').trim();
@@ -3577,14 +3580,14 @@ const OrderPageInternal = () => {
                         portion: normalizedPortion,
                         portionCount,
                         selectedAddOns,
-                        price: totalPrice, // ✅ FIX: Set price = totalPrice for server validation
+                        price: totalPrice,
                         totalPrice,
                         quantity: 1
                     }
                 ];
             }
         });
-    }, [businessLabelTitle, closedOrderingMessage, deliveryType, deliveryValidation, restaurantData.isOpen, restaurantData.name, hasSelectedDeliveryAddress]);
+    }, [businessLabelTitle, closedOrderingMessage, deliveryType, deliveryValidation, restaurantData.isOpen, restaurantData.name, hasSelectedDeliveryAddress, showDeliveryUnavailableDialog]);
 
     const handleIncrement = (item) => {
         if (restaurantData.isOpen === false) {
@@ -3605,6 +3608,11 @@ const OrderPageInternal = () => {
                 type: 'warning'
             });
             setIsAddressSelectorOpen(true);
+            return;
+        }
+
+        if (deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
+            showDeliveryUnavailableDialog();
             return;
         }
 
@@ -4739,7 +4747,7 @@ const OrderPageInternal = () => {
                         <div className="container mx-auto px-4 mt-6 space-y-4">
 
                             {/* ✅ NEW: Delivery Distance Validation Status - HIDDEN AS PER USER REQUEST
-                    {deliveryType === 'delivery' && deliveryValidation && (
+                    {deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed && (
                         <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}

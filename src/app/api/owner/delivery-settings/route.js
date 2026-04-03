@@ -33,6 +33,14 @@ function normalizeBoundary(boundary = []) {
     return boundary.map(normalizeBoundaryPoint).filter(Boolean);
 }
 
+function normalizeScheduleDays(days) {
+    if (!Array.isArray(days)) return [0, 1, 2, 3, 4, 5, 6];
+    const normalized = days
+        .map((day) => Number(day))
+        .filter((day) => Number.isFinite(day) && day >= 0 && day <= 6);
+    return normalized.length > 0 ? Array.from(new Set(normalized)).sort((a, b) => a - b) : [0, 1, 2, 3, 4, 5, 6];
+}
+
 async function verifyUserAndGetData(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req);
@@ -214,6 +222,11 @@ export async function PATCH(req) {
                 priority: toFiniteNumber(zone?.priority, index),
                 baseFee: toFiniteNumber(zone?.baseFee, 0),
                 color: String(zone?.color || '').trim() || null,
+                scheduleMode: String(zone?.scheduleMode || zone?.schedule?.mode || 'always').trim().toLowerCase() === 'scheduled' ? 'scheduled' : 'always',
+                scheduleStartTime: String(zone?.scheduleStartTime || zone?.schedule?.startTime || '09:00').trim() || '09:00',
+                scheduleEndTime: String(zone?.scheduleEndTime || zone?.schedule?.endTime || '21:00').trim() || '21:00',
+                scheduleDays: normalizeScheduleDays(zone?.scheduleDays || zone?.schedule?.days),
+                scheduleTimezone: String(zone?.scheduleTimezone || zone?.schedule?.timezone || 'Asia/Kolkata').trim() || 'Asia/Kolkata',
                 pricingTiers: Array.isArray(zone?.pricingTiers)
                     ? zone.pricingTiers.map((tier) => ({
                         minOrder: toFiniteNumber(tier?.minOrder, 0),
