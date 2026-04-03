@@ -13,6 +13,7 @@ import { useUser } from '@/firebase';
 import { Textarea } from '@/components/ui/textarea';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import AddAddressPageSkeleton from '@/components/AddAddressPageSkeleton';
 import { normalizeDeliveryZones, findMatchingBlockedDeliveryZone, findMatchingDeliveryZone } from '@/lib/deliveryZones';
 import {
     fetchCachedCustomerLookup,
@@ -260,10 +261,6 @@ const AddAddressPageInternal = () => {
 
     const { user, isUserLoading } = useUser();
 
-    // Security State
-    const [isTokenValid, setIsTokenValid] = useState(false);
-    const [tokenError, setTokenError] = useState('');
-    const [verifiedGuestId, setVerifiedGuestId] = useState('');
     const rawReturnUrl = searchParams.get('returnUrl') || '/';
     const phone =
         searchParams.get('phone') ||
@@ -289,6 +286,12 @@ const AddAddressPageInternal = () => {
         getNestedParamFromReturnUrl(rawReturnUrl, 'restaurantId') ||
         searchParams.get('restaurantId') ||
         '';
+
+    // Security State
+    const [isTokenValid, setIsTokenValid] = useState(() => !token);
+    const [isSessionChecking, setIsSessionChecking] = useState(() => Boolean(token));
+    const [tokenError, setTokenError] = useState('');
+    const [verifiedGuestId, setVerifiedGuestId] = useState('');
 
     const [mapCenter, setMapCenter] = useState(DEFAULT_MAP_CENTER);
     const [mapZoom, setMapZoom] = useState(DEFAULT_EXACT_ZOOM);
@@ -333,6 +336,7 @@ const AddAddressPageInternal = () => {
     const requiresDeliveryValidation = Boolean(restaurantIdFromReturnUrl || activeOrderId);
     const isDeliveryValidationPending = requiresDeliveryValidation && !serviceAreaResolved;
     const canSaveAddress =
+        !isSessionChecking &&
         !loading &&
         !isPinAddressLoading &&
         !isSaving &&
@@ -444,11 +448,22 @@ const AddAddressPageInternal = () => {
     }, [activeOrderId, editDataRaw, isTokenValid, phone, ref, restaurantIdFromReturnUrl, token]);
 
     useEffect(() => {
+        let isMounted = true;
+
         const verifySessionToken = async () => {
             // Backward compatible flow: if no token in URL, allow direct entry.
             if (!token) {
-                setIsTokenValid(true);
+                if (isMounted) {
+                    setTokenError('');
+                    setIsTokenValid(true);
+                    setIsSessionChecking(false);
+                }
                 return;
+            }
+
+            if (isMounted) {
+                setTokenError('');
+                setIsSessionChecking(true);
             }
 
             try {
@@ -465,22 +480,36 @@ const AddAddressPageInternal = () => {
 
                 const verifyData = await verifyRes.json().catch(() => ({}));
                 if (!verifyRes.ok) {
-                    setTokenError(verifyData.message || 'Session verification failed. Please request a new link.');
-                    setIsTokenValid(false);
+                    if (isMounted) {
+                        setTokenError(verifyData.message || 'Session verification failed. Please request a new link.');
+                        setIsTokenValid(false);
+                    }
                     return;
                 }
 
-                if (verifyData?.guestId) {
+                if (verifyData?.guestId && isMounted) {
                     setVerifiedGuestId(String(verifyData.guestId));
                 }
-                setIsTokenValid(true);
+                if (isMounted) {
+                    setIsTokenValid(true);
+                }
             } catch (err) {
-                setTokenError('Session verification failed. Please request a new link.');
-                setIsTokenValid(false);
+                if (isMounted) {
+                    setTokenError('Session verification failed. Please request a new link.');
+                    setIsTokenValid(false);
+                }
+            } finally {
+                if (isMounted) {
+                    setIsSessionChecking(false);
+                }
             }
         };
 
         verifySessionToken();
+
+        return () => {
+            isMounted = false;
+        };
     }, [token, phone, ref, tableId]);
 
     // Initialize edit data
@@ -975,7 +1004,7 @@ const AddAddressPageInternal = () => {
     }
 
     if (!isTokenValid) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
+        return <AddAddressPageSkeleton statusText={isSessionChecking ? 'Preparing address page...' : 'Loading address details...'} />;
     }
 
     const isFullAddressMissing = !fullAddress.trim();
@@ -1107,7 +1136,7 @@ const AddAddressPageInternal = () => {
 };
 
 const AddAddressPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
+    <Suspense fallback={<AddAddressPageSkeleton />}>
         <AddAddressPageInternal />
     </Suspense>
 );

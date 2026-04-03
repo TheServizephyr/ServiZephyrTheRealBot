@@ -1594,6 +1594,35 @@ const OrderPageInternal = () => {
         }, 0);
     }, [tableIdFromUrl, deliveryType, phone, ref]);
 
+    const getAddressReturnUrl = useCallback(() => {
+        if (typeof window !== 'undefined') {
+            return `${window.location.pathname}${window.location.search}`;
+        }
+
+        return restaurantId ? `/order/${encodeRestaurantIdParam(restaurantId)}` : '/';
+    }, [restaurantId]);
+
+    const buildAddAddressUrl = useCallback(({ useCurrent = false, editAddress = null } = {}) => {
+        const params = new URLSearchParams();
+
+        if (useCurrent) {
+            params.set('useCurrent', 'true');
+        }
+
+        if (editAddress?.id) {
+            params.set('editId', String(editAddress.id));
+            params.set('editData', encodeURIComponent(JSON.stringify(editAddress)));
+        }
+
+        params.set('returnUrl', getAddressReturnUrl());
+
+        return `/add-address?${params.toString()}`;
+    }, [getAddressReturnUrl]);
+
+    const openAddAddressPage = useCallback((options = {}) => {
+        router.push(buildAddAddressUrl(options));
+    }, [buildAddAddressUrl, router]);
+
     useEffect(() => {
         if (tableIdFromUrl || deliveryType !== 'delivery' || hasPrefetchedAddressBook.current) return;
 
@@ -1625,6 +1654,13 @@ const OrderPageInternal = () => {
                 console.warn('[Order Page] Failed to prewarm address book:', error?.message || error);
             });
     }, [tableIdFromUrl, deliveryType, phone, ref]);
+
+    useEffect(() => {
+        if (!restaurantId || tableIdFromUrl || deliveryType !== 'delivery') return;
+
+        router.prefetch('/add-address');
+        router.prefetch(buildAddAddressUrl({ useCurrent: true }));
+    }, [buildAddAddressUrl, deliveryType, restaurantId, router, tableIdFromUrl]);
 
     useEffect(() => {
         if (!isAddressSelectorOpen || typeof document === 'undefined') return undefined;
@@ -4286,18 +4322,16 @@ const OrderPageInternal = () => {
                                         loading={addressLoading}
                                         onUseCurrentLocation={() => {
                                             setIsAddressSelectorOpen(false);
-                                            // Pass useCurrent=true to trigger auto-fetch
-                                            router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                            openAddAddressPage({ useCurrent: true });
                                         }}
                                         onAddNewAddress={() => {
                                             setIsAddressSelectorOpen(false);
-                                            router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                            openAddAddressPage({ useCurrent: true });
                                         }}
                                         onDelete={(addr) => setAddressPendingDelete(addr)}
                                         onEdit={(addr) => {
                                             setIsAddressSelectorOpen(false);
-                                            const editData = encodeURIComponent(JSON.stringify(addr));
-                                            router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                            openAddAddressPage({ editAddress: addr });
                                         }}
                                     />
                                 </div>
@@ -4344,47 +4378,35 @@ const OrderPageInternal = () => {
                                         )}
                                     </div>
 
-                                    <div
-                                        className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3 cursor-pointer"
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={deliveryType === 'delivery' ? handleOpenAddressDrawer : undefined}
-                                        onKeyDown={(event) => {
-                                            if (deliveryType !== 'delivery') return;
-                                            if (event.key === 'Enter' || event.key === ' ') {
-                                                event.preventDefault();
-                                                handleOpenAddressDrawer();
-                                            }
-                                        }}
-                                    >
-                                        {deliveryType === 'delivery' ? (
-                                            <>
+                                    {deliveryType === 'delivery' ? (
+                                        <button
+                                            type="button"
+                                            className="mt-3 w-full appearance-none rounded-lg bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                            onClick={handleOpenAddressDrawer}
+                                            aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
+                                        >
+                                            <div className="flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
                                                 <div className="min-w-0 flex items-center gap-2">
                                                     <MapPin className="text-primary shrink-0" size={16} />
                                                     <p className="truncate text-xs text-muted-foreground">
                                                         {customerLocation?.full || 'No address selected'}
                                                     </p>
                                                 </div>
-                                                <Button
-                                                    variant="link"
-                                                    className="h-auto p-0 text-primary"
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        handleOpenAddressDrawer();
-                                                    }}
-                                                >
-                                                    Change
-                                                </Button>
-                                            </>
-                                        ) : (
+                                                <span className="shrink-0 text-sm font-semibold text-primary">
+                                                    {customerLocation?.full ? 'Change' : 'Add Address'}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    ) : (
+                                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
                                             <div className="min-w-0 flex items-center gap-2">
                                                 <Store className="text-primary shrink-0" size={16} />
                                                 <p className="truncate text-xs text-muted-foreground">
                                                     Pickup from {restaurantData.businessAddress?.full || restaurantData.name}
                                                 </p>
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -4867,37 +4889,25 @@ const OrderPageInternal = () => {
                                                 </button>
                                             )}
                                         </div>
-                                        <div
-                                            className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full cursor-pointer"
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={deliveryType === 'delivery' ? handleOpenAddressDrawer : undefined}
-                                            onKeyDown={(event) => {
-                                                if (deliveryType !== 'delivery') return;
-                                                if (event.key === 'Enter' || event.key === ' ') {
-                                                    event.preventDefault();
-                                                    handleOpenAddressDrawer();
-                                                }
-                                            }}
-                                        >
-                                            {deliveryType === 'delivery' ? (
-                                                <>
+                                        {deliveryType === 'delivery' ? (
+                                            <button
+                                                type="button"
+                                                className="mt-4 w-full appearance-none rounded-lg border-t border-dashed border-border bg-transparent p-0 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                onClick={handleOpenAddressDrawer}
+                                                aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-3 overflow-hidden">
                                                         <MapPin className="text-primary flex-shrink-0" size={20} />
                                                         <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
                                                     </div>
-                                                    <Button
-                                                        variant="link"
-                                                        className="text-primary p-0 h-auto font-semibold flex-shrink-0"
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            handleOpenAddressDrawer();
-                                                        }}
-                                                    >
-                                                        Change
-                                                    </Button>
-                                                </>
-                                            ) : deliveryType === 'pickup' ? (
+                                                    <span className="flex-shrink-0 text-sm font-semibold text-primary">
+                                                        {customerLocation?.full ? 'Change' : 'Add Address'}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        ) : deliveryType === 'pickup' ? (
+                                            <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
                                                 <div className="flex items-center gap-3 overflow-hidden">
                                                     <Store className="text-primary flex-shrink-0" size={20} />
                                                     <div>
@@ -4907,8 +4917,8 @@ const OrderPageInternal = () => {
                                                         </a>
                                                     </div>
                                                 </div>
-                                            ) : null}
-                                        </div>
+                                            </div>
+                                        ) : null}
                                     </div>
                                 )
                             }
