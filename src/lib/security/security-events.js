@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { FieldValue, getFirestore } from '@/lib/firebase-admin';
+import { kv, isKvConfigured } from '@/lib/kv';
 
 export const SECURITY_EVENT_TYPES = {
   AUTH_SESSION_ISSUED: 'AUTH_SESSION_ISSUED',
@@ -13,6 +14,8 @@ export const SECURITY_EVENT_TYPES = {
 };
 
 const MAX_METADATA_SIZE = 6000;
+const SECURITY_ANOMALY_MEMORY_BUCKETS = globalThis.__servizephyrSecurityAnomalyBuckets || new Map();
+globalThis.__servizephyrSecurityAnomalyBuckets = SECURITY_ANOMALY_MEMORY_BUCKETS;
 
 function getHeader(req, name) {
   if (!req?.headers) return '';
@@ -62,6 +65,51 @@ function hashKey(value) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 24);
 }
 
+function getSecurityAnomalyWindow(type, keyHash, windowSec) {
+  const safeWindowSec = Math.max(1, Number(windowSec) || 1);
+  const windowStart = Math.floor(Date.now() / (safeWindowSec * 1000));
+  return {
+    safeWindowSec,
+    windowStart,
+    bucketKey: `security:anomaly:${type}:${keyHash}:${windowStart}`,
+    countKey: `security:anomaly:${type}:${keyHash}:${windowStart}:count`,
+    flagKey: `security:anomaly:${type}:${keyHash}:${windowStart}:flag`,
+  };
+}
+
+function recordSecurityAnomalyInMemory({ type, keyHash, threshold, windowSec }) {
+  const { safeWindowSec, windowStart, bucketKey } = getSecurityAnomalyWindow(type, keyHash, windowSec);
+  const now = Date.now();
+
+  for (const [existingKey, entry] of SECURITY_ANOMALY_MEMORY_BUCKETS.entries()) {
+    if (!entry?.expiresAt || entry.expiresAt <= now) {
+      SECURITY_ANOMALY_MEMORY_BUCKETS.delete(existingKey);
+    }
+  }
+
+  const existing = SECURITY_ANOMALY_MEMORY_BUCKETS.get(bucketKey) || {
+    count: 0,
+    flagged: false,
+    expiresAt: now + (safeWindowSec * 1000),
+    windowStart,
+  };
+
+  existing.count += 1;
+  const shouldFlag = existing.count >= threshold && !existing.flagged;
+  if (shouldFlag) {
+    existing.flagged = true;
+  }
+  existing.expiresAt = now + (safeWindowSec * 1000);
+  SECURITY_ANOMALY_MEMORY_BUCKETS.set(bucketKey, existing);
+
+  return {
+    count: existing.count,
+    flagged: shouldFlag,
+    source: 'memory',
+    windowStart,
+  };
+}
+
 export async function logSecurityEvent({
   type,
   severity = 'warning',
@@ -100,44 +148,40 @@ export async function recordSecurityAnomaly({
   const safeType = String(type || 'ANOMALY').trim() || 'ANOMALY';
   const safeKey = String(key || '').trim();
   if (!safeKey) return { count: 0, flagged: false };
+  const keyHash = hashKey(safeKey);
+  const safeThreshold = Math.max(1, Number(threshold) || 1);
+  const safeWindowSec = Math.max(1, Number(windowSec) || 1);
 
   try {
-    const firestore = await getFirestore();
-    const windowStart = Math.floor(Date.now() / (Math.max(1, Number(windowSec) || 1) * 1000));
-    const docId = `${safeType}:${hashKey(safeKey)}:${windowStart}`;
-    const ref = firestore.collection('security_anomaly_windows').doc(docId);
+    let result = null;
 
-    const result = await firestore.runTransaction(async (transaction) => {
-      const snap = await transaction.get(ref);
-      const current = snap.exists ? Number(snap.data()?.count || 0) : 0;
-      const next = current + 1;
-      const alreadyFlagged = Boolean(snap.data()?.flaggedAt);
-      const shouldFlag = next >= threshold && !alreadyFlagged;
+    if (isKvConfigured()) {
+      const { countKey, flagKey, windowStart } = getSecurityAnomalyWindow(safeType, keyHash, safeWindowSec);
+      const count = Number(await kv.incr(countKey)) || 0;
+      if (count === 1) {
+        await kv.expire(countKey, safeWindowSec);
+      }
 
-      const payload = {
-        type: safeType,
-        source: String(source || 'security').trim() || 'security',
-        count: next,
-        threshold,
-        keyHash: hashKey(safeKey),
+      let flagged = false;
+      if (count >= safeThreshold) {
+        const flagResult = await kv.set(flagKey, '1', { ex: safeWindowSec, nx: true });
+        flagged = Boolean(flagResult);
+      }
+
+      result = {
+        count,
+        flagged,
+        source: 'kv',
         windowStart,
-        windowSec: Math.max(1, Number(windowSec) || 1),
-        lastPath: getPath(req),
-        lastIpAddress: getIp(req),
-        lastUserAgent: getUserAgent(req),
-        lastSeenAt: FieldValue.serverTimestamp(),
       };
-
-      if (!snap.exists) {
-        payload.createdAt = FieldValue.serverTimestamp();
-      }
-      if (shouldFlag) {
-        payload.flaggedAt = FieldValue.serverTimestamp();
-      }
-
-      transaction.set(ref, payload, { merge: true });
-      return { count: next, flagged: shouldFlag };
-    });
+    } else {
+      result = recordSecurityAnomalyInMemory({
+        type: safeType,
+        keyHash,
+        threshold: safeThreshold,
+        windowSec: safeWindowSec,
+      });
+    }
 
     if (result.flagged) {
       await logSecurityEvent({
@@ -147,9 +191,10 @@ export async function recordSecurityAnomaly({
         source,
         metadata: {
           anomalyType: safeType,
-          keyHash: hashKey(safeKey),
-          threshold,
+          keyHash,
+          threshold: safeThreshold,
           count: result.count,
+          storage: result.source,
           ...safeMetadata(metadata),
         },
       });
@@ -158,6 +203,11 @@ export async function recordSecurityAnomaly({
     return result;
   } catch (error) {
     console.error('[SECURITY_ANOMALY_FAILED]', error?.message || error);
-    return { count: 0, flagged: false };
+    return recordSecurityAnomalyInMemory({
+      type: safeType,
+      keyHash,
+      threshold: safeThreshold,
+      windowSec: safeWindowSec,
+    });
   }
 }

@@ -230,8 +230,10 @@ const CartPageInternal = () => {
     const refreshCartPrices = async () => {
         setInfoDialog({ isOpen: true, title: "Updating Prices...", message: "Menu prices may have changed. syncing with latest menu...", type: 'warning' });
         try {
-            // Fetch fresh menu with skip_cache=true
-            const res = await fetch(`/api/public/menu/${restaurantId}?skip_cache=true&src=cart_refresh`);
+            // Use the version-aware menu cache. If the menu changed, menuVersion
+            // will naturally roll the cache key forward without forcing every
+            // cart refresh into Firestore.
+            const res = await fetch(`/api/public/menu/${restaurantId}?src=cart_refresh`);
             const menuData = await res.json();
 
             if (!res.ok) throw new Error("Failed to fetch fresh menu");

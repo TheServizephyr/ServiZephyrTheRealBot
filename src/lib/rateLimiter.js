@@ -1,106 +1,83 @@
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { kv, isKvConfigured } from '@/lib/kv';
 
-/**
- * Check if restaurant has exceeded rate limit
- * Uses Transaction to prevent race conditions (Strict Rate Limiting)
- * @param {string} restaurantId - Restaurant ID
- * @param {number} limitPerMinute - Max orders per minute (default: 50)
- * @returns {Promise<{allowed: boolean}>}
- */
-export async function checkRateLimit(restaurantId, limitPerMinute = 50) {
-    const firestore = await getFirestore();
+const RATE_LIMIT_MEMORY_BUCKETS = globalThis.__servizephyrSharedRateLimiterBuckets || new Map();
+globalThis.__servizephyrSharedRateLimiterBuckets = RATE_LIMIT_MEMORY_BUCKETS;
 
-    // Generate minute key (e.g., "2026-01-06-03-30")
-    const now = new Date();
-    const minuteKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+function buildMinuteKey(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}-${String(date.getMinutes()).padStart(2, '0')}`;
+}
 
-    const docId = `restaurant_${restaurantId}_${minuteKey}`;
-    const ref = firestore.collection('rate_limits').doc(docId);
+function consumeMemoryRateLimit(scope, key, limitPerMinute) {
+    const safeLimit = Math.max(1, Number(limitPerMinute) || 1);
+    const minuteKey = buildMinuteKey();
+    const bucketKey = `${scope}:${String(key || '').trim()}:${minuteKey}`;
+    const now = Date.now();
+
+    for (const [existingKey, entry] of RATE_LIMIT_MEMORY_BUCKETS.entries()) {
+        if (!entry?.expiresAt || entry.expiresAt <= now) {
+            RATE_LIMIT_MEMORY_BUCKETS.delete(existingKey);
+        }
+    }
+
+    const existing = RATE_LIMIT_MEMORY_BUCKETS.get(bucketKey) || {
+        count: 0,
+        expiresAt: now + 65 * 1000,
+    };
+
+    if (existing.count >= safeLimit) {
+        return { allowed: false, source: 'memory' };
+    }
+
+    existing.count += 1;
+    existing.expiresAt = now + 65 * 1000;
+    RATE_LIMIT_MEMORY_BUCKETS.set(bucketKey, existing);
+    return { allowed: true, source: 'memory' };
+}
+
+async function consumeKvRateLimit(scope, key, limitPerMinute) {
+    if (!isKvConfigured()) return null;
+
+    const safeLimit = Math.max(1, Number(limitPerMinute) || 1);
+    const minuteKey = buildMinuteKey();
+    const bucketKey = `${scope}:${String(key || '').trim()}:${minuteKey}`;
+    const count = Number(await kv.incr(bucketKey)) || 0;
+    if (count === 1) {
+        await kv.expire(bucketKey, 65);
+    }
+
+    return {
+        allowed: count <= safeLimit,
+        source: 'kv',
+    };
+}
+
+async function consumeRateLimit(scope, key, limitPerMinute) {
+    const safeKey = String(key || '').trim();
+    if (!safeKey) return { allowed: false, source: 'invalid' };
 
     try {
-        return await firestore.runTransaction(async (transaction) => {
-            const snap = await transaction.get(ref);
-
-            if (!snap.exists) {
-                // First request this minute
-                transaction.set(ref, {
-                    restaurantId,
-                    minute: minuteKey,
-                    count: 1,
-                    createdAt: FieldValue.serverTimestamp(),
-                });
-                return { allowed: true };
-            }
-
-            const currentCount = snap.data().count || 0;
-
-            if (currentCount >= limitPerMinute) {
-                // Limit exceeded
-                console.log(`[Rate Limit] ${restaurantId} exceeded ${limitPerMinute}/min (current: ${currentCount})`);
-                return { allowed: false };
-            }
-
-            // Increment counter
-            transaction.update(ref, {
-                count: FieldValue.increment(1),
-            });
-
-            return { allowed: true };
-        });
-    } catch (err) {
-        console.error('[Rate Limit] Error:', err);
-        // Fail CLOSED for security (deny access on error)
-        return { allowed: false };
+        const kvResult = await consumeKvRateLimit(scope, safeKey, limitPerMinute);
+        if (kvResult) return kvResult;
+    } catch (error) {
+        console.warn(`[Rate Limit] ${scope} degraded to memory fallback:`, error?.message || error);
     }
+
+    return consumeMemoryRateLimit(scope, safeKey, limitPerMinute);
 }
 
 /**
- * Check if IP has exceeded rate limit
- * Uses Transaction to prevent race conditions (Strict Rate Limiting)
- * @param {string} ip - Client IP
- * @param {number} limitPerMinute - Max requests per minute
- * @returns {Promise<{allowed: boolean}>}
+ * Check if restaurant has exceeded rate limit.
+ * Uses KV when available and degrades to local memory as a last resort.
+ */
+export async function checkRateLimit(restaurantId, limitPerMinute = 50) {
+    return consumeRateLimit('restaurant_rate_limits', restaurantId, limitPerMinute);
+}
+
+/**
+ * Check if IP has exceeded rate limit.
+ * Uses KV when available and degrades to local memory as a last resort.
  */
 export async function checkIpRateLimit(ip, limitPerMinute = 20) {
-    const firestore = await getFirestore();
-
-    // Generate minute key
-    const now = new Date();
-    const minuteKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
-
-    const docId = `ip_${ip.replace(/[:.]/g, '_')}_${minuteKey}`;
-    const ref = firestore.collection('rate_limits').doc(docId);
-
-    try {
-        return await firestore.runTransaction(async (transaction) => {
-            const snap = await transaction.get(ref);
-
-            if (!snap.exists) {
-                transaction.set(ref, {
-                    ip,
-                    minute: minuteKey,
-                    count: 1,
-                    createdAt: FieldValue.serverTimestamp(),
-                });
-                return { allowed: true };
-            }
-
-            const currentCount = snap.data().count || 0;
-
-            if (currentCount >= limitPerMinute) {
-                console.log(`[Rate Limit] IP ${ip} exceeded ${limitPerMinute}/min (current: ${currentCount})`);
-                return { allowed: false };
-            }
-
-            transaction.update(ref, {
-                count: FieldValue.increment(1),
-            });
-
-            return { allowed: true };
-        });
-    } catch (err) {
-        console.error('[Rate Limit IP] Error:', err);
-        // Fail CLOSED for security
-        return { allowed: false };
-    }
+    const normalizedIp = String(ip || '').replace(/[:.]/g, '_').trim();
+    return consumeRateLimit('ip_rate_limits', normalizedIp, limitPerMinute);
 }

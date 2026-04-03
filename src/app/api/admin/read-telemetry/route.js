@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 function getDayKeySuffix(date = new Date()) {
@@ -19,7 +19,7 @@ export async function GET(req) {
             return NextResponse.json({ message: 'Access denied' }, { status: 403 });
         }
 
-        if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+        if (!isKvConfigured()) {
             return NextResponse.json({ message: 'KV not configured' }, { status: 503 });
         }
 
@@ -55,4 +55,3 @@ export async function GET(req) {
         return NextResponse.json({ message: error.message || 'Failed to load telemetry' }, { status: error.status || 500 });
     }
 }
-

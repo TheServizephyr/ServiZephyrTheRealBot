@@ -14,6 +14,13 @@ import { Textarea } from '@/components/ui/textarea';
 import InfoDialog from '@/components/InfoDialog';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { normalizeDeliveryZones, findMatchingBlockedDeliveryZone, findMatchingDeliveryZone } from '@/lib/deliveryZones';
+import {
+    fetchCachedCustomerLookup,
+    fetchCachedOrderStatus,
+    fetchCachedRestaurantBootstrap,
+    invalidateCustomerLookupCache,
+    upsertCustomerAddressSnapshot,
+} from '@/lib/client/runtimeFetchers';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
     ssr: false,
@@ -41,6 +48,9 @@ const INDIA_GEO_BOUNDS = {
     minLng: 68,
     maxLng: 98,
 };
+const LEADING_PLUS_CODE_REGEX = /^\s*[A-Z0-9]{2,10}\+[A-Z0-9]{2,5}(?:(?=\s*,)|(?=\s+[A-Za-z]))\s*,?\s*/i;
+const MEANINGFUL_ADDRESS_PREFIX_REGEX = /\b(house|flat|floor|shop|plot|gali|street|st|road|rd|sector|sec|phase|block|near|opp|opposite|village|vill|colony|apt|apartment|tower|building|bldg|home)\b/i;
+const LEADING_CODELIKE_SEGMENT_REGEX = /^[A-Z0-9/-]{1,12}$/i;
 
 const normalizeCoords = (coords = {}) => ({
     lat: Number(Number(coords?.lat || 0).toFixed(6)),
@@ -61,6 +71,36 @@ const isUsableIndiaLocation = (lat, lng) => {
         lng >= INDIA_GEO_BOUNDS.minLng &&
         lng <= INDIA_GEO_BOUNDS.maxLng
     );
+};
+
+const isMeaningfulCustomerName = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return !!normalized && normalized !== 'guest' && normalized !== 'user';
+};
+
+const stripLeadingAddressNoise = (value = '') => {
+    const text = String(value || '').trim();
+    if (!text) return '';
+
+    const withoutPlusCode = text.replace(LEADING_PLUS_CODE_REGEX, '').trim();
+    if (!withoutPlusCode) return text;
+
+    const firstCommaIndex = withoutPlusCode.indexOf(',');
+    if (firstCommaIndex <= 0) return withoutPlusCode;
+
+    const firstSegment = withoutPlusCode.slice(0, firstCommaIndex).trim();
+    const rest = withoutPlusCode.slice(firstCommaIndex + 1).trim();
+    if (!firstSegment || !rest) return withoutPlusCode;
+
+    const looksLikeMeaningfulPrefix =
+        MEANINGFUL_ADDRESS_PREFIX_REGEX.test(firstSegment) ||
+        /\s/.test(firstSegment);
+
+    if (!looksLikeMeaningfulPrefix && LEADING_CODELIKE_SEGMENT_REGEX.test(firstSegment) && /\d/.test(firstSegment)) {
+        return rest;
+    }
+
+    return withoutPlusCode;
 };
 
 const getNestedParamFromReturnUrl = (returnUrl, key) => {
@@ -316,13 +356,14 @@ const AddAddressPageInternal = () => {
                 let fallbackCenter = null;
 
                 if (!resolvedRestaurantId && activeOrderId && token) {
-                    const statusRes = await fetch(`/api/order/status/${activeOrderId}?token=${encodeURIComponent(token)}`, {
-                        cache: 'no-store',
-                    });
-                    const statusData = await statusRes.json().catch(() => ({}));
-                    if (statusRes.ok) {
-                        resolvedRestaurantId = String(statusData?.order?.restaurantId || '').trim();
-                        const statusRestaurantLocation = statusData?.order?.restaurantLocation;
+                    const statusData = await fetchCachedOrderStatus({
+                        orderId: activeOrderId,
+                        token,
+                        ttlMs: 30000,
+                    }).catch(() => null);
+                    if (statusData?.order) {
+                        resolvedRestaurantId = String(statusData.order.restaurantId || '').trim();
+                        const statusRestaurantLocation = statusData.order.restaurantLocation;
                         const fallbackLat = Number(statusRestaurantLocation?.lat ?? statusRestaurantLocation?.latitude);
                         const fallbackLng = Number(statusRestaurantLocation?.lng ?? statusRestaurantLocation?.longitude);
                         if (isUsableIndiaLocation(fallbackLat, fallbackLng)) {
@@ -336,13 +377,14 @@ const AddAddressPageInternal = () => {
                     return;
                 }
 
-                const menuRes = await fetch(`/api/public/menu/${encodeURIComponent(resolvedRestaurantId)}`, {
-                    cache: 'no-store',
+                const { menuData } = await fetchCachedRestaurantBootstrap({
+                    restaurantId: resolvedRestaurantId,
+                    phone,
+                    token,
+                    ref,
+                    src: 'add_address',
+                    ttlMs: 60000,
                 });
-                const menuData = await menuRes.json().catch(() => ({}));
-                if (!menuRes.ok) {
-                    throw new Error(menuData?.message || 'Failed to resolve restaurant delivery area.');
-                }
 
                 const restaurantLat = Number(menuData?.latitude);
                 const restaurantLng = Number(menuData?.longitude);
@@ -386,7 +428,7 @@ const AddAddressPageInternal = () => {
         return () => {
             isMounted = false;
         };
-    }, [activeOrderId, editDataRaw, isTokenValid, restaurantIdFromReturnUrl, token]);
+    }, [activeOrderId, editDataRaw, isTokenValid, phone, ref, restaurantIdFromReturnUrl, token]);
 
     useEffect(() => {
         const verifySessionToken = async () => {
@@ -563,7 +605,7 @@ const AddAddressPageInternal = () => {
                     latitude: normalizedCoords.lat,
                     longitude: normalizedCoords.lng
                 });
-                setFullAddress(data.formatted_address || '');
+                setFullAddress(stripLeadingAddressNoise(data.formatted_address || ''));
                 lastResolvedCoordsRef.current = normalizedCoords;
                 if (hint) setLocationHint(hint);
             } catch (err) {
@@ -730,49 +772,6 @@ const AddAddressPageInternal = () => {
                     hasNameFromLookup = true;
                 }
 
-                // CRITICAL: Support both ref-based (new) and phone-based (legacy) flows
-                // prioritizing logged-in user via Auth header
-
-                const headers = { 'Content-Type': 'application/json' };
-                if (user) {
-                    try {
-                        const idToken = await user.getIdToken();
-                        headers['Authorization'] = `Bearer ${idToken}`;
-                    } catch (e) {
-                        console.warn("Error getting ID token:", e);
-                    }
-                }
-
-                if (ref) {
-                    // New flow: Use ref to lookup customer (token not required)
-                    const res = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: headers,
-                        body: JSON.stringify({
-                            ref,
-                            guestId: verifiedGuestId || undefined
-                        })
-                    });
-                    if (res.ok && isMounted) {
-                        const customerData = await res.json();
-                        console.log('[Add Address] Customer data from ref:', customerData);
-                        const refName = String(customerData?.name || '').trim();
-                        const refPhone = String(customerData?.phone || '').replace(/\D/g, '').slice(-10);
-                        // Skip 'Guest' — it's a default fallback, not a real name
-                        const isRealName = refName && refName.toLowerCase() !== 'guest' && refName.toLowerCase() !== 'user';
-                        if (isRealName) {
-                            setRecipientName(prev => prev || refName);
-                            hasNameFromLookup = true;
-                        }
-                        if (refPhone) {
-                            setRecipientPhone(prev => prev || refPhone);
-                            hasPhoneFromLookup = true;
-                            return; // Ref gave phone, done
-                        }
-                    }
-                }
-
-                // Legacy flow: Use phone param or logged-in user phone
                 const phoneToUse = phone || user?.phoneNumber;
                 if (phoneToUse) {
                     const normalizedPhoneFromUrlOrAuth = String(phoneToUse).replace(/\D/g, '').slice(-10);
@@ -780,65 +779,53 @@ const AddAddressPageInternal = () => {
                         setRecipientPhone(prev => prev || normalizedPhoneFromUrlOrAuth);
                         hasPhoneFromLookup = true;
                     }
-                    const res = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: headers,
-                        body: JSON.stringify({ phone: phoneToUse })
-                    });
-                    if (res.ok && isMounted) {
-                        const customerData = await res.json();
-                        const phoneLookupName = String(customerData?.name || '').trim();
-                        const phoneLookupPhone = String(customerData?.phone || '').replace(/\D/g, '').slice(-10);
-                        if (phoneLookupName) {
-                            setRecipientName(prev => prev || phoneLookupName);
-                            hasNameFromLookup = true;
-                        }
-                        if (phoneLookupPhone) {
-                            setRecipientPhone(prev => prev || phoneLookupPhone);
-                            hasPhoneFromLookup = true;
-                        }
-                    }
                 }
 
-                // Logged-in fallback even when auth provider has no phoneNumber
-                if ((!hasPhoneFromLookup || !hasNameFromLookup) && user) {
-                    const res = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({})
-                    });
-                    if (res.ok && isMounted) {
-                        const customerData = await res.json();
-                        const authLookupName = String(customerData?.name || '').trim();
-                        const authLookupPhone = String(customerData?.phone || '').replace(/\D/g, '').slice(-10);
-                        if (authLookupName) {
-                            setRecipientName(prev => prev || authLookupName);
-                            hasNameFromLookup = true;
-                        }
-                        if (authLookupPhone) {
-                            setRecipientPhone(prev => prev || authLookupPhone);
-                            hasPhoneFromLookup = true;
-                        }
+                const customerData = await fetchCachedCustomerLookup({
+                    phone: phoneToUse,
+                    ref,
+                    guestId: verifiedGuestId || undefined,
+                    user,
+                    ttlMs: 60000,
+                }).catch((lookupError) => {
+                    if (lookupError?.status !== 404) {
+                        console.warn('[Add Address] Customer lookup failed:', lookupError?.message || lookupError);
+                    }
+                    return null;
+                });
+
+                if (customerData && isMounted) {
+                    console.log('[Add Address] Customer data resolved:', customerData);
+                    const resolvedName = String(customerData?.name || '').trim();
+                    const resolvedPhone = String(customerData?.phone || '').replace(/\D/g, '').slice(-10);
+                    if (isMeaningfulCustomerName(resolvedName)) {
+                        setRecipientName(prev => prev || resolvedName);
+                        hasNameFromLookup = true;
+                    }
+                    if (resolvedPhone) {
+                        setRecipientPhone(prev => prev || resolvedPhone);
+                        hasPhoneFromLookup = true;
                     }
                 }
 
                 // Fallback: get phone/name from active order itself (useful when URL has ref but no phone)
                 if ((!hasPhoneFromLookup || !hasNameFromLookup) && activeOrderId && token) {
                     try {
-                        const statusRes = await fetch(`/api/order/status/${activeOrderId}?token=${encodeURIComponent(token)}`);
-                        if (statusRes.ok) {
-                            const statusData = await statusRes.json();
-                            const order = statusData?.order || {};
-                            const orderName = String(order.customerName || '').trim();
-                            const orderPhone = String(order.customerPhone || '').replace(/\D/g, '').slice(-10);
-                            if (orderName && !hasNameFromLookup) {
-                                setRecipientName(prev => prev || orderName);
-                                hasNameFromLookup = true;
-                            }
-                            if (orderPhone && !hasPhoneFromLookup) {
-                                setRecipientPhone(prev => prev || orderPhone);
-                                hasPhoneFromLookup = true;
-                            }
+                        const statusData = await fetchCachedOrderStatus({
+                            orderId: activeOrderId,
+                            token,
+                            ttlMs: 30000,
+                        });
+                        const order = statusData?.order || {};
+                        const orderName = String(order.customerName || '').trim();
+                        const orderPhone = String(order.customerPhone || '').replace(/\D/g, '').slice(-10);
+                        if (isMeaningfulCustomerName(orderName) && !hasNameFromLookup) {
+                            setRecipientName(prev => prev || orderName);
+                            hasNameFromLookup = true;
+                        }
+                        if (orderPhone && !hasPhoneFromLookup) {
+                            setRecipientPhone(prev => prev || orderPhone);
+                            hasPhoneFromLookup = true;
                         }
                     } catch (statusErr) {
                         console.warn('[Add Address] Could not fetch fallback order details:', statusErr?.message || statusErr);
@@ -894,7 +881,7 @@ const AddAddressPageInternal = () => {
 
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
 
-        const cleanedFullAddress = fullAddress.trim();
+        const cleanedFullAddress = stripLeadingAddressNoise(fullAddress);
         const combinedAddress = cleanedFullAddress;
 
         const addressToSave = {
@@ -946,6 +933,8 @@ const AddAddressPageInternal = () => {
                 throw new Error(errData.message || 'Failed to save address.');
             }
 
+            upsertCustomerAddressSnapshot(addressToSave);
+            invalidateCustomerLookupCache();
             router.push(returnUrl);
 
         } catch (err) {

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid, getDatabase } from '@/lib/firebase-admin';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
+import { kv, isKvConfigured } from '@/lib/kv';
 
 export const dynamic = 'force-dynamic';
 
@@ -241,8 +242,7 @@ export async function PATCH(req) {
 
         // Invalidate menu cache (legacy key)
         try {
-            const { kv } = await import('@vercel/kv');
-            if (process.env.KV_REST_API_URL) {
+            if (isKvConfigured()) {
                 await kv.del(`menu:${businessId}`);
                 console.log(`[Delivery Settings] ðŸ§¹ Invalidated cache for ${businessId}`);
             }

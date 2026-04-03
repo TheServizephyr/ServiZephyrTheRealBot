@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { nanoid } from 'nanoid';
 import { FieldValue, getAppCheck } from '@/lib/firebase-admin';
+import { kv, isKvConfigured } from '@/lib/kv';
 import { deobfuscateGuestId } from '@/lib/guest-utils';
 import { logSecurityEvent, recordSecurityAnomaly, SECURITY_EVENT_TYPES } from '@/lib/security/security-events';
 
@@ -186,6 +187,26 @@ function consumeInMemoryRateLimit(key, limit, windowSec) {
 
   RATE_LIMIT_MEMORY_BUCKETS.set(bucketKey, current + 1);
   return { allowed: true, retryAfterSec: 0, windowStart, source: 'memory' };
+}
+
+async function consumeKvRateLimit(bucket, key, limit, windowSec) {
+  if (!isKvConfigured()) return null;
+
+  const safeLimit = Math.max(1, Number(limit) || 1);
+  const safeWindowSec = Math.max(1, Number(windowSec) || 1);
+  const windowStart = Math.floor(Date.now() / (safeWindowSec * 1000));
+  const bucketKey = `rate_limit:${String(bucket || 'public_api_limits').trim() || 'public_api_limits'}:${String(key || '').trim()}:${windowStart}`;
+  const currentCount = Number(await kv.incr(bucketKey)) || 0;
+  if (currentCount === 1) {
+    await kv.expire(bucketKey, safeWindowSec);
+  }
+
+  return {
+    allowed: currentCount <= safeLimit,
+    retryAfterSec: currentCount <= safeLimit ? 0 : safeWindowSec,
+    windowStart,
+    source: 'kv',
+  };
 }
 
 export async function issueGuestAccessRef(firestore, {
@@ -416,7 +437,7 @@ export async function verifyScopedAuthToken(firestore, token, {
   };
 }
 
-export async function enforceRateLimit(firestore, {
+export async function enforceRateLimit(_firestore, {
   bucket = 'public_api_limits',
   key,
   limit = 30,
@@ -427,75 +448,18 @@ export async function enforceRateLimit(firestore, {
   const safeKey = String(key || '').trim();
   if (!safeKey) return { allowed: true };
 
-  const memoryResult = consumeInMemoryRateLimit(`${bucket}:${safeKey}`, limit, windowSec);
-  if (!memoryResult.allowed) {
-    void logSecurityEvent({
-      type: SECURITY_EVENT_TYPES.RATE_LIMIT_TRIGGERED,
-      severity: 'warning',
-      req,
-      source: auditContext,
-      metadata: { bucket, limit, windowSec, layer: 'memory' },
-    });
-    void recordSecurityAnomaly({
-      type: 'rate_limit_triggered',
-      key: `${bucket}:${safeKey}`,
-      threshold: 3,
-      windowSec: Math.max(60, windowSec),
-      req,
-      source: auditContext,
-      metadata: { bucket, limit, windowSec, layer: 'memory' },
-    });
-    return memoryResult;
-  }
-
-  const windowStart = Math.floor(Date.now() / (windowSec * 1000));
-  const docId = `${safeKey}:${windowStart}`;
-  const ref = firestore.collection(bucket).doc(docId);
-  const readable = buildRateLimitMetadata(bucket, safeKey);
-
-  let result = memoryResult;
+  let result = null;
   try {
-    result = await firestore.runTransaction(async (transaction) => {
-      const snap = await transaction.get(ref);
-      const currentCount = snap.exists ? Number(snap.data()?.count || 0) : 0;
-
-      if (currentCount >= limit) {
-        return { allowed: false, retryAfterSec: windowSec };
-      }
-
-      if (!snap.exists) {
-        transaction.set(ref, {
-          key: safeKey,
-          ...readable,
-          count: 1,
-          windowStart,
-          expiresAt: new Date(Date.now() + windowSec * 1000),
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else {
-        transaction.update(ref, {
-          count: FieldValue.increment(1),
-          ...readable,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-
-      return { allowed: true, retryAfterSec: 0 };
-    });
+    result = await consumeKvRateLimit(bucket, safeKey, limit, windowSec);
   } catch (error) {
     console.warn('[public-auth] Rate-limit storage degraded to memory fallback:', error?.message || error);
-    result = memoryResult;
+  }
+
+  if (!result) {
+    result = consumeInMemoryRateLimit(`${bucket}:${safeKey}`, limit, windowSec);
   }
 
   if (!result.allowed) {
-    void logSecurityEvent({
-      type: SECURITY_EVENT_TYPES.RATE_LIMIT_TRIGGERED,
-      severity: 'warning',
-      req,
-      source: auditContext,
-      metadata: { bucket, limit, windowSec },
-    });
     void recordSecurityAnomaly({
       type: 'rate_limit_triggered',
       key: `${bucket}:${safeKey}`,
@@ -503,7 +467,13 @@ export async function enforceRateLimit(firestore, {
       windowSec: Math.max(60, windowSec),
       req,
       source: auditContext,
-      metadata: { bucket, limit, windowSec },
+      metadata: {
+        bucket,
+        limit,
+        windowSec,
+        layer: result.source || 'memory',
+        ...buildRateLimitMetadata(bucket, safeKey),
+      },
     });
   }
 

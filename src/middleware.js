@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 import { NextResponse } from 'next/server';
 
 const STATE = globalThis.__servizephyrRequestShieldState || {
@@ -116,10 +116,6 @@ function consumeMemoryBucket(key, limit, now) {
 
   existing.count += 1;
   return true;
-}
-
-function isKvConfigured() {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
 function buildWindowKey(key, now) {

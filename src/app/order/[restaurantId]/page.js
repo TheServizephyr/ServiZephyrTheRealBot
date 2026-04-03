@@ -43,6 +43,15 @@ import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 import { sendClientTelemetryEvent } from '@/lib/clientTelemetry';
+import {
+    fetchCachedActiveOrders,
+    fetchCachedCustomerLookup,
+    fetchCachedRestaurantBootstrap,
+    invalidateCustomerLookupCache,
+    readCustomerAddressesSnapshot,
+    removeCustomerAddressSnapshot,
+    writeCustomerAddressesSnapshot,
+} from '@/lib/client/runtimeFetchers';
 
 const isFullPortionLabel = (value) => String(value || '').trim().toLowerCase() === 'full';
 const normalizeBusinessType = (value) => {
@@ -201,7 +210,7 @@ const BackButtonHandler = ({ onClose }) => {
             // the parent handles the history.back() or we don't care about the stale state 
             // (actually we DO care, but manual check is harder here without ref)
         };
-    }, []);
+    }, [onClose]);
 
     return null;
 };
@@ -1541,7 +1550,6 @@ const OrderPageInternal = () => {
         setIsAddressSelectorOpen(false);
     };
 
-
     const handleOpenAddressDrawer = useCallback(async () => {
         if (tableIdFromUrl || deliveryType !== 'delivery') {
             console.log('[handleOpenAddressDrawer] Skipped: address drawer is only allowed for delivery orders without table context.');
@@ -1549,7 +1557,14 @@ const OrderPageInternal = () => {
         }
         console.log('[handleOpenAddressDrawer] 🚀 CALLED');
         setIsAddressSelectorOpen(true);
-        setAddressLoading(true);
+        const snapshotAddresses = readCustomerAddressesSnapshot();
+        const hasSnapshotAddresses = snapshotAddresses.length > 0;
+        if (hasSnapshotAddresses) {
+            setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
+            setAddressLoading(false);
+        } else {
+            setAddressLoading(true);
+        }
 
         try {
             // Re-use logic to resolve user/guest
@@ -1561,27 +1576,17 @@ const OrderPageInternal = () => {
 
             console.log('[handleOpenAddressDrawer] 📋 Payload:', lookupPayload, 'auth.currentUser:', auth.currentUser ? 'YES' : 'NO');
 
-            // Simpler: Call lookup just like checkout
-            const headers = { 'Content-Type': 'application/json' };
-            if (auth.currentUser) {
-                headers['Authorization'] = `Bearer ${await auth.currentUser.getIdToken()}`;
-            }
-
             if (Object.keys(lookupPayload).length > 0 || auth.currentUser) {
                 console.log('[handleOpenAddressDrawer] ✅ Calling /api/customer/lookup...');
-                const res = await fetch('/api/customer/lookup', {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(lookupPayload)
+                const data = await fetchCachedCustomerLookup({
+                    phone: fallbackPhone,
+                    ref,
+                    user: auth.currentUser,
+                    ttlMs: 60000,
                 });
-                console.log('[handleOpenAddressDrawer] 📡 Response status:', res.status);
-                if (res.ok) {
-                    const data = await res.json();
-                    console.log('[handleOpenAddressDrawer] ✅ Addresses received:', data.addresses?.length || 0);
-                    setUserAddresses(data.addresses || []);
-                } else {
-                    console.error('[handleOpenAddressDrawer] ❌ API error:', res.status);
-                }
+                console.log('[handleOpenAddressDrawer] ✅ Addresses received:', data?.addresses?.length || 0);
+                writeCustomerAddressesSnapshot(data?.addresses || []);
+                setUserAddresses(data?.addresses || []);
             } else {
                 console.warn('[handleOpenAddressDrawer] ⚠️ NO lookup - no payload & no auth');
             }
@@ -1590,7 +1595,25 @@ const OrderPageInternal = () => {
         } finally {
             setAddressLoading(false);
         }
-    }, [tableIdFromUrl, deliveryType, phone, ref, auth.currentUser]);
+    }, [tableIdFromUrl, deliveryType, phone, ref]);
+
+    useEffect(() => {
+        if (!isAddressSelectorOpen || typeof document === 'undefined') return undefined;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousHtmlOverflow = document.documentElement.style.overflow;
+        const previousOverscroll = document.body.style.overscrollBehavior;
+
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overscrollBehavior = 'none';
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.documentElement.style.overflow = previousHtmlOverflow;
+            document.body.style.overscrollBehavior = previousOverscroll;
+        };
+    }, [isAddressSelectorOpen]);
 
     const handleDeleteSavedAddress = async (addressToDelete) => {
         const addressId = addressToDelete?.id;
@@ -1618,6 +1641,8 @@ const OrderPageInternal = () => {
             }
 
             setUserAddresses((prev) => prev.filter((address) => !isSameSavedAddress(address, addressToDelete)));
+            removeCustomerAddressSnapshot(addressId);
+            invalidateCustomerLookupCache();
             if (customerLocation && isSameSavedAddress(customerLocation, addressToDelete)) {
                 setCustomerLocation(null);
                 localStorage.removeItem('customerLocation');
@@ -1910,9 +1935,14 @@ const OrderPageInternal = () => {
                 console.log("[Order Page] Identity found. Checking server for active orders...");
                 try {
                     // Update API call to support ref
-                    const res = await fetch(`/api/order/active?${identifierParam}&token=${encodeQueryParam(token || '')}&restaurantId=${encodeRestaurantIdParam(restaurantId)}`);
-                    if (res.ok) {
-                        const data = await res.json();
+                    const data = await fetchCachedActiveOrders({
+                        restaurantId,
+                        phone: fallbackPhone,
+                        ref,
+                        token: token || '',
+                        ttlMs: 15000,
+                    });
+                    if (data) {
                         let serverOrders = [];
                         if (data.activeOrders) serverOrders = data.activeOrders;
                         else if (data.order) serverOrders = [data.order];
@@ -1978,6 +2008,29 @@ const OrderPageInternal = () => {
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
+    const hasSelectedDeliveryAddress = useCallback(() => {
+        const parseLocation = (raw) => {
+            if (!raw) return null;
+            try {
+                return JSON.parse(raw);
+            } catch {
+                return null;
+            }
+        };
+
+        const savedLocation = typeof window !== 'undefined'
+            ? parseLocation(localStorage.getItem('customerLocation'))
+            : null;
+        const candidate = customerLocation || savedLocation;
+        if (!candidate) return false;
+
+        return Boolean(
+            candidate.id ||
+            Number.isFinite(Number(candidate.lat ?? candidate.latitude)) ||
+            Number.isFinite(Number(candidate.lng ?? candidate.longitude))
+        );
+    }, [customerLocation]);
+
     const [restaurantData, setRestaurantData] = useState({
         name: '', status: null, logoUrl: '', bannerUrls: ['/order_banner.jpg'],
         deliveryCharge: 0, menu: {}, coupons: [], deliveryEnabled: true,
@@ -2454,23 +2507,14 @@ const OrderPageInternal = () => {
             if (locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) { } }
 
             try {
-                const query = new URLSearchParams();
-                query.set('src', 'order_page');
-                if (phone) query.set('phone', phone);
-                if (token) query.set('token', token);
-                if (ref) query.set('ref', ref);
-                const url = `/api/public/menu/${encodePathSegment(restaurantId)}?${query.toString()}`;
-
-                const [menuRes, settingsRes] = await Promise.all([
-                    fetch(url, { signal: abortController.signal }),
-                    fetch(`/api/public/settings/${encodePathSegment(restaurantId)}`, { signal: abortController.signal })
-                ]);
-
-                const menuData = await menuRes.json();
-
-                if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
-
-                const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+                const { menuData, settingsData } = await fetchCachedRestaurantBootstrap({
+                    restaurantId,
+                    phone,
+                    token,
+                    ref,
+                    src: 'order_page',
+                    ttlMs: 60000,
+                });
 
                 // Map specific payment settings (fallback to true if undefined)
                 const deliveryOnlinePaymentEnabled = settingsData.deliveryOnlinePaymentEnabled !== false;
@@ -2542,7 +2586,7 @@ const OrderPageInternal = () => {
             isActive = false;
             abortController.abort();
         };
-    }, [restaurantId, phone]);
+    }, [restaurantId, phone, ref, token]);
 
 
 
@@ -2937,7 +2981,19 @@ const OrderPageInternal = () => {
 
         // Access customerLocation
         const savedLocation = localStorage.getItem('customerLocation');
-        const hasSelectedAddress = savedLocation ? JSON.parse(savedLocation)?.lat : false;
+        let hasSelectedAddress = false;
+        if (savedLocation) {
+            try {
+                const parsedLocation = JSON.parse(savedLocation);
+                hasSelectedAddress = Boolean(
+                    parsedLocation?.id ||
+                    Number.isFinite(Number(parsedLocation?.lat ?? parsedLocation?.latitude)) ||
+                    Number.isFinite(Number(parsedLocation?.lng ?? parsedLocation?.longitude))
+                );
+            } catch {
+                hasSelectedAddress = false;
+            }
+        }
         const isFromWhatsApp = !!ref || !!phone;
 
         // ✅ Use deliveryType from STATE (not localStorage!)
@@ -2984,13 +3040,14 @@ const OrderPageInternal = () => {
         return () => {
             if (autoOpenTimer) clearTimeout(autoOpenTimer);
         };
-    }, [ref, phone, restaurantId, isTokenValid, loading, deliveryType, tableIdFromUrl]);
+    }, [ref, phone, restaurantId, isTokenValid, loading, deliveryType, tableIdFromUrl, handleOpenAddressDrawer]);
 
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
 
         const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
         const existingCart = safeReadCart(restaurantId);
+        const snapshotSubtotal = cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0);
         const resolvedCarDineInTabId =
             carOrderDetails?.dineInTabId ||
             existingCart?.dineInTabId ||
@@ -3016,7 +3073,9 @@ const OrderPageInternal = () => {
             dineInTabId: deliveryType === 'car-order' ? resolvedCarDineInTabId : activeTabInfo.id,
             pax_count: activeTabInfo.pax_count,
             tab_name: activeTabInfo.name,
-            deliveryCharge: restaurantData.deliveryCharge,
+            deliveryCharge: deliveryValidation && deliveryValidation.charge !== undefined
+                ? deliveryValidation.charge
+                : restaurantData.deliveryCharge,
             deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
             businessType: restaurantData.businessType,
             dineInModel: restaurantData.dineInModel,
@@ -3029,6 +3088,16 @@ const OrderPageInternal = () => {
             pickupPodEnabled: restaurantData.pickupPodEnabled,
             dineInOnlinePaymentEnabled: restaurantData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: restaurantData.dineInPayAtCounterEnabled,
+            deliveryValidationSnapshot: deliveryType === 'delivery' && customerLocation && deliveryValidation
+                ? {
+                    subtotal: snapshotSubtotal,
+                    updatedAt: Date.now(),
+                    addressId: customerLocation?.id || null,
+                    lat: Number(customerLocation?.lat ?? customerLocation?.latitude),
+                    lng: Number(customerLocation?.lng ?? customerLocation?.longitude),
+                    result: deliveryValidation,
+                }
+                : null,
 
             // Add-on Charges
             gstEnabled: restaurantData.gstEnabled,
@@ -3074,7 +3143,7 @@ const OrderPageInternal = () => {
             localStorage.setItem(liveOrderKey, JSON.stringify([...withoutCurrent, currentOrder]));
         }
 
-    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder, storedOrders, carOrderDetails, carSpotFromUrl]);
+    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder, storedOrders, carOrderDetails, carSpotFromUrl, customerLocation, deliveryValidation]);
 
     const searchPlaceholder = useMemo(
         () => `Search for a ${itemLabel}...`,
@@ -3456,6 +3525,17 @@ const OrderPageInternal = () => {
             return;
         }
 
+        if (deliveryType === 'delivery' && !hasSelectedDeliveryAddress()) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Warning: Address Required',
+                message: 'Please select your delivery address first. You can browse the menu, but items can be added only after choosing an address.',
+                type: 'warning'
+            });
+            setIsAddressSelectorOpen(true);
+            return;
+        }
+
         // 🚨 CRITICAL: Block adding to cart if delivery not allowed
         if (deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed) {
             setInfoDialog({
@@ -3499,7 +3579,7 @@ const OrderPageInternal = () => {
                 ];
             }
         });
-    }, [businessLabelTitle, closedOrderingMessage, deliveryType, deliveryValidation, restaurantData.isOpen, restaurantData.name]);
+    }, [businessLabelTitle, closedOrderingMessage, deliveryType, deliveryValidation, restaurantData.isOpen, restaurantData.name, hasSelectedDeliveryAddress]);
 
     const handleIncrement = (item) => {
         if (restaurantData.isOpen === false) {
@@ -3509,6 +3589,17 @@ const OrderPageInternal = () => {
                 message: closedOrderingMessage || `${restaurantData.name} is currently not available.`,
                 type: 'warning'
             });
+            return;
+        }
+
+        if (deliveryType === 'delivery' && !hasSelectedDeliveryAddress()) {
+            setInfoDialog({
+                isOpen: true,
+                title: 'Warning: Address Required',
+                message: 'Please select your delivery address first. You can browse the menu, but items can be added only after choosing an address.',
+                type: 'warning'
+            });
+            setIsAddressSelectorOpen(true);
             return;
         }
 
@@ -3577,6 +3668,12 @@ const OrderPageInternal = () => {
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+    useEffect(() => {
+        if (!restaurantId || totalCartItems <= 0) return;
+        const nextRoute = (tableIdFromUrl || deliveryType === 'dine-in') ? '/cart' : '/checkout';
+        router.prefetch(nextRoute);
+    }, [router, restaurantId, totalCartItems, tableIdFromUrl, deliveryType]);
 
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
@@ -4104,27 +4201,20 @@ const OrderPageInternal = () => {
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                onClick={() => window.history.back()}
+                                onClick={handleCloseAddressSelector}
                             />
                             <motion.div
-                                className="fixed top-0 left-0 right-0 h-screen h-[100dvh] max-h-[100dvh] bg-background z-[70] shadow-2xl flex flex-col overflow-hidden"
-                                initial={{ y: '-100%' }}
+                                className="fixed inset-x-0 bottom-0 h-[92dvh] max-h-[92dvh] md:h-screen md:max-h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden rounded-t-[28px] md:rounded-none"
+                                initial={{ y: '100%' }}
                                 animate={{ y: 0 }}
-                                exit={{ y: '-100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                                drag="y"
-                                dragConstraints={{ top: -1000, bottom: 0 }}
-                                dragElastic={{ top: 0.1, bottom: 0.05 }}
-                                onDragEnd={(e, { offset, velocity }) => {
-                                    if (offset.y < -100 || velocity.y < -500) {
-                                        window.history.back();
-                                    }
-                                }}
+                                exit={{ y: '100%' }}
+                                transition={{ type: 'spring', damping: 30, stiffness: 260, mass: 0.9 }}
                             >
                                 <div className="p-4 border-b flex items-center justify-between shrink-0 bg-background z-10">
+                                    <div className="absolute left-1/2 top-2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-muted-foreground/25" />
                                     <h2 className="font-bold text-lg">Select Address</h2>
-                                    <Button variant="ghost" size="icon" onClick={() => window.history.back()}>
-                                        <ChevronUp />
+                                    <Button variant="ghost" size="icon" onClick={handleCloseAddressSelector}>
+                                        <X />
                                     </Button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-4 overscroll-contain">
@@ -4133,9 +4223,7 @@ const OrderPageInternal = () => {
                                         selectedAddressId={customerLocation?.id}
                                         onSelect={(addr) => {
                                             isAddressSelectionInProgress.current = true;
-                                            window.history.back(); // Close first (pops state)
-                                            // Small timeout to allow state pop before setting new address
-                                            setTimeout(() => handleSelectNewAddress(addr), 50);
+                                            handleSelectNewAddress(addr);
                                         }}
                                         loading={addressLoading}
                                         onUseCurrentLocation={() => {
@@ -4151,11 +4239,6 @@ const OrderPageInternal = () => {
                                             router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                     />
-                                    {/* Drag Handle Indicator - Pull Up to Close */}
-                                    <div className="w-full flex flex-col items-center justify-center py-6 opacity-50 space-y-2 pointer-events-none">
-                                        <ChevronUp size={16} className="animate-bounce" />
-                                        <span className="text-xs font-medium">Pull up to close</span>
-                                    </div>
                                 </div>
                             </motion.div>
                         </>

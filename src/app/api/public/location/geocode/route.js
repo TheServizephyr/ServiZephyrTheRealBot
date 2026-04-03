@@ -2,6 +2,34 @@
 import { NextResponse } from 'next/server';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const LEADING_PLUS_CODE_REGEX = /^\s*[A-Z0-9]{2,10}\+[A-Z0-9]{2,5}(?:(?=\s*,)|(?=\s+[A-Za-z]))\s*,?\s*/i;
+const MEANINGFUL_ADDRESS_PREFIX_REGEX = /\b(house|flat|floor|shop|plot|gali|street|st|road|rd|sector|sec|phase|block|near|opp|opposite|village|vill|colony|apt|apartment|tower|building|bldg|home)\b/i;
+const LEADING_CODELIKE_SEGMENT_REGEX = /^[A-Z0-9/-]{1,12}$/i;
+
+function stripLeadingAddressNoise(value = '') {
+    const text = String(value || '').trim();
+    if (!text) return '';
+
+    const withoutPlusCode = text.replace(LEADING_PLUS_CODE_REGEX, '').trim();
+    if (!withoutPlusCode) return text;
+
+    const firstCommaIndex = withoutPlusCode.indexOf(',');
+    if (firstCommaIndex <= 0) return withoutPlusCode;
+
+    const firstSegment = withoutPlusCode.slice(0, firstCommaIndex).trim();
+    const rest = withoutPlusCode.slice(firstCommaIndex + 1).trim();
+    if (!firstSegment || !rest) return withoutPlusCode;
+
+    const looksLikeMeaningfulPrefix =
+        MEANINGFUL_ADDRESS_PREFIX_REGEX.test(firstSegment) ||
+        /\s/.test(firstSegment);
+
+    if (!looksLikeMeaningfulPrefix && LEADING_CODELIKE_SEGMENT_REGEX.test(firstSegment) && /\d/.test(firstSegment)) {
+        return rest;
+    }
+
+    return withoutPlusCode;
+}
 
 export async function GET(req) {
     if (!GOOGLE_MAPS_API_KEY) {
@@ -41,7 +69,7 @@ export async function GET(req) {
                 state: getComponent('administrative_area_level_1'),
                 pincode: getComponent('postal_code'),
                 country: getComponent('country', true),
-                formatted_address: addr.formatted_address || 'Address not found'
+                formatted_address: stripLeadingAddressNoise(addr.formatted_address || 'Address not found')
             };
             console.log("[API geocode] Google Maps response successful:", result.formatted_address);
             return NextResponse.json(result, { status: 200 });

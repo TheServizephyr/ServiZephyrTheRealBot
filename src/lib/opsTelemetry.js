@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 
 const TELEMETRY_ENABLED = process.env.ENABLE_OPS_TELEMETRY === 'true';
 const TELEMETRY_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
@@ -89,7 +89,7 @@ export function getTelemetryDay(date = new Date()) {
 }
 
 export function isOpsTelemetryConfigured() {
-    return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+    return isKvConfigured();
 }
 
 function sanitizeEndpoint(endpoint) {

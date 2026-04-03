@@ -17,6 +17,12 @@ import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_ROUTE_GUEST_SCOPES = ['customer_lookup', 'active_orders', 'checkout', 'track_orders'];
+const isOrderActiveDebugEnabled = process.env.DEBUG_ORDER_ACTIVE === 'true';
+const debugLog = (...args) => {
+    if (isOrderActiveDebugEnabled) {
+        console.log(...args);
+    }
+};
 
 const getClientIp = (req) => {
     const forwardedFor = req.headers.get('x-forwarded-for') || '';
@@ -114,7 +120,7 @@ export async function GET(req) {
     };
 
     try {
-        console.log("[API] GET /order/active called");
+        debugLog("[API] GET /order/active called");
         const { searchParams } = new URL(req.url);
         const tabId = searchParams.get('tabId');
         const phone = searchParams.get('phone');
@@ -157,7 +163,7 @@ export async function GET(req) {
             const cookieStore = cookies();
             const guestSession = readSignedGuestSessionCookie(cookieStore, ['active_orders']);
             const sessionUser = guestSession?.subjectId || null;
-            console.log(`[API /order/active] Security Check - Session: ${sessionUser}, Ref: ${ref}, AuthCookieOrHeader: ${!!req.headers.get('authorization') || !!req.cookies?.get?.('auth_session')}`);
+            debugLog(`[API /order/active] Security Check - Session: ${sessionUser}, Ref: ${ref}, AuthCookieOrHeader: ${!!req.headers.get('authorization') || !!req.cookies?.get?.('auth_session')}`);
 
             let targetCustomerId = null;
             let targetPhone = null;
@@ -209,7 +215,7 @@ export async function GET(req) {
                     }
 
                     if (isAuthorized) {
-                        console.log(`[API /order/active] ✅ Authorized via Auth Header (UID: ${loggedInUid})`);
+                        debugLog(`[API /order/active] ✅ Authorized via Auth Header (UID: ${loggedInUid})`);
                     } else {
                         console.warn(`[API /order/active] ❌ Auth Header UID ${loggedInUid} does not match target ${targetCustomerId || targetPhone}`);
                     }
@@ -260,12 +266,12 @@ export async function GET(req) {
             if (targetCustomerId) {
                 // Guest ID ref provided - use directly
                 userId = targetCustomerId;
-                console.log(`[API /order/active] Using Guest ID: ${userId}`);
+                debugLog(`[API /order/active] Using Guest ID: ${userId}`);
             } else if (targetPhone) {
                 // Phone provided - check for UID first, then guest ID
                 const profileResult = await getOrCreateGuestProfile(firestore, targetPhone);
                 userId = profileResult.userId;  // UID or guest ID
-                console.log(`[API /order/active] Resolved userId: ${userId}, isGuest: ${profileResult.isGuest}`);
+                debugLog(`[API /order/active] Resolved userId: ${userId}, isGuest: ${profileResult.isGuest}`);
             }
 
             if (!userId) {
@@ -351,7 +357,7 @@ export async function GET(req) {
                 return timeB - timeA;
             });
 
-            console.log(`[API /order/active] Returning ${finalActiveOrders.length} active orders.`);
+            debugLog(`[API /order/active] Returning ${finalActiveOrders.length} active orders.`);
             return respond({ activeOrders: finalActiveOrders }, 200, {
                 outcome: 'resolved',
                 mode: 'customer',
@@ -378,9 +384,9 @@ export async function GET(req) {
         snap1.forEach(doc => uniqueDocs.set(doc.id, doc));
         snap2.forEach(doc => uniqueDocs.set(doc.id, doc));
 
-        console.log(`[API /order/active] TabId: ${tabId}`);
-        console.log(`[API /order/active] Snap1 (dineInTabId) found: ${snap1.size}`);
-        console.log(`[API /order/active] Snap2 (tabId) found: ${snap2.size}`);
+        debugLog(`[API /order/active] TabId: ${tabId}`);
+        debugLog(`[API /order/active] Snap1 (dineInTabId) found: ${snap1.size}`);
+        debugLog(`[API /order/active] Snap2 (tabId) found: ${snap2.size}`);
 
         let initialDocs = [];
         snap1.forEach(doc => initialDocs.push(doc));
@@ -399,13 +405,13 @@ export async function GET(req) {
         }
 
         if (dineInToken && restaurantId) {
-            console.log(`[API /order/active] Found dineInToken: ${dineInToken}. Fetching related orders...`);
+            debugLog(`[API /order/active] Found dineInToken: ${dineInToken}. Fetching related orders...`);
             const tokenQuery = await firestore.collection('orders')
                 .where('restaurantId', '==', restaurantId)
                 .where('dineInToken', '==', dineInToken)
                 .get();
 
-            console.log(`[API /order/active] Token query found: ${tokenQuery.size} docs.`);
+            debugLog(`[API /order/active] Token query found: ${tokenQuery.size} docs.`);
             tokenQuery.forEach(doc => uniqueDocs.set(doc.id, doc));
         }
         // --------------------------------------------------
@@ -413,12 +419,12 @@ export async function GET(req) {
         snap1.forEach(doc => uniqueDocs.set(doc.id, doc));
         snap2.forEach(doc => uniqueDocs.set(doc.id, doc));
 
-        console.log(`[API /order/active] Total unique docs after token merge: ${uniqueDocs.size}`);
+        debugLog(`[API /order/active] Total unique docs after token merge: ${uniqueDocs.size}`);
         const dineInEstimatedReads = (snap1?.size || 0) + (snap2?.size || 0) + (uniqueDocs?.size || 0);
         await trackEndpointRead('api.order.active', dineInEstimatedReads);
 
         if (uniqueDocs.size === 0) {
-            console.log('[API /order/active] No documents found. Returning 404.');
+            debugLog('[API /order/active] No documents found. Returning 404.');
             return respond({ message: 'No orders found for this tab' }, 404, {
                 outcome: 'not_found',
                 mode: 'tab',
@@ -438,11 +444,11 @@ export async function GET(req) {
 
         sortedDocs.forEach(doc => {
             const order = doc.data();
-            console.log(`[API /order/active] Processing Order: ${doc.id} | Status: ${order.status} | Amount: ${order.totalAmount || 0}`);
+            debugLog(`[API /order/active] Processing Order: ${doc.id} | Status: ${order.status} | Amount: ${order.totalAmount || 0}`);
 
             // Filter statuses in MEMORY (Robust)
             if (['cancelled', 'rejected', 'picked_up'].includes(order.status)) {
-                console.log(`[API /order/active] Skipping order (status: ${order.status}): ${doc.id}`);
+                debugLog(`[API /order/active] Skipping order (status: ${order.status}): ${doc.id}`);
                 return;
             }
 
@@ -456,7 +462,7 @@ export async function GET(req) {
             if (!customerName) customerName = order.customerName || '';
         });
 
-        console.log(`[API /order/active] Final Aggregated Subtotal: ${subtotal}`);
+        debugLog(`[API /order/active] Final Aggregated Subtotal: ${subtotal}`);
 
         return respond({
             items: allItems,

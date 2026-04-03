@@ -1,6 +1,6 @@
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
-import { kv } from '@vercel/kv'; // ✅ For cache invalidation
+import { kv, isKvConfigured } from '@/lib/kv'; // ✅ For cache invalidation
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -227,7 +227,7 @@ export async function POST(req) {
         }
 
         // ✅ CACHE INVALIDATION: Clear cached order status
-        const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+        const isKvAvailable = isKvConfigured();
 
         if (isKvAvailable) {
             try {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, getDatabase, verifyAndGetUid, FieldValue } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 
 function normalizeIndianPhone(value) {
@@ -210,7 +210,7 @@ export async function PATCH(req) {
         }
 
         // 🔥 CRITICAL: Invalidate Redis cache so tracking page gets fresh status immediately!
-        const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+        const isKvAvailable = isKvConfigured();
         if (isKvAvailable) {
             try {
                 const clearedKeys = await clearOrderStatusCache(kv, {

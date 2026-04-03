@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
@@ -165,6 +165,13 @@ const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 const BUSINESS_COLLECTION_CACHE_TTL_SECONDS = 60 * 60; // 1 hour
 const MENU_MEMORY_CACHE_TTL_MS = 30 * 1000;
 const MENU_MEMORY_CACHE_MAX_ENTRIES = 200;
+const ENABLE_PUBLIC_MENU_INSIGHT_BADGES = process.env.ENABLE_PUBLIC_MENU_INSIGHT_BADGES !== 'false';
+const MENU_BADGE_CACHE_TTL_SECONDS = Math.max(5 * 60, Number(process.env.PUBLIC_MENU_INSIGHT_BADGES_TTL_SECONDS || (6 * 60 * 60)) || (6 * 60 * 60));
+const MENU_BADGE_MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
+const MENU_BADGE_MEMORY_CACHE_MAX_ENTRIES = 200;
+const MENU_SUPPORT_CACHE_TTL_SECONDS = Math.max(60, Number(process.env.PUBLIC_MENU_SUPPORT_CACHE_TTL_SECONDS || (5 * 60)) || (5 * 60));
+const MENU_SUPPORT_MEMORY_CACHE_TTL_MS = 60 * 1000;
+const MENU_SUPPORT_MEMORY_CACHE_MAX_ENTRIES = 400;
 const isMenuApiDebugEnabled = process.env.DEBUG_MENU_API === 'true';
 const debugLog = (...args) => {
     if (isMenuApiDebugEnabled) {
@@ -201,6 +208,165 @@ function writeMenuToMemoryCache(cacheKey, value) {
         value,
         expiresAt: Date.now() + MENU_MEMORY_CACHE_TTL_MS,
     });
+}
+
+function getMenuBadgeMemoryCacheStore() {
+    if (!globalThis.__menuApiBadgeL1Cache) {
+        globalThis.__menuApiBadgeL1Cache = new Map();
+    }
+    return globalThis.__menuApiBadgeL1Cache;
+}
+
+function readMenuBadgeFromMemoryCache(cacheKey) {
+    const store = getMenuBadgeMemoryCacheStore();
+    const entry = store.get(cacheKey);
+    if (!entry) return null;
+    if (!entry.expiresAt || entry.expiresAt < Date.now()) {
+        store.delete(cacheKey);
+        return null;
+    }
+    return entry.value || null;
+}
+
+function writeMenuBadgeToMemoryCache(cacheKey, value) {
+    if (!cacheKey || !value || typeof value !== 'object') return;
+    const store = getMenuBadgeMemoryCacheStore();
+    if (store.size >= MENU_BADGE_MEMORY_CACHE_MAX_ENTRIES) {
+        const oldestKey = store.keys().next().value;
+        if (oldestKey) store.delete(oldestKey);
+    }
+    store.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + MENU_BADGE_MEMORY_CACHE_TTL_MS,
+    });
+}
+
+function getMenuSupportMemoryCacheStore() {
+    if (!globalThis.__menuApiSupportL1Cache) {
+        globalThis.__menuApiSupportL1Cache = new Map();
+    }
+    return globalThis.__menuApiSupportL1Cache;
+}
+
+function readMenuSupportFromMemoryCache(cacheKey) {
+    const store = getMenuSupportMemoryCacheStore();
+    const entry = store.get(cacheKey);
+    if (!entry) return null;
+    if (!entry.expiresAt || entry.expiresAt < Date.now()) {
+        store.delete(cacheKey);
+        return null;
+    }
+    return entry.value;
+}
+
+function writeMenuSupportToMemoryCache(cacheKey, value) {
+    if (!cacheKey) return;
+    const store = getMenuSupportMemoryCacheStore();
+    if (store.size >= MENU_SUPPORT_MEMORY_CACHE_MAX_ENTRIES) {
+        const oldestKey = store.keys().next().value;
+        if (oldestKey) store.delete(oldestKey);
+    }
+    store.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + MENU_SUPPORT_MEMORY_CACHE_TTL_MS,
+    });
+}
+
+function serializeInsightBadgeMap(map) {
+    if (!(map instanceof Map) || map.size === 0) return {};
+    return Object.fromEntries(map.entries());
+}
+
+function deserializeInsightBadgePayload(payload) {
+    if (!payload || typeof payload !== 'object') return new Map();
+    return new Map(
+        Object.entries(payload).filter(([key, value]) => String(key || '').trim() && String(value || '').trim())
+    );
+}
+
+function splitCachedMenuPayload(cachedData = {}) {
+    const payload = cachedData && typeof cachedData === 'object' ? cachedData : {};
+    const { __couponCatalog = [], ...publicPayload } = payload;
+    return {
+        publicPayload,
+        couponCatalog: Array.isArray(__couponCatalog) ? __couponCatalog : [],
+    };
+}
+
+async function getCachedInsightBadgeMap({
+    firestore,
+    restaurantId,
+    businessRef,
+    totalActiveMenuItems = 0,
+    cacheKey,
+    isKvAvailable = false,
+}) {
+    if (!ENABLE_PUBLIC_MENU_INSIGHT_BADGES) {
+        return new Map();
+    }
+
+    const memoryPayload = readMenuBadgeFromMemoryCache(cacheKey);
+    if (memoryPayload) {
+        return deserializeInsightBadgePayload(memoryPayload);
+    }
+
+    if (isKvAvailable) {
+        try {
+            const cachedPayload = await kv.get(cacheKey);
+            if (cachedPayload && typeof cachedPayload === 'object') {
+                writeMenuBadgeToMemoryCache(cacheKey, cachedPayload);
+                return deserializeInsightBadgePayload(cachedPayload);
+            }
+        } catch (cacheErr) {
+            console.warn(`[Menu API] Badge cache read failed for ${restaurantId}:`, cacheErr?.message || cacheErr);
+        }
+    }
+
+    const computedMap = await computeInsightBadges(firestore, restaurantId, businessRef, totalActiveMenuItems);
+    const serializedPayload = serializeInsightBadgeMap(computedMap);
+    writeMenuBadgeToMemoryCache(cacheKey, serializedPayload);
+    if (isKvAvailable) {
+        void kv.set(cacheKey, serializedPayload, { ex: MENU_BADGE_CACHE_TTL_SECONDS }).catch((cacheErr) => {
+            console.warn(`[Menu API] Badge cache write failed for ${restaurantId}:`, cacheErr?.message || cacheErr);
+        });
+    }
+    return computedMap;
+}
+
+async function getCachedMenuSupportData({
+    cacheKey,
+    isKvAvailable = false,
+    load,
+}) {
+    const memoryPayload = readMenuSupportFromMemoryCache(cacheKey);
+    if (memoryPayload !== null && memoryPayload !== undefined) {
+        return { value: memoryPayload, source: 'memory', readCount: 0 };
+    }
+
+    if (isKvAvailable) {
+        try {
+            const cachedPayload = await kv.get(cacheKey);
+            if (cachedPayload !== null && cachedPayload !== undefined) {
+                writeMenuSupportToMemoryCache(cacheKey, cachedPayload);
+                return { value: cachedPayload, source: 'kv', readCount: 0 };
+            }
+        } catch (cacheErr) {
+            console.warn(`[Menu API] Support cache read failed for ${cacheKey}:`, cacheErr?.message || cacheErr);
+        }
+    }
+
+    const loaded = await load();
+    writeMenuSupportToMemoryCache(cacheKey, loaded.value);
+    if (isKvAvailable) {
+        void kv.set(cacheKey, loaded.value, { ex: MENU_SUPPORT_CACHE_TTL_SECONDS }).catch((cacheErr) => {
+            console.warn(`[Menu API] Support cache write failed for ${cacheKey}:`, cacheErr?.message || cacheErr);
+        });
+    }
+    return {
+        value: loaded.value,
+        source: 'firestore',
+        readCount: Math.max(0, Number(loaded.readCount) || 0),
+    };
 }
 
 function normalizeMenuSource(value) {
@@ -283,6 +449,21 @@ async function resolveEligibleCouponCustomerIds({ firestore, businessRef, search
     }
 
     return eligibleIds;
+}
+
+function filterCouponsForRequest(couponDocs = [], now = new Date(), eligibleCustomerIds = new Set()) {
+    return couponDocs.filter((coupon) => {
+        const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
+        const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
+        const assignedCustomerId = String(coupon.customerId || '').trim();
+        const isPublic = !assignedCustomerId;
+        const isAssignedToCurrentCustomer = assignedCustomerId && eligibleCustomerIds.has(assignedCustomerId);
+        const isValid = startDate <= now && expiryDate >= now;
+
+        debugLog('[Menu API] Coupon', coupon.code, '- valid:', isValid, 'public:', isPublic, 'assigned:', isAssignedToCurrentCustomer, 'start:', startDate, 'expiry:', expiryDate);
+
+        return isValid && (isPublic || isAssignedToCurrentCustomer);
+    });
 }
 
 function buildRestaurantIdCandidates(value) {
@@ -445,9 +626,9 @@ export async function GET(req, { params }) {
 
     debugLog(`[Menu API] 🚀 START - Request received for restaurantId: ${requestedRestaurantId} (canonical: ${canonicalRestaurantId}) at ${new Date().toISOString()}`);
 
-    // Check if Vercel KV is available (optional for local dev)
-    const isKvConfigured = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-    let isKvAvailable = isKvConfigured;
+    // Cache is available if either primary Vercel KV or secondary Upstash is configured.
+    const hasKvConfigured = isKvConfigured();
+    let isKvAvailable = hasKvConfigured;
 
     try {
         // STEP 1: Resolve business collection (cache-first, fallback to multi-collection lookup)
@@ -509,6 +690,10 @@ export async function GET(req, { params }) {
         // STEP 2: Build version-based cache key
         // PATCH: Added _patch8 to force cache refresh for dynamic relative volume thresholds (Min orders scaled by traffic)
         const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch8`;
+        const insightBadgeCacheKey = `menu_badges:${cacheRestaurantId}:v${menuVersion}_patch1`;
+        const couponCatalogCacheKey = `menu_coupon_catalog:${cacheRestaurantId}`;
+        const deliveryConfigCacheKey = `menu_delivery_config:${cacheRestaurantId}`;
+        const customCategoriesCacheKey = `menu_custom_categories:${cacheRestaurantId}`;
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion
@@ -521,19 +706,51 @@ export async function GET(req, { params }) {
         debugLog(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
 
         // STEP 3: Check Redis cache with version-specific key
-        if (!skipCache && !personalizedRequest) {
+        // Even personalized requests can reuse the cached base menu payload; we
+        // only refresh the customer-specific coupon subset on top of that.
+        if (!skipCache) {
             const l1CacheData = readMenuFromMemoryCache(cacheKey);
             if (l1CacheData) {
                 debugLog(`%c[Menu API] ✅ L1 CACHE HIT`, 'color: #22c55e; font-weight: bold');
-                const payload = {
-                    ...l1CacheData,
+                const { publicPayload, couponCatalog } = splitCachedMenuPayload(l1CacheData);
+                let payload = {
+                    ...publicPayload,
                     isOpen: effectiveIsOpen,
                     autoScheduleEnabled: businessData.autoScheduleEnabled === true,
                     openingTime: businessData.openingTime || '09:00',
                     closingTime: businessData.closingTime || '22:00',
                     timeZone: businessData.timeZone || businessData.timezone || 'Asia/Kolkata',
                 };
-                await trackEndpointRead(telemetryEndpoint, 1);
+                if (personalizedRequest) {
+                    const hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
+                    if (couponCatalog.length > 0 && !hasAssignedCoupons) {
+                        payload = {
+                            ...payload,
+                            coupons: publicPayload.coupons || [],
+                        };
+                        await trackEndpointRead(telemetryEndpoint, 1);
+                    } else if (couponCatalog.length > 0) {
+                        const eligibleCustomerIds = await resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams });
+                        payload = {
+                            ...payload,
+                            coupons: filterCouponsForRequest(couponCatalog, new Date(), eligibleCustomerIds),
+                        };
+                        await trackEndpointRead(telemetryEndpoint, 1);
+                    } else {
+                        const [couponsSnap, eligibleCustomerIds] = await Promise.all([
+                            businessRef.collection('coupons').where('status', '==', 'active').get(),
+                            resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams })
+                        ]);
+                        const couponDocs = couponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        payload = {
+                            ...payload,
+                            coupons: filterCouponsForRequest(couponDocs, new Date(), eligibleCustomerIds),
+                        };
+                        await trackEndpointRead(telemetryEndpoint, 1 + couponsSnap.size);
+                    }
+                } else {
+                    await trackEndpointRead(telemetryEndpoint, 1);
+                }
                 return respond(payload, 200, {
                     'X-Cache': 'L1-HIT',
                     'X-Menu-Version': menuVersion.toString(),
@@ -543,22 +760,52 @@ export async function GET(req, { params }) {
             }
         }
 
-        if (isKvAvailable && !skipCache && !personalizedRequest) {
+        if (isKvAvailable && !skipCache) {
             try {
                 const cachedData = await kv.get(cacheKey);
                 if (cachedData) {
                     debugLog(`%c[Menu API] ✅ CACHE HIT`, 'color: green; font-weight: bold');
                     debugLog(`[Menu API]    └─ Serving from Redis cache for key: ${cacheKey}`);
                     writeMenuToMemoryCache(cacheKey, cachedData);
-                    const payload = {
-                        ...cachedData,
+                    const { publicPayload, couponCatalog } = splitCachedMenuPayload(cachedData);
+                    let payload = {
+                        ...publicPayload,
                         isOpen: effectiveIsOpen,
                         autoScheduleEnabled: businessData.autoScheduleEnabled === true,
                         openingTime: businessData.openingTime || '09:00',
                         closingTime: businessData.closingTime || '22:00',
                         timeZone: businessData.timeZone || businessData.timezone || 'Asia/Kolkata',
                     };
-                    await trackEndpointRead(telemetryEndpoint, 1);
+                    if (personalizedRequest) {
+                        const hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
+                        if (couponCatalog.length > 0 && !hasAssignedCoupons) {
+                            payload = {
+                                ...payload,
+                                coupons: publicPayload.coupons || [],
+                            };
+                            await trackEndpointRead(telemetryEndpoint, 1);
+                        } else if (couponCatalog.length > 0) {
+                            const eligibleCustomerIds = await resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams });
+                            payload = {
+                                ...payload,
+                                coupons: filterCouponsForRequest(couponCatalog, new Date(), eligibleCustomerIds),
+                            };
+                            await trackEndpointRead(telemetryEndpoint, 1);
+                        } else {
+                            const [couponsSnap, eligibleCustomerIds] = await Promise.all([
+                                businessRef.collection('coupons').where('status', '==', 'active').get(),
+                                resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams })
+                            ]);
+                            const couponDocs = couponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            payload = {
+                                ...payload,
+                                coupons: filterCouponsForRequest(couponDocs, new Date(), eligibleCustomerIds),
+                            };
+                            await trackEndpointRead(telemetryEndpoint, 1 + couponsSnap.size);
+                        }
+                    } else {
+                        await trackEndpointRead(telemetryEndpoint, 1);
+                    }
 
                     return respond(payload, 200, {
                         'X-Cache': 'HIT',
@@ -575,7 +822,7 @@ export async function GET(req, { params }) {
                 console.warn(`[Menu API] KV read failed; falling back to Firestore for ${cacheRestaurantId}:`, cacheReadErr?.message || cacheReadErr);
             }
         } else {
-            debugLog(`[Menu API] ⚠️ Vercel KV not configured - skipping cache for ${cacheRestaurantId}`);
+            debugLog(`[Menu API] ⚠️ KV cache layer not configured - skipping cache for ${cacheRestaurantId}`);
         }
 
         // STEP 4: Cache miss - fetch from Firestore
@@ -584,30 +831,65 @@ export async function GET(req, { params }) {
         debugLog(`[Menu API] 🟢 isOpen status in DB: ${businessData.isOpen}`);
         debugLog(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${cacheRestaurantId}/coupons`);
 
-        // Fetch menu, coupons, AND delivery settings in parallel
-        const [menuSnap, couponsSnap, deliveryConfigSnap, eligibleCustomerIds] = await Promise.all([
+        // Fetch menu first, then hydrate supporting datasets from short-lived
+        // support caches so a base menu miss does not always fan out into extra
+        // Firestore reads for coupons/settings/categories.
+        const [menuSnap, couponCatalogResult, deliveryConfigResult, customCategoriesResult] = await Promise.all([
             businessRef.collection('menu').get(),
-            businessRef.collection('coupons').where('status', '==', 'active').get(),
-            businessRef.collection('delivery_settings').doc('config').get(),
-            resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams })
+            getCachedMenuSupportData({
+                cacheKey: couponCatalogCacheKey,
+                isKvAvailable,
+                load: async () => {
+                    const couponsSnap = await businessRef.collection('coupons').where('status', '==', 'active').get();
+                    return {
+                        value: couponsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+                        readCount: couponsSnap.size,
+                    };
+                },
+            }),
+            getCachedMenuSupportData({
+                cacheKey: deliveryConfigCacheKey,
+                isKvAvailable,
+                load: async () => {
+                    const deliveryConfigSnap = await businessRef.collection('delivery_settings').doc('config').get();
+                    return {
+                        value: {
+                            exists: deliveryConfigSnap.exists,
+                            data: deliveryConfigSnap.exists ? deliveryConfigSnap.data() : null,
+                        },
+                        readCount: 1,
+                    };
+                },
+            }),
+            getCachedMenuSupportData({
+                cacheKey: customCategoriesCacheKey,
+                isKvAvailable,
+                load: async () => {
+                    const customCatSnap = await businessRef.collection('custom_categories').orderBy('order', 'asc').get();
+                    return {
+                        value: customCatSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+                        readCount: customCatSnap.size,
+                    };
+                },
+            }),
         ]);
 
-        debugLog(`[Menu API] 📊 Coupons query returned ${couponsSnap.size} documents`);
+        const couponDocs = Array.isArray(couponCatalogResult?.value) ? couponCatalogResult.value : [];
+        debugLog(`[Menu API] 📊 Coupons available: ${couponDocs.length} (source: ${couponCatalogResult?.source || 'unknown'})`);
 
         // Check delivery settings
-        const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
-        debugLog(`[Menu API] 🚚 Delivery Config found: ${deliveryConfigSnap.exists}`, deliveryConfigSnap.exists ? deliveryConfig : '(using legacy/defaults)');
+        const deliveryConfigState = deliveryConfigResult?.value || { exists: false, data: null };
+        const deliveryConfig = deliveryConfigState.exists ? (deliveryConfigState.data || {}) : {};
+        debugLog(`[Menu API] 🚚 Delivery Config found: ${deliveryConfigState.exists}`, deliveryConfigState.exists ? deliveryConfig : '(using legacy/defaults)');
 
         let menuData = {};
-        // FETCH CUSTOM CATEGORIES FROM SUB-COLLECTION
-        const customCatSnap = await businessRef.collection('custom_categories').orderBy('order', 'asc').get();
-        const customCategories = customCatSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const customCategories = Array.isArray(customCategoriesResult?.value) ? customCategoriesResult.value : [];
         const estimatedReads =
             1 + // business doc lookup
             (menuSnap?.size || 0) +
-            (couponsSnap?.size || 0) +
-            (customCatSnap?.size || 0) +
-            1; // delivery_settings doc
+            (couponCatalogResult?.readCount || 0) +
+            (customCategoriesResult?.readCount || 0) +
+            (deliveryConfigResult?.readCount || 0);
         await trackEndpointRead(telemetryEndpoint, estimatedReads);
 
         const restaurantCategoryConfig = {
@@ -637,8 +919,16 @@ export async function GET(req, { params }) {
             menuData[key] = [];
         });
 
-        // Compute insight badges from ALL sales channels (online orders + walk-in counter bills)
-        const insightBadgeMap = await computeInsightBadges(firestore, resolvedWinner.businessRef.id || cacheRestaurantId, businessRef, menuSnap.size);
+        // Insight badge computation is cached separately so menu cache misses do
+        // not repeatedly scan 30-day order history.
+        const insightBadgeMap = await getCachedInsightBadgeMap({
+            firestore,
+            restaurantId: resolvedWinner.businessRef.id || cacheRestaurantId,
+            businessRef,
+            totalActiveMenuItems: menuSnap.size,
+            cacheKey: insightBadgeCacheKey,
+            isKvAvailable,
+        });
 
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
@@ -672,27 +962,19 @@ export async function GET(req, { params }) {
 
         // Process coupons
         const now = new Date();
-        debugLog('[Menu API] Fetched', couponsSnap.size, 'coupons with status=active');
+        debugLog('[Menu API] Fetched', couponDocs.length, 'coupons with status=active');
         debugLog('[Menu API] Current time:', now);
 
-        const coupons = couponsSnap.docs
-            .map(doc => {
-                const couponData = { id: doc.id, ...doc.data() };
-                debugLog('[Menu API] Coupon:', couponData.code, 'startDate:', couponData.startDate, 'expiryDate:', couponData.expiryDate);
-                return couponData;
-            })
-            .filter(coupon => {
-                const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
-                const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
-                const assignedCustomerId = String(coupon.customerId || '').trim();
-                const isPublic = !assignedCustomerId;
-                const isAssignedToCurrentCustomer = assignedCustomerId && eligibleCustomerIds.has(assignedCustomerId);
-                const isValid = startDate <= now && expiryDate >= now;
-
-                debugLog('[Menu API] Coupon', coupon.code, '- valid:', isValid, 'public:', isPublic, 'assigned:', isAssignedToCurrentCustomer, 'start:', startDate, 'expiry:', expiryDate);
-
-                return isValid && (isPublic || isAssignedToCurrentCustomer);
-            });
+        const allCouponDocs = couponDocs.map(couponData => {
+            debugLog('[Menu API] Coupon:', couponData.code, 'startDate:', couponData.startDate, 'expiryDate:', couponData.expiryDate);
+            return couponData;
+        });
+        const hasAssignedCoupons = allCouponDocs.some((coupon) => String(coupon?.customerId || '').trim());
+        const eligibleCustomerIds = personalizedRequest && hasAssignedCoupons
+            ? await resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams })
+            : new Set();
+        const coupons = filterCouponsForRequest(allCouponDocs, now, eligibleCustomerIds);
+        const publicCoupons = filterCouponsForRequest(allCouponDocs, now, new Set());
 
         debugLog('[Menu API] Final coupons count:', coupons.length);
 
@@ -706,35 +988,35 @@ export async function GET(req, { params }) {
             bannerUrls: businessData.bannerUrls,
             // MERGED DELIVERY SETTINGS (Sub-collection takes precedence => fallback to legacy)
             // Use deliveryFixedFee as source of truth for fixed charge
-            deliveryCharge: deliveryConfigSnap.exists ? (deliveryConfig.deliveryFeeType === 'fixed' ? deliveryConfig.deliveryFixedFee : 0) : (businessData.deliveryCharge || 0),
-            deliveryFixedFee: deliveryConfigSnap.exists ? deliveryConfig.deliveryFixedFee : (businessData.deliveryFixedFee || 30),
-            deliveryBaseDistance: deliveryConfigSnap.exists ? deliveryConfig.deliveryBaseDistance : (businessData.deliveryBaseDistance || 0),
-            deliveryFreeThreshold: deliveryConfigSnap.exists ? deliveryConfig.deliveryFreeThreshold : (businessData.deliveryFreeThreshold || 500),
-            minOrderValue: deliveryConfigSnap.exists ? deliveryConfig.minOrderValue : (businessData.minOrderValue || 0),
+            deliveryCharge: deliveryConfigState.exists ? (deliveryConfig.deliveryFeeType === 'fixed' ? deliveryConfig.deliveryFixedFee : 0) : (businessData.deliveryCharge || 0),
+            deliveryFixedFee: deliveryConfigState.exists ? deliveryConfig.deliveryFixedFee : (businessData.deliveryFixedFee || 30),
+            deliveryBaseDistance: deliveryConfigState.exists ? deliveryConfig.deliveryBaseDistance : (businessData.deliveryBaseDistance || 0),
+            deliveryFreeThreshold: deliveryConfigState.exists ? deliveryConfig.deliveryFreeThreshold : (businessData.deliveryFreeThreshold || 500),
+            minOrderValue: deliveryConfigState.exists ? deliveryConfig.minOrderValue : (businessData.minOrderValue || 0),
 
             // Correctly expose Per-Km settings
-            deliveryFeeType: deliveryConfigSnap.exists ? deliveryConfig.deliveryFeeType : (businessData.deliveryFeeType || 'fixed'),
-            deliveryPerKmFee: deliveryConfigSnap.exists ? deliveryConfig.deliveryPerKmFee : (businessData.deliveryPerKmFee || 0),
-            deliveryRadius: deliveryConfigSnap.exists ? deliveryConfig.deliveryRadius : (businessData.deliveryRadius || 5),
-            roadDistanceFactor: deliveryConfigSnap.exists ? (deliveryConfig.roadDistanceFactor || 1.0) : (businessData.roadDistanceFactor || 1.0),
-            freeDeliveryRadius: deliveryConfigSnap.exists ? (deliveryConfig.freeDeliveryRadius || 0) : (businessData.freeDeliveryRadius || 0),
-            freeDeliveryMinOrder: deliveryConfigSnap.exists ? (deliveryConfig.freeDeliveryMinOrder || 0) : (businessData.freeDeliveryMinOrder || 0),
-            deliveryTiers: deliveryConfigSnap.exists ? (deliveryConfig.deliveryTiers || []) : (businessData.deliveryTiers || []),
-            deliveryOrderSlabRules: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabRules || []) : (businessData.deliveryOrderSlabRules || []),
-            deliveryOrderSlabAboveFee: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabAboveFee || 0) : (businessData.deliveryOrderSlabAboveFee || 0),
-            deliveryOrderSlabBaseDistance: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabBaseDistance || 1) : (businessData.deliveryOrderSlabBaseDistance || 1),
-            deliveryOrderSlabPerKmFee: deliveryConfigSnap.exists ? (deliveryConfig.deliveryOrderSlabPerKmFee || 15) : (businessData.deliveryOrderSlabPerKmFee || 15),
-            deliveryEngineMode: deliveryConfigSnap.exists ? (deliveryConfig.deliveryEngineMode || 'legacy') : (businessData.deliveryEngineMode || 'legacy'),
-            deliveryUseZones: deliveryConfigSnap.exists ? (deliveryConfig.deliveryUseZones === true) : (businessData.deliveryUseZones === true),
-            zoneFallbackToLegacy: deliveryConfigSnap.exists ? (deliveryConfig.zoneFallbackToLegacy !== false) : (businessData.zoneFallbackToLegacy !== false),
-            deliveryZones: deliveryConfigSnap.exists ? (deliveryConfig.deliveryZones || []) : (businessData.deliveryZones || []),
+            deliveryFeeType: deliveryConfigState.exists ? deliveryConfig.deliveryFeeType : (businessData.deliveryFeeType || 'fixed'),
+            deliveryPerKmFee: deliveryConfigState.exists ? deliveryConfig.deliveryPerKmFee : (businessData.deliveryPerKmFee || 0),
+            deliveryRadius: deliveryConfigState.exists ? deliveryConfig.deliveryRadius : (businessData.deliveryRadius || 5),
+            roadDistanceFactor: deliveryConfigState.exists ? (deliveryConfig.roadDistanceFactor || 1.0) : (businessData.roadDistanceFactor || 1.0),
+            freeDeliveryRadius: deliveryConfigState.exists ? (deliveryConfig.freeDeliveryRadius || 0) : (businessData.freeDeliveryRadius || 0),
+            freeDeliveryMinOrder: deliveryConfigState.exists ? (deliveryConfig.freeDeliveryMinOrder || 0) : (businessData.freeDeliveryMinOrder || 0),
+            deliveryTiers: deliveryConfigState.exists ? (deliveryConfig.deliveryTiers || []) : (businessData.deliveryTiers || []),
+            deliveryOrderSlabRules: deliveryConfigState.exists ? (deliveryConfig.deliveryOrderSlabRules || []) : (businessData.deliveryOrderSlabRules || []),
+            deliveryOrderSlabAboveFee: deliveryConfigState.exists ? (deliveryConfig.deliveryOrderSlabAboveFee || 0) : (businessData.deliveryOrderSlabAboveFee || 0),
+            deliveryOrderSlabBaseDistance: deliveryConfigState.exists ? (deliveryConfig.deliveryOrderSlabBaseDistance || 1) : (businessData.deliveryOrderSlabBaseDistance || 1),
+            deliveryOrderSlabPerKmFee: deliveryConfigState.exists ? (deliveryConfig.deliveryOrderSlabPerKmFee || 15) : (businessData.deliveryOrderSlabPerKmFee || 15),
+            deliveryEngineMode: deliveryConfigState.exists ? (deliveryConfig.deliveryEngineMode || 'legacy') : (businessData.deliveryEngineMode || 'legacy'),
+            deliveryUseZones: deliveryConfigState.exists ? (deliveryConfig.deliveryUseZones === true) : (businessData.deliveryUseZones === true),
+            zoneFallbackToLegacy: deliveryConfigState.exists ? (deliveryConfig.zoneFallbackToLegacy !== false) : (businessData.zoneFallbackToLegacy !== false),
+            deliveryZones: deliveryConfigState.exists ? (deliveryConfig.deliveryZones || []) : (businessData.deliveryZones || []),
 
             menu: menuData,
             customCategories: customCategories,
             coupons: coupons,
             loyaltyPoints: 0, // User-specific data removed for better caching
             // MERGED DELIVERY ENABLED STATUS
-            deliveryEnabled: deliveryConfigSnap.exists ? deliveryConfig.deliveryEnabled : businessData.deliveryEnabled,
+            deliveryEnabled: deliveryConfigState.exists ? deliveryConfig.deliveryEnabled : businessData.deliveryEnabled,
             pickupEnabled: businessData.pickupEnabled,
             dineInEnabled: businessData.dineInEnabled,
             businessAddress: businessData.address,
@@ -748,15 +1030,19 @@ export async function GET(req, { params }) {
             timeZone: businessData.timeZone || businessData.timezone || 'Asia/Kolkata',
         };
 
-        // STEP 5: Cache with version-based key and 12-hour TTL
-        if (!personalizedRequest) {
-            writeMenuToMemoryCache(cacheKey, responseData);
-        }
-        if (isKvAvailable && !personalizedRequest) {
-            kv.set(cacheKey, responseData, { ex: 43200 }) // 12 hours = 43200 seconds
+        // STEP 5: Cache base menu payload for all requests. Personalized coupon
+        // overlays are recomputed on top of this cache to avoid data leaks.
+        const cacheableResponseData = {
+            ...responseData,
+            coupons: publicCoupons,
+            __couponCatalog: allCouponDocs,
+        };
+        writeMenuToMemoryCache(cacheKey, cacheableResponseData);
+        if (isKvAvailable) {
+            kv.set(cacheKey, cacheableResponseData, { ex: 43200 }) // 12 hours = 43200 seconds
                 .then(() => debugLog(`[Menu API] ✅ Cached as ${cacheKey} (TTL: 12 hours)`))
                 .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
-        } else if (isKvConfigured) {
+        } else if (hasKvConfigured) {
             debugLog(`[Menu API] ⚠️ KV configured but unavailable for this request; skipped cache write for ${cacheRestaurantId}`);
         }
 

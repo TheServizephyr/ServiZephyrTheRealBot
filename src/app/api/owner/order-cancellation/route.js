@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -172,7 +172,7 @@ async function cancelOnlineOrder({
         }
     }
 
-    if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    if (isKvConfigured()) {
         try {
             await clearOrderStatusCache(kv, {
                 orderId: orderDoc.id,

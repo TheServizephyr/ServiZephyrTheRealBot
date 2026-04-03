@@ -13,6 +13,11 @@ const OrderPlacedContent = () => {
     const tokenFromUrl = searchParams.get('token');
     const restaurantId = searchParams.get('restaurantId');
     const whatsappNumber = searchParams.get('whatsappNumber');
+    const deliveryTypeFromUrl = searchParams.get('deliveryType');
+    const businessTypeFromUrl = searchParams.get('businessType');
+    const tabIdFromUrl = searchParams.get('tabId');
+    const phoneFromUrl = searchParams.get('phone');
+    const refFromUrl = searchParams.get('ref');
 
     useEffect(() => {
         const handleRedirect = async () => {
@@ -36,18 +41,35 @@ const OrderPlacedContent = () => {
 
                 // The token might be in the URL (for COD) or we fetch it (for online).
                 let finalToken = tokenFromUrl;
+                let orderStatusData = null;
+                let trackingPath = `/track/${orderId}`;
+                const normalizedDeliveryType = String(deliveryTypeFromUrl || '').trim().toLowerCase();
+                const normalizedBusinessType = String(businessTypeFromUrl || '').trim().toLowerCase();
+                const canUseUrlRoutingHints = Boolean(finalToken && (normalizedDeliveryType || normalizedBusinessType));
 
-                if (!finalToken) {
-                    console.log(`[Order Placed] Token not in URL for ${orderId}, fetching from API...`);
+                if (canUseUrlRoutingHints) {
+                    if (normalizedBusinessType === 'street-vendor' || normalizedDeliveryType === 'street-vendor-pre-order') {
+                        trackingPath = `/track/pre-order/${orderId}`;
+                    } else if (normalizedDeliveryType === 'dine-in' || normalizedDeliveryType === 'car-order') {
+                        trackingPath = `/track/dine-in/${orderId}`;
+                    } else if (normalizedDeliveryType === 'delivery' || normalizedDeliveryType === 'pickup') {
+                        trackingPath = `/track/delivery/${orderId}`;
+                    }
+                }
+
+                if (!canUseUrlRoutingHints && !orderStatusData) {
+                    console.log(finalToken
+                        ? `[Order Placed] Fetching order details for ${orderId}...`
+                        : `[Order Placed] Token not in URL for ${orderId}, fetching from API...`);
                     // Add a small delay to allow Firestore to be consistent
                     await new Promise(resolve => setTimeout(resolve, 1500));
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
-                        const data = await res.json();
-                        if (data.order?.trackingToken) {
-                            finalToken = data.order.trackingToken;
+                        orderStatusData = await res.json();
+                        if (orderStatusData.order?.trackingToken) {
+                            finalToken = finalToken || orderStatusData.order.trackingToken;
                             console.log(`[Order Placed] Successfully fetched token from API.`);
-                        } else {
+                        } else if (!finalToken) {
                             throw new Error("Tracking token was not found in the API response.");
                         }
                     } else {
@@ -65,12 +87,17 @@ const OrderPlacedContent = () => {
                     }));
                     console.log(`[Order Placed] Saved new live order to localStorage with key: ${liveOrderKey}`);
 
+                    if (!canUseUrlRoutingHints && !orderStatusData) {
+                        const res = await fetch(`/api/order/status/${orderId}`);
+                        if (res.ok) {
+                            orderStatusData = await res.json();
+                        }
+                    }
+
                     // Fetch order details to determine correct tracking page
-                    const res = await fetch(`/api/order/status/${orderId}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        const deliveryType = data.order?.deliveryType;
-                        const businessType = data.order?.businessType;
+                    if (orderStatusData?.order) {
+                        const deliveryType = orderStatusData.order?.deliveryType;
+                        const businessType = orderStatusData.order?.businessType;
 
                         console.log(`[Order Placed] Detected deliveryType: ${deliveryType}, businessType: ${businessType}`);
 
@@ -80,8 +107,8 @@ const OrderPlacedContent = () => {
                             addVendorOrder(restaurantId, {
                                 orderId,
                                 token: finalToken,
-                                totalAmount: data.order?.totalAmount || 0,
-                                itemCount: data.order?.items?.length || 0
+                                totalAmount: orderStatusData.order?.totalAmount || 0,
+                                itemCount: orderStatusData.order?.items?.length || 0
                             });
                             console.log(`[Order Placed] Added street vendor order to multi-order storage`);
                         }
@@ -105,7 +132,12 @@ const OrderPlacedContent = () => {
                         trackingPath = `/track/${orderId}`;
                     }
 
-                    const trackUrl = `${trackingPath}?token=${finalToken}`;
+                    const extraParams = new URLSearchParams();
+                    extraParams.set('token', finalToken);
+                    if (tabIdFromUrl) extraParams.set('tabId', tabIdFromUrl);
+                    if (phoneFromUrl) extraParams.set('phone', phoneFromUrl);
+                    if (refFromUrl) extraParams.set('ref', refFromUrl);
+                    const trackUrl = `${trackingPath}?${extraParams.toString()}`;
 
                     console.log(`[Order Placed] Replacing history and redirecting to: ${trackUrl}`);
                     router.replace(trackUrl);
@@ -121,7 +153,7 @@ const OrderPlacedContent = () => {
         };
 
         handleRedirect();
-    }, [orderId, whatsappNumber, restaurantId, tokenFromUrl, router]);
+    }, [orderId, whatsappNumber, restaurantId, tokenFromUrl, deliveryTypeFromUrl, businessTypeFromUrl, tabIdFromUrl, phoneFromUrl, refFromUrl, router]);
 
 
     return (

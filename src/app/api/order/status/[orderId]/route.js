@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 import { createRequestCache } from '@/lib/requestCache';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
@@ -16,6 +16,12 @@ import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 
 // Final states that should NOT be cached (polling already stopped on track page)
 const FINAL_STATES = ['delivered', 'cancelled', 'rejected'];
+const isOrderStatusDebugEnabled = process.env.DEBUG_ORDER_STATUS === 'true';
+const debugLog = (...args) => {
+    if (isOrderStatusDebugEnabled) {
+        console.log(...args);
+    }
+};
 const getClientIp = (req) => {
     const forwardedFor = req.headers.get('x-forwarded-for') || '';
     return forwardedFor.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
@@ -48,7 +54,7 @@ export async function GET(request, { params }) {
         });
     };
 
-    console.log("[API][Order Status] GET request received.");
+    debugLog("[API][Order Status] GET request received.");
     try {
         const { orderId } = params;
         const liteMode = ['1', 'true', 'yes'].includes(String(request.nextUrl.searchParams.get('lite') || '').toLowerCase());
@@ -59,14 +65,14 @@ export async function GET(request, { params }) {
         };
 
         if (!orderId) {
-            console.log("[API][Order Status] Error: Order ID is missing from params.");
+            debugLog("[API][Order Status] Error: Order ID is missing from params.");
             return respond({ message: 'Order ID is missing.' }, 400, undefined, {
                 outcome: 'missing_order_id',
             });
         }
 
         // Cache lookup happens only after auth mode is known so public and private payloads never mix.
-        const isKvAvailable = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
+        const isKvAvailable = isKvConfigured();
 
         // STEP 2: Cache MISS - Fetch from Firestore with request-scoped deduplication
         const requestCache = createRequestCache();
@@ -85,14 +91,14 @@ export async function GET(request, { params }) {
                 orderId,
             });
         }
-        console.log(`[API][Order Status] Fetching order document: ${orderId}`);
+        debugLog(`[API][Order Status] Fetching order document: ${orderId}`);
 
         let orderSnap;
         let orderRef;
 
         // If orderId is a Tab ID (starts with 'tab_'), find the most recent order for this tab
         if (orderId.startsWith('tab_')) {
-            console.log(`[API][Order Status] ID is a Tab ID. Querying for latest order in tab: ${orderId}`);
+            debugLog(`[API][Order Status] ID is a Tab ID. Querying for latest order in tab: ${orderId}`);
             // ✅ FIXED: Using indexed query with .orderBy and .limit
             const tabOrdersQuery = await firestore.collection('orders')
                 .where('dineInTabId', '==', orderId)
@@ -101,7 +107,7 @@ export async function GET(request, { params }) {
                 .get();
 
             if (tabOrdersQuery.empty) {
-                console.log(`[API][Order Status] Error: No orders found for tab ${orderId}.`);
+                debugLog(`[API][Order Status] Error: No orders found for tab ${orderId}.`);
                 return respond({ message: 'No orders found for this tab.' }, 404, undefined, {
                     outcome: 'not_found',
                     mode: 'tab',
@@ -111,14 +117,14 @@ export async function GET(request, { params }) {
 
             orderSnap = tabOrdersQuery.docs[0];
             orderRef = orderSnap.ref;
-            console.log(`[API][Order Status] Found latest order for tab via index: ${orderSnap.id}`);
+            debugLog(`[API][Order Status] Found latest order for tab via index: ${orderSnap.id}`);
         } else {
             // Normal Order ID lookup
             orderRef = firestore.collection('orders').doc(orderId);
             orderSnap = await orderRef.get();
 
             if (!orderSnap.exists) {
-                console.log(`[API][Order Status] Error: Order document ${orderId} not found.`);
+                debugLog(`[API][Order Status] Error: Order document ${orderId} not found.`);
                 return respond({ message: 'Order not found.' }, 404, undefined, {
                     outcome: 'not_found',
                     mode: 'order',
@@ -223,7 +229,7 @@ export async function GET(request, { params }) {
                 cachedRecord = await kv.get(cacheKey);
                 const cachedData = readOrderStatusCachedVariant(cachedRecord, cacheVariantKey);
                 if (cachedData) {
-                    console.log(`[Order Status API] ✅ Cache HIT for ${cacheKey} (${cacheVariantKey})`);
+                    debugLog(`[Order Status API] ✅ Cache HIT for ${cacheKey} (${cacheVariantKey})`);
                     return respond(cachedData, 200, {
                         'X-Cache': 'HIT',
                         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -234,7 +240,7 @@ export async function GET(request, { params }) {
                         addressVisibility,
                     });
                 }
-                console.log(`[Order Status API] ❌ Cache MISS for ${cacheKey} (${cacheVariantKey}) - Fetching from Firestore`);
+                debugLog(`[Order Status API] ❌ Cache MISS for ${cacheKey} (${cacheVariantKey}) - Fetching from Firestore`);
             } catch (cacheError) {
                 console.warn('[Order Status API] Cache check failed:', cacheError);
             }
@@ -291,7 +297,7 @@ export async function GET(request, { params }) {
         let deliveryBoyData = null;
 
         if (orderData.deliveryBoyId) {
-            console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from drivers collection.`);
+            debugLog(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from drivers collection.`);
 
             const driverDocRef = firestore.collection('drivers').doc(orderData.deliveryBoyId);
             const driverDoc = await requestCache.get(
@@ -312,7 +318,7 @@ export async function GET(request, { params }) {
 
                     if (diffMinutes > 2) { // ⚠️ 2 minutes no update = offline
                         riderOnline = false;
-                        console.log(`[API][Order Status] Rider ${orderData.deliveryBoyId} appears offline. Last update: ${diffMinutes.toFixed(1)} min ago.`);
+                        debugLog(`[API][Order Status] Rider ${orderData.deliveryBoyId} appears offline. Last update: ${diffMinutes.toFixed(1)} min ago.`);
                     }
                 }
 
@@ -354,7 +360,7 @@ export async function GET(request, { params }) {
                         };
 
                         eta = estimateETA(distanceKm);
-                        console.log(`[API][Order Status] Distance: ${distanceKm.toFixed(2)} km, ETA: ${eta}`);
+                        debugLog(`[API][Order Status] Distance: ${distanceKm.toFixed(2)} km, ETA: ${eta}`);
                     }
                 }
 
@@ -365,7 +371,7 @@ export async function GET(request, { params }) {
                     distanceKm: distanceKm ? parseFloat(distanceKm.toFixed(2)) : null, // ✅ STEP 7A
                     eta: eta // ✅ STEP 7B
                 };
-                console.log(`[API][Order Status] Delivery boy found. Online: ${riderOnline}, Distance: ${distanceKm?.toFixed(2) || 'N/A'} km`);
+                debugLog(`[API][Order Status] Delivery boy found. Online: ${riderOnline}, Distance: ${distanceKm?.toFixed(2) || 'N/A'} km`);
             } else {
                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in the main 'drivers' collection.`);
 
@@ -391,7 +397,7 @@ export async function GET(request, { params }) {
                             eta: null,
                             currentLocation: riderData.currentLocation || riderData.location || null
                         };
-                        console.log(`[API][Order Status] Fallback rider found in ${collectionName}/${orderData.restaurantId}/deliveryBoys/${orderData.deliveryBoyId}`);
+                        debugLog(`[API][Order Status] Fallback rider found in ${collectionName}/${orderData.restaurantId}/deliveryBoys/${orderData.deliveryBoyId}`);
                     }
                 } catch (fallbackErr) {
                     console.warn('[API][Order Status] Rider subcollection fallback failed:', fallbackErr?.message || fallbackErr);
@@ -405,11 +411,11 @@ export async function GET(request, { params }) {
         );
 
         if (!businessDoc || !businessDoc.exists) {
-            console.log(`[API][Order Status] Error: Business ${orderData.restaurantId} not found in collection ${collectionName}.`);
+            debugLog(`[API][Order Status] Error: Business ${orderData.restaurantId} not found in collection ${collectionName}.`);
             return respond({ message: 'Business associated with order not found.' }, 404);
         }
         const businessData = businessDoc.data();
-        console.log("[API][Order Status] Business found.");
+        debugLog("[API][Order Status] Business found.");
 
         const restaurantLocationForMap = (businessData.address && typeof businessData.address.latitude === 'number' && typeof businessData.address.longitude === 'number')
             ? { lat: businessData.address.latitude, lng: businessData.address.longitude }
@@ -427,7 +433,7 @@ export async function GET(request, { params }) {
         let aggregatedPaymentStatus = orderData.paymentStatus || 'pending'; // Start with current order's status
 
         if (orderData.deliveryType === 'dine-in' || orderData.deliveryType === 'car-order') {
-            console.log(`[API][Order Status] Dine-in-like order detected (${orderData.deliveryType}). Attempting aggregation...`);
+            debugLog(`[API][Order Status] Dine-in-like order detected (${orderData.deliveryType}). Attempting aggregation...`);
             try {
                 // STRATEGY: 
                 // 1. If 'dineInToken' exists, group mainly by Token (matches Owner Dashboard behavior).
@@ -440,7 +446,7 @@ export async function GET(request, { params }) {
                 let aggregationMethod = 'none';
 
                 if (dineInToken) {
-                    console.log(`[API][Order Status] Aggregating by Token: ${dineInToken}`);
+                    debugLog(`[API][Order Status] Aggregating by Token: ${dineInToken}`);
                     aggregationMethod = 'token';
 
                     // Dine-in keeps table constraint, car-order uses token+restaurant grouping.
@@ -457,7 +463,7 @@ export async function GET(request, { params }) {
                     tabOrdersSnapshot = await tokenQuery.get();
 
                 } else if (currentTabId) {
-                    console.log(`[API][Order Status] Aggregating by ID (Token missing): ${currentTabId}`);
+                    debugLog(`[API][Order Status] Aggregating by ID (Token missing): ${currentTabId}`);
                     aggregationMethod = 'id';
 
                     // Fallback: Dual ID Query
@@ -560,7 +566,7 @@ export async function GET(request, { params }) {
                     batchesList.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
 
                     orderData.batches = batchesList;
-                    console.log(`[API][Order Status] Aggregated ${batchesList.length} orders via ${aggregationMethod}. Payment Status: ${aggregatedPaymentStatus}`);
+                    debugLog(`[API][Order Status] Aggregated ${batchesList.length} orders via ${aggregationMethod}. Payment Status: ${aggregatedPaymentStatus}`);
 
                     // CALCULATE COMPOSITE STATUS
                     // Don't just take the latest order's status (which might be cancelled)
@@ -683,7 +689,7 @@ export async function GET(request, { params }) {
 
         if (isFinalState) {
             // DON'T CACHE final states (polling already stopped via Phase 2 rules)
-            console.log(`[Order Status API] Order ${orderId} in FINAL state (${orderData.status}) - NOT caching`);
+            debugLog(`[Order Status API] Order ${orderId} in FINAL state (${orderData.status}) - NOT caching`);
             await trackEndpointRead('api.order.status.full', Math.max(1, requestCache.size()));
             return respond(responsePayload, 200, {
                 'X-Cache': 'SKIP',
@@ -704,15 +710,15 @@ export async function GET(request, { params }) {
                     mergeOrderStatusCachedVariant(cachedRecord, cacheVariantKey, responsePayload),
                     { ex: 60 }
                 );
-                console.log(`[Order Status API] ✅ Cached ${cacheKey} (${cacheVariantKey}) for 60 seconds (status: ${orderData.status})`);
+                debugLog(`[Order Status API] ✅ Cached ${cacheKey} (${cacheVariantKey}) for 60 seconds (status: ${orderData.status})`);
             } catch (cacheError) {
                 console.error('[Order Status API] Cache SET failed:', cacheError);
                 // Non-fatal - response will still be sent
             }
         }
 
-        console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
-        console.log(`[RequestCache] Deduplicated reads - Cache entries used: ${requestCache.size()}`);
+        debugLog("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
+        debugLog(`[RequestCache] Deduplicated reads - Cache entries used: ${requestCache.size()}`);
         await trackEndpointRead('api.order.status.full', Math.max(1, requestCache.size()));
         return respond(responsePayload, 200, {
             'X-Cache': 'MISS',

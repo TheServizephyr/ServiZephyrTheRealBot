@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sanitizeUpiId, sendManualPaymentRequestToCustomer } from '@/lib/manual-upi-payment';
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
+import { kv, isKvConfigured } from '@/lib/kv';
 
 function getBusinessCollectionFromType(businessType = 'restaurant') {
     if (businessType === 'shop' || businessType === 'store') return 'shops';
@@ -17,8 +18,7 @@ function normalizeIndianPhone(value) {
 
 async function invalidateOrderStatusCache(orderId, orderData = {}) {
     try {
-        const { kv } = await import('@vercel/kv');
-        if (process.env.KV_REST_API_URL) {
+        if (isKvConfigured()) {
             await clearOrderStatusCache(kv, {
                 orderId,
                 dineInTabId: orderData.dineInTabId || null,

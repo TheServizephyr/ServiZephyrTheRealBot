@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 import { logAuditEvent, AUDIT_ACTIONS, createPriceChangeMetadata } from '@/lib/security/audit-log';
 import { menuPriceLimiter, menuDeleteLimiter } from '@/lib/security/rate-limiter';

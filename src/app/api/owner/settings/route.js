@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid, FieldValue } from '@/lib/firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';

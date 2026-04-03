@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense, useRef } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight, Car } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight, Car, X } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/components/ui/use-toast";
@@ -26,6 +26,16 @@ import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 import { sendClientTelemetryEvent } from '@/lib/clientTelemetry';
+import {
+    fetchCachedActiveOrders,
+    fetchCachedCustomerLookup,
+    fetchCachedOrderStatus,
+    fetchCachedRestaurantBootstrap,
+    invalidateCustomerLookupCache,
+    readCustomerAddressesSnapshot,
+    removeCustomerAddressSnapshot,
+    writeCustomerAddressesSnapshot,
+} from '@/lib/client/runtimeFetchers';
 
 const SplitBillInterface = dynamic(() => import('@/components/SplitBillInterface'), { ssr: false });
 const CustomizationDrawer = dynamic(() => import('@/components/CustomizationDrawer'), { ssr: false });
@@ -162,7 +172,7 @@ const BackButtonHandler = ({ onClose }) => {
             window.removeEventListener('popstate', handlePopState);
             // Parent handles history.back() on manual close
         };
-    }, []);
+    }, [onClose]);
 
     return null;
 };
@@ -314,7 +324,7 @@ const CheckoutPageInternal = () => {
     const outOfRangeNoticeKeyRef = useRef(null);
     const deliveryValidationCacheRef = useRef({ key: '', result: null, updatedAt: 0 });
     const hasTrackedCheckoutOpenRef = useRef(false);
-    const DELIVERY_VALIDATION_CACHE_TTL_MS = 15000;
+    const DELIVERY_VALIDATION_CACHE_TTL_MS = 120000;
 
     useEffect(() => {
         selectedAddressRef.current = selectedAddress;
@@ -499,6 +509,39 @@ const CheckoutPageInternal = () => {
         router.push(`/add-address?${currentParamsString}&useCurrent=true&returnUrl=${encodeURIComponent(`/checkout?${currentParamsString}`)}`);
     };
 
+    const handleSelectCheckoutAddress = useCallback((addr) => {
+        if (!addr) return;
+        setSelectedAddress(addr);
+        try {
+            localStorage.setItem('customerLocation', JSON.stringify(addr));
+        } catch {
+            // Ignore storage failures.
+        }
+    }, []);
+
+    useEffect(() => {
+        const snapshotAddresses = readCustomerAddressesSnapshot();
+        if (snapshotAddresses.length > 0) {
+            setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
+        }
+
+        const savedLocationRaw = localStorage.getItem('customerLocation');
+        if (savedLocationRaw) {
+            try {
+                const parsedLocation = JSON.parse(savedLocationRaw);
+                if (parsedLocation?.id) {
+                    setUserAddresses((prev) => {
+                        if (prev.length > 0) return prev;
+                        return [parsedLocation];
+                    });
+                    setSelectedAddress((prev) => prev || parsedLocation);
+                }
+            } catch {
+                // Ignore parse issues.
+            }
+        }
+    }, []);
+
     const handleDeleteAddress = async (addressToDelete) => {
         const addressId = addressToDelete?.id;
         if (!addressId && !addressToDelete) return;
@@ -532,6 +575,8 @@ const CheckoutPageInternal = () => {
                 }
                 return nextAddresses;
             });
+            removeCustomerAddressSnapshot(addressId);
+            invalidateCustomerLookupCache();
 
             toast({ title: 'Address Deleted', description: 'The saved address was removed successfully.' });
         } catch (deleteError) {
@@ -637,89 +682,144 @@ const CheckoutPageInternal = () => {
                 dineInTabId: tabId || savedCart.dineInTabId || null,
                 deliveryType
             };
-            const couponQuery = new URLSearchParams({ src: 'checkout_page' });
-            if (phoneToLookup) couponQuery.set('phone', phoneToLookup);
-            if (token) couponQuery.set('token', token);
-            if (ref) couponQuery.set('ref', ref);
 
-            const paymentSettingsPromise = fetch(`/api/public/settings/${restaurantId}`);
-            const menuPromise = fetch(`/api/public/menu/${restaurantId}?${couponQuery.toString()}`);
+            const hasStoredPaymentSettings = [
+                'deliveryCodEnabled',
+                'deliveryOnlinePaymentEnabled',
+                'pickupPodEnabled',
+                'pickupOnlinePaymentEnabled',
+                'dineInPayAtCounterEnabled',
+                'dineInOnlinePaymentEnabled',
+            ].some((key) => updatedData[key] !== undefined);
 
-            try {
-                const paymentSettingsRes = await paymentSettingsPromise;
-                const paymentData = paymentSettingsRes.ok ? await paymentSettingsRes.json() : null;
-                if (isStaleRequest()) return;
-                applyCheckoutPaymentSettings(paymentData, deliveryType, {
+            if (hasStoredPaymentSettings) {
+                applyCheckoutPaymentSettings(updatedData, deliveryType, {
                     setCodEnabled,
                     setOnlinePaymentEnabled,
                     setVendorCharges,
                     setPaymentOptionsLoaded
                 });
+            }
 
-                console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
-                setCart(updatedData.cart || []);
-                setAppliedCoupons((updatedData.appliedCoupons || []).map(normalizeCoupon).filter(Boolean));
-                setCartData(updatedData);
-                setCookingInstructions(updatedData.notes || '');
-                if (deliveryType === 'car-order') {
-                    safeWriteCart(restaurantId, updatedData);
-                    setCarOrderDetails({
-                        carSpot: updatedData.carSpot || null,
-                        carDetails: updatedData.carDetails || null,
-                        phone: updatedData.phone || ''
-                    });
-                    if (updatedData.dineInToken) {
-                        setCarTokenPreview(updatedData.dineInToken);
-                    }
+            const savedLocationRaw = localStorage.getItem('customerLocation');
+            let savedLocation = null;
+            if (savedLocationRaw) {
+                try {
+                    savedLocation = JSON.parse(savedLocationRaw);
+                } catch {
+                    savedLocation = null;
                 }
+            }
 
-                const customerNameFromStorage = localStorage.getItem('customerName');
-                setOrderName(customerNameFromStorage || user?.displayName || savedCart.tab_name || '');
+            const savedCartSubtotal = Array.isArray(updatedData.cart)
+                ? updatedData.cart.reduce((total, item) => total + ((Number(item?.totalPrice) || 0) * (item?.quantity || 1)), 0)
+                : 0;
+            const storedValidationSnapshot = updatedData?.deliveryValidationSnapshot;
+            if (
+                deliveryType === 'delivery' &&
+                savedLocation &&
+                storedValidationSnapshot?.result &&
+                storedValidationSnapshot?.updatedAt &&
+                (Date.now() - Number(storedValidationSnapshot.updatedAt)) <= DELIVERY_VALIDATION_CACHE_TTL_MS
+            ) {
+                const savedLat = Number(savedLocation.lat ?? savedLocation.latitude);
+                const savedLng = Number(savedLocation.lng ?? savedLocation.longitude);
+                const snapshotLat = Number(storedValidationSnapshot.lat);
+                const snapshotLng = Number(storedValidationSnapshot.lng);
+                const sameLocation = Number.isFinite(savedLat) && Number.isFinite(savedLng) &&
+                    Number.isFinite(snapshotLat) && Number.isFinite(snapshotLng) &&
+                    Math.abs(savedLat - snapshotLat) < 0.000001 &&
+                    Math.abs(savedLng - snapshotLng) < 0.000001;
+                const sameAddress = storedValidationSnapshot.addressId && savedLocation.id
+                    ? storedValidationSnapshot.addressId === savedLocation.id
+                    : sameLocation;
+                const sameSubtotal = Number(storedValidationSnapshot.subtotal || 0) === Number(savedCartSubtotal || 0);
 
-                const deferredTasks = [
-                    menuPromise
-                        .then(async (menuRes) => {
-                            if (!menuRes.ok) return;
-                            const menuData = await menuRes.json();
-                            if (isStaleRequest()) return;
-                            console.log('[Checkout] Fetched fresh menu data:', menuData.coupons?.length, 'coupons');
-                            setCartData(prev => ({
-                                ...prev,
-                                availableCoupons: (menuData.coupons || []).map(normalizeCoupon).filter(Boolean),
-                                deliveryCharge: menuData.deliveryCharge,
-                                deliveryFeeType: menuData.deliveryFeeType,
-                                deliveryFixedFee: menuData.deliveryFixedFee,
-                                deliveryBaseDistance: menuData.deliveryBaseDistance,
-                                deliveryPerKmFee: menuData.deliveryPerKmFee,
-                                deliveryRadius: menuData.deliveryRadius,
-                                deliveryFreeThreshold: menuData.deliveryFreeThreshold,
-                                freeDeliveryRadius: menuData.freeDeliveryRadius,
-                                freeDeliveryMinOrder: menuData.freeDeliveryMinOrder,
-                                deliveryTiers: menuData.deliveryTiers,
-                                deliveryOrderSlabRules: menuData.deliveryOrderSlabRules,
-                                deliveryOrderSlabAboveFee: menuData.deliveryOrderSlabAboveFee,
-                                deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance,
-                                deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee,
-                                minOrderValue: menuData.minOrderValue,
-                                collectionName: menuData.collectionName,
-                                latitude: menuData.latitude,
-                                longitude: menuData.longitude,
-                                roadDistanceFactor: menuData.roadDistanceFactor || 1.3
-                            }));
-                        })
-                        .catch((menuErr) => {
-                            console.warn('[Checkout] Non-blocking menu enrichment failed:', menuErr?.message || menuErr);
-                        })
-                ];
+                if (sameAddress && sameSubtotal) {
+                    const validationPayload = buildDeliveryValidationPayload(savedLocation, savedCartSubtotal);
+                    if (validationPayload) {
+                        const validationKey = buildDeliveryValidationKey(validationPayload);
+                        setCachedDeliveryValidation(validationKey, storedValidationSnapshot.result);
+                    }
+                    applyDeliveryValidationResult(storedValidationSnapshot.result, savedLocation);
+                    setIsValidatingDelivery(false);
+                }
+            }
 
+            const bootstrapPromise = fetchCachedRestaurantBootstrap({
+                restaurantId,
+                phone: phoneToLookup,
+                token,
+                ref,
+                src: 'checkout_page',
+                ttlMs: 60000,
+            });
+
+            console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
+            setCart(updatedData.cart || []);
+            setAppliedCoupons((updatedData.appliedCoupons || []).map(normalizeCoupon).filter(Boolean));
+            setCartData(updatedData);
+            setCookingInstructions(updatedData.notes || '');
+            if (deliveryType === 'car-order') {
+                safeWriteCart(restaurantId, updatedData);
+                setCarOrderDetails({
+                    carSpot: updatedData.carSpot || null,
+                    carDetails: updatedData.carDetails || null,
+                    phone: updatedData.phone || ''
+                });
+                if (updatedData.dineInToken) {
+                    setCarTokenPreview(updatedData.dineInToken);
+                }
+            }
+
+            const customerNameFromStorage = localStorage.getItem('customerName');
+            setOrderName(customerNameFromStorage || user?.displayName || savedCart.tab_name || '');
+
+            try {
+                const { menuData, settingsData } = await bootstrapPromise;
+                if (isStaleRequest()) return;
+                applyCheckoutPaymentSettings(settingsData, deliveryType, {
+                    setCodEnabled,
+                    setOnlinePaymentEnabled,
+                    setVendorCharges,
+                    setPaymentOptionsLoaded
+                });
+                console.log('[Checkout] Loaded bootstrap data:', menuData?.coupons?.length || 0, 'coupons');
+                setCartData(prev => ({
+                    ...prev,
+                    availableCoupons: (menuData?.coupons || []).map(normalizeCoupon).filter(Boolean),
+                    deliveryCharge: menuData?.deliveryCharge,
+                    deliveryFeeType: menuData?.deliveryFeeType,
+                    deliveryFixedFee: menuData?.deliveryFixedFee,
+                    deliveryBaseDistance: menuData?.deliveryBaseDistance,
+                    deliveryPerKmFee: menuData?.deliveryPerKmFee,
+                    deliveryRadius: menuData?.deliveryRadius,
+                    deliveryFreeThreshold: menuData?.deliveryFreeThreshold,
+                    freeDeliveryRadius: menuData?.freeDeliveryRadius,
+                    freeDeliveryMinOrder: menuData?.freeDeliveryMinOrder,
+                    deliveryTiers: menuData?.deliveryTiers,
+                    deliveryOrderSlabRules: menuData?.deliveryOrderSlabRules,
+                    deliveryOrderSlabAboveFee: menuData?.deliveryOrderSlabAboveFee,
+                    deliveryOrderSlabBaseDistance: menuData?.deliveryOrderSlabBaseDistance,
+                    deliveryOrderSlabPerKmFee: menuData?.deliveryOrderSlabPerKmFee,
+                    minOrderValue: menuData?.minOrderValue,
+                    collectionName: menuData?.collectionName,
+                    latitude: menuData?.latitude,
+                    longitude: menuData?.longitude,
+                    roadDistanceFactor: menuData?.roadDistanceFactor || 1.3
+                }));
+
+                const deferredTasks = [];
                 if (tabId && deliveryType === 'dine-in') {
                     deferredTasks.push((async () => {
                         console.log('[Checkout] Fetching existing dine-in order data for tabId:', tabId);
                         try {
-                            const orderRes = await fetch(`/api/order/active?tabId=${tabId}`);
-                            if (!orderRes.ok) return;
-
-                            const orderData = await orderRes.json();
+                            const orderData = await fetchCachedActiveOrders({
+                                tabId,
+                                restaurantId,
+                                ttlMs: 15000,
+                            });
+                            if (!orderData) return;
                             if (isStaleRequest()) return;
                             console.log('[Checkout] Fetched dine-in order:', orderData);
                             const cartItems = orderData.items || [];
@@ -743,13 +843,12 @@ const CheckoutPageInternal = () => {
                     deferredTasks.push((async () => {
                         try {
                             const statusToken = token || updatedData.token || '';
-                            const statusUrl = statusToken
-                                ? `/api/order/status/${activeOrderId}?token=${encodeURIComponent(statusToken)}&lite=1`
-                                : `/api/order/status/${activeOrderId}?lite=1`;
-                            const statusRes = await fetch(statusUrl, { cache: 'no-store' });
-                            if (!statusRes.ok) return;
-
-                            const statusPayload = await statusRes.json();
+                            const statusPayload = await fetchCachedOrderStatus({
+                                orderId: activeOrderId,
+                                token: statusToken,
+                                lite: true,
+                                ttlMs: 15000,
+                            });
                             if (isStaleRequest()) return;
                             const activeOrder = statusPayload?.order || {};
                             const sessionData = {
@@ -781,31 +880,17 @@ const CheckoutPageInternal = () => {
 
                 if (phoneToLookup || ref || user) {
                     deferredTasks.push((async () => {
-                        const lookupPayload = {};
-                        if (phoneToLookup) lookupPayload.phone = phoneToLookup;
-                        if (ref) lookupPayload.ref = ref;
-
-                        const headers = { 'Content-Type': 'application/json' };
-                        if (user) {
-                            try {
-                                const idToken = await user.getIdToken();
-                                headers.Authorization = `Bearer ${idToken}`;
-                            } catch (e) {
-                                console.warn('Failed to get ID token for lookup:', e);
-                            }
-                        }
-
-                        const lookupRes = await fetch('/api/customer/lookup', {
-                            method: 'POST',
-                            headers,
-                            body: JSON.stringify(lookupPayload)
+                        const data = await fetchCachedCustomerLookup({
+                            phone: phoneToLookup,
+                            ref,
+                            user,
+                            ttlMs: 60000,
                         });
-
-                        if (lookupRes.ok) {
-                            const data = await lookupRes.json();
+                        if (data) {
                             if (isStaleRequest()) return;
                             setOrderName(prev => prev || data.name || '');
                             if (deliveryType === 'delivery') {
+                                writeCustomerAddressesSnapshot(data.addresses || []);
                                 setUserAddresses(data.addresses || []);
 
                                 const savedLocation = localStorage.getItem('customerLocation');
@@ -824,10 +909,12 @@ const CheckoutPageInternal = () => {
                                     setSelectedAddress(data.addresses[0]);
                                 }
                             }
-                        } else if (lookupRes.status === 404) {
-                            console.log('Customer profile not found (might be new).');
                         }
                     })().catch((lookupErr) => {
+                        if (lookupErr?.status === 404) {
+                            console.log('Customer profile not found (might be new).');
+                            return;
+                        }
                         console.warn('[Checkout] Customer lookup failed:', lookupErr?.message || lookupErr);
                     }));
                 }
@@ -909,7 +996,28 @@ const CheckoutPageInternal = () => {
                 console.error('[Checkout] Failed to parse saved location:', e);
             }
         }
-    }, [userAddresses]); // Run when userAddresses loads
+    }, [userAddresses, selectedAddress]); // Run when userAddresses loads
+
+    useEffect(() => {
+        if (!isAddressSelectorOpen || typeof document === 'undefined') return undefined;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousHtmlOverflow = document.documentElement.style.overflow;
+        const previousBodyOverscroll = document.body.style.overscrollBehavior;
+        const previousHtmlOverscroll = document.documentElement.style.overscrollBehavior;
+
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overscrollBehavior = 'none';
+        document.documentElement.style.overscrollBehavior = 'none';
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.documentElement.style.overflow = previousHtmlOverflow;
+            document.body.style.overscrollBehavior = previousBodyOverscroll;
+            document.documentElement.style.overscrollBehavior = previousHtmlOverscroll;
+        };
+    }, [isAddressSelectorOpen]);
 
     /*
     useEffect(() => {
@@ -931,6 +1039,18 @@ const CheckoutPageInternal = () => {
         if (tableId) return 'dine-in';
         return cartData?.deliveryType || 'delivery';
     }, [tableId, cartData]);
+
+    const enabledPaymentMethods = useMemo(() => {
+        if (!paymentOptionsLoaded) return [];
+        return [
+            codEnabled ? 'counter' : null,
+            onlinePaymentEnabled ? 'online' : null,
+        ].filter(Boolean);
+    }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled]);
+
+    const effectiveSelectedPaymentMethod = selectedPaymentMethod || (enabledPaymentMethods.length === 1 ? enabledPaymentMethods[0] : null);
+
+    const isMultiPaymentSelectionPending = paymentOptionsLoaded && enabledPaymentMethods.length > 1 && !effectiveSelectedPaymentMethod;
 
     const currentSubtotal = useMemo(() => {
         return cart.reduce((total, item) => {
@@ -989,6 +1109,17 @@ const CheckoutPageInternal = () => {
     // Ã¢Å“â€¦ TRIGGER VALIDATION: When Address or Subtotal changes
     useEffect(() => {
         if (deliveryType === 'delivery' && selectedAddress) {
+            const validationPayload = buildDeliveryValidationPayload(selectedAddress, currentSubtotal);
+            if (validationPayload) {
+                const validationKey = buildDeliveryValidationKey(validationPayload);
+                const cachedResult = getCachedDeliveryValidation(validationKey);
+                if (cachedResult) {
+                    applyDeliveryValidationResult(cachedResult, selectedAddress);
+                    setIsValidatingDelivery(false);
+                    return;
+                }
+            }
+
             // Clear previous address/subtotal validation immediately to avoid stale "allowed" state.
             setDeliveryValidation(null);
             console.log('[Checkout] Ã¢ÂÂ²Ã¯Â¸Â Setting Validation Timer for:', selectedAddress.label);
@@ -1761,7 +1892,16 @@ const CheckoutPageInternal = () => {
                                             localStorage.setItem(storageKey, JSON.stringify(updatedOrders));
                                         }
 
-                                        router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
+                                        const phoneParam = phoneFromUrl ? `&phone=${phoneFromUrl}` : '';
+                                        const refParam = ref ? `&ref=${ref}` : '';
+                                        const sessionTabId = data.dineInTabId || data.dine_in_tab_id || orderData.dineInTabId || cartData?.dineInTabId || null;
+                                        const tabParam = sessionTabId ? `&tabId=${encodeURIComponent(sessionTabId)}` : '';
+                                        const isDineInLike = orderData.deliveryType === 'dine-in' || orderData.deliveryType === 'car-order';
+                                        const isStreetVendor = (cartData?.businessType || orderData.businessType) === 'street-vendor' || orderData.deliveryType === 'street-vendor-pre-order';
+                                        const trackingUrl = isDineInLike
+                                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}${tabParam}${phoneParam}${refParam}`
+                                            : `/track/${isStreetVendor ? 'pre-order' : 'delivery'}/${data.firestore_order_id}?token=${data.token}${phoneParam}${refParam}`;
+                                        router.replace(trackingUrl);
                                     }
                                 }
                             });
@@ -1977,19 +2117,23 @@ const CheckoutPageInternal = () => {
     // 2) Select payment mode
     // 3) Place order
     const isAddressStepPending = !activeOrderId && deliveryType === 'delivery' && !selectedAddress;
-    const isPaymentStepPending = !isAddressStepPending && !selectedPaymentMethod;
-    const isOrderReadyToPlace = !isAddressStepPending && !!selectedPaymentMethod;
+    const isPaymentStepPending = !isAddressStepPending && isMultiPaymentSelectionPending;
+    const isOrderReadyToPlace = !isAddressStepPending && paymentOptionsLoaded && !!effectiveSelectedPaymentMethod;
     const hasOutOfRangeAddress = deliveryType === 'delivery' && deliveryValidation?.allowed === false;
     const ctaLabel = isAddressStepPending
         ? 'Select Address'
+        : !paymentOptionsLoaded
+            ? 'Loading...'
         : isPaymentStepPending
-            ? 'Payment Mode'
-            : 'Place Order';
+            ? 'Select Payment'
+            : 'Order Now';
     const isCtaDisabled = isProcessingPayment ||
         isValidatingDelivery ||
         hasOutOfRangeAddress ||
-        (!activeOrderId && (deliveryType !== 'delivery' && deliveryType !== 'car-order') && !orderName.trim()) ||
-        (deliveryType === 'car-order' && !orderName.trim() && !String(cartData?.tab_name || cartData?.customerName || '').trim());
+        !paymentOptionsLoaded ||
+        enabledPaymentMethods.length === 0 ||
+        isAddressStepPending ||
+        isPaymentStepPending;
 
     // Debug CTA Disable Reason
     useEffect(() => {
@@ -1998,12 +2142,15 @@ const CheckoutPageInternal = () => {
                 isProcessingPayment,
                 isValidatingDelivery,
                 hasOutOfRangeAddress,
-                orderName: orderName.trim(),
+                paymentOptionsLoaded,
+                enabledPaymentMethods,
+                effectiveSelectedPaymentMethod,
                 deliveryType,
-                nameCheck: !orderName.trim()
+                addressPending: isAddressStepPending,
+                paymentPending: isPaymentStepPending
             });
         }
-    }, [isCtaDisabled, isProcessingPayment, isValidatingDelivery, hasOutOfRangeAddress, orderName, deliveryType]);
+    }, [isCtaDisabled, isProcessingPayment, isValidatingDelivery, hasOutOfRangeAddress, paymentOptionsLoaded, enabledPaymentMethods, effectiveSelectedPaymentMethod, deliveryType, isAddressStepPending, isPaymentStepPending]);
 
     const orderPageUrl = useMemo(() => {
         const params = new URLSearchParams(searchParams.toString());
@@ -2131,7 +2278,7 @@ const CheckoutPageInternal = () => {
                             <div className="space-y-2 mt-2">
                                 {userAddresses.map(addr => (
                                     <div key={addr.id} className="flex items-start gap-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
-                                        <input type="radio" id={addr.id} name="address" value={addr.id} checked={selectedAddress?.id === addr.id} onChange={() => setSelectedAddress(addr)} className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary" />
+                                        <input type="radio" id={addr.id} name="address" value={addr.id} checked={selectedAddress?.id === addr.id} onChange={() => handleSelectCheckoutAddress(addr)} className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary" />
                                         <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
                                             <p className="font-semibold">{addr.name}{addr.label && <span className="font-normal text-muted-foreground"> ({addr.label})</span>}</p>
                                             <p className="text-xs text-muted-foreground">{addr.full}</p>
@@ -2655,30 +2802,35 @@ const CheckoutPageInternal = () => {
                     <div className="px-4 py-3 flex items-center gap-3">
                         {/* Left: Payment Method Trigger (Selector Only) */}
                         <div
-                            className="flex-1 cursor-pointer group"
+                            className={cn(
+                                "flex-1",
+                                paymentOptionsLoaded && enabledPaymentMethods.length > 1 ? "cursor-pointer group" : "cursor-default"
+                            )}
                             onClick={() => {
-                                if (!paymentOptionsLoaded) return;
+                                if (!paymentOptionsLoaded || enabledPaymentMethods.length <= 1) return;
                                 setIsPaymentDrawerOpen(true);
                             }}
                         >
                             <div className="flex flex-col gap-0.5 justify-center h-full">
                                 <div className="flex items-center gap-1">
                                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">PAYMENT MODE</span>
-                                    <ChevronUp className="h-3 w-3 text-muted-foreground" />
+                                    {paymentOptionsLoaded && enabledPaymentMethods.length > 1 && (
+                                        <ChevronUp className="h-3 w-3 text-muted-foreground" />
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border border-border ${selectedPaymentMethod ? 'bg-primary/10 border-primary/20' : 'bg-muted'}`}>
-                                        {selectedPaymentMethod === 'counter' ? (
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border border-border ${effectiveSelectedPaymentMethod ? 'bg-primary/10 border-primary/20' : 'bg-muted'}`}>
+                                        {effectiveSelectedPaymentMethod === 'counter' ? (
                                             <HandCoins className="h-4 w-4 text-primary" />
-                                        ) : selectedPaymentMethod === 'online' ? (
+                                        ) : effectiveSelectedPaymentMethod === 'online' ? (
                                             <QrCode className="h-4 w-4 text-primary" />
                                         ) : (
                                             <Wallet className="h-4 w-4 text-muted-foreground" />
                                         )}
                                     </div>
                                     <div className="leading-tight">
-                                        <p className={`text-sm font-bold line-clamp-1 ${selectedPaymentMethod ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                            {!paymentOptionsLoaded ? 'Loading...' : (selectedPaymentMethod === 'counter' ? 'POD' : selectedPaymentMethod === 'online' ? 'UPI' : 'Select Mode')}
+                                        <p className={`text-sm font-bold line-clamp-1 ${effectiveSelectedPaymentMethod ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                            {!paymentOptionsLoaded ? 'Loading...' : (effectiveSelectedPaymentMethod === 'counter' ? 'COD' : effectiveSelectedPaymentMethod === 'online' ? 'UPI' : 'Select Mode')}
                                         </p>
                                     </div>
                                 </div>
@@ -2697,14 +2849,14 @@ const CheckoutPageInternal = () => {
                                     return;
                                 }
 
-                                if (!selectedPaymentMethod) {
+                                if (!effectiveSelectedPaymentMethod) {
                                     setIsPaymentDrawerOpen(true);
                                     return;
                                 }
 
-                                if (selectedPaymentMethod === 'counter') {
+                                if (effectiveSelectedPaymentMethod === 'counter') {
                                     handlePayAtCounter();
-                                } else if (selectedPaymentMethod === 'online') {
+                                } else if (effectiveSelectedPaymentMethod === 'online') {
                                     placeOrder('online');
                                 }
                             }}
@@ -2773,7 +2925,7 @@ const CheckoutPageInternal = () => {
                                             <HandCoins className="h-6 w-6" />
                                         </div>
                                         <div className="flex-1">
-                                            <p className={`font-bold text-base ${selectedPaymentMethod === 'counter' ? 'text-primary' : 'text-foreground'}`}>Pay upon Delivery</p>
+                                            <p className={`font-bold text-base ${selectedPaymentMethod === 'counter' ? 'text-primary' : 'text-foreground'}`}>Cash on Delivery (COD)</p>
                                             <p className="text-sm text-muted-foreground">Cash or UPI at your doorstep</p>
                                         </div>
                                         {selectedPaymentMethod === 'counter' && (
@@ -2837,47 +2989,37 @@ const CheckoutPageInternal = () => {
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                onClick={() => window.history.back()}
+                                onClick={() => setIsAddressSelectorOpen(false)}
                                 className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm"
                             />
 
                             <motion.div
-                                initial={{ y: '-100%' }}
+                                initial={{ y: '100%' }}
                                 animate={{ y: 0 }}
-                                exit={{ y: '-100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 300, mass: 0.8 }}
-                                drag="y"
-                                dragConstraints={{ top: -1000, bottom: 0 }}
-                                dragElastic={{ top: 0.1, bottom: 0.05 }}
-                                onDragEnd={(e, { offset, velocity }) => {
-                                    if (offset.y < -100 || velocity.y < -500) {
-                                        window.history.back();
-                                    }
-                                }}
-                                className="fixed top-0 left-0 right-0 h-screen bg-background z-[100] flex flex-col overflow-hidden shadow-2xl pb-10"
+                                exit={{ y: '100%' }}
+                                transition={{ type: 'spring', damping: 30, stiffness: 260, mass: 0.9 }}
+                                className="fixed inset-x-0 bottom-0 h-[92dvh] max-h-[92dvh] md:h-screen md:max-h-screen bg-background z-[100] flex flex-col overflow-hidden shadow-2xl rounded-t-[28px] md:rounded-none"
                             >
-                                {/* Header - Draggable */}
-                                <div className="p-4 border-b border-border flex items-center justify-between bg-background z-10 shadow-sm shrink-0 cursor-grab active:cursor-grabbing touch-none select-none">
-                                    <h2 className="text-lg font-bold">Select a Location</h2>
+                                <div className="p-4 border-b border-border flex items-center justify-between bg-background z-10 shadow-sm shrink-0">
+                                    <div className="absolute left-1/2 top-2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-muted-foreground/25" />
+                                    <h2 className="text-lg font-bold">Select Address</h2>
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => window.history.back()}
+                                        onClick={() => setIsAddressSelectorOpen(false)}
                                     >
-                                        <ChevronUp size={24} />
+                                        <X size={20} />
                                     </Button>
                                 </div>
 
-                                {/* Content - Scrollable */}
                                 <div className="flex-1 overflow-y-auto p-4 bg-muted/5 overscroll-contain">
                                     <div className="max-w-3xl mx-auto pb-safe">
-                                        {/* Address Selection List Component */}
                                         <AddressSelectionList
                                             addresses={userAddresses}
                                             selectedAddressId={selectedAddress?.id}
                                             onSelect={(addr) => {
-                                                setSelectedAddress(addr);
-                                                window.history.back();
+                                                handleSelectCheckoutAddress(addr);
+                                                setIsAddressSelectorOpen(false);
                                             }}
                                             onUseCurrentLocation={handleUseCurrentLocation}
                                             onAddNewAddress={handleAddNewAddress}
@@ -2887,15 +3029,6 @@ const CheckoutPageInternal = () => {
                                                 router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                             }}
                                         />
-
-                                        {/* Drag Handle Indicator - Pull Up to Close */}
-                                        <div
-                                            className="w-full flex flex-col items-center justify-center py-8 opacity-60 space-y-2 cursor-grab active:cursor-grabbing touch-none select-none mt-4 bg-transparent"
-                                            onClick={() => window.history.back()}
-                                        >
-                                            <ChevronUp size={24} className="animate-bounce text-primary" />
-                                            <span className="text-xs font-bold uppercase tracking-widest text-primary/80">Slide Up to Close</span>
-                                        </div>
                                     </div>
                                 </div>
                             </motion.div>

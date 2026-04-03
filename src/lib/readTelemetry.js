@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { kv, isKvConfigured } from '@/lib/kv';
 
 const TELEMETRY_ENABLED = process.env.ENABLE_READ_TELEMETRY === 'true';
 const TELEMETRY_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
@@ -38,7 +38,7 @@ function getDayKeySuffix(date = new Date()) {
  */
 export async function trackEndpointRead(endpointName, estimatedReads = 0) {
     if (!TELEMETRY_ENABLED) return;
-    if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) return;
+    if (!isKvConfigured()) return;
     if (!endpointName) return;
 
     const reads = Number.isFinite(Number(estimatedReads)) ? Math.max(0, Math.floor(Number(estimatedReads))) : 0;
@@ -63,7 +63,7 @@ export async function trackEndpointRead(endpointName, estimatedReads = 0) {
  */
 export async function trackEndpointWrite(endpointName, estimatedWrites = 0) {
     if (!TELEMETRY_ENABLED) return;
-    if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) return;
+    if (!isKvConfigured()) return;
     if (!endpointName) return;
 
     const writes = Number.isFinite(Number(estimatedWrites)) ? Math.max(0, Math.floor(Number(estimatedWrites))) : 0;
