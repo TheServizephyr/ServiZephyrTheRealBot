@@ -2,6 +2,7 @@ import React from 'react';
 import { PlusCircle, Home, Building, MapPin, CheckCircle, Trash2, LocateFixed, Edit2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+
 const AddressSelectionList = ({
     addresses = [],
     selectedAddressId,
@@ -10,6 +11,7 @@ const AddressSelectionList = ({
     onAddNewAddress,
     onDelete,
     onEdit,
+    onPrefetch,
     loading = false
 }) => {
     return (
@@ -18,6 +20,7 @@ const AddressSelectionList = ({
             <div className="space-y-3">
                 <button
                     onClick={onUseCurrentLocation}
+                    onMouseEnter={() => onPrefetch?.({ useCurrent: true })}
                     className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-accent transition-colors shadow-sm group"
                 >
                     <div className="bg-primary/10 p-2 rounded-full mr-4 group-hover:bg-primary/20 transition-colors">
@@ -31,6 +34,7 @@ const AddressSelectionList = ({
 
                 <button
                     onClick={onAddNewAddress}
+                    onMouseEnter={() => onPrefetch?.({ useCurrent: false })}
                     className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-accent transition-colors shadow-sm group"
                 >
                     <div className="bg-primary/10 p-2 rounded-full mr-4 group-hover:bg-primary/20 transition-colors">
@@ -91,6 +95,7 @@ const AddressSelectionList = ({
                                             e.stopPropagation();
                                             onEdit(addr);
                                         }}
+                                        onMouseEnter={() => onPrefetch?.({ editAddress: addr })}
                                         className="p-2 text-muted-foreground hover:text-primary transition-colors"
                                     >
                                         <Edit2 size={14} />

@@ -1620,8 +1620,28 @@ const OrderPageInternal = () => {
     }, [getAddressReturnUrl]);
 
     const openAddAddressPage = useCallback((options = {}) => {
-        router.push(buildAddAddressUrl(options));
+        const url = buildAddAddressUrl(options);
+        router.prefetch(url);
+        router.push(url);
     }, [buildAddAddressUrl, router]);
+
+    // ✅ NEW: Prefetch critical routes to ensure instant navigation
+    useEffect(() => {
+        if (!router) return;
+        
+        // Background prefetch for common paths
+        router.prefetch('/add-address');
+        
+        // Prefetch with useCurrent variation
+        const useCurrentUrl = buildAddAddressUrl({ useCurrent: true });
+        router.prefetch(useCurrentUrl);
+
+        // Prefetch checkout path
+        if (restaurantId) {
+            const checkoutUrl = `/checkout/${encodeRestaurantIdParam(restaurantId)}`;
+            router.prefetch(checkoutUrl);
+        }
+    }, [router, buildAddAddressUrl, restaurantId]);
 
     useEffect(() => {
         if (tableIdFromUrl || deliveryType !== 'delivery' || hasPrefetchedAddressBook.current) return;
@@ -4328,6 +4348,7 @@ const OrderPageInternal = () => {
                                             setIsAddressSelectorOpen(false);
                                             openAddAddressPage({ useCurrent: true });
                                         }}
+                                        onPrefetch={(opts) => router.prefetch(buildAddAddressUrl(opts))}
                                         onDelete={(addr) => setAddressPendingDelete(addr)}
                                         onEdit={(addr) => {
                                             setIsAddressSelectorOpen(false);
