@@ -173,8 +173,12 @@ const getSettingsItems = (businessType, effectiveOwnerId, paramName = 'impersona
 
 export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], lockedFeatures = [], status, userRole = null }) {
   const desktopRuntime = useMemo(() => isDesktopApp(), []);
+  const badgePollIntervalMs = desktopRuntime ? 300000 : 180000;
   const [businessType, setBusinessType] = useState('restaurant');
   const [badgeMonitoringReady, setBadgeMonitoringReady] = useState(() => !desktopRuntime);
+  const [isPageVisible, setIsPageVisible] = useState(() => (
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+  ));
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -196,6 +200,25 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
     return () => clearTimeout(timer);
   }, [desktopRuntime]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    const handleVisibilityChange = () => {
+      setIsPageVisible(document.visibilityState === 'visible');
+    };
+
+    handleVisibilityChange();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    window.addEventListener('blur', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+      window.removeEventListener('blur', handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     const storedBusinessType = normalizeBusinessType(localStorage.getItem('businessType'));
@@ -444,10 +467,12 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     if (impersonatedOwnerId || employeeOfOwnerId) return; // Skip for now until we handle composite query permissions perfectly
     if (isOnWhatsAppDirectPage || isOnLiveOrdersPage) return; // Avoid duplicate listeners on heavy dashboard pages
     if (!badgeMonitoringReady) return;
+    if (!isPageVisible) return;
 
-    let unsubscribe = () => { };
+    let intervalId = null;
+    let cancelled = false;
 
-    const setupListener = async () => {
+    const pollUnreadCount = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
@@ -460,35 +485,38 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
           where('unreadCount', '>', 0)
         );
 
-        unsubscribe = onSnapshot(q, (snapshot) => {
-          // Notification/badge should only consider active direct-chat support threads.
-          const totalUnread = snapshot.docs.reduce((acc, doc) => {
-            const data = doc.data() || {};
-            if (data.state !== 'direct_chat') return acc;
-            return acc + (data.unreadCount || 0);
-          }, 0);
-          setWhatsappUnreadCount(totalUnread);
-        }, (error) => {
-          console.error("Error listening to whatsapp conversations:", error);
-        });
-
+        const snapshot = await getDocs(q);
+        if (cancelled) return;
+        const totalUnread = snapshot.docs.reduce((acc, doc) => {
+          const data = doc.data() || {};
+          if (data.state !== 'direct_chat') return acc;
+          return acc + (data.unreadCount || 0);
+        }, 0);
+        setWhatsappUnreadCount(totalUnread);
       } catch (error) {
-        console.error("Error setting up whatsapp listener:", error);
+        console.error("Error polling whatsapp conversations:", error);
       }
     };
 
-    setupListener();
+    void pollUnreadCount();
+    intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void pollUnreadCount();
+    }, badgePollIntervalMs);
 
-    return () => unsubscribe();
-  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage, isOnLiveOrdersPage]);
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isOnWhatsAppDirectPage, isPageVisible]);
 
   // Fetch Pending Orders Count (Real-time and Fallback)
   useEffect(() => {
     if (!auth.currentUser) return;
     if (isOnLiveOrdersPage) return; // Live Orders page already has direct realtime; avoid duplicate listener
     if (!badgeMonitoringReady) return;
+    if (!isPageVisible) return;
 
-    let unsubscribe = () => { };
     let pollInterval = null;
 
     const handleCountUpdate = (count) => {
@@ -539,64 +567,36 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       prevPendingCountRef.current = count;
     };
 
-    const setupListener = async () => {
+    const pollData = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
+        const idToken = await user.getIdToken();
+        let url = new URL('/api/owner/orders', window.location.origin);
+        url.searchParams.append('context', 'live_orders');
+        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
 
-        // Fallback to API polling for impersonate/employee due to Firestore security rules
-        if (impersonatedOwnerId || employeeOfOwnerId) {
-          const pollData = async () => {
-            try {
-              const idToken = await user.getIdToken();
-              let url = new URL('/api/owner/orders', window.location.origin);
-              if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-              else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
-
-              const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
-              if (res.ok) {
-                const data = await res.json();
-                const count = (data.orders || []).filter(o => o.status === 'pending').length;
-                handleCountUpdate(count);
-              }
-            } catch (e) {
-              console.error('Sidebar Polling error:', e);
-            }
-          };
-
-          pollData();
-          pollInterval = setInterval(pollData, 120000); // Poll every 120s
-          return;
-        }
-
-        const business = await resolveOwnedBusiness(user.uid, businessType);
-        if (!business?.id) return;
-
-        // Listen for Pending Orders (Realtime via Firestore)
-        const ordersQuery = query(
-          collection(db, 'orders'),
-          where('restaurantId', '==', business.id),
-          where('status', '==', 'pending')
-        );
-
-        unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
-          handleCountUpdate(snapshot.size);
-        }, (error) => {
-          console.error("Error listening to pending orders:", error);
-        });
-
+        const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        const count = (data.orders || []).filter(o => String(o.status || '').toLowerCase() === 'pending').length;
+        handleCountUpdate(count);
       } catch (error) {
-        console.error("Error setting up pending orders listener:", error);
+        console.error("Error polling pending orders:", error);
       }
     };
 
-    setupListener();
+    void pollData();
+    pollInterval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void pollData();
+    }, badgePollIntervalMs);
 
     return () => {
-      unsubscribe();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
+  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
 
   // Dine-In badge counts (pending dine-in orders + pending service requests)
   useEffect(() => {
@@ -607,10 +607,11 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     if (isOnLiveOrdersPage) return;
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
     if (!badgeMonitoringReady) return;
+    if (!isPageVisible) return;
 
-    let unsubscribeOrders = () => { };
+    let intervalId = null;
 
-    const setupListeners = async () => {
+    const pollDineInOrders = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
@@ -624,21 +625,23 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
           where('status', '==', 'pending')
         );
 
-        unsubscribeOrders = onSnapshot(dineInOrdersQuery, (snapshot) => {
-          setDineInPendingOrdersCount(snapshot.size);
-        }, (error) => {
-          console.error('Error listening to dine-in pending orders:', error);
-        });
+        const snapshot = await getDocs(dineInOrdersQuery);
+        setDineInPendingOrdersCount(snapshot.size);
       } catch (error) {
-        console.error('Error setting up dine-in badge listeners:', error);
+        console.error('Error polling dine-in pending orders:', error);
       }
     };
 
-    setupListeners();
+    void pollDineInOrders();
+    intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void pollDineInOrders();
+    }, badgePollIntervalMs);
+
     return () => {
-      unsubscribeOrders();
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
+  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
 
   // Fetch Waitlist Count (Real-time)
   useEffect(() => {
@@ -649,10 +652,11 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     if (isOnLiveOrdersPage) return;
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
     if (!badgeMonitoringReady) return;
+    if (!isPageVisible) return;
 
-    let unsubscribe = () => { };
+    let intervalId = null;
 
-    const setupListener = async () => {
+    const pollWaitlist = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
@@ -664,21 +668,24 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
           where('status', 'in', ['pending', 'notified'])
         );
 
-        unsubscribe = onSnapshot(waitlistQuery, (snapshot) => {
-          setWaitlistEntriesCount(snapshot.size);
-        }, (error) => {
-          console.error("Error listening to waitlist:", error);
-        });
+        const snapshot = await getDocs(waitlistQuery);
+        setWaitlistEntriesCount(snapshot.size);
 
       } catch (error) {
-        console.error("Error setting up waitlist listener:", error);
+        console.error("Error polling waitlist:", error);
       }
     };
 
-    setupListener();
+    void pollWaitlist();
+    intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void pollWaitlist();
+    }, badgePollIntervalMs);
 
-    return () => unsubscribe();
-  }, [badgeMonitoringReady, impersonatedOwnerId, employeeOfOwnerId, businessType, isOnLiveOrdersPage]);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
 
   // Service request count via API (more reliable with Firestore security rules)
   useEffect(() => {
@@ -689,9 +696,9 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     if (isOnLiveOrdersPage) return;
     if (employeeOfOwnerId || !auth.currentUser) return;
     if (!badgeMonitoringReady) return;
+    if (!isPageVisible) return;
 
     let intervalId = null;
-    let unsubscribe = () => { };
     let isMounted = true;
 
     const setCountSafely = (count) => {
@@ -727,54 +734,17 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       }
     };
 
-    const startPollingFallback = async () => {
-      await fetchServiceRequestCount();
-      if (!intervalId) {
-        intervalId = setInterval(fetchServiceRequestCount, desktopRuntime ? 180000 : 120000);
-      }
-    };
-
-    const setupListener = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user || !isMounted) return;
-
-        if (impersonatedOwnerId) {
-          await startPollingFallback();
-          return;
-        }
-
-        const business = await resolveOwnedBusiness(user.uid, 'restaurant');
-        if (!business?.id) {
-          setCountSafely(0);
-          return;
-        }
-
-        const serviceRequestsQuery = query(
-          collection(db, 'restaurants', business.id, 'serviceRequests'),
-          where('status', '==', 'pending')
-        );
-
-        unsubscribe = onSnapshot(serviceRequestsQuery, (snapshot) => {
-          setCountSafely(snapshot.size);
-        }, (error) => {
-          console.error('Error listening to dine-in service requests count:', error);
-          void startPollingFallback();
-        });
-      } catch (error) {
-        console.error('Error setting up dine-in service requests listener:', error);
-        void startPollingFallback();
-      }
-    };
-
-    setupListener();
+    void fetchServiceRequestCount();
+    intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void fetchServiceRequestCount();
+    }, badgePollIntervalMs);
 
     return () => {
       isMounted = false;
-      unsubscribe();
       if (intervalId) clearInterval(intervalId);
     };
-  }, [badgeMonitoringReady, businessType, desktopRuntime, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
+  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, desktopRuntime, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
 
   useEffect(() => {
     if (impersonatedOwnerId || employeeOfOwnerId) return;

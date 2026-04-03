@@ -572,8 +572,6 @@ export default function ManualOrderHistoryPage() {
     };
 
     useEffect(() => {
-        let snapshotUnsubscribe = null;
-
         const stopPolling = () => {
             if (pollingIntervalRef.current) {
                 clearInterval(pollingIntervalRef.current);
@@ -586,6 +584,7 @@ export default function ManualOrderHistoryPage() {
             await fetchHistory();
             if (isDesktopOfflineMode(desktopRuntime)) return;
             pollingIntervalRef.current = setInterval(() => {
+                if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
                 fetchHistory({ silent: true }).catch(() => {});
             }, 180000);
         };
@@ -608,63 +607,10 @@ export default function ManualOrderHistoryPage() {
 
                     stopPolling();
                     setLoading(true);
-                    const targetOwnerId = impersonatedOwnerId || employeeOfOwnerId || user.uid;
-                    const businessContext = await resolveBusinessContext(targetOwnerId);
-
-                    if (!businessContext?.businessId || !businessContext?.collectionName) {
-                        throw new Error('No business associated with this owner.');
-                    }
-
-                    const from = new Date(fromDate);
-                    const to = new Date(toDate);
-                    from.setHours(0, 0, 0, 0);
-                    to.setHours(23, 59, 59, 999);
-
-                    const historyRef = collection(db, businessContext.collectionName, businessContext.businessId, 'custom_bill_history');
-                    const historyQuery = query(
-                        historyRef,
-                        where('printedAt', '>=', from),
-                        where('printedAt', '<=', to),
-                        orderBy('printedAt', 'desc'),
-                        limit(300)
-                    );
-
-                    snapshotUnsubscribe = onSnapshot(
-                        historyQuery,
-                        (snapshot) => {
-                            const entries = snapshot.docs.map(normalizeHistoryEntry);
-                            historySignatureRef.current = JSON.stringify({
-                                history: entries.map((bill) => ({
-                                    id: bill.id,
-                                    historyId: bill.historyId,
-                                    printedAt: bill.printedAt,
-                                    createdAt: bill.createdAt,
-                                    totalAmount: bill.totalAmount,
-                                    isSettled: bill.isSettled,
-                                    settlementEligible: bill.settlementEligible,
-                                    serviceFee: bill.serviceFee,
-                                    serviceFeeLabel: bill.serviceFeeLabel,
-                                    itemCount: bill.itemCount,
-                                })),
-                                summary: computeSummary(entries),
-                            });
-                            setHistory(entries);
-                            setSummary(computeSummary(entries));
-                            writeCachedPayload('manual_order_history', historyCacheKey, {
-                                history: entries,
-                                summary: computeSummary(entries),
-                            }).catch(() => {});
-                            setLoading(false);
-                        },
-                        async (error) => {
-                            console.warn('[Manual Order History] Realtime listener failed, using API fallback:', error?.message || error);
-                            await startPollingFallback();
-                        }
-                    );
-
+                    await fetchHistory();
                     fetchRestaurantDetails().catch(() => {});
                 } catch (error) {
-                    console.warn('[Manual Order History] Realtime setup failed, using API fallback:', error?.message || error);
+                    console.warn('[Manual Order History] Setup failed, using API fallback:', error?.message || error);
                     startPollingFallback().catch(() => {});
                     fetchRestaurantDetails().catch(() => {});
                 }
@@ -675,9 +621,6 @@ export default function ManualOrderHistoryPage() {
 
         return () => {
             stopPolling();
-            if (typeof snapshotUnsubscribe === 'function') {
-                snapshotUnsubscribe();
-            }
             if (typeof unsubscribe === 'function') unsubscribe();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

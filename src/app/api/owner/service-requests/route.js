@@ -1,6 +1,9 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getOrSetEphemeralCache, invalidateEphemeralCacheByPrefix } from '@/lib/server/ephemeralCache';
+
+const SERVICE_REQUESTS_CACHE_TTL_MS = 15 * 1000;
 
 function assertRestaurantBusinessSnapshot(businessSnap) {
     const businessType = String(businessSnap?.data()?.businessType || 'restaurant').trim().toLowerCase();
@@ -43,19 +46,21 @@ export async function GET(req) {
         const businessSnap = await businessRef.get();
         assertRestaurantBusinessSnapshot(businessSnap);
 
-        const requestsSnap = await businessRef.collection('serviceRequests')
-            .where('status', '==', 'pending')
-            .orderBy('createdAt', 'desc')
-            .get();
-        
-        const requests = requestsSnap.docs.map(doc => {
-            const data = doc.data();
-            return {
-                ...data,
-                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-            };
-        });
+        const cacheKey = `owner:service-requests:${businessRef.path}`;
+        const requests = await getOrSetEphemeralCache(cacheKey, SERVICE_REQUESTS_CACHE_TTL_MS, async () => {
+            const requestsSnap = await businessRef.collection('serviceRequests')
+                .where('status', '==', 'pending')
+                .orderBy('createdAt', 'desc')
+                .get();
 
+            return requestsSnap.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    ...data,
+                    createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+                };
+            });
+        });
 
         return NextResponse.json({ requests }, { status: 200 });
 
@@ -99,6 +104,7 @@ export async function POST(req) {
         };
 
         await newRequestRef.set(newRequestData);
+        invalidateEphemeralCacheByPrefix(`owner:service-requests:${businessRef.path}`);
 
         return NextResponse.json({ message: 'Service request sent successfully!', id: newRequestRef.id }, { status: 201 });
 
@@ -128,6 +134,7 @@ export async function PATCH(req) {
         }
 
         await requestRef.update({ status: status });
+        invalidateEphemeralCacheByPrefix(`owner:service-requests:${businessRef.path}`);
 
         return NextResponse.json({ message: `Request marked as ${status}.` }, { status: 200 });
 

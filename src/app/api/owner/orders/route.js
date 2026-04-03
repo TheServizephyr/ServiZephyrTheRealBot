@@ -13,7 +13,9 @@ import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 import { kv, isKvConfigured } from '@/lib/kv';
+import { getOrSetEphemeralCache, invalidateEphemeralCacheByPrefix } from '@/lib/server/ephemeralCache';
 
+const LIVE_ORDERS_CACHE_TTL_MS = 15 * 1000;
 
 // (Redundant verifyOwnerAndGetBusiness removed in favor of verifyOwnerWithAudit)
 
@@ -421,32 +423,40 @@ export async function GET(req) {
                 .orderBy('orderDate', 'desc')
                 .limit(100);
 
-            const ordersSnap = await query.get();
-            const orders = ordersSnap.docs
-                .map(doc => {
-                    const data = doc.data();
-                    const statusHistory = (data.statusHistory || []).map(h => ({
-                        ...h,
-                        timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
-                    }));
+            const cacheKey = `owner:orders:live:${businessId}:cust:${canViewCustomerDetails ? 1 : 0}:pay:${canViewPaymentDetails ? 1 : 0}`;
+            const { orders, readCount } = await getOrSetEphemeralCache(cacheKey, LIVE_ORDERS_CACHE_TTL_MS, async () => {
+                const ordersSnap = await query.get();
+                const nextOrders = ordersSnap.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        const statusHistory = (data.statusHistory || []).map(h => ({
+                            ...h,
+                            timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
+                        }));
 
-                    const itemsWithQty = (data.items || []).map(item => ({
-                        ...item,
-                        qty: item.quantity || item.qty,
-                    }));
+                        const itemsWithQty = (data.items || []).map(item => ({
+                            ...item,
+                            qty: item.quantity || item.qty,
+                        }));
 
-                    return redactOrderForViewer({
-                        id: doc.id,
-                        ...data,
-                        items: itemsWithQty,
-                        orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
-                        customer: data.customerName,
-                        amount: data.totalAmount,
-                        statusHistory,
-                    }, canViewCustomerDetails, canViewPaymentDetails);
-                })
-                .filter((order) => activeStatuses.has(String(order.status || '').toLowerCase()));
-            await trackEndpointRead('api.owner.orders.get', ordersSnap.size);
+                        return redactOrderForViewer({
+                            id: doc.id,
+                            ...data,
+                            items: itemsWithQty,
+                            orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
+                            customer: data.customerName,
+                            amount: data.totalAmount,
+                            statusHistory,
+                        }, canViewCustomerDetails, canViewPaymentDetails);
+                    })
+                    .filter((order) => activeStatuses.has(String(order.status || '').toLowerCase()));
+
+                return {
+                    orders: nextOrders,
+                    readCount: ordersSnap.size,
+                };
+            });
+            await trackEndpointRead('api.owner.orders.get', readCount);
 
             return respond({ orders }, 200);
         } else if (startDate && endDate) {
@@ -541,6 +551,7 @@ export async function PATCH(req) {
         const { businessId, businessSnap, uid, collectionName, callerRole, callerPermissions } = await verifyOwnerFeatureAccess(req, 'live-orders', 'update_orders_patch', {}, true);
         const requestBaseUrl = new URL(req.url).origin;
         const userRole = callerRole;
+        const invalidateLiveOrdersCache = () => invalidateEphemeralCacheByPrefix(`owner:orders:live:${businessId}:`);
 
         const {
             idsToUpdate = [],
@@ -703,6 +714,7 @@ export async function PATCH(req) {
             } catch (cacheErr) {
                 console.warn('[Owner Orders] Payment request cache invalidation failed:', cacheErr?.message || cacheErr);
             }
+            invalidateLiveOrdersCache();
 
             return NextResponse.json({
                 message: 'Payment request sent to customer on WhatsApp.',
@@ -793,6 +805,7 @@ export async function PATCH(req) {
             } catch (cacheErr) {
                 console.warn('[Owner Orders] Mark-paid cache invalidation failed:', cacheErr?.message || cacheErr);
             }
+            invalidateLiveOrdersCache();
 
             return NextResponse.json({
                 message: 'Order marked as paid successfully.',
@@ -838,6 +851,7 @@ export async function PATCH(req) {
             if (updatedCount > 0) {
                 await batch.commit();
             }
+            invalidateLiveOrdersCache();
 
             return NextResponse.json({
                 message: updatedCount > 0 
@@ -1180,6 +1194,7 @@ export async function PATCH(req) {
         }
 
         await batch.commit();
+        invalidateLiveOrdersCache();
 
         const shouldAwaitSideEffects =
             action === 'send_payment_request' ||

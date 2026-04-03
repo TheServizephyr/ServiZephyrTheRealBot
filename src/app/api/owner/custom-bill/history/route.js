@@ -8,6 +8,9 @@ import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 import { isValidCustomerOrderId } from '@/utils/generateCustomerOrderId';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
+import { getOrSetEphemeralCache, invalidateEphemeralCacheByPrefix } from '@/lib/server/ephemeralCache';
+
+const CUSTOM_BILL_HISTORY_CACHE_TTL_MS = 30 * 1000;
 
 const toAmount = (value, fallback = 0) => {
     const amount = Number(value);
@@ -293,6 +296,7 @@ export async function POST(req) {
                 console.error('[Custom Bill History] Failed to update customer profile:', profileError);
             });
         }
+        invalidateEphemeralCacheByPrefix(`owner:custom-bill-history:${collectionName}:${businessId}:`);
 
         return NextResponse.json({
             message: 'Bill history saved successfully.',
@@ -338,121 +342,125 @@ export async function GET(req) {
             .doc(businessId)
             .collection('custom_bill_history');
 
-        let snapshot;
-        try {
-            snapshot = await buildHistoryQuery(historyRef, fromDate, toDate, maxRecords).get();
-        } catch (queryError) {
-            // Fallback to legacy path so history remains available even if a query/index issue occurs.
-            snapshot = await historyRef
-                .orderBy('printedAt', 'desc')
-                .limit(maxRecords)
-                .get();
-        }
-
-        let totalAmount = 0;
-        let totalBills = 0;
-        let pendingSettlementAmount = 0;
-        let pendingSettlementBills = 0;
-        let settledAmount = 0;
-        let settledBills = 0;
-        const history = [];
-
-        snapshot.forEach((doc) => {
-            const data = doc.data() || {};
-            const printedAt = timestampToDate(data.printedAt) || timestampToDate(data.createdAt);
-
-            if (fromDate && printedAt && printedAt < fromDate) return;
-            if (toDate && printedAt && printedAt > toDate) return;
-
-            const itemNames = Array.isArray(data.items)
-                ? data.items.map((item) => sanitizeText(item?.name, '')).join(' ')
-                : '';
-
-            if (search) {
-                const haystack = [
-                    sanitizeText(data.historyId, doc.id),
-                    sanitizeText(data.billDraftId, ''),
-                    sanitizeText(data.customerName, ''),
-                    sanitizeText(data.customerPhone, ''),
-                    sanitizeText(data.customerAddress, ''),
-                    sanitizeText(data.customerId, ''),
-                    itemNames,
-                ]
-                    .join(' ')
-                    .toLowerCase();
-
-                if (!haystack.includes(search)) return;
+        const cacheKey = `owner:custom-bill-history:${collectionName}:${businessId}:from:${fromParam || 'na'}:to:${toParam || 'na'}:search:${search || 'na'}:limit:${maxRecords}`;
+        const payload = await getOrSetEphemeralCache(cacheKey, CUSTOM_BILL_HISTORY_CACHE_TTL_MS, async () => {
+            let snapshot;
+            try {
+                snapshot = await buildHistoryQuery(historyRef, fromDate, toDate, maxRecords).get();
+            } catch (queryError) {
+                snapshot = await historyRef
+                    .orderBy('printedAt', 'desc')
+                    .limit(maxRecords)
+                    .get();
             }
 
-            const amount = toAmount(data.totalAmount, 0);
-            const cancelled = isCancelledBill(data);
-            if (!cancelled) {
-                totalAmount += amount;
-                totalBills += 1;
-            }
+            let totalAmount = 0;
+            let totalBills = 0;
+            let pendingSettlementAmount = 0;
+            let pendingSettlementBills = 0;
+            let settledAmount = 0;
+            let settledBills = 0;
+            const history = [];
 
-            const printedVia = data.printedVia || 'browser';
-            const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
-            const isSettled = settlementEligible ? !!data.isSettled : false;
-            if (!cancelled && settlementEligible) {
-                if (isSettled) {
-                    settledAmount += amount;
-                    settledBills += 1;
-                } else {
-                    pendingSettlementAmount += amount;
-                    pendingSettlementBills += 1;
+            snapshot.forEach((doc) => {
+                const data = doc.data() || {};
+                const printedAt = timestampToDate(data.printedAt) || timestampToDate(data.createdAt);
+
+                if (fromDate && printedAt && printedAt < fromDate) return;
+                if (toDate && printedAt && printedAt > toDate) return;
+
+                const itemNames = Array.isArray(data.items)
+                    ? data.items.map((item) => sanitizeText(item?.name, '')).join(' ')
+                    : '';
+
+                if (search) {
+                    const haystack = [
+                        sanitizeText(data.historyId, doc.id),
+                        sanitizeText(data.billDraftId, ''),
+                        sanitizeText(data.customerName, ''),
+                        sanitizeText(data.customerPhone, ''),
+                        sanitizeText(data.customerAddress, ''),
+                        sanitizeText(data.customerId, ''),
+                        itemNames,
+                    ]
+                        .join(' ')
+                        .toLowerCase();
+
+                    if (!haystack.includes(search)) return;
                 }
-            }
 
-            history.push({
-                id: doc.id,
-                historyId: data.historyId || doc.id,
-                billDraftId: data.billDraftId || null,
-                source: data.source || 'offline_counter',
-                channel: data.channel || 'custom_bill',
-                printedVia,
-                customerName: data.customerName || 'Walk-in Customer',
-                customerPhone: data.customerPhone || null,
-                customerAddress: data.customerAddress || null,
-                customerType: data.customerType || 'guest',
-                customerId: data.customerId || null,
-                customerOrderId: data.customerOrderId || null,
-                orderType: data.orderType || data.printedVia || 'dine-in',
-                status: data.status || 'active',
-                cancelledAt: timestampToDate(data.cancelledAt)?.toISOString() || null,
-                cancellationReason: data.cancellationReason || null,
-                settlementEligible,
-                isSettled,
-                settledAt: timestampToDate(data.settledAt)?.toISOString() || null,
-                settledByUid: data.settledByUid || null,
-                settledByRole: data.settledByRole || null,
-                settlementBatchId: data.settlementBatchId || null,
-                subtotal: toAmount(data.subtotal, 0),
-                cgst: toAmount(data.cgst, 0),
-                sgst: toAmount(data.sgst, 0),
-                deliveryCharge: toAmount(data.deliveryCharge, 0),
-                serviceFee: toAmount(data.serviceFee, 0),
-                serviceFeeLabel: sanitizeText(data.serviceFeeLabel, 'Additional Charge') || 'Additional Charge',
-                totalAmount: amount,
-                itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 0)),
-                items: Array.isArray(data.items) ? data.items.map((item, index) => normalizeItem(item, index)) : [],
-                printedAt: printedAt ? printedAt.toISOString() : null,
-                createdAt: timestampToDate(data.createdAt)?.toISOString() || null,
+                const amount = toAmount(data.totalAmount, 0);
+                const cancelled = isCancelledBill(data);
+                if (!cancelled) {
+                    totalAmount += amount;
+                    totalBills += 1;
+                }
+
+                const printedVia = data.printedVia || 'browser';
+                const settlementEligible = data.settlementEligible ?? isSettlementEligible(printedVia);
+                const isSettled = settlementEligible ? !!data.isSettled : false;
+                if (!cancelled && settlementEligible) {
+                    if (isSettled) {
+                        settledAmount += amount;
+                        settledBills += 1;
+                    } else {
+                        pendingSettlementAmount += amount;
+                        pendingSettlementBills += 1;
+                    }
+                }
+
+                history.push({
+                    id: doc.id,
+                    historyId: data.historyId || doc.id,
+                    billDraftId: data.billDraftId || null,
+                    source: data.source || 'offline_counter',
+                    channel: data.channel || 'custom_bill',
+                    printedVia,
+                    customerName: data.customerName || 'Walk-in Customer',
+                    customerPhone: data.customerPhone || null,
+                    customerAddress: data.customerAddress || null,
+                    customerType: data.customerType || 'guest',
+                    customerId: data.customerId || null,
+                    customerOrderId: data.customerOrderId || null,
+                    orderType: data.orderType || data.printedVia || 'dine-in',
+                    status: data.status || 'active',
+                    cancelledAt: timestampToDate(data.cancelledAt)?.toISOString() || null,
+                    cancellationReason: data.cancellationReason || null,
+                    settlementEligible,
+                    isSettled,
+                    settledAt: timestampToDate(data.settledAt)?.toISOString() || null,
+                    settledByUid: data.settledByUid || null,
+                    settledByRole: data.settledByRole || null,
+                    settlementBatchId: data.settlementBatchId || null,
+                    subtotal: toAmount(data.subtotal, 0),
+                    cgst: toAmount(data.cgst, 0),
+                    sgst: toAmount(data.sgst, 0),
+                    deliveryCharge: toAmount(data.deliveryCharge, 0),
+                    serviceFee: toAmount(data.serviceFee, 0),
+                    serviceFeeLabel: sanitizeText(data.serviceFeeLabel, 'Additional Charge') || 'Additional Charge',
+                    totalAmount: amount,
+                    itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 0)),
+                    items: Array.isArray(data.items) ? data.items.map((item, index) => normalizeItem(item, index)) : [],
+                    printedAt: printedAt ? printedAt.toISOString() : null,
+                    createdAt: timestampToDate(data.createdAt)?.toISOString() || null,
+                });
             });
+
+            return {
+                history,
+                summary: {
+                    totalBills,
+                    totalAmount,
+                    avgBillValue: totalBills > 0 ? totalAmount / totalBills : 0,
+                    pendingSettlementAmount,
+                    pendingSettlementBills,
+                    settledAmount,
+                    settledBills,
+                },
+            };
         });
 
-        return NextResponse.json({
-            history,
-            summary: {
-                totalBills,
-                totalAmount,
-                avgBillValue: totalBills > 0 ? totalAmount / totalBills : 0,
-                pendingSettlementAmount,
-                pendingSettlementBills,
-                settledAmount,
-                settledBills,
-            },
-        });
+        return NextResponse.json(payload);
     } catch (error) {
         console.error('[Custom Bill History][GET] Error:', error);
         return NextResponse.json(
@@ -575,6 +583,7 @@ export async function PATCH(req) {
         if (updatedCount > 0) {
             await batch.commit();
         }
+        invalidateEphemeralCacheByPrefix(`owner:custom-bill-history:${collectionName}:${businessId}:`);
 
         const actionPastTense = action === 'settle' ? 'settled' : 'unsettled';
 
