@@ -1050,6 +1050,8 @@ function OwnerDashboardContent({ children }) {
                 restaurantName={restaurantName}
                 restaurantLogo={restaurantLogo}
                 userRole={userRole}
+                impersonatedOwnerId={impersonatedOwnerId}
+                employeeOfOwnerId={employeeOfOwnerId}
               />
             </header>
           )}

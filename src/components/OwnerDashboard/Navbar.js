@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { User, Sun, Moon, Menu, UserCheck, ShieldCheck, Clock3 } from "lucide-react";
@@ -32,7 +32,7 @@ import { logoutClientSession } from '@/lib/client-session';
 
 const MotionDiv = motion.div;
 
-export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, restaurantLogo, userRole }) {
+export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, restaurantLogo, userRole, impersonatedOwnerId = null, employeeOfOwnerId = null }) {
   const [restaurantStatus, setRestaurantStatus] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [isMobileView, setIsMobileView] = useState(false);
@@ -46,6 +46,17 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const [isSystemStatusOpen, setSystemStatusOpen] = useState(false);
   const { user } = useUser();
+  const settingsFetchInFlightRef = useRef(null);
+
+  const scopedSettingsUrl = useMemo(() => {
+    const url = new URL('/api/owner/settings', typeof window !== 'undefined' ? window.location.origin : 'https://servizephyr.com');
+    if (impersonatedOwnerId) {
+      url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+    } else if (employeeOfOwnerId) {
+      url.searchParams.set('employee_of', employeeOfOwnerId);
+    }
+    return url.toString();
+  }, [employeeOfOwnerId, impersonatedOwnerId]);
 
   const normalizeTime = (value, fallback) => {
     const timeValue = String(value || '').trim();
@@ -56,11 +67,16 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   };
 
   const fetchOwnerSettings = useCallback(async () => {
+    if (settingsFetchInFlightRef.current) {
+      return settingsFetchInFlightRef.current;
+    }
+
     const currentUser = auth.currentUser;
     if (!currentUser) return;
+    const requestPromise = (async () => {
     try {
       const idToken = await currentUser.getIdToken();
-      const res = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
+      const res = await fetch(scopedSettingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } });
       if (res.ok) {
         const data = await res.json();
         setRestaurantStatus(data.isOpen !== false);
@@ -72,8 +88,13 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
       console.error("Failed to fetch owner settings:", error);
     } finally {
       setLoadingStatus(false);
+      settingsFetchInFlightRef.current = null;
     }
-  }, []);
+    })();
+
+    settingsFetchInFlightRef.current = requestPromise;
+    return requestPromise;
+  }, [scopedSettingsUrl]);
 
   useEffect(() => {
     fetchOwnerSettings();
@@ -149,7 +170,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
         overridingSchedule = true;
       }
 
-      const res = await fetch('/api/owner/settings', {
+      const res = await fetch(scopedSettingsUrl, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -184,7 +205,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
         closingTime: normalizeTime(closingTime, '22:00')
       };
 
-      const res = await fetch('/api/owner/settings', {
+      const res = await fetch(scopedSettingsUrl, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

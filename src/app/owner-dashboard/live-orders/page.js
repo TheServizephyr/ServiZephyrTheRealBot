@@ -1369,6 +1369,9 @@ export default function LiveOrdersPage() {
     const restaurantIdCacheRef = useRef(null);
     const staticDataHydratedRef = useRef(false);
     const ordersDataHydratedRef = useRef(false);
+    const ordersApiInFlightRef = useRef(null);
+    const staticApiInFlightRef = useRef(null);
+    const staticApiScopeRef = useRef('');
     const cacheScope = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return scope;
@@ -1624,8 +1627,13 @@ export default function LiveOrdersPage() {
     }, [staticCacheKey, writeDesktopCache]);
 
     const fetchOrdersData = useCallback(async ({ showLoading = false } = {}) => {
+        if (ordersApiInFlightRef.current) {
+            return ordersApiInFlightRef.current;
+        }
+
         if (showLoading) setLoading(true);
 
+        const requestPromise = (async () => {
         try {
             const user = auth.currentUser;
             if (!user) throw new Error("Not authenticated");
@@ -1648,10 +1656,28 @@ export default function LiveOrdersPage() {
             setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: `Could not load live data, so cached desktop data will be used where available. ${error.message}` });
         } finally {
             if (showLoading) setLoading(false);
+            ordersApiInFlightRef.current = null;
         }
+        })();
+
+        ordersApiInFlightRef.current = requestPromise;
+        return requestPromise;
     }, [appendApiAccessParams, persistOrdersToCache]);
 
-    const fetchStaticDataForApiViews = useCallback(async () => {
+    const fetchStaticDataForApiViews = useCallback(async ({ force = false, scopeKey = '' } = {}) => {
+        if (!force && staticApiInFlightRef.current) {
+            return staticApiInFlightRef.current;
+        }
+
+        if (!force && scopeKey && staticApiScopeRef.current === scopeKey) {
+            return;
+        }
+
+        if (scopeKey) {
+            staticApiScopeRef.current = scopeKey;
+        }
+
+        const requestPromise = (async () => {
         try {
             const user = auth.currentUser;
             if (!user) throw new Error("Not authenticated");
@@ -1692,7 +1718,13 @@ export default function LiveOrdersPage() {
             persistStaticDashboardData(nextRiders, nextRestaurantData, nextBusinessType);
         } catch (error) {
             console.error("[LiveOrders] Error fetching static dashboard data:", error);
+        } finally {
+            staticApiInFlightRef.current = null;
         }
+        })();
+
+        staticApiInFlightRef.current = requestPromise;
+        return requestPromise;
     }, [appendApiAccessParams, normalizedBusinessType, persistStaticDashboardData]);
 
     const fetchInitialData = useCallback(async (isManualRefresh = false) => {
@@ -1730,10 +1762,7 @@ export default function LiveOrdersPage() {
             const apiScopeKey = impersonatedOwnerId
                 ? `imp:${impersonatedOwnerId}`
                 : `emp:${employeeOfOwnerId}`;
-            if (apiStaticScopeRef.current !== apiScopeKey) {
-                apiStaticScopeRef.current = apiScopeKey;
-                fetchStaticDataForApiViews();
-            }
+            fetchStaticDataForApiViews({ scopeKey: apiScopeKey });
             return;
         }
 
@@ -1743,57 +1772,7 @@ export default function LiveOrdersPage() {
         // Fetch restaurant ID from user's document
         const ownerId = user.uid;
 
-        // Fetch static data (riders & settings) via API once
-        const fetchStaticData = async () => {
-            try {
-                const idToken = await user.getIdToken();
-                const ridersUrl = new URL('/api/owner/delivery', window.location.origin);
-                ridersUrl.searchParams.set('context', 'live_orders');
-                const [ridersRes, settingsRes] = await Promise.all([
-                    fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
-                    fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } })
-                ]);
-
-                if (ridersRes.ok) {
-                    const ridersData = await ridersRes.json();
-                    setRiders(ridersData.boys || []);
-                    try {
-                        const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
-                        sessionStorage.setItem(staticCacheKey, JSON.stringify({
-                            ...previous,
-                            riders: ridersData.boys || [],
-                            ts: Date.now()
-                        }));
-                    } catch { }
-                }
-
-                if (settingsRes.ok) {
-                    const settingsData = await settingsRes.json();
-                    const resolvedBusinessType = normalizeBusinessType(settingsData.businessType) || 'restaurant';
-                    const nextRestaurantData = {
-                        name: settingsData.restaurantName,
-                        address: settingsData.address,
-                        gstin: settingsData.gstin,
-                        businessType: resolvedBusinessType,
-                    };
-                    setBusinessType(resolvedBusinessType);
-                    setRestaurantData(nextRestaurantData);
-                    try {
-                        const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
-                        sessionStorage.setItem(staticCacheKey, JSON.stringify({
-                            ...previous,
-                            restaurantData: nextRestaurantData,
-                            businessType: resolvedBusinessType,
-                            ts: Date.now()
-                        }));
-                    } catch { }
-                }
-            } catch (error) {
-                console.error('[LiveOrders] Error fetching static data:', error);
-            }
-        };
-
-        fetchStaticData();
+        fetchStaticDataForApiViews({ scopeKey: `owner:${ownerId}` });
 
         // Resolve business ID first (orders use the `restaurantId` field for all outlet types).
         const setupListener = async () => {
@@ -1910,7 +1889,7 @@ export default function LiveOrdersPage() {
             console.log('[LiveOrders] Cleaning up real-time listener');
             cleanupFn();
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchOrdersData, fetchStaticDataForApiViews, persistOrdersToCache, normalizedBusinessType]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, fetchOrdersData, fetchStaticDataForApiViews, persistOrdersToCache, normalizedBusinessType]);
 
     // Role-based new order notifications:
     // - Chef only here (owner/manager global notifications are emitted from Sidebar so they work on any page)
