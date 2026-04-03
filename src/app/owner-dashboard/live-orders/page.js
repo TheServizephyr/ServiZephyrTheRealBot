@@ -1303,6 +1303,7 @@ export default function LiveOrdersPage() {
     const [userRole, setUserRole] = useState(null);
     const [businessType, setBusinessType] = useState('restaurant');
     const [viewMode, setViewMode] = useState('grid'); // 'list' or 'grid'
+    const apiStaticScopeRef = useRef('');
     const normalizedRole = (userRole || '').toLowerCase();
     const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
     const isStoreBusiness = normalizedBusinessType === 'store';
@@ -1725,7 +1726,14 @@ export default function LiveOrdersPage() {
         // Impersonation/employee views use API polling only.
         // Avoid attaching owner's realtime Firestore listener to prevent duplicate reads.
         if (impersonatedOwnerId || employeeOfOwnerId) {
-            fetchInitialData(false);
+            fetchOrdersData({ showLoading: true });
+            const apiScopeKey = impersonatedOwnerId
+                ? `imp:${impersonatedOwnerId}`
+                : `emp:${employeeOfOwnerId}`;
+            if (apiStaticScopeRef.current !== apiScopeKey) {
+                apiStaticScopeRef.current = apiScopeKey;
+                fetchStaticDataForApiViews();
+            }
             return;
         }
 
@@ -1902,7 +1910,7 @@ export default function LiveOrdersPage() {
             console.log('[LiveOrders] Cleaning up real-time listener');
             cleanupFn();
         };
-    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchInitialData, persistOrdersToCache, normalizedBusinessType]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, staticCacheKey, fetchOrdersData, fetchStaticDataForApiViews, persistOrdersToCache, normalizedBusinessType]);
 
     // Role-based new order notifications:
     // - Chef only here (owner/manager global notifications are emitted from Sidebar so they work on any page)

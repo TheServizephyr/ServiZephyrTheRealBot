@@ -158,10 +158,15 @@ function OwnerDashboardContent({ children }) {
   const [hasAttemptedSessionRecovery, setHasAttemptedSessionRecovery] = useState(false);
   const pendingHistoryNavigationRef = useRef(null);
   const pendingHistoryTimerRef = useRef(null);
+  const ownerBootstrapRef = useRef({ key: '', inFlight: false });
+  const impersonationLogRef = useRef('');
   const ownerCacheKey = useMemo(() => {
     const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
     return `owner_dashboard_shell_cache_v1_${scope}`;
   }, [employeeOfOwnerId, impersonatedOwnerId]);
+  const ownerBootstrapKey = useMemo(() => (
+    `${user?.uid || 'anon'}::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}`
+  ), [employeeOfOwnerId, impersonatedOwnerId, user?.uid]);
 
   const readOwnerCache = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -617,7 +622,8 @@ function OwnerDashboardContent({ children }) {
     }
 
     // Log impersonation when detected
-    if (user && impersonatedOwnerId) {
+    if (user && impersonatedOwnerId && impersonationLogRef.current !== ownerBootstrapKey) {
+      impersonationLogRef.current = ownerBootstrapKey;
       getBestEffortIdToken(user).then(idToken => {
         fetch('/api/admin/log-impersonation', {
           method: 'POST',
@@ -801,6 +807,11 @@ function OwnerDashboardContent({ children }) {
 
     // Fetch user role (check if user is an employee)
     const fetchUserRole = async () => {
+      if (impersonatedOwnerId) {
+        setUserRole(null);
+        return;
+      }
+
       // If accessing via employee_of, use role from localStorage (set by select-role page)
       if (employeeOfOwnerId) {
         const storedRole = localStorage.getItem('employeeRole');
@@ -828,9 +839,22 @@ function OwnerDashboardContent({ children }) {
     };
 
     if (user) {
+      if (ownerBootstrapRef.current.inFlight && ownerBootstrapRef.current.key === ownerBootstrapKey) {
+        return;
+      }
+
+      if (ownerBootstrapRef.current.key === ownerBootstrapKey) {
+        return;
+      }
+
+      ownerBootstrapRef.current = { key: ownerBootstrapKey, inFlight: true };
       console.log('[Layout] ✅ Calling fetch functions...');
-      fetchRestaurantData();
-      fetchUserRole();
+      Promise.allSettled([
+        fetchRestaurantData(),
+        fetchUserRole(),
+      ]).finally(() => {
+        ownerBootstrapRef.current = { key: ownerBootstrapKey, inFlight: false };
+      });
     }
 
   }, [
@@ -840,9 +864,8 @@ function OwnerDashboardContent({ children }) {
     hasOwnerSessionHint,
     hasAttemptedSessionRecovery,
     isRecoveringSession,
-    effectiveOwnerId,
+    ownerBootstrapKey,
     router,
-    pathname,
     employeeOfOwnerId,
     impersonatedOwnerId
   ]);
