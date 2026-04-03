@@ -298,7 +298,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   // For street-vendor-dashboard, treat null as STREET_VENDOR role
   // IMPORTANT: If employee_of param exists but userRole is null, role is still loading - show nothing
   const isRolePending = employeeOfOwnerId && userRole === null;
-  const effectiveRole = userRole || (pathname.includes('/street-vendor-dashboard') ? ROLES.STREET_VENDOR : ROLES.OWNER);
+  const effectiveRole =
+    impersonatedOwnerId && userRole === 'admin'
+      ? (pathname.includes('/street-vendor-dashboard') ? ROLES.STREET_VENDOR : ROLES.OWNER)
+      : (userRole || (pathname.includes('/street-vendor-dashboard') ? ROLES.STREET_VENDOR : ROLES.OWNER));
 
   // Get custom allowed pages from localStorage (set by layout when employee logs in)
   // Using state so sidebar re-renders when role changes
