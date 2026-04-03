@@ -1293,13 +1293,24 @@ function WhatsAppDirectPageContent() {
 
             const unreadMessageIds = msgs
                 .filter(m => m.sender === 'customer' && m.status !== 'read')
-                .map(m => m.id);
+                .map(m => m.id)
+                .sort();
 
-            if (unreadMessageIds.length > 0) {
+            const signature = unreadMessageIds.join('|');
+            if (!signature) {
+                lastUnreadSignatureRef.current = '';
+            } else if (!unreadMarkInFlightRef.current && signature !== lastUnreadSignatureRef.current) {
+                unreadMarkInFlightRef.current = true;
+                lastUnreadSignatureRef.current = signature;
                 handleApiCall('/api/owner/whatsapp-direct/messages', 'PATCH', {
                     conversationId: activeConversation.id,
                     messageIds: unreadMessageIds
-                }).catch(err => console.error("Failed to mark messages as read:", err));
+                }).catch(err => {
+                    console.error("Failed to mark messages as read:", err);
+                    lastUnreadSignatureRef.current = '';
+                }).finally(() => {
+                    unreadMarkInFlightRef.current = false;
+                });
             }
         } catch (error) {
             console.error("Error fetching messages:", error);
@@ -1307,7 +1318,7 @@ function WhatsAppDirectPageContent() {
             setLoadingMessages(false);
         }
     }, {
-        interval: 10000,
+        interval: 30000,
         enabled: !!activeConversation && !isRealtimeActive,
         deps: [activeConversation?.id, isRealtimeActive]
     });

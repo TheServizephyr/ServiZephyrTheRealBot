@@ -55,7 +55,7 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
   );
 
   return (
-    <Link href={item.href} passHref legacyBehavior>
+    <Link href={item.href} passHref legacyBehavior prefetch={false}>
       {linkContent}
     </Link>
   );
