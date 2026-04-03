@@ -1082,7 +1082,6 @@ const AddAddressPageInternal = () => {
                     ) : null}
                 </div>
             </div>
-        </div>
 
             {/* Sticky Footer */}
             <div className="p-4 border-t border-border bg-background/95 backdrop-blur-sm sticky bottom-0 left-0 right-0 z-[60]">
