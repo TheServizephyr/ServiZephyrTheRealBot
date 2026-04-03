@@ -119,6 +119,21 @@
     @apply bg-background text-foreground;
     overflow-x: hidden;
   }
+
+  .customer-flow-surface {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .customer-flow-surface button,
+  .customer-flow-surface a,
+  .customer-flow-surface [role="button"] {
+    touch-action: manipulation;
+  }
+
+  .customer-flow-sheet {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @layer components {

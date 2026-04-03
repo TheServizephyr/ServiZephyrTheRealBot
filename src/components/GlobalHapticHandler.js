@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { isCustomerFlowPath, isLikelyInAppBrowser, isIosSafariLike } from '@/lib/browser/customerFlowSafeMode';
 
 /**
  * Global Haptic Feedback Handler
@@ -12,6 +13,14 @@ export default function GlobalHapticHandler() {
     useEffect(() => {
         // Check if vibration is supported
         if (typeof navigator === 'undefined' || !navigator.vibrate) {
+            return;
+        }
+
+        const pathname = typeof window !== 'undefined' ? window.location?.pathname || '' : '';
+        const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+        const isPublicCustomerFlow = isCustomerFlowPath(pathname);
+        const disableHaptics = isPublicCustomerFlow || isLikelyInAppBrowser(userAgent) || isIosSafariLike(userAgent);
+        if (disableHaptics) {
             return;
         }
 

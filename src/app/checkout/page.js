@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, Suspense, useRef, useCallback } fr
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight, Car, X } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ import { useUser } from '@/firebase';
 import AddressSelectionList from '@/components/AddressSelectionList';
 import InfoDialog from '@/components/InfoDialog';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
-import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
+import { calculateClientDeliveryValidation } from '@/lib/delivery/clientValidation';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
@@ -36,6 +36,7 @@ import {
     removeCustomerAddressSnapshot,
     writeCustomerAddressesSnapshot,
 } from '@/lib/client/runtimeFetchers';
+import { useCustomerFlowSafeMode } from '@/lib/browser/customerFlowSafeMode';
 
 const SplitBillInterface = dynamic(() => import('@/components/SplitBillInterface'), { ssr: false });
 const CustomizationDrawer = dynamic(() => import('@/components/CustomizationDrawer'), { ssr: false });
@@ -186,6 +187,7 @@ const CheckoutPageInternal = () => {
     const { toast } = useToast();
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser();
+    const customerFlowSafeMode = useCustomerFlowSafeMode();
     const restaurantId = searchParams.get('restaurantId');
     const phoneFromUrl = searchParams.get('phone');
     const token = searchParams.get('token');
@@ -333,7 +335,7 @@ const CheckoutPageInternal = () => {
         }
     }, [selectedAddress]);
 
-    const buildDeliveryValidationPayload = (addr, subtotalAmount) => {
+    const buildDeliveryValidationPayload = useCallback((addr, subtotalAmount) => {
         if (!addr || !restaurantId) return null;
         const addressLat = Number(addr.lat ?? addr.latitude);
         const addressLng = Number(addr.lng ?? addr.longitude);
@@ -345,7 +347,7 @@ const CheckoutPageInternal = () => {
             addressLng,
             subtotal: Number(subtotalAmount) || 0,
         };
-    };
+    }, [restaurantId]);
 
     const buildDeliveryValidationKey = (payload) => (
         payload
@@ -370,7 +372,7 @@ const CheckoutPageInternal = () => {
         };
     };
 
-    const applyDeliveryValidationResult = (result, addr) => {
+    const applyDeliveryValidationResult = useCallback((result, addr) => {
         setDeliveryValidation(result);
         const lat = Number(addr?.lat ?? addr?.latitude);
         const lng = Number(addr?.lng ?? addr?.longitude);
@@ -391,9 +393,9 @@ const CheckoutPageInternal = () => {
         } else {
             outOfRangeNoticeKeyRef.current = null;
         }
-    };
+    }, []);
 
-    const validateDelivery = async (addr, currentSubtotal) => {
+    const validateDelivery = useCallback(async (addr, currentSubtotal) => {
         if (!addr) {
             console.log('[Checkout] No address provided for validation');
             return;
@@ -415,23 +417,20 @@ const CheckoutPageInternal = () => {
         const requestSeq = ++validationRequestSeqRef.current;
         setIsValidatingDelivery(true);
         try {
-            const response = await fetch('/api/delivery/calculate-charge', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+            const result = calculateClientDeliveryValidation({
+                businessData: cartData,
+                address: addr,
+                subtotal: currentSubtotal,
             });
-
-            if (response.ok) {
-                const result = await response.json();
-                if (requestSeq !== validationRequestSeqRef.current) {
-                    return;
-                }
-                setCachedDeliveryValidation(validationKey, result);
-                applyDeliveryValidationResult(result, addr);
-            } else {
-                const errData = await response.json();
-                console.error('[Checkout] API Error during validation:', errData);
+            if (!result) {
+                console.warn('[Checkout] Skipping local delivery validation because config is incomplete.');
+                return;
             }
+            if (requestSeq !== validationRequestSeqRef.current) {
+                return;
+            }
+            setCachedDeliveryValidation(validationKey, result);
+            applyDeliveryValidationResult(result, addr);
         } catch (error) {
             console.error('[Checkout] Delivery validation failed:', error);
         } finally {
@@ -439,7 +438,7 @@ const CheckoutPageInternal = () => {
                 setIsValidatingDelivery(false);
             }
         }
-    };
+    }, [applyDeliveryValidationResult, buildDeliveryValidationPayload, cartData]);
 
     // Moved useEffect to later in file after deliveryType initialization
 
@@ -1060,46 +1059,19 @@ const CheckoutPageInternal = () => {
         }, 0);
     }, [cart]);
 
-    // Ã°Å¸Å¡â‚¬ INSTANT SHADOW CALCULATION
+    // Instant local delivery calculation so checkout does not wait on server reads.
     const shadowDeliveryResult = useMemo(() => {
-        if (deliveryType !== 'delivery' || !selectedAddress || !cartData?.latitude) return null;
-        if (cartData?.deliveryEngineMode === 'hybrid-zones' || cartData?.deliveryUseZones === true) return null;
-
-        const custLat = selectedAddress.lat ?? selectedAddress.latitude;
-        const custLng = selectedAddress.lng ?? selectedAddress.longitude;
-
-        if (!custLat || !custLng) return null;
-
-        const aerialDist = calculateHaversineDistance(
-            cartData.latitude,
-            cartData.longitude,
-            custLat,
-            custLng
-        );
-
-        const settings = {
-            deliveryRadius: cartData.deliveryRadius || 10,
-            deliveryChargeType: cartData.deliveryFeeType || 'fixed',
-            fixedCharge: cartData.deliveryFixedFee || 30,
-            perKmCharge: cartData.deliveryPerKmFee || 5,
-            baseDistance: cartData.deliveryBaseDistance || cartData.baseDistance || 0,
-            freeDeliveryThreshold: cartData.deliveryFreeThreshold || 0,
-            freeDeliveryRadius: cartData.freeDeliveryRadius || 0,
-            freeDeliveryMinOrder: cartData.freeDeliveryMinOrder || 0,
-            roadDistanceFactor: cartData.roadDistanceFactor || 1.3,
-            deliveryTiers: cartData.deliveryTiers || [],
-            orderSlabRules: cartData.deliveryOrderSlabRules || [],
-            orderSlabAboveFee: cartData.deliveryOrderSlabAboveFee || 0,
-            orderSlabBaseDistance: cartData.deliveryOrderSlabBaseDistance || 1,
-            orderSlabPerKmFee: cartData.deliveryOrderSlabPerKmFee || 15
-        };
-
+        if (deliveryType !== 'delivery' || !selectedAddress) return null;
         try {
-            const result = calculateDeliveryCharge(aerialDist, currentSubtotal, settings);
-            console.log('[Checkout Debug] Ã¢Å¡Â¡ Shadow Calculation result:', result);
+            const result = calculateClientDeliveryValidation({
+                businessData: cartData,
+                address: selectedAddress,
+                subtotal: currentSubtotal,
+            });
+            console.log('[Checkout Debug] Local Delivery Calculation:', result);
             return result;
         } catch (e) {
-            console.error('[Checkout Debug] Ã¢ÂÅ’ Shadow Calculation failed:', e);
+            console.error('[Checkout Debug] Local Delivery Calculation failed:', e);
             return null;
         }
     }, [deliveryType, selectedAddress, cartData, currentSubtotal]);
@@ -1131,7 +1103,17 @@ const CheckoutPageInternal = () => {
                 clearTimeout(timer);
             };
         }
-    }, [deliveryType, selectedAddress, currentSubtotal]);
+    }, [
+        buildDeliveryValidationPayload,
+        deliveryType,
+        selectedAddress,
+        currentSubtotal,
+        cartData?.latitude,
+        cartData?.longitude,
+        cartData?.deliveryEngineMode,
+        cartData?.deliveryUseZones,
+        validateDelivery,
+    ]);
 
 
 
@@ -1307,7 +1289,7 @@ const CheckoutPageInternal = () => {
             isEstimated: !!shadowDeliveryResult && !deliveryValidation,
             isDeliveryOutOfRange: isDeliveryOutOfRange
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation, shadowDeliveryResult, isValidatingDelivery]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation, shadowDeliveryResult, isValidatingDelivery, currentSubtotal]);
 
     const maxSavings = useMemo(() => {
         if (!cartData?.availableCoupons?.length) return 0;
@@ -2358,6 +2340,7 @@ const CheckoutPageInternal = () => {
     }
 
     return (
+        <MotionConfig reducedMotion={customerFlowSafeMode ? 'always' : 'never'}>
         <>
             <InfoDialog
                 isOpen={infoDialog.isOpen}
@@ -2388,7 +2371,7 @@ const CheckoutPageInternal = () => {
                     </div>
                 </DialogContent>
             </Dialog>
-            <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
+            <div className="min-h-screen bg-background text-foreground flex flex-col green-theme customer-flow-surface">
                 <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                     <div className="container mx-auto px-4 py-3 flex items-center gap-4">
                         <Button variant="ghost" size="icon" onClick={handleBackToOrder} className="h-10 w-10"><ArrowLeft /></Button>
@@ -3012,7 +2995,7 @@ const CheckoutPageInternal = () => {
                                     </Button>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto p-4 bg-muted/5 overscroll-contain">
+                                <div className="flex-1 overflow-y-auto p-4 bg-muted/5 overscroll-contain customer-flow-sheet">
                                     <div className="max-w-3xl mx-auto pb-safe">
                                         <AddressSelectionList
                                             addresses={userAddresses}
@@ -3059,16 +3042,16 @@ const CheckoutPageInternal = () => {
                                 animate={{ y: 0 }}
                                 exit={{ y: '100%' }}
                                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                                drag="y"
-                                dragConstraints={{ top: 0, bottom: 500 }}
-                                dragElastic={{ top: 0.1, bottom: 0.5 }}
+                                drag={customerFlowSafeMode ? false : 'y'}
+                                dragConstraints={customerFlowSafeMode ? undefined : { top: 0, bottom: 500 }}
+                                dragElastic={customerFlowSafeMode ? false : { top: 0.1, bottom: 0.5 }}
                                 onDragEnd={(e, { offset, velocity }) => {
                                     if (offset.y > 100 || velocity.y > 200) {
                                         setIsCouponDrawerOpen(false);
                                     }
                                 }}
                                 className="fixed bottom-0 left-0 right-0 z-[101] bg-background rounded-t-3xl border-t border-border shadow-xl h-[85vh] flex flex-col w-full md:max-w-3xl lg:max-w-4xl mx-auto"
-                                style={{ touchAction: 'none' }}
+                                style={{ touchAction: customerFlowSafeMode ? 'pan-y' : 'none' }}
                             >
                                 {/* Drag Handle & Close */}
                                 <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30 rounded-t-3xl">
@@ -3194,6 +3177,7 @@ const CheckoutPageInternal = () => {
                 )}
             </div >
         </>
+        </MotionConfig>
     );
 };
 

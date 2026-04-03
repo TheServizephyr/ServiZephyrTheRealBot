@@ -965,7 +965,7 @@ const AddAddressPageInternal = () => {
         : 'md:w-1/2 h-[48dvh] min-h-[340px] md:h-full flex-shrink-0 relative';
 
     return (
-        <div className="h-screen min-h-[100dvh] w-screen flex flex-col bg-background text-foreground">
+        <div className="h-screen min-h-[100dvh] w-screen flex flex-col bg-background text-foreground customer-flow-surface">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '', type: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft /></Button>
@@ -993,7 +993,7 @@ const AddAddressPageInternal = () => {
                     <GoogleMap center={mapCenter} zoom={mapZoom} onIdle={handleMapIdle} />
                 </div>
 
-                <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
+                <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2 customer-flow-sheet">
                     <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading || isPinAddressLoading}>
                         {loading ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>

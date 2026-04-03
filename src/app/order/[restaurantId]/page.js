@@ -14,7 +14,7 @@ const ANALYTICS_TAG_KEYS = new Set([
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car, Crown } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,8 @@ import {
     removeCustomerAddressSnapshot,
     writeCustomerAddressesSnapshot,
 } from '@/lib/client/runtimeFetchers';
+import { useCustomerFlowSafeMode } from '@/lib/browser/customerFlowSafeMode';
+import { calculateClientDeliveryValidation } from '@/lib/delivery/clientValidation';
 
 const isFullPortionLabel = (value) => String(value || '').trim().toLowerCase() === 'full';
 const normalizeBusinessType = (value) => {
@@ -1458,6 +1460,7 @@ const OrderPageInternal = () => {
     const params = useParams();
     const searchParams = useSearchParams();
     const { restaurantId } = params;
+    const customerFlowSafeMode = useCustomerFlowSafeMode();
 
 
     const [isTokenValid, setIsTokenValid] = useState(false);
@@ -1659,63 +1662,6 @@ const OrderPageInternal = () => {
             setAddressLoading(false);
         }
     };
-
-    // ✅ NEW: Reusable validation function (separated from UI logic)
-    const validateDelivery = async (addr, currentSubtotal) => {
-        const toFiniteNumber = (value) => {
-            const n = Number(value);
-            return Number.isFinite(n) ? n : null;
-        };
-
-        // ✅ FIXED: Support both latitude/longitude AND lat/lng
-        const customerLat = toFiniteNumber(addr.latitude ?? addr.lat);
-        const customerLng = toFiniteNumber(addr.longitude ?? addr.lng);
-
-        // ✅ FIXED: Restaurant coordinates - check all possible field structures
-        const restaurantLat = toFiniteNumber(
-            restaurantData?.coordinates?.lat ??
-            restaurantData?.address?.latitude ??
-            restaurantData?.businessAddress?.latitude
-        );
-        const restaurantLng = toFiniteNumber(
-            restaurantData?.coordinates?.lng ??
-            restaurantData?.address?.longitude ??
-            restaurantData?.businessAddress?.longitude
-        );
-
-        if (customerLat !== null && customerLng !== null && restaurantLat !== null && restaurantLng !== null) {
-            setIsValidatingDelivery(true);
-            try {
-                const payload = {
-                    restaurantId,
-                    addressLat: customerLat,
-                    addressLng: customerLng,
-                    subtotal: currentSubtotal // Use passed subtotal which might be newer than state
-                };
-
-                const response = await fetch('/api/delivery/calculate-charge', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    setDeliveryValidation(result);
-
-                    if (result.allowed && result.charge !== undefined) {
-                        console.log(`[Delivery Validation] 💵 Charge updated: ₹${result.charge} (Subtotal: ₹${currentSubtotal})`);
-                    }
-                }
-            } catch (error) {
-                console.error('[Delivery Validation] ❌ Failed:', error);
-            } finally {
-                setIsValidatingDelivery(false);
-            }
-        }
-    };
-
-    // Moved useEffect to later in file after cart initialization
 
     const handleSelectNewAddress = async (addr) => {
         console.log('[handleSelectNewAddress] 📍 Address selected:', addr);
@@ -2050,6 +1996,33 @@ const OrderPageInternal = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // ✅ NEW: Reusable validation function (separated from UI logic)
+    const validateDelivery = useCallback(async (addr, currentSubtotal) => {
+        setIsValidatingDelivery(true);
+        try {
+            const result = calculateClientDeliveryValidation({
+                businessData: restaurantData,
+                address: addr,
+                subtotal: currentSubtotal,
+            });
+
+            if (result) {
+                setDeliveryValidation(result);
+
+                if (result.allowed && result.charge !== undefined) {
+                    console.log(`[Delivery Validation] 💵 Charge updated locally: ₹${result.charge} (Subtotal: ₹${currentSubtotal})`);
+                }
+                return;
+            }
+
+            console.warn('[Delivery Validation] Skipped local validation because coordinates/config are incomplete.');
+        } catch (error) {
+            console.error('[Delivery Validation] ❌ Failed:', error);
+        } finally {
+            setIsValidatingDelivery(false);
+        }
+    }, [restaurantData]);
+
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState("");
     const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
@@ -2222,7 +2195,15 @@ const OrderPageInternal = () => {
             }, 500); // Debounce
             return () => clearTimeout(timer);
         }
-    }, [cart, deliveryType, customerLocation?.id]); // Re-run if cart, delivery mode, or address changes
+    }, [
+        cart,
+        deliveryType,
+        customerLocation,
+        restaurantData?.latitude,
+        restaurantData?.longitude,
+        restaurantData?.deliveryEngineMode,
+        validateDelivery,
+    ]); // Re-run when cart, address, or delivery config changes
 
     useEffect(() => {
         const verifySession = async () => {
@@ -2528,7 +2509,31 @@ const OrderPageInternal = () => {
                     name: menuData.restaurantName, status: menuData.approvalStatus,
                     logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
                     deliveryCharge: menuData.deliveryCharge || 0,
+                    deliveryFeeType: menuData.deliveryFeeType || 'fixed',
+                    deliveryFixedFee: menuData.deliveryFixedFee || 0,
+                    deliveryBaseDistance: menuData.deliveryBaseDistance || 0,
+                    deliveryPerKmFee: menuData.deliveryPerKmFee || 0,
+                    deliveryRadius: menuData.deliveryRadius || 0,
                     deliveryFreeThreshold: menuData.deliveryFreeThreshold,
+                    freeDeliveryRadius: menuData.freeDeliveryRadius || 0,
+                    freeDeliveryMinOrder: menuData.freeDeliveryMinOrder || 0,
+                    deliveryTiers: menuData.deliveryTiers || [],
+                    deliveryOrderSlabRules: menuData.deliveryOrderSlabRules || [],
+                    deliveryOrderSlabAboveFee: menuData.deliveryOrderSlabAboveFee || 0,
+                    deliveryOrderSlabBaseDistance: menuData.deliveryOrderSlabBaseDistance || 1,
+                    deliveryOrderSlabPerKmFee: menuData.deliveryOrderSlabPerKmFee || 15,
+                    deliveryEngineMode: menuData.deliveryEngineMode || 'legacy',
+                    deliveryUseZones: menuData.deliveryUseZones === true,
+                    zoneFallbackToLegacy: menuData.zoneFallbackToLegacy !== false,
+                    deliveryZones: menuData.deliveryZones || [],
+                    latitude: menuData.latitude ?? null,
+                    longitude: menuData.longitude ?? null,
+                    coordinates: {
+                        lat: menuData.latitude ?? null,
+                        lng: menuData.longitude ?? null,
+                    },
+                    address: menuData.businessAddress || null,
+                    roadDistanceFactor: menuData.roadDistanceFactor || 1.0,
                     menu: menuData.menu || {}, coupons: menuData.coupons || [],
 
                     // FIXED: Use fresh settingsData for Order Types (overriding cached menuData)
@@ -3799,7 +3804,7 @@ const OrderPageInternal = () => {
         if (section) {
             const yOffset = -120;
             const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
-            window.scrollTo({ top: y, behavior: 'smooth' });
+            window.scrollTo({ top: y, behavior: interactionScrollBehavior });
         }
     };
 
@@ -4109,8 +4114,10 @@ const OrderPageInternal = () => {
         !isCarSessionFromUrl;
     const floatingTrackOffset = (totalCartItems > 0 ? -80 : 0) + (isStoreBusiness ? -72 : 0);
     const menuFabOffset = (totalCartItems > 0 ? -80 : 0) + (shouldShowFloatingTrackToast ? -76 : 0);
+    const interactionScrollBehavior = customerFlowSafeMode ? 'auto' : 'smooth';
 
     return (
+        <MotionConfig reducedMotion={customerFlowSafeMode ? 'always' : 'never'}>
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
             <AnimatePresence>
@@ -4151,7 +4158,7 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            <div className="min-h-screen min-h-[100dvh] bg-background text-foreground green-theme overflow-x-hidden max-w-full">
+            <div className="min-h-screen min-h-[100dvh] bg-background text-foreground green-theme overflow-x-hidden max-w-full customer-flow-surface">
                 <DineInModal
                     isOpen={isDineInModalOpen}
                     onClose={handleCloseDineInModal}
@@ -4217,7 +4224,7 @@ const OrderPageInternal = () => {
                                         <X />
                                     </Button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-4 overscroll-contain">
+                                <div className="flex-1 overflow-y-auto p-4 overscroll-contain customer-flow-sheet">
                                     <AddressSelectionList
                                         addresses={userAddresses}
                                         selectedAddressId={customerLocation?.id}
@@ -4283,7 +4290,19 @@ const OrderPageInternal = () => {
                                         )}
                                     </div>
 
-                                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
+                                    <div
+                                        className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3 cursor-pointer"
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={deliveryType === 'delivery' ? handleOpenAddressDrawer : undefined}
+                                        onKeyDown={(event) => {
+                                            if (deliveryType !== 'delivery') return;
+                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                event.preventDefault();
+                                                handleOpenAddressDrawer();
+                                            }
+                                        }}
+                                    >
                                         {deliveryType === 'delivery' ? (
                                             <>
                                                 <div className="min-w-0 flex items-center gap-2">
@@ -4292,7 +4311,14 @@ const OrderPageInternal = () => {
                                                         {customerLocation?.full || 'No address selected'}
                                                     </p>
                                                 </div>
-                                                <Button variant="link" className="h-auto p-0 text-primary" onClick={handleOpenAddressDrawer}>
+                                                <Button
+                                                    variant="link"
+                                                    className="h-auto p-0 text-primary"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleOpenAddressDrawer();
+                                                    }}
+                                                >
                                                     Change
                                                 </Button>
                                             </>
@@ -4674,7 +4700,7 @@ const OrderPageInternal = () => {
                                 <button
                                     type="button"
                                     className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-foreground"
-                                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                                    onClick={() => window.scrollTo({ top: 0, behavior: interactionScrollBehavior })}
                                 >
                                     <Home size={18} />
                                     Home
@@ -4787,7 +4813,19 @@ const OrderPageInternal = () => {
                                                 </button>
                                             )}
                                         </div>
-                                        <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
+                                        <div
+                                            className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full cursor-pointer"
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={deliveryType === 'delivery' ? handleOpenAddressDrawer : undefined}
+                                            onKeyDown={(event) => {
+                                                if (deliveryType !== 'delivery') return;
+                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
+                                                    handleOpenAddressDrawer();
+                                                }
+                                            }}
+                                        >
                                             {deliveryType === 'delivery' ? (
                                                 <>
                                                     <div className="flex items-center gap-3 overflow-hidden">
@@ -4797,7 +4835,10 @@ const OrderPageInternal = () => {
                                                     <Button
                                                         variant="link"
                                                         className="text-primary p-0 h-auto font-semibold flex-shrink-0"
-                                                        onClick={handleOpenAddressDrawer}
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleOpenAddressDrawer();
+                                                        }}
                                                     >
                                                         Change
                                                     </Button>
@@ -5152,6 +5193,7 @@ const OrderPageInternal = () => {
                 />
             </div >
         </>
+        </MotionConfig>
     );
 };
 
