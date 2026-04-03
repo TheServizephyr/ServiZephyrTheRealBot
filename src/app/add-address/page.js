@@ -525,6 +525,16 @@ const AddAddressPageInternal = () => {
     }, []);
 
     useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+
+        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
+        document.body.style.overscrollBehavior = '';
+
+        return undefined;
+    }, []);
+
+    useEffect(() => {
         if (!isMapExpanded) return undefined;
 
         const previousBodyOverflow = document.body.style.overflow;
@@ -978,7 +988,7 @@ const AddAddressPageInternal = () => {
     const showBlockingMapOverlay = loading && !addressDetails;
     const mapShellClassName = isMapExpanded
         ? 'fixed inset-0 z-[80] h-[100dvh] w-screen bg-background'
-        : 'md:w-1/2 h-[42dvh] min-h-[300px] md:h-full flex-shrink-0 relative';
+        : 'md:w-1/2 h-[48dvh] min-h-[340px] md:h-full flex-shrink-0 relative';
 
     return (
         <div className="min-h-screen min-h-[100dvh] w-screen flex flex-col bg-background text-foreground customer-flow-surface">
@@ -1006,10 +1016,15 @@ const AddAddressPageInternal = () => {
                     >
                         {isMapExpanded ? <X /> : <Maximize2 />}
                     </Button>
-                    <GoogleMap center={mapCenter} zoom={mapZoom} onIdle={handleMapIdle} />
+                    <GoogleMap
+                        center={mapCenter}
+                        zoom={mapZoom}
+                        onIdle={handleMapIdle}
+                        gestureHandling="greedy"
+                    />
                 </div>
 
-                <div className="min-h-0 p-4 pb-32 flex-1 overflow-y-auto space-y-4 md:w-1/2 customer-flow-sheet">
+                <div className="p-4 space-y-4 md:min-h-0 md:flex-1 md:overflow-y-auto md:w-1/2 customer-flow-sheet">
                     <Button variant="secondary" className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-black hover:bg-gray-200 dark:bg-stone-800 dark:text-white dark:hover:bg-stone-700" onClick={getCurrentGeolocation} disabled={loading || isPinAddressLoading}>
                         {loading ? <Loader2 className="animate-spin" /> : <LocateFixed />} Use My Current Location
                     </Button>
@@ -1078,20 +1093,14 @@ const AddAddressPageInternal = () => {
                                     </AnimatePresence>
                                 </div>
                             </div>
+                            <div className="p-4 border-t border-border mt-4">
+                                <Button onClick={handleConfirmLocation} disabled={!canSaveAddress} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                    {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
+                                </Button>
+                            </div>
                         </motion.div>
                     ) : null}
                 </div>
-            </div>
-
-            {/* Sticky Footer */}
-            <div className="p-4 border-t border-border bg-background/95 backdrop-blur-sm sticky bottom-0 left-0 right-0 z-[60]">
-                <Button 
-                    onClick={handleConfirmLocation} 
-                    disabled={!canSaveAddress} 
-                    className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg"
-                >
-                    {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />} {isSaving ? 'Saving...' : 'Save Address & Continue'}
-                </Button>
             </div>
         </div>
     );

@@ -4285,14 +4285,17 @@ const OrderPageInternal = () => {
                                         }}
                                         loading={addressLoading}
                                         onUseCurrentLocation={() => {
+                                            setIsAddressSelectorOpen(false);
                                             // Pass useCurrent=true to trigger auto-fetch
                                             router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                         onAddNewAddress={() => {
+                                            setIsAddressSelectorOpen(false);
                                             router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}
                                         onDelete={(addr) => setAddressPendingDelete(addr)}
                                         onEdit={(addr) => {
+                                            setIsAddressSelectorOpen(false);
                                             const editData = encodeURIComponent(JSON.stringify(addr));
                                             router.push(`/add-address?editId=${addr.id}&editData=${editData}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         }}

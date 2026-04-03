@@ -52,7 +52,7 @@ const MapControls = () => {
 
 
 // Main GoogleMap Component (This is where the fix is)
-const GoogleMap = ({ center, onIdle, zoom = 15 }) => {
+const GoogleMap = ({ center, onIdle, zoom = 15, gestureHandling = 'greedy' }) => {
     const mapRef = useRef(null);
 
     // This handler will be called *after* the drag (pan) or zoom finishes
@@ -99,7 +99,7 @@ const GoogleMap = ({ center, onIdle, zoom = 15 }) => {
                     defaultCenter={center} 
 
                     defaultZoom={zoom}
-                    gestureHandling={'cooperative'}
+                    gestureHandling={gestureHandling}
                     disableDefaultUI={true}
                     tilt={0}
                     
