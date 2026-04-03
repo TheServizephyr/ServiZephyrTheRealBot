@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, verifyAndGetUid, getDatabase } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 import { kv, isKvConfigured } from '@/lib/kv';
 
@@ -54,6 +55,8 @@ async function verifyUserAndGetData(req) {
     const adminUserData = adminUserDoc.data();
 
     let finalUserId = uid;
+    let resolvedUserDoc = adminUserDoc;
+    let resolvedUserData = adminUserData;
 
     if (adminUserData.role === 'admin' && impersonatedOwnerId) {
         finalUserId = impersonatedOwnerId;
@@ -63,17 +66,18 @@ async function verifyUserAndGetData(req) {
         finalUserId = employeeOfOwnerId;
     }
 
-    const userRef = firestore.collection('users').doc(finalUserId);
-    const userDoc = await userRef.get();
-    if (!userDoc.exists) throw { message: "User profile not found.", status: 404 };
+    if (finalUserId !== uid) {
+        resolvedUserDoc = await firestore.collection('users').doc(finalUserId).get();
+        if (!resolvedUserDoc.exists) throw { message: "User profile not found.", status: 404 };
+        resolvedUserData = resolvedUserDoc.data();
+    }
 
-    const userData = userDoc.data();
     let businessRef = null;
     let businessId = null;
 
     // Resolve Business
     let collectionsToTry = [];
-    const userBusinessType = userData.businessType;
+    const userBusinessType = resolvedUserData.businessType;
     if (userBusinessType === 'restaurant') collectionsToTry = ['restaurants'];
     else if (userBusinessType === 'shop' || userBusinessType === 'store') collectionsToTry = ['shops'];
     else if (userBusinessType === 'street-vendor') collectionsToTry = ['street_vendors'];
@@ -99,8 +103,10 @@ export async function GET(req) {
         const { businessRef } = await verifyUserAndGetData(req);
 
         // Fetch from sub-collection
-        const configDoc = await businessRef.collection('delivery_settings').doc('config').get();
-        const parentDoc = await businessRef.get();
+        const [configDoc, parentDoc] = await Promise.all([
+            businessRef.collection('delivery_settings').doc('config').get(),
+            businessRef.get(),
+        ]);
         const parentData = parentDoc.data() || {};
 
         const defaults = {
@@ -243,13 +249,8 @@ export async function PATCH(req) {
 
         await businessRef.collection('delivery_settings').doc('config').set(cleanUpdates, { merge: true });
 
-        // âœ… CRITICAL: Increment menuVersion to invalidate public menu cache
-        // We fetch the current business doc to get the current version
-        const businessSnap = await businessRef.get();
-        const businessData = businessSnap.data() || {};
-
         await businessRef.update({
-            menuVersion: (businessData.menuVersion || 0) + 1,
+            menuVersion: FieldValue.increment(1),
             updatedAt: new Date()
         });
 

@@ -1126,14 +1126,29 @@ export async function PATCH(req) {
 
         await batch.commit();
 
-        // CRITICAL: Await side effects to prevent Vercel execution freeze
-        // "Fire-and-forget" is unsafe for refunds/notifications in serverless environment
-        const results = await Promise.allSettled(sideEffects);
+        const shouldAwaitSideEffects =
+            action === 'send_payment_request' ||
+            action === 'mark_manual_paid' ||
+            action === 'settle' ||
+            action === 'unsettle' ||
+            Boolean(paymentStatus) ||
+            Boolean(effectiveIsCashRefund) ||
+            newStatus === 'rejected' ||
+            newStatus === 'cancelled';
 
-        const failed = results.filter(r => r.status === 'rejected');
-        if (failed.length > 0) {
-            console.error(`[API][PATCH /orders] ${failed.length} side effect chains had errors.`);
-            failed.forEach((f, idx) => console.error(`   Effect ${idx} error:`, f.reason));
+        const runSideEffects = async () => {
+            const results = await Promise.allSettled(sideEffects);
+            const failed = results.filter(r => r.status === 'rejected');
+            if (failed.length > 0) {
+                console.error(`[API][PATCH /orders] ${failed.length} side effect chains had errors.`);
+                failed.forEach((f, idx) => console.error(`   Effect ${idx} error:`, f.reason));
+            }
+        };
+
+        if (shouldAwaitSideEffects) {
+            await runSideEffects();
+        } else if (sideEffects.length > 0) {
+            void runSideEffects();
         }
 
         return NextResponse.json({

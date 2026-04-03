@@ -2169,8 +2169,8 @@ const CheckoutPageInternal = () => {
                 {isOnlinePaymentFlow && <Button onClick={() => setIsOnlinePaymentFlow(false)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>}
 
                 <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={customerFlowSafeMode ? undefined : { scale: 1.02 }}
+                    whileTap={customerFlowSafeMode ? undefined : { scale: 0.98 }}
                     onClick={() => placeOrder('online')}
                     disabled={
                         orderState === ORDER_STATE.CREATING_ORDER ||
@@ -2201,7 +2201,7 @@ const CheckoutPageInternal = () => {
                         </p>
                     </div>
                 </motion.button>
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                <motion.button whileHover={customerFlowSafeMode ? undefined : { scale: 1.02 }} whileTap={customerFlowSafeMode ? undefined : { scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
                     <Split size={40} className="text-primary flex-shrink-0" />
                     <div>
                         <h3 className="text-xl font-bold">Split The Bill</h3>
@@ -2220,8 +2220,8 @@ const CheckoutPageInternal = () => {
                             </div>
                         </div>
                         <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                            whileHover={customerFlowSafeMode ? undefined : { scale: 1.02 }}
+                            whileTap={customerFlowSafeMode ? undefined : { scale: 0.98 }}
                             onClick={() => {
                                 setOrderState(ORDER_STATE.IDLE);
                                 setOrderError('');

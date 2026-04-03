@@ -122,12 +122,22 @@
 
   .customer-flow-surface {
     -webkit-overflow-scrolling: touch;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .customer-flow-surface button,
   .customer-flow-surface a,
   .customer-flow-surface [role="button"] {
     touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    transform: translateZ(0);
+  }
+
+  .customer-flow-surface button:active,
+  .customer-flow-surface a:active,
+  .customer-flow-surface [role="button"]:active {
+    transform: none !important;
   }
 
   .customer-flow-sheet {

@@ -491,7 +491,7 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
                         <Button
                             onClick={() => onAdd(item)}
                             variant="outline"
-                            className="w-full bg-background/80 backdrop-blur-sm text-primary font-bold border-2 border-primary hover:bg-primary/10 shadow-lg active:translate-y-px h-10"
+                            className="w-full bg-background/80 backdrop-blur-sm text-primary font-bold border-2 border-primary hover:bg-primary/10 shadow-lg h-10"
                         >
                             ADD
                         </Button>
@@ -1503,6 +1503,7 @@ const OrderPageInternal = () => {
     const [userAddresses, setUserAddresses] = useState([]);
     const [addressLoading, setAddressLoading] = useState(false);
     const [addressPendingDelete, setAddressPendingDelete] = useState(null);
+    const [isCheckoutLaunching, setIsCheckoutLaunching] = useState(false);
 
     // NEW: Delivery Distance Validation
     const [deliveryValidation, setDeliveryValidation] = useState(null);
@@ -1510,6 +1511,7 @@ const OrderPageInternal = () => {
 
     // NEW: Ref to track if we've attempted auto-open (prevents multiple triggers)
     const hasAttemptedAutoOpen = useRef(false);
+    const hasPrefetchedAddressBook = useRef(false);
     const isAddressSelectionInProgress = useRef(false);
     const hasTrackedOrderPageOpen = useRef(false);
     const [deliveryType, setDeliveryType] = useState(() => (tableIdFromUrl ? 'dine-in' : 'delivery'));
@@ -1539,7 +1541,6 @@ const OrderPageInternal = () => {
         const isFirstTimeDelivery = isFromWhatsApp && deliveryType === 'delivery' && !hasAnyAddress;
 
         if (isFirstTimeDelivery) {
-            console.log('[Address Selector] ⚠️ First-time user must select address');
             setInfoDialog({
                 isOpen: true,
                 title: 'Warning: Address Required', // InfoDialog detects "warning" in title!
@@ -1548,17 +1549,13 @@ const OrderPageInternal = () => {
             return;
         }
 
-        // Otherwise allow close
-        console.log('[Address Selector] ✅ Closing (address exists or not required)');
         setIsAddressSelectorOpen(false);
     };
 
-    const handleOpenAddressDrawer = useCallback(async () => {
+    const handleOpenAddressDrawer = useCallback(() => {
         if (tableIdFromUrl || deliveryType !== 'delivery') {
-            console.log('[handleOpenAddressDrawer] Skipped: address drawer is only allowed for delivery orders without table context.');
             return;
         }
-        console.log('[handleOpenAddressDrawer] 🚀 CALLED');
         setIsAddressSelectorOpen(true);
         const snapshotAddresses = readCustomerAddressesSnapshot();
         const hasSnapshotAddresses = snapshotAddresses.length > 0;
@@ -1569,35 +1566,64 @@ const OrderPageInternal = () => {
             setAddressLoading(true);
         }
 
-        try {
-            // Re-use logic to resolve user/guest
-            const savedPhone = localStorage.getItem('customerPhone') || '';
-            const lookupPayload = {};
-            const fallbackPhone = phone || savedPhone;
-            if (fallbackPhone) lookupPayload.phone = fallbackPhone;
-            if (ref) lookupPayload.ref = ref;
+        window.setTimeout(() => {
+            void (async () => {
+                try {
+                    const savedPhone = localStorage.getItem('customerPhone') || '';
+                    const lookupPayload = {};
+                    const fallbackPhone = phone || savedPhone;
+                    if (fallbackPhone) lookupPayload.phone = fallbackPhone;
+                    if (ref) lookupPayload.ref = ref;
 
-            console.log('[handleOpenAddressDrawer] 📋 Payload:', lookupPayload, 'auth.currentUser:', auth.currentUser ? 'YES' : 'NO');
+                    if (Object.keys(lookupPayload).length > 0 || auth.currentUser) {
+                        const data = await fetchCachedCustomerLookup({
+                            phone: fallbackPhone,
+                            ref,
+                            user: auth.currentUser,
+                            ttlMs: 60000,
+                        });
+                        writeCustomerAddressesSnapshot(data?.addresses || []);
+                        setUserAddresses(data?.addresses || []);
+                    }
+                } catch (e) {
+                    console.error("[handleOpenAddressDrawer] Failed to load addresses", e);
+                } finally {
+                    setAddressLoading(false);
+                }
+            })();
+        }, 0);
+    }, [tableIdFromUrl, deliveryType, phone, ref]);
 
-            if (Object.keys(lookupPayload).length > 0 || auth.currentUser) {
-                console.log('[handleOpenAddressDrawer] ✅ Calling /api/customer/lookup...');
-                const data = await fetchCachedCustomerLookup({
-                    phone: fallbackPhone,
-                    ref,
-                    user: auth.currentUser,
-                    ttlMs: 60000,
-                });
-                console.log('[handleOpenAddressDrawer] ✅ Addresses received:', data?.addresses?.length || 0);
-                writeCustomerAddressesSnapshot(data?.addresses || []);
-                setUserAddresses(data?.addresses || []);
-            } else {
-                console.warn('[handleOpenAddressDrawer] ⚠️ NO lookup - no payload & no auth');
-            }
-        } catch (e) {
-            console.error("[handleOpenAddressDrawer] Failed to load addresses", e);
-        } finally {
-            setAddressLoading(false);
+    useEffect(() => {
+        if (tableIdFromUrl || deliveryType !== 'delivery' || hasPrefetchedAddressBook.current) return;
+
+        const snapshotAddresses = readCustomerAddressesSnapshot();
+        if (snapshotAddresses.length > 0) {
+            setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
         }
+
+        const savedPhone = typeof window !== 'undefined' ? (localStorage.getItem('customerPhone') || '') : '';
+        const fallbackPhone = phone || savedPhone;
+        if (!fallbackPhone && !ref && !auth.currentUser) return;
+
+        hasPrefetchedAddressBook.current = true;
+
+        void fetchCachedCustomerLookup({
+            phone: fallbackPhone,
+            ref,
+            user: auth.currentUser,
+            ttlMs: 60000,
+        })
+            .then((data) => {
+                const nextAddresses = data?.addresses || [];
+                if (nextAddresses.length > 0) {
+                    writeCustomerAddressesSnapshot(nextAddresses);
+                    setUserAddresses((prev) => (prev.length > 0 ? prev : nextAddresses));
+                }
+            })
+            .catch((error) => {
+                console.warn('[Order Page] Failed to prewarm address book:', error?.message || error);
+            });
     }, [tableIdFromUrl, deliveryType, phone, ref]);
 
     useEffect(() => {
@@ -3688,6 +3714,12 @@ const OrderPageInternal = () => {
         router.prefetch(nextRoute);
     }, [router, restaurantId, totalCartItems, tableIdFromUrl, deliveryType]);
 
+    useEffect(() => {
+        if (!restaurantId) return;
+        router.prefetch('/cart');
+        router.prefetch('/checkout');
+    }, [router, restaurantId]);
+
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
         cart.forEach(item => {
@@ -3924,7 +3956,13 @@ const OrderPageInternal = () => {
         // Route to appropriate page based on delivery type
         const targetPage = effectiveDeliveryType === 'dine-in' ? '/cart' : '/checkout';
         const url = `${targetPage}?${params.toString()}`;
-        router.push(url);
+        setIsCheckoutLaunching(true);
+        window.setTimeout(() => {
+            setIsCheckoutLaunching(false);
+        }, 4000);
+        window.requestAnimationFrame(() => {
+            router.push(url);
+        });
     };
 
     const handleCloseDineInModal = () => {
@@ -4212,7 +4250,10 @@ const OrderPageInternal = () => {
                     {isAddressSelectorOpen && (
                         <>
                             <motion.div
-                                className="fixed inset-0 bg-black/50 z-[60]"
+                                className={cn(
+                                    "fixed inset-0 z-[60]",
+                                    customerFlowSafeMode ? "bg-black/45" : "bg-black/50"
+                                )}
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -4220,10 +4261,12 @@ const OrderPageInternal = () => {
                             />
                             <motion.div
                                 className="fixed inset-x-0 bottom-0 h-[92dvh] max-h-[92dvh] md:h-screen md:max-h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden rounded-t-[28px] md:rounded-none"
-                                initial={{ y: '100%' }}
+                                initial={{ y: customerFlowSafeMode ? 32 : '100%' }}
                                 animate={{ y: 0 }}
-                                exit={{ y: '100%' }}
-                                transition={{ type: 'spring', damping: 30, stiffness: 260, mass: 0.9 }}
+                                exit={{ y: customerFlowSafeMode ? 32 : '100%' }}
+                                transition={customerFlowSafeMode
+                                    ? { duration: 0.16, ease: 'easeOut' }
+                                    : { type: 'spring', damping: 30, stiffness: 260, mass: 0.9 }}
                             >
                                 <div className="p-4 border-b flex items-center justify-between shrink-0 bg-background z-10">
                                     <div className="absolute left-1/2 top-2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-muted-foreground/25" />
@@ -5115,7 +5158,7 @@ const OrderPageInternal = () => {
                         >
                             <Link href={trackingUrl} className="pointer-events-auto block">
                                 <motion.div
-                                    whileTap={{ scale: 0.98 }}
+                                    whileTap={customerFlowSafeMode ? undefined : { scale: 0.98 }}
                                     className={cn(
                                         "rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md",
                                         "flex items-center justify-between gap-3",
@@ -5149,10 +5192,10 @@ const OrderPageInternal = () => {
                             exit={{ y: 100, opacity: 0 }}
                         >
                             <div className="bg-background/80 backdrop-blur-sm border-t border-border">
-                                <Button onClick={handleCheckout} disabled={isBusinessClosed} className="h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+                                <Button onClick={handleCheckout} disabled={isBusinessClosed} className={cn("h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60", isCheckoutLaunching && "opacity-90")}>
                                     <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
                                     <span className="flex items-center">
-                                        {isBusinessClosed ? 'Currently Closed' : ((liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart')} <ArrowRight className="ml-2 h-5 w-5" />
+                                        {isBusinessClosed ? 'Currently Closed' : (isCheckoutLaunching ? 'Opening...' : ((liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'))} <ArrowRight className="ml-2 h-5 w-5" />
                                     </span>
                                 </Button>
                             </div>

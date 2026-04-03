@@ -36,11 +36,8 @@ const buttonVariants = cva(
   }
 )
 
-// Subtle haptic feedback for button clicks (5ms - very subtle)
 const triggerHaptic = () => {
-  if (typeof navigator !== 'undefined' && navigator.vibrate) {
-    navigator.vibrate(5);
-  }
+  return;
 };
 
 const Button = React.forwardRef(({ className, variant, size, asChild = false, onClick, ...props }, ref) => {

@@ -1980,8 +1980,6 @@ export default function LiveOrdersPage() {
     };
 
     const handleUpdateStatus = async (orderId, newStatus) => {
-        setUpdatingOrderId(orderId);
-
         // OPTIMISTIC UPDATE - Update UI instantly for better UX!
         const previousOrders = orders;
         const previousStatus = previousOrders.find(order => order.id === orderId)?.status || null;
@@ -2016,8 +2014,6 @@ export default function LiveOrdersPage() {
             // REVERT optimistic update on error
             setOrders(previousOrders);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Error updating status: ${error.message}` });
-        } finally {
-            setUpdatingOrderId(null);
         }
     };
 

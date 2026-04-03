@@ -59,7 +59,23 @@ const getCollectionsForBusinessType = (businessType = 'restaurant') => {
   return [primary, ...['restaurants', 'shops', 'street_vendors'].filter((name) => name !== primary)];
 };
 
+const OWNED_BUSINESS_CACHE_TTL_MS = 5 * 60 * 1000;
+const ownedBusinessCache = new Map();
+
 const resolveOwnedBusiness = async (uid, businessType = 'restaurant') => {
+  const cacheKey = `${uid}:${normalizeBusinessType(businessType) || 'restaurant'}`;
+  const now = Date.now();
+  const cachedEntry = ownedBusinessCache.get(cacheKey);
+
+  if (cachedEntry?.value && (now - cachedEntry.at) < OWNED_BUSINESS_CACHE_TTL_MS) {
+    return cachedEntry.value;
+  }
+
+  if (cachedEntry?.promise) {
+    return cachedEntry.promise;
+  }
+
+  const resolverPromise = (async () => {
   const collectionsToTry = getCollectionsForBusinessType(businessType);
 
   for (const collectionName of collectionsToTry) {
@@ -70,15 +86,30 @@ const resolveOwnedBusiness = async (uid, businessType = 'restaurant') => {
     );
     const businessSnapshot = await getDocs(businessQuery);
     if (!businessSnapshot.empty) {
-      return {
+      const resolvedValue = {
         id: businessSnapshot.docs[0].id,
         collectionName,
         data: businessSnapshot.docs[0].data() || {},
       };
+      ownedBusinessCache.set(cacheKey, { value: resolvedValue, at: Date.now() });
+      return resolvedValue;
     }
   }
 
+  ownedBusinessCache.set(cacheKey, { value: null, at: Date.now() });
   return null;
+  })();
+
+  ownedBusinessCache.set(cacheKey, { promise: resolverPromise, at: now });
+
+  try {
+    return await resolverPromise;
+  } finally {
+    const latestEntry = ownedBusinessCache.get(cacheKey);
+    if (latestEntry?.promise === resolverPromise && !latestEntry?.value) {
+      ownedBusinessCache.delete(cacheKey);
+    }
+  }
 };
 
 const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_owner_id') => {
