@@ -81,75 +81,7 @@ export async function logAuditEvent({
     source = 'api',
     req = null
 }) {
-    try {
-        const firestore = await getFirestore();
-
-        // Validate action (prevent typos)
-        if (!Object.values(AUDIT_ACTIONS).includes(action)) {
-            console.warn('[AUDIT_LOG] Unknown action type:', action);
-            // Continue anyway - log even if action not in enum
-        }
-
-        // Extract IP and User Agent from request
-        const ipAddress = req?.headers?.get('x-forwarded-for') ||
-            req?.headers?.get('x-real-ip') ||
-            'unknown';
-        const userAgent = req?.headers?.get('user-agent') || 'unknown';
-
-        // Safeguard: Truncate metadata if too large
-        let safeMetadata = metadata;
-        const metadataSize = JSON.stringify(metadata).length;
-        if (metadataSize > MAX_METADATA_SIZE) {
-            console.warn('[AUDIT_LOG] Metadata too large, truncating:', {
-                action,
-                originalSize: metadataSize,
-                limit: MAX_METADATA_SIZE
-            });
-            safeMetadata = {
-                truncated: true,
-                originalSize: metadataSize,
-                note: 'Metadata exceeded size limit and was truncated'
-            };
-        }
-
-        // Create audit log entry
-        await firestore.collection('audit_logs').add({
-            actorUid,
-            actorRole,
-            action,
-            targetUid,
-            outletId,
-            metadata: safeMetadata,
-            source,
-            ipAddress,
-            userAgent,
-            createdAt: FieldValue.serverTimestamp()
-        });
-
-        // Structured logging for monitoring
-        console.info('[AUDIT_LOG]', {
-            action,
-            actorUid,
-            targetUid,
-            outletId,
-            source,
-            status: 'logged'
-        });
-
-    } catch (error) {
-        // CRITICAL: Never throw - audit logging must NOT block API operations
-        console.error('[AUDIT_LOG_FAILED]', {
-            action,
-            actorUid,
-            targetUid,
-            outletId,
-            error: error.message,
-            stack: error.stack
-        });
-
-        // Silently fail - main business operation continues
-        // DO NOT re-throw
-    }
+    return;
 }
 
 // ============================================

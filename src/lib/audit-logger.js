@@ -27,30 +27,7 @@ export async function logImpersonation({
     ipAddress = null,
     userAgent = null,
 }) {
-    try {
-        const firestore = await getFirestore();
-
-        const logEntry = {
-            adminId,
-            adminEmail,
-            targetOwnerId,
-            targetOwnerEmail,
-            action,
-            metadata,
-            ipAddress,
-            userAgent,
-            timestamp: new Date(),
-            // Add ISO string for easier querying
-            timestampISO: new Date().toISOString(),
-        };
-
-        await firestore.collection('audit_logs').add(logEntry);
-
-        console.log(`[AUDIT LOG] ${action} by ${adminEmail} for ${targetOwnerId}`);
-    } catch (error) {
-        // Don't throw error - logging failure shouldn't break the app
-        console.error('[AUDIT LOG ERROR]', error);
-    }
+    return;
 }
 
 /**
