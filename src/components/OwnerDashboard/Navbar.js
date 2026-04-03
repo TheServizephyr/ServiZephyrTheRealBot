@@ -32,7 +32,7 @@ import { logoutClientSession } from '@/lib/client-session';
 
 const MotionDiv = motion.div;
 
-export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, restaurantLogo, userRole, impersonatedOwnerId = null, employeeOfOwnerId = null }) {
+export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, restaurantLogo, userRole, initialOwnerSettings = null, impersonatedOwnerId = null, employeeOfOwnerId = null }) {
   const [restaurantStatus, setRestaurantStatus] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [isMobileView, setIsMobileView] = useState(false);
@@ -57,6 +57,15 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
     }
     return url.toString();
   }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+  useEffect(() => {
+    if (!initialOwnerSettings) return;
+    setRestaurantStatus(initialOwnerSettings.isOpen !== false);
+    setAutoScheduleEnabled(initialOwnerSettings.autoScheduleEnabled === true);
+    setOpeningTime(normalizeTime(initialOwnerSettings.openingTime, '09:00'));
+    setClosingTime(normalizeTime(initialOwnerSettings.closingTime, '22:00'));
+    setLoadingStatus(false);
+  }, [initialOwnerSettings]);
 
   const normalizeTime = (value, fallback) => {
     const timeValue = String(value || '').trim();
@@ -97,8 +106,9 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   }, [scopedSettingsUrl]);
 
   useEffect(() => {
+    if (initialOwnerSettings) return;
     fetchOwnerSettings();
-  }, [fetchOwnerSettings]);
+  }, [fetchOwnerSettings, initialOwnerSettings]);
 
   // Real-time UI evaluation for Auto-Schedule (updates toggle without refreshing page)
   useEffect(() => {

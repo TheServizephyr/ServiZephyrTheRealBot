@@ -565,7 +565,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
           };
 
           pollData();
-          pollInterval = setInterval(pollData, 60000); // Poll every 60s
+          pollInterval = setInterval(pollData, 120000); // Poll every 120s
           return;
         }
 
@@ -730,7 +730,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     const startPollingFallback = async () => {
       await fetchServiceRequestCount();
       if (!intervalId) {
-        intervalId = setInterval(fetchServiceRequestCount, desktopRuntime ? 90000 : 60000);
+        intervalId = setInterval(fetchServiceRequestCount, desktopRuntime ? 180000 : 120000);
       }
     };
 

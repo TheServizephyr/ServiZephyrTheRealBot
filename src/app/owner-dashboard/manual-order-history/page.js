@@ -587,7 +587,7 @@ export default function ManualOrderHistoryPage() {
             if (isDesktopOfflineMode(desktopRuntime)) return;
             pollingIntervalRef.current = setInterval(() => {
                 fetchHistory({ silent: true }).catch(() => {});
-            }, 60000);
+            }, 180000);
         };
 
         const unsubscribe = auth.onAuthStateChanged((user) => {

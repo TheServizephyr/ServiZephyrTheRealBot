@@ -136,6 +136,7 @@ function OwnerDashboardContent({ children }) {
   });
   const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const [restaurantLogo, setRestaurantLogo] = useState(null);
+  const [navbarOwnerSettings, setNavbarOwnerSettings] = useState(null);
   const [userRole, setUserRole] = useState(null); // For employee role-based access
   const [callSyncTarget, setCallSyncTarget] = useState({ businessId: '', collectionName: '' });
   const [incomingCallBanner, setIncomingCallBanner] = useState(null);
@@ -198,6 +199,7 @@ function OwnerDashboardContent({ children }) {
 
     if (cached.restaurantName) setRestaurantName(cached.restaurantName);
     if (cached.restaurantLogo) setRestaurantLogo(cached.restaurantLogo);
+    if (cached.navbarOwnerSettings) setNavbarOwnerSettings(cached.navbarOwnerSettings);
     if (cached.businessType) {
       const normalizedBusinessType = normalizeBusinessType(cached.businessType);
       localStorage.setItem('businessType', normalizedBusinessType);
@@ -703,6 +705,12 @@ function OwnerDashboardContent({ children }) {
           }
           setRestaurantName(settingsData.restaurantName || 'My Dashboard');
           setRestaurantLogo(settingsData.logoUrl || null);
+          setNavbarOwnerSettings({
+            isOpen: settingsData.isOpen !== false,
+            autoScheduleEnabled: settingsData.autoScheduleEnabled === true,
+            openingTime: settingsData.openingTime || '09:00',
+            closingTime: settingsData.closingTime || '22:00',
+          });
           if (settingsData.businessId && settingsData.collectionName) {
             setCallSyncTarget({
               businessId: String(settingsData.businessId),
@@ -712,6 +720,12 @@ function OwnerDashboardContent({ children }) {
           writeOwnerCache({
             restaurantName: settingsData.restaurantName || 'My Dashboard',
             restaurantLogo: settingsData.logoUrl || null,
+            navbarOwnerSettings: {
+              isOpen: settingsData.isOpen !== false,
+              autoScheduleEnabled: settingsData.autoScheduleEnabled === true,
+              openingTime: settingsData.openingTime || '09:00',
+              closingTime: settingsData.closingTime || '22:00',
+            },
             businessType: settingsData.businessType || businessType,
             restaurantStatus,
           });
@@ -1050,6 +1064,7 @@ function OwnerDashboardContent({ children }) {
                 restaurantName={restaurantName}
                 restaurantLogo={restaurantLogo}
                 userRole={userRole}
+                initialOwnerSettings={navbarOwnerSettings}
                 impersonatedOwnerId={impersonatedOwnerId}
                 employeeOfOwnerId={employeeOfOwnerId}
               />
