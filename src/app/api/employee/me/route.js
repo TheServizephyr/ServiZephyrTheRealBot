@@ -47,6 +47,7 @@ export async function GET(request) {
 
         // Check if user is an employee - query ONLY by userId (no composite index needed)
         let matchingEmployees = [];
+        let fallbackUserDoc = null;
         try {
             const employeesSnapshot = await db.collectionGroup('employees')
                 .where('userId', '==', uid)
@@ -63,17 +64,27 @@ export async function GET(request) {
             }
         } catch (employeeQueryError) {
             console.error('[API /employee/me] ❌ Firestore collection group query failed:', employeeQueryError.message);
-            // Return non-employee response if query fails
+            try {
+                fallbackUserDoc = await db.collection('users').doc(uid).get();
+            } catch (userDocError) {
+                console.error('[API /employee/me] ⚠️ Failed to fetch fallback user document:', userDocError.message);
+            }
+
+            const fallbackUserData = fallbackUserDoc?.exists ? (fallbackUserDoc.data() || {}) : {};
+            const fallbackRole = typeof fallbackUserData.role === 'string' ? fallbackUserData.role : null;
+            const fallbackIsOwner = fallbackRole === 'owner' || Boolean(fallbackUserData.businessType);
+
             return Response.json({
                 isEmployee: false,
-                isOwner,
-                hasMultipleRoles: false,
                 uid,
                 email,
-                name: userData.name,
-                role: userRole,
+                isOwner: fallbackIsOwner,
+                hasMultipleRoles: false,
+                name: fallbackUserData.name || userRecord.displayName || '',
+                role: fallbackRole,
                 outlet: null,
-                error: 'Failed to fetch employee data. Please contact support if this persists.'
+                message: 'User is not an employee of this outlet',
+                error: 'Employee lookup is temporarily unavailable. Falling back to user profile.'
             });
         }
 

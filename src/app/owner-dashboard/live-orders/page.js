@@ -608,15 +608,6 @@ const ActionButton = ({
     const showPaymentRequestAction = !hidePaymentActions && !isDineIn && !isFinalStatus && order.paymentStatus !== 'paid' && canProcessPayment;
     const showMarkPaidAction = showPaymentRequestAction && !!order.paymentRequestSentAt;
 
-    if (isUpdating) {
-        return (
-            <div className="flex items-center justify-center gap-2 h-9 text-muted-foreground text-sm w-full">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Processing...
-            </div>
-        );
-    }
-
     if (isDineIn) {
         const currentIndex = ['pending', 'confirmed', 'preparing', 'ready'].indexOf(status);
         const prevStatus = currentIndex > 0 ? ['pending', 'confirmed', 'preparing', 'ready'][currentIndex - 1] : null;
@@ -756,12 +747,13 @@ const ActionButton = ({
                     <Button
                         onClick={action.action}
                         size="sm"
+                        disabled={isUpdating}
                         className={cn(
                             "h-10 flex-1 min-w-[120px] font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]",
                             action.className || "bg-primary hover:bg-primary/90"
                         )}
                     >
-                        <ActionIcon size={18} className="mr-2 shrink-0" />
+                        {isUpdating ? <Loader2 size={18} className="mr-2 shrink-0 animate-spin" /> : <ActionIcon size={18} className="mr-2 shrink-0" />}
                         <span className="truncate">{action.text}</span>
                     </Button>
                 )}
@@ -1293,6 +1285,7 @@ export default function LiveOrdersPage() {
     const [riders, setRiders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [updatingOrderId, setUpdatingOrderId] = useState(null);
+    const optimisticStatusRef = useRef(new Map());
     const [paymentRequestLoadingOrderId, setPaymentRequestLoadingOrderId] = useState(null);
     const [markManualPaidLoadingOrderId, setMarkManualPaidLoadingOrderId] = useState(null);
     const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
@@ -1557,97 +1550,165 @@ export default function LiveOrdersPage() {
     }, [ordersCacheKey, readDesktopCache]);
 
 
-    const fetchInitialData = useCallback(async (isManualRefresh = false) => {
-        if (!isManualRefresh) setLoading(true);
+    function rememberOptimisticStatus(orderId, status, ttlMs = 20000) {
+        optimisticStatusRef.current.set(orderId, {
+            status,
+            expiresAt: Date.now() + ttlMs,
+        });
+        setUpdatingOrderId(orderId);
+    }
+
+    function clearOptimisticStatus(orderId) {
+        optimisticStatusRef.current.delete(orderId);
+        setUpdatingOrderId((current) => (current === orderId ? null : current));
+    }
+
+    function applyOptimisticStatuses(incomingOrders = []) {
+        const now = Date.now();
+        const nextOrders = incomingOrders.map((order) => {
+            const optimistic = optimisticStatusRef.current.get(order.id);
+            if (!optimistic) return order;
+
+            if (optimistic.expiresAt <= now) {
+                optimisticStatusRef.current.delete(order.id);
+                setUpdatingOrderId((current) => (current === order.id ? null : current));
+                return order;
+            }
+
+            if (String(order.status || '') === String(optimistic.status || '')) {
+                optimisticStatusRef.current.delete(order.id);
+                setUpdatingOrderId((current) => (current === order.id ? null : current));
+                return order;
+            }
+
+            return { ...order, status: optimistic.status };
+        });
+
+        for (const [orderId, optimistic] of optimisticStatusRef.current.entries()) {
+            if (optimistic.expiresAt <= now) {
+                optimisticStatusRef.current.delete(orderId);
+                setUpdatingOrderId((current) => (current === orderId ? null : current));
+            }
+        }
+
+        return nextOrders;
+    }
+
+    const appendApiAccessParams = useCallback((url) => {
+        if (impersonatedOwnerId) {
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
+        }
+        return url;
+    }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+    const persistStaticDashboardData = useCallback((nextRiders, nextRestaurantData, nextBusinessType) => {
+        try {
+            const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
+            sessionStorage.setItem(staticCacheKey, JSON.stringify({
+                ...previous,
+                riders: Array.isArray(nextRiders) ? nextRiders : previous.riders || [],
+                restaurantData: nextRestaurantData || previous.restaurantData || null,
+                businessType: nextBusinessType || previous.businessType || 'restaurant',
+                ts: Date.now()
+            }));
+        } catch { }
+
+        writeDesktopCache(staticCacheKey, {
+            riders: Array.isArray(nextRiders) ? nextRiders : [],
+            restaurantData: nextRestaurantData || null,
+            businessType: nextBusinessType || 'restaurant',
+        }).catch(() => {});
+    }, [staticCacheKey, writeDesktopCache]);
+
+    const fetchOrdersData = useCallback(async ({ showLoading = false } = {}) => {
+        if (showLoading) setLoading(true);
 
         try {
             const user = auth.currentUser;
             if (!user) throw new Error("Not authenticated");
             const idToken = await user.getIdToken();
 
-            let ordersUrl = new URL('/api/owner/orders', window.location.origin);
-            let ridersUrl = new URL('/api/owner/delivery', window.location.origin);
-            let settingsUrl = new URL('/api/owner/settings', window.location.origin);
+            const ordersUrl = appendApiAccessParams(new URL('/api/owner/orders', window.location.origin));
+            ordersUrl.searchParams.set('context', 'live_orders');
+
+            const ordersRes = await fetch(ordersUrl.toString(), {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+
+            if (!ordersRes.ok) throw new Error('Failed to fetch orders');
+            const ordersData = await ordersRes.json();
+            const nextOrders = applyOptimisticStatuses(ordersData.orders || []);
+            setOrders(nextOrders);
+            persistOrdersToCache(nextOrders);
+        } catch (error) {
+            console.error("[LiveOrders] Error fetching orders:", error);
+            setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: `Could not load live data, so cached desktop data will be used where available. ${error.message}` });
+        } finally {
+            if (showLoading) setLoading(false);
+        }
+    }, [appendApiAccessParams, persistOrdersToCache]);
+
+    const fetchStaticDataForApiViews = useCallback(async () => {
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Not authenticated");
+            const idToken = await user.getIdToken();
+
+            const ridersUrl = appendApiAccessParams(new URL('/api/owner/delivery', window.location.origin));
             ridersUrl.searchParams.set('context', 'live_orders');
+            const settingsUrl = appendApiAccessParams(new URL('/api/owner/settings', window.location.origin));
 
-            if (impersonatedOwnerId) {
-                ordersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-                ridersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-                settingsUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-            } else if (employeeOfOwnerId) {
-                ordersUrl.searchParams.append('employee_of', employeeOfOwnerId);
-                ridersUrl.searchParams.append('employee_of', employeeOfOwnerId);
-                settingsUrl.searchParams.append('employee_of', employeeOfOwnerId);
-            }
-
-            const [ordersRes, ridersRes, settingsRes] = await Promise.all([
-                fetch(ordersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
+            const [ridersRes, settingsRes] = await Promise.all([
                 fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
                 fetch(settingsUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } })
             ]);
 
-            if (!ordersRes.ok) throw new Error('Failed to fetch orders');
-            const ordersData = await ordersRes.json();
-            const nextOrders = ordersData.orders || [];
-            setOrders(nextOrders);
-            persistOrdersToCache(nextOrders);
+            let nextRiders = [];
+            let nextRestaurantData = null;
+            let nextBusinessType = normalizedBusinessType;
 
             if (ridersRes.ok) {
                 const ridersData = await ridersRes.json();
-                setRiders(ridersData.boys || []);
-                try {
-                    const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
-                    sessionStorage.setItem(staticCacheKey, JSON.stringify({
-                        ...previous,
-                        riders: ridersData.boys || [],
-                        ts: Date.now()
-                    }));
-                } catch { }
-                writeDesktopCache(staticCacheKey, {
-                    riders: ridersData.boys || [],
-                    restaurantData,
-                    businessType: normalizedBusinessType,
-                }).catch(() => {});
+                nextRiders = ridersData.boys || [];
+                setRiders(nextRiders);
             }
 
             if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
-                const resolvedBusinessType = normalizeBusinessType(settingsData.businessType) || 'restaurant';
-                const nextRestaurantData = {
+                nextBusinessType = normalizeBusinessType(settingsData.businessType) || 'restaurant';
+                nextRestaurantData = {
                     name: settingsData.restaurantName,
                     address: settingsData.address,
                     gstin: settingsData.gstin,
-                    businessType: resolvedBusinessType,
+                    businessType: nextBusinessType,
                 };
-                setBusinessType(resolvedBusinessType);
+                setBusinessType(nextBusinessType);
                 setRestaurantData(nextRestaurantData);
-                try {
-                    const previous = JSON.parse(sessionStorage.getItem(staticCacheKey) || '{}');
-                    sessionStorage.setItem(staticCacheKey, JSON.stringify({
-                        ...previous,
-                        restaurantData: nextRestaurantData,
-                        businessType: resolvedBusinessType,
-                        ts: Date.now()
-                    }));
-                } catch { }
-                writeDesktopCache(staticCacheKey, {
-                    riders,
-                    restaurantData: nextRestaurantData,
-                    businessType: resolvedBusinessType,
-                }).catch(() => {});
             }
 
+            persistStaticDashboardData(nextRiders, nextRestaurantData, nextBusinessType);
         } catch (error) {
-            console.error("[LiveOrders] Error fetching initial data:", error);
-            setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: `Could not load live data, so cached desktop data will be used where available. ${error.message}` });
+            console.error("[LiveOrders] Error fetching static dashboard data:", error);
+        }
+    }, [appendApiAccessParams, normalizedBusinessType, persistStaticDashboardData]);
+
+    const fetchInitialData = useCallback(async (isManualRefresh = false) => {
+        if (!isManualRefresh) setLoading(true);
+        try {
+            await Promise.all([
+                fetchOrdersData({ showLoading: false }),
+                fetchStaticDataForApiViews(),
+            ]);
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    }, [employeeOfOwnerId, impersonatedOwnerId, normalizedBusinessType, persistOrdersToCache, restaurantData, riders, staticCacheKey, writeDesktopCache]);
+    }, [fetchOrdersData, fetchStaticDataForApiViews]);
 
 
     // Use adaptive polling for impersonation/employee access
-    usePolling(() => fetchInitialData(true), {
+    usePolling(() => fetchOrdersData({ showLoading: false }), {
         interval: 60000,
         enabled: !!(impersonatedOwnerId || employeeOfOwnerId),
         deps: [impersonatedOwnerId, employeeOfOwnerId]
@@ -1805,8 +1866,9 @@ export default function LiveOrdersPage() {
                             fetchedOrders.push({ id: doc.id, ...orderData });
                         });
 
-                        setOrders(fetchedOrders);
-                        persistOrdersToCache(fetchedOrders);
+                        const nextOrders = applyOptimisticStatuses(fetchedOrders);
+                        setOrders(nextOrders);
+                        persistOrdersToCache(nextOrders);
                         setLoading(false);
                     },
                     (error) => {
@@ -1983,6 +2045,7 @@ export default function LiveOrdersPage() {
         // OPTIMISTIC UPDATE - Update UI instantly for better UX!
         const previousOrders = orders;
         const previousStatus = previousOrders.find(order => order.id === orderId)?.status || null;
+        rememberOptimisticStatus(orderId, newStatus);
         setOrders(prevOrders =>
             prevOrders.map(order =>
                 order.id === orderId
@@ -2012,6 +2075,7 @@ export default function LiveOrdersPage() {
             }
         } catch (error) {
             // REVERT optimistic update on error
+            clearOptimisticStatus(orderId);
             setOrders(previousOrders);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Error updating status: ${error.message}` });
         }

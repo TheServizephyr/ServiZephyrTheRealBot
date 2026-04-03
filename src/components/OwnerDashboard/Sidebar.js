@@ -439,7 +439,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     // Only fetch if user is owner or has access (and not impersonating for now to keep it simple/secure in client)
     if (!auth.currentUser) return;
     if (impersonatedOwnerId || employeeOfOwnerId) return; // Skip for now until we handle composite query permissions perfectly
-    if (isOnWhatsAppDirectPage) return; // Page has its own realtime pipeline; avoid duplicate reads
+    if (isOnWhatsAppDirectPage || isOnLiveOrdersPage) return; // Avoid duplicate listeners on heavy dashboard pages
     if (!badgeMonitoringReady) return;
 
     let unsubscribe = () => { };
@@ -477,7 +477,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage]);
+  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnWhatsAppDirectPage, isOnLiveOrdersPage]);
 
   // Fetch Pending Orders Count (Real-time and Fallback)
   useEffect(() => {
@@ -601,6 +601,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       setDineInPendingOrdersCount(0);
       return;
     }
+    if (isOnLiveOrdersPage) return;
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
     if (!badgeMonitoringReady) return;
 
@@ -634,7 +635,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     return () => {
       unsubscribeOrders();
     };
-  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [badgeMonitoringReady, businessType, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
 
   // Fetch Waitlist Count (Real-time)
   useEffect(() => {
@@ -642,6 +643,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       setWaitlistEntriesCount(0);
       return;
     }
+    if (isOnLiveOrdersPage) return;
     if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
     if (!badgeMonitoringReady) return;
 
@@ -673,7 +675,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     setupListener();
 
     return () => unsubscribe();
-  }, [badgeMonitoringReady, impersonatedOwnerId, employeeOfOwnerId, businessType]);
+  }, [badgeMonitoringReady, impersonatedOwnerId, employeeOfOwnerId, businessType, isOnLiveOrdersPage]);
 
   // Service request count via API (more reliable with Firestore security rules)
   useEffect(() => {
@@ -681,6 +683,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       setDineInServiceRequestsCount(0);
       return;
     }
+    if (isOnLiveOrdersPage) return;
     if (employeeOfOwnerId || !auth.currentUser) return;
     if (!badgeMonitoringReady) return;
 
@@ -768,7 +771,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       unsubscribe();
       if (intervalId) clearInterval(intervalId);
     };
-  }, [badgeMonitoringReady, businessType, desktopRuntime, impersonatedOwnerId, employeeOfOwnerId]);
+  }, [badgeMonitoringReady, businessType, desktopRuntime, impersonatedOwnerId, employeeOfOwnerId, isOnLiveOrdersPage]);
 
   useEffect(() => {
     if (impersonatedOwnerId || employeeOfOwnerId) return;

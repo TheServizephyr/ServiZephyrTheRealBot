@@ -339,6 +339,7 @@ export async function GET(req) {
 
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
+        const context = searchParams.get('context');
         const canViewCustomerDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_CUSTOMERS);
         const canViewPaymentDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_PAYMENTS);
 
@@ -394,6 +395,60 @@ export async function GET(req) {
 
             return respond({ orders }, 200);
 
+        } else if (context === 'live_orders') {
+            const activeStatuses = new Set([
+                'pending',
+                'placed',
+                'accepted',
+                'confirmed',
+                'preparing',
+                'prepared',
+                'ready',
+                'ready_for_pickup',
+                'dispatched',
+                'on_the_way',
+                'rider_arrived',
+            ]);
+            const start = new Date();
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(start);
+            end.setDate(end.getDate() + 1);
+
+            query = query
+                .where('restaurantId', '==', businessId)
+                .where('orderDate', '>=', start)
+                .where('orderDate', '<', end)
+                .orderBy('orderDate', 'desc')
+                .limit(100);
+
+            const ordersSnap = await query.get();
+            const orders = ordersSnap.docs
+                .map(doc => {
+                    const data = doc.data();
+                    const statusHistory = (data.statusHistory || []).map(h => ({
+                        ...h,
+                        timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
+                    }));
+
+                    const itemsWithQty = (data.items || []).map(item => ({
+                        ...item,
+                        qty: item.quantity || item.qty,
+                    }));
+
+                    return redactOrderForViewer({
+                        id: doc.id,
+                        ...data,
+                        items: itemsWithQty,
+                        orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
+                        customer: data.customerName,
+                        amount: data.totalAmount,
+                        statusHistory,
+                    }, canViewCustomerDetails, canViewPaymentDetails);
+                })
+                .filter((order) => activeStatuses.has(String(order.status || '').toLowerCase()));
+            await trackEndpointRead('api.owner.orders.get', ordersSnap.size);
+
+            return respond({ orders }, 200);
         } else if (startDate && endDate) {
             // Ensure dates are valid Date objects
             const start = new Date(startDate);
