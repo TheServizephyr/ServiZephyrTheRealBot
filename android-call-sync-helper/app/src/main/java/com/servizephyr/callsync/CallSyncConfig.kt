@@ -14,7 +14,7 @@ data class CallSyncConfig(
 )
 
 object CallSyncStore {
-    const val DEFAULT_SERVER_BASE_URL = "https://servizephyr.com"
+    const val DEFAULT_SERVER_BASE_URL = "https://www.servizephyr.com"
     const val DEFAULT_BACKUP_SERVER_BASE_URL = "https://servi-zephyr-the-real-bot.vercel.app"
 
     private const val PREFS = "call_sync_helper"
@@ -102,6 +102,16 @@ object CallSyncStore {
 
         add(config.serverBaseUrl)
         add(config.backupServerBaseUrl)
+
+        val derivedVariants = candidates.toList().flatMap { baseUrl ->
+            val trimmed = normalizeServerBaseUrl(baseUrl)
+            when {
+                trimmed.contains("://www.servizephyr.com") -> listOf(trimmed.replace("://www.servizephyr.com", "://servizephyr.com"))
+                trimmed.contains("://servizephyr.com") -> listOf(trimmed.replace("://servizephyr.com", "://www.servizephyr.com"))
+                else -> emptyList()
+            }
+        }
+        derivedVariants.forEach(add)
 
         return candidates.toList()
     }
