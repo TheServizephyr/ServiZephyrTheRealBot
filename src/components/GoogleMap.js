@@ -99,7 +99,7 @@ const GoogleMap = ({ center, onIdle, zoom = 15 }) => {
                     defaultCenter={center} 
 
                     defaultZoom={zoom}
-                    gestureHandling={'greedy'}
+                    gestureHandling={'cooperative'}
                     disableDefaultUI={true}
                     tilt={0}
                     
