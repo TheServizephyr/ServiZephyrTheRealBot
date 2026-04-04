@@ -41,7 +41,7 @@ import { isDesktopApp } from "@/lib/desktop/runtime";
 
 export const dynamic = 'force-dynamic';
 
-const buildLoginRedirect = (path) => `/login?redirect=${encodeURIComponent(path || '/owner-dashboard')}`;
+const buildLoginRedirect = (path) => `/login?redirect=${encodeURIComponent(path || '/owner-dashboard/live-orders')}`;
 
 const resolveOwnerFeatureIdFromPath = (pathname) => {
   const segments = String(pathname || '').split('/').filter(Boolean);
@@ -571,7 +571,7 @@ function OwnerDashboardContent({ children }) {
         return;
       }
 
-      const nextPath = pathname || '/owner-dashboard';
+      const nextPath = pathname || '/owner-dashboard/live-orders';
 
       // Try one recovery cycle before redirecting to landing page.
       if (hasOwnerSessionHint && !hasAttemptedSessionRecovery && !isRecoveringSession) {

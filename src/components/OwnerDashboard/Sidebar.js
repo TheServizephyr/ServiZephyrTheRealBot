@@ -2,7 +2,6 @@
 'use client';
 
 import {
-  LayoutDashboard,
   ClipboardList,
   Users,
   BarChart2,
@@ -129,7 +128,6 @@ const getMenuItems = (businessType, effectiveOwnerId, paramName = 'impersonate_o
   // Default for restaurant/store
   const isStoreBusiness = businessType === 'store' || businessType === 'shop';
   const items = [
-    { name: "Dashboard", icon: LayoutDashboard, href: appendParam("/owner-dashboard"), featureId: "dashboard" },
     { name: "Manual Order", icon: FilePlus, href: appendParam("/owner-dashboard/manual-order"), featureId: "manual-order" },
     { name: "Live Orders", icon: ClipboardList, href: appendParam("/owner-dashboard/live-orders"), featureId: "live-orders" },
     isStoreBusiness

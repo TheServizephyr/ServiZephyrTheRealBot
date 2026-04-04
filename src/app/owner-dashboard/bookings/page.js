@@ -14,7 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import QRCode from 'qrcode.react';
 import { auth, db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, getDocs, limit, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, doc } from 'firebase/firestore';
 import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
@@ -704,31 +704,21 @@ const WaitlistManagement = ({
 
     useEffect(() => {
         if (!restaurant?.id || !restaurant?.collection) {
-            fetchData();
+            void fetchData();
             return;
         }
 
         setLoading(true);
-        // Live Waitlist Listener
-        const waitlistRef = collection(db, restaurant.collection, restaurant.id, 'waitlist');
-        const qWaitlist = query(waitlistRef, where('status', 'in', ['pending', 'ready_to_notify', 'notified', 'arrived']));
+        void fetchData();
 
-        const unsubWaitlist = onSnapshot(qWaitlist, () => {
-            void fetchData();
-        }, (err) => {
-            console.error("Waitlist listener error:", err);
-            fetchData(); // Fallback to API if listener fails
-        });
-
-        // Live Tables Listener (for accurate recommendations)
-        const tablesRef = collection(db, restaurant.collection, restaurant.id, 'tables');
-        const unsubTables = onSnapshot(tablesRef, () => {
-            void fetchData();
-        }, (err) => console.warn("Tables listener error:", err));
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                void fetchData(true);
+            }
+        }, 60000);
 
         return () => {
-            unsubWaitlist();
-            unsubTables();
+            window.clearInterval(intervalId);
         };
     }, [restaurant, fetchData]);
 
@@ -1220,7 +1210,7 @@ function BookingsPageContent() {
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) return;
-        let unsubscribe = () => { };
+        let pollIntervalId = null;
         const setup = async () => {
             try {
                 const targetId = impersonatedOwnerId || employeeOfOwnerId || user.uid;
@@ -1237,21 +1227,23 @@ function BookingsPageContent() {
                         );
                         setWaitlistManualCapacity(Math.max(1, Number(bData.waitlistManualCapacity || 40)));
                         setWaitlistNoShowTimeoutMinutes(Math.max(1, Number(bData.waitlistNoShowTimeoutMinutes || 10)));
-                        const bRef = collection(db, coll, bData.id, 'bookings');
-                        unsubscribe = onSnapshot(query(bRef), (s) => {
-                            const f = [];
-                            s.forEach(d => f.push({ id: d.id, ...d.data() }));
-                            setBookings(f);
-                            setLoading(false);
-                        });
                         break;
                     }
                 }
             } catch (err) { console.error(err); setLoading(false); }
         };
-        fetchBookings(true);
+        void fetchBookings(true);
         setup();
-        return () => unsubscribe();
+        pollIntervalId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                void fetchBookings(true);
+            }
+        }, 120000);
+        return () => {
+            if (pollIntervalId) {
+                window.clearInterval(pollIntervalId);
+            }
+        };
     }, [impersonatedOwnerId, employeeOfOwnerId, fetchBookings]);
 
     useEffect(() => {

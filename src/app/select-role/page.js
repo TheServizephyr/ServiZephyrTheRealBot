@@ -130,7 +130,7 @@ export default function SelectRolePage() {
 
         if (role === 'owner' || role === 'restaurant-owner' || role === 'shop-owner') {
             setRoleContext(role, resolvedBusinessType);
-            router.push('/owner-dashboard');
+            router.push('/owner-dashboard/live-orders');
         } else if (role === 'street-vendor') {
             setRoleContext(role, resolvedBusinessType || 'street-vendor');
             router.push('/street-vendor-dashboard');
@@ -170,7 +170,7 @@ export default function SelectRolePage() {
                         : null) ||
                     (role === 'shop-owner' ? 'store' : 'restaurant');
                 setRoleContext(role || 'owner', resolvedBusinessType);
-                router.push('/owner-dashboard');
+                router.push('/owner-dashboard/live-orders');
             }
         } else if (roleType === 'admin') {
             // Clear any employee context
@@ -202,7 +202,7 @@ export default function SelectRolePage() {
             if (outlet.collectionName === 'street_vendors') {
                 router.push(`/street-vendor-dashboard?employee_of=${outlet.ownerId}`);
             } else if (outlet.employeeRole === 'manager') {
-                router.push(`/owner-dashboard?employee_of=${outlet.ownerId}`);
+                router.push(`/owner-dashboard/live-orders?employee_of=${outlet.ownerId}`);
             } else {
                 router.push(`/owner-dashboard/live-orders?employee_of=${outlet.ownerId}`);
             }

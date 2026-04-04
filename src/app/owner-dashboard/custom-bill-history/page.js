@@ -69,6 +69,9 @@ export default function CustomBillHistoryPage() {
     const [restaurant, setRestaurant] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const rebillPrintRef = useRef(null);
+    const [isPageVisible, setIsPageVisible] = useState(() => (
+        typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+    ));
 
     const [fromDate, setFromDate] = useState(() => toDateInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
     const [toDate, setToDate] = useState(() => toDateInput(new Date()));
@@ -113,6 +116,11 @@ export default function CustomBillHistoryPage() {
     };
 
     const fetchRestaurantDetails = async () => {
+        const cachedRestaurant = await readCachedPayload('custom_bill_history', restaurantCacheKey);
+        if (cachedRestaurant) {
+            setRestaurant(cachedRestaurant);
+            return;
+        }
         try {
             const user = auth.currentUser;
             if (!user) return;
@@ -143,14 +151,26 @@ export default function CustomBillHistoryPage() {
             setRestaurant(nextRestaurant);
             await writeCachedPayload('custom_bill_history', restaurantCacheKey, nextRestaurant);
         } catch (error) {
-            const cachedRestaurant = await readCachedPayload('custom_bill_history', restaurantCacheKey);
-            if (cachedRestaurant) {
-                setRestaurant(cachedRestaurant);
-                return;
-            }
             throw error;
         }
     };
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+
+        const handleVisibilityChange = () => {
+            setIsPageVisible(document.visibilityState === 'visible');
+        };
+
+        handleVisibilityChange();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleVisibilityChange);
+        };
+    }, []);
 
     const fetchHistory = async (searchOverride = query) => {
         try {
@@ -210,7 +230,7 @@ export default function CustomBillHistoryPage() {
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged((user) => {
-            if (user) {
+            if (user && isPageVisible) {
                 fetchHistory();
                 fetchRestaurantDetails().catch((error) => {
                     console.warn('[Custom Bill History] Outlet details fetch failed:', error?.message || error);
@@ -222,7 +242,7 @@ export default function CustomBillHistoryPage() {
 
         return () => unsubscribe();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fromDate, toDate, accessQuery]);
+    }, [fromDate, toDate, accessQuery, isPageVisible]);
 
     useEffect(() => {
         if (!pendingRebillPrint || !printBillData) return;

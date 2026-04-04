@@ -85,7 +85,7 @@ export default function CompleteProfile() {
             }
 
             if (role === 'owner' || role === 'restaurant-owner' || role === 'shop-owner') {
-              router.push('/owner-dashboard');
+              router.push('/owner-dashboard/live-orders');
             } else if (role === 'admin') {
               router.push('/admin-dashboard');
             } else if (role === 'rider') {
@@ -256,7 +256,7 @@ export default function CompleteProfile() {
       }
 
       if (role === 'restaurant-owner' || role === 'shop-owner') {
-        router.push('/owner-dashboard');
+        router.push('/owner-dashboard/live-orders');
       } else if (role === 'admin') {
         router.push('/admin-dashboard');
       } else if (role === 'rider') {

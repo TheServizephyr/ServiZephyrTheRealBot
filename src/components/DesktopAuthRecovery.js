@@ -16,7 +16,7 @@ function resolveDashboardPath(payload) {
   if (payload?.role === "street-vendor") return "/street-vendor-dashboard";
   if (payload?.role === "employee") return "/employee-dashboard";
   if (payload?.role === "owner" || payload?.role === "restaurant-owner" || payload?.role === "shop-owner") {
-    return "/owner-dashboard";
+    return "/owner-dashboard/live-orders";
   }
   if (payload?.role === "customer") return "/customer-dashboard";
   return null;

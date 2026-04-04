@@ -93,7 +93,7 @@ const UserRow = ({ user, serial, onUpdateStatus, onRemoveGuest, onRemoveUser, on
                 e.stopPropagation();
                 const dashboardPath = user.role === 'Street Vendor'
                   ? '/street-vendor-dashboard'
-                  : '/owner-dashboard';
+                  : '/owner-dashboard/live-orders';
                 window.location.href = `${dashboardPath}?impersonate_owner_id=${user.id}&session_expiry=${Date.now() + (2 * 60 * 60 * 1000)}`;
               }}>
                 <Eye className="mr-2 h-4 w-4" /> View as Owner

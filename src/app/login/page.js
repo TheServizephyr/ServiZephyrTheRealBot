@@ -327,7 +327,7 @@ function LoginPageContent() {
                 if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
                     console.log("[Login] Redirecting to owner dashboard");
                     sessionStorage.setItem('justLoggedIn', JSON.stringify({ timestamp: Date.now() }));
-                    window.location.href = redirectTo || "/owner-dashboard";
+                    window.location.href = redirectTo || "/owner-dashboard/live-orders";
                     return;
                 } else if (role === "admin") {
                     console.log("[Login] Redirecting to admin dashboard");

@@ -241,6 +241,9 @@ export default function OrderHistoryPage() {
     const [actionLoadingId, setActionLoadingId] = useState(null);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isPageVisible, setIsPageVisible] = useState(() => (
+        typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+    ));
 
     const [dateRange, setDateRange] = useState({
         from: startOfDay(new Date()),
@@ -251,6 +254,23 @@ export default function OrderHistoryPage() {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_order_history::${scope}::${toDateInput(dateRange.from)}::${toDateInput(dateRange.to)}`;
     }, [impersonatedOwnerId, employeeOfOwnerId, dateRange]);
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+
+        const handleVisibilityChange = () => {
+            setIsPageVisible(document.visibilityState === 'visible');
+        };
+
+        handleVisibilityChange();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleVisibilityChange);
+        };
+    }, []);
 
     // ── Fetchers ────────────────────────────────────────────────────────────
     const fetchOrdersData = async () => {
@@ -345,7 +365,14 @@ export default function OrderHistoryPage() {
         }
     };
 
-    useEffect(() => { fetchAllData(); }, [dateRange]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (!isPageVisible) {
+            setLoading(false);
+            return;
+        }
+
+        fetchAllData();
+    }, [dateRange, isPageVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Settlement Action ───────────────────────────────────────────────────
     const handleSettleAction = async (id, isCurrentlySettled, type) => {

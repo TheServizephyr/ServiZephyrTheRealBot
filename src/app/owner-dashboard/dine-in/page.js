@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -1971,7 +1971,6 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restauran
         const user = auth.currentUser;
         if (!user) return;
 
-        let unsubscribe = () => { };
         let interval = null;
         let isMounted = true;
 
@@ -2002,45 +2001,17 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restauran
             }
         };
 
-        const startPollingFallback = async () => {
+        const startPolling = async () => {
             await fetchRequests();
             if (!interval) {
                 interval = setInterval(fetchRequests, 60000);
             }
         };
 
-        if (!impersonatedOwnerId && !employeeOfOwnerId && restaurantId) {
-            const serviceRequestsQuery = query(
-                collection(db, 'restaurants', restaurantId, 'serviceRequests'),
-                where('status', '==', 'pending')
-            );
-
-            unsubscribe = onSnapshot(serviceRequestsQuery, (snapshot) => {
-                const nextRequests = snapshot.docs
-                    .map((requestDoc) => {
-                        const data = requestDoc.data() || {};
-                        const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : null);
-                        return {
-                            id: requestDoc.id,
-                            ...data,
-                            createdAt: createdAtDate && !Number.isNaN(createdAtDate.getTime())
-                                ? createdAtDate.toISOString()
-                                : new Date().toISOString(),
-                        };
-                    })
-                    .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
-                setRequestsSafely(nextRequests);
-            }, (error) => {
-                console.error('Failed to subscribe to live service requests:', error);
-                void startPollingFallback();
-            });
-        } else {
-            void startPollingFallback();
-        }
+        void startPolling();
 
         return () => {
             isMounted = false;
-            unsubscribe();
             if (interval) clearInterval(interval);
         };
     }, [employeeOfOwnerId, impersonatedOwnerId, restaurantId]);
@@ -2919,9 +2890,7 @@ const DineInPageContent = () => {
     };
 
 
-    // Real-time listener for dine-in tables (Signal-based Refresh)
-    // We listen for ANY change in tables or orders, and then fetch the full aggregated data from API
-    // This saves massive reads by avoiding recreating the complex aggregation logic client-side
+    // Owner-self mode uses visible-tab polling instead of broad Firestore listeners.
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) {
@@ -2939,60 +2908,22 @@ const DineInPageContent = () => {
             return;
         }
 
-        // For Owner: Use Signal-based Refresh
         if (!restaurantDetails?.id) {
-            fetchData(); // Initial load
+            void fetchData();
             return;
         }
 
         setLoading(true);
-        const restaurantId = restaurantDetails.id;
-        console.log('[Dine-In] Setting up Signal-based Refresh for', restaurantId);
+        void fetchData().then(() => setLoading(false));
 
-        // 1. Listen to Tables
-        const tablesQuery = query(
-            collection(db, 'restaurants', restaurantId, 'tables')
-        );
-
-        // 2. Listen to Active Orders (Metadata only)
-        const ordersQuery = query(
-            collection(db, 'orders'),
-            where('restaurantId', '==', restaurantId),
-            where('deliveryType', '==', 'dine-in'),
-            where('status', 'not-in', ['picked_up', 'rejected', 'cancelled', 'delivered'])
-            // Note: We include 'delivered' in API but exclude here to reduce noise? 
-            // Actually API includes delivered until paid/cleaned. 
-            // Let's just listen to active stuff to trigger updates.
-        );
-
-        let lastUpdate = 0;
-        const triggerRefresh = () => {
-            const now = Date.now();
-            // Debounce updates (max 1 refresh per 2 seconds)
-            if (now - lastUpdate > 2000) {
-                console.log('[Dine-In] Signal received! Refreshing data...');
-                lastUpdate = now;
-                fetchData(true);
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                void fetchData(true);
             }
-        };
-
-        const unsubscribeTables = onSnapshot(tablesQuery, triggerRefresh, (err) => console.warn('Tables listener err:', err));
-        const unsubscribeOrders = onSnapshot(ordersQuery, triggerRefresh, (err) => console.warn('Orders listener err:', err));
-
-        // Initial fetch handled by listeners firing once on setup? 
-        // Snapshot listeners fire immediately with current state.
-        // So triggerRefresh will run once for tables and once for orders immediately.
-        // But we set loading=true above.
-        // fetchData(true) will run, but we need to wait for it for loading=false?
-        // fetchData implementation handles specific loading states.
-
-        // Let's do an explicit initial fetch to be sure, then let signals take over.
-        fetchData().then(() => setLoading(false));
+        }, 30000);
 
         return () => {
-            console.log('[Dine-In] Cleaning up signal listeners');
-            unsubscribeTables();
-            unsubscribeOrders();
+            window.clearInterval(intervalId);
         };
     }, [auth.currentUser, impersonatedOwnerId, employeeOfOwnerId, restaurantDetails?.id, businessType]);
 

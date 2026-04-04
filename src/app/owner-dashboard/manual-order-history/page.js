@@ -343,6 +343,9 @@ export default function ManualOrderHistoryPage() {
     const [fromDate, setFromDate] = useState(() => toDateInput(getBusinessDate()));
     const [toDate, setToDate] = useState(() => toDateInput(getBusinessDate()));
     const [searchTerm, setSearchTerm] = useState('');
+    const [isPageVisible, setIsPageVisible] = useState(() => (
+        typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+    ));
     const desktopRuntime = useMemo(() => isDesktopApp(), []);
     const historyCacheKey = useMemo(() => `manual_order_history::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}::${fromDate}::${toDate}`, [impersonatedOwnerId, employeeOfOwnerId, fromDate, toDate]);
     const restaurantCacheKey = useMemo(() => `manual_order_history_restaurant::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}`, [impersonatedOwnerId, employeeOfOwnerId]);
@@ -350,6 +353,23 @@ export default function ManualOrderHistoryPage() {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_custom_bill_cache_v2_${scope}__queue`;
     }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+
+        const handleVisibilityChange = () => {
+            setIsPageVisible(document.visibilityState === 'visible');
+        };
+
+        handleVisibilityChange();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleVisibilityChange);
+        };
+    }, []);
 
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
@@ -438,14 +458,16 @@ export default function ManualOrderHistoryPage() {
 
     const fetchRestaurantDetails = async () => {
         const cachedRestaurant = await readCachedPayload('manual_order_history', restaurantCacheKey);
+        if (cachedRestaurant) {
+            setRestaurant(cachedRestaurant);
+            return;
+        }
         if (isDesktopOfflineMode(desktopRuntime)) {
-            if (cachedRestaurant) setRestaurant(cachedRestaurant);
             return;
         }
 
         const user = auth.currentUser;
         if (!user) {
-            if (cachedRestaurant) setRestaurant(cachedRestaurant);
             return;
         }
 
@@ -458,7 +480,6 @@ export default function ManualOrderHistoryPage() {
             const res = await fetch(settingsUrl.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                if (cachedRestaurant) setRestaurant(cachedRestaurant);
                 return;
             }
             const nextRestaurant = {
@@ -473,9 +494,7 @@ export default function ManualOrderHistoryPage() {
             };
             setRestaurant(nextRestaurant);
             await writeCachedPayload('manual_order_history', restaurantCacheKey, nextRestaurant);
-        } catch {
-            if (cachedRestaurant) setRestaurant(cachedRestaurant);
-        }
+        } catch { }
     };
 
     const fetchHistory = async ({ silent = false } = {}) => {
@@ -607,6 +626,12 @@ export default function ManualOrderHistoryPage() {
                 return;
             }
 
+            if (!isPageVisible) {
+                stopPolling();
+                setLoading(false);
+                return;
+            }
+
             const setupRealtimeHistory = async () => {
                 try {
                     if (isDesktopOfflineMode(desktopRuntime)) {
@@ -635,7 +660,7 @@ export default function ManualOrderHistoryPage() {
             if (typeof unsubscribe === 'function') unsubscribe();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [accessQuery, desktopRuntime, fromDate, toDate]);
+    }, [accessQuery, desktopRuntime, fromDate, isPageVisible, toDate]);
 
     useEffect(() => {
         if (!pendingRebillPrint || !printBillData) return;

@@ -452,8 +452,8 @@ const RestaurantRow = ({ restaurant, onUpdateStatus, onShowAnalytics }) => {
                       restaurant.businessType === 'street-vendor'
                         ? `/street-vendor-dashboard?impersonate_owner_id=${restaurant.ownerId}`
                         : (restaurant.businessType === 'shop' || restaurant.businessType === 'store')
-                          ? `/owner-dashboard?impersonate_owner_id=${restaurant.ownerId}`
-                          : `/owner-dashboard?impersonate_owner_id=${restaurant.ownerId}`
+                          ? `/owner-dashboard/live-orders?impersonate_owner_id=${restaurant.ownerId}`
+                          : `/owner-dashboard/live-orders?impersonate_owner_id=${restaurant.ownerId}`
                     }
                     target="_blank"
                   >
