@@ -456,6 +456,44 @@ export default function ManualOrderHistoryPage() {
             .filter(Boolean);
     }, [desktopRuntime, offlineQueueScope]);
 
+    const applyHistoryState = useCallback(async (entries, { silent = false } = {}) => {
+        const queuedEntries = await readQueuedOfflineHistory();
+        const nextHistory = mergeHistoryEntries(Array.isArray(entries) ? entries : [], queuedEntries);
+        const nextSummary = computeSummary(nextHistory);
+        const nextSignature = JSON.stringify({
+            history: nextHistory.map((bill) => ({
+                id: bill.id,
+                orderType: bill.orderType,
+                customerPhone: bill.customerPhone,
+                historyId: bill.historyId,
+                printedAt: bill.printedAt,
+                createdAt: bill.createdAt,
+                totalAmount: bill.totalAmount,
+                isSettled: bill.isSettled,
+                settlementEligible: bill.settlementEligible,
+                serviceFee: bill.serviceFee,
+                serviceFeeLabel: bill.serviceFeeLabel,
+                itemCount: bill.itemCount,
+            })),
+            summary: nextSummary,
+        });
+
+        if (historySignatureRef.current !== nextSignature) {
+            historySignatureRef.current = nextSignature;
+            setHistory(nextHistory);
+            setSummary(nextSummary);
+        }
+
+        await writeCachedPayload('manual_order_history', historyCacheKey, {
+            history: nextHistory,
+            summary: nextSummary,
+        });
+
+        if (!silent) {
+            setLoading(false);
+        }
+    }, [historyCacheKey, readQueuedOfflineHistory]);
+
     const fetchRestaurantDetails = async () => {
         const cachedRestaurant = await readCachedPayload('manual_order_history', restaurantCacheKey);
         if (cachedRestaurant) {
@@ -497,7 +535,7 @@ export default function ManualOrderHistoryPage() {
         } catch { }
     };
 
-    const fetchHistory = async ({ silent = false } = {}) => {
+    const fetchHistory = useCallback(async ({ silent = false } = {}) => {
         try {
             if (!silent) {
                 setLoading(true);
@@ -533,44 +571,13 @@ export default function ManualOrderHistoryPage() {
             if (!res.ok) throw new Error(data?.message || 'Failed to load order history.');
 
             const fetchedHistory = Array.isArray(data.history) ? data.history : [];
-            const nextHistory = mergeHistoryEntries(fetchedHistory, queuedEntries);
-            const nextSummary = computeSummary(nextHistory);
-            const nextSignature = JSON.stringify({
-                history: nextHistory.map((bill) => ({
-                    id: bill.id,
-                    orderType: bill.orderType,
-                    customerPhone: bill.customerPhone,
-                    historyId: bill.historyId,
-                    printedAt: bill.printedAt,
-                    createdAt: bill.createdAt,
-                    totalAmount: bill.totalAmount,
-                    isSettled: bill.isSettled,
-                    settlementEligible: bill.settlementEligible,
-                    serviceFee: bill.serviceFee,
-                    serviceFeeLabel: bill.serviceFeeLabel,
-                    itemCount: bill.itemCount,
-                })),
-                summary: nextSummary,
-            });
-
-            if (historySignatureRef.current !== nextSignature) {
-                historySignatureRef.current = nextSignature;
-                setHistory(nextHistory);
-                setSummary(nextSummary);
-            }
-            await writeCachedPayload('manual_order_history', historyCacheKey, {
-                history: nextHistory,
-                summary: nextSummary,
-            });
+            await applyHistoryState(fetchedHistory, { silent });
         } catch (error) {
             const queuedEntries = await readQueuedOfflineHistory();
             const cached = await readCachedPayload('manual_order_history', historyCacheKey);
             if (cached?.history || queuedEntries.length > 0) {
                 const cachedHistory = Array.isArray(cached?.history) ? cached.history : [];
-                const nextHistory = mergeHistoryEntries(cachedHistory, queuedEntries);
-                const nextSummary = computeSummary(nextHistory);
-                setHistory(nextHistory);
-                setSummary(nextSummary);
+                await applyHistoryState(cachedHistory, { silent: true });
                 if (!silent) {
                     setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live manual order history fetch failed, so cached desktop data is being shown.' });
                 }
@@ -586,7 +593,7 @@ export default function ManualOrderHistoryPage() {
                 setLoading(false);
             }
         }
-    };
+    }, [applyHistoryState, desktopRuntime, employeeOfOwnerId, historyCacheKey, impersonatedOwnerId, fromDate, readQueuedOfflineHistory, toDate]);
 
     const resolveBusinessContext = async (targetOwnerId) => {
         for (const collectionName of BUSINESS_COLLECTIONS) {
@@ -602,6 +609,8 @@ export default function ManualOrderHistoryPage() {
     };
 
     useEffect(() => {
+        let unsubscribeHistory = null;
+
         const stopPolling = () => {
             if (pollingIntervalRef.current) {
                 clearInterval(pollingIntervalRef.current);
@@ -609,7 +618,15 @@ export default function ManualOrderHistoryPage() {
             }
         };
 
+        const stopRealtimeHistory = () => {
+            if (typeof unsubscribeHistory === 'function') {
+                unsubscribeHistory();
+                unsubscribeHistory = null;
+            }
+        };
+
         const startPollingFallback = async () => {
+            stopRealtimeHistory();
             stopPolling();
             await fetchHistory();
             if (isDesktopOfflineMode(desktopRuntime)) return;
@@ -621,12 +638,14 @@ export default function ManualOrderHistoryPage() {
 
         const unsubscribe = auth.onAuthStateChanged((user) => {
             if (!user) {
+                stopRealtimeHistory();
                 stopPolling();
                 setLoading(false);
                 return;
             }
 
             if (!isPageVisible) {
+                stopRealtimeHistory();
                 stopPolling();
                 setLoading(false);
                 return;
@@ -641,9 +660,47 @@ export default function ManualOrderHistoryPage() {
                         return;
                     }
 
+                    stopRealtimeHistory();
                     stopPolling();
                     setLoading(true);
-                    await fetchHistory();
+                    const isOwnerSelf = !impersonatedOwnerId && !employeeOfOwnerId;
+                    if (!isOwnerSelf) {
+                        await fetchHistory();
+                        fetchRestaurantDetails().catch(() => {});
+                        return;
+                    }
+
+                    const targetOwnerId = auth.currentUser?.uid;
+                    const businessContext = await resolveBusinessContext(targetOwnerId);
+                    if (!businessContext?.businessId || !businessContext?.collectionName) {
+                        throw new Error('Business context not found for manual order history listener.');
+                    }
+
+                    const historyRef = collection(db, businessContext.collectionName, businessContext.businessId, 'custom_bill_history');
+                    let historyQuery = query(historyRef, orderBy('printedAt', 'desc'), limit(300));
+
+                    const fromDateObj = fromDate ? new Date(fromDate) : null;
+                    const toDateObj = toDate ? new Date(toDate) : null;
+                    if (fromDateObj) fromDateObj.setHours(0, 0, 0, 0);
+                    if (toDateObj) toDateObj.setHours(23, 59, 59, 999);
+
+                    if (fromDateObj) {
+                        historyQuery = query(historyRef, where('printedAt', '>=', fromDateObj), orderBy('printedAt', 'desc'), limit(300));
+                    }
+                    if (fromDateObj && toDateObj) {
+                        historyQuery = query(historyRef, where('printedAt', '>=', fromDateObj), where('printedAt', '<=', toDateObj), orderBy('printedAt', 'desc'), limit(300));
+                    } else if (!fromDateObj && toDateObj) {
+                        historyQuery = query(historyRef, where('printedAt', '<=', toDateObj), orderBy('printedAt', 'desc'), limit(300));
+                    }
+
+                    unsubscribeHistory = onSnapshot(historyQuery, async (snapshot) => {
+                        const nextEntries = snapshot.docs.map(normalizeHistoryEntry);
+                        await applyHistoryState(nextEntries, { silent: false });
+                    }, async (error) => {
+                        console.warn('[Manual Order History] Realtime listener failed, using API fallback:', error?.message || error);
+                        await startPollingFallback();
+                    });
+
                     fetchRestaurantDetails().catch(() => {});
                 } catch (error) {
                     console.warn('[Manual Order History] Setup failed, using API fallback:', error?.message || error);
@@ -652,10 +709,11 @@ export default function ManualOrderHistoryPage() {
                 }
             };
 
-            setupRealtimeHistory();
+            void setupRealtimeHistory();
         });
 
         return () => {
+            stopRealtimeHistory();
             stopPolling();
             if (typeof unsubscribe === 'function') unsubscribe();
         };
