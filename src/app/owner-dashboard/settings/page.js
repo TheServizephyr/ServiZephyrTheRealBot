@@ -279,8 +279,8 @@ function SettingsPageContent() {
     const [isEditingGst, setIsEditingGst] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [isGeneratingCallSyncToken, setIsGeneratingCallSyncToken] = useState(false);
-    const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
-    const [showNewPass, setShowNewPass] = useState(false);
+    // const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
+    // const [showNewPass, setShowNewPass] = useState(false);
     const bannerInputRef = React.useRef(null);
     const [uploadingBanner, setUploadingBanner] = useState(false); // New state for banner upload
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -657,6 +657,7 @@ function SettingsPageContent() {
         }
     };
 
+/*
     const handlePasswordUpdate = async (e) => {
         e.preventDefault();
         const currentUser = getAuth().currentUser;
@@ -692,6 +693,7 @@ function SettingsPageContent() {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to update password: ${error.message}. Make sure your current password is correct.` });
         }
     };
+*/
 
     if (loading) {
         return (
@@ -1395,6 +1397,7 @@ function SettingsPageContent() {
                 </div>
             </SectionCard>
 
+{/* 
             <SectionCard
                 title="Change Password"
                 description="For your security, we recommend using a strong, unique password."
@@ -1420,6 +1423,7 @@ function SettingsPageContent() {
                     </div>
                 </form>
             </SectionCard>
+            */}
 
             <SectionCard
                 title="Danger Zone"
