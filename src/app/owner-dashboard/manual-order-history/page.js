@@ -31,6 +31,17 @@ const toDateInput = (date) => {
     return `${year}-${month}-${day}`;
 };
 
+const getBusinessDate = () => {
+    const now = new Date();
+    // If before 5 AM, consider it the previous business day
+    if (now.getHours() < 5) {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        return yesterday;
+    }
+    return now;
+};
+
 const formatDateTime = (value) => {
     if (!value) return 'N/A';
     const date = new Date(value);
@@ -329,8 +340,8 @@ export default function ManualOrderHistoryPage() {
     const pollingIntervalRef = useRef(null);
     const historySignatureRef = useRef('');
 
-    const [fromDate, setFromDate] = useState(() => toDateInput(new Date()));
-    const [toDate, setToDate] = useState(() => toDateInput(new Date()));
+    const [fromDate, setFromDate] = useState(() => toDateInput(getBusinessDate()));
+    const [toDate, setToDate] = useState(() => toDateInput(getBusinessDate()));
     const [searchTerm, setSearchTerm] = useState('');
     const desktopRuntime = useMemo(() => isDesktopApp(), []);
     const historyCacheKey = useMemo(() => `manual_order_history::${impersonatedOwnerId || employeeOfOwnerId || 'owner_self'}::${fromDate}::${toDate}`, [impersonatedOwnerId, employeeOfOwnerId, fromDate, toDate]);
@@ -1192,10 +1203,10 @@ export default function ManualOrderHistoryPage() {
                                                 {formatDateTime(bill.printedAt || bill.createdAt)}
                                             </td>
                                             <td className="p-4">
-                                                <button type="button" onClick={e => { e.stopPropagation(); triggerRebill(bill); }}
-                                                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                                <Button variant="outline" size="sm" onClick={e => { e.stopPropagation(); triggerRebill(bill); }}
+                                                    className="h-8 gap-1.5 text-xs font-semibold border-border/40 hover:bg-muted font-medium transition-all shadow-sm">
                                                     <Printer className="h-3.5 w-3.5" /> Re-Bill
-                                                </button>
+                                                </Button>
                                             </td>
                                         </tr>
                                     );

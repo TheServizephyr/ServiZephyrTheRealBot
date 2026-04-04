@@ -31,6 +31,17 @@ import {
 export const dynamic = 'force-dynamic';
 const ANALYTICS_CACHE_TTL_MS = 2 * 60 * 1000;
 
+const getBusinessDate = () => {
+    const now = new Date();
+    // If before 5 AM, consider it the previous business day
+    if (now.getHours() < 5) {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        return yesterday;
+    }
+    return now;
+};
+
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
@@ -1193,7 +1204,7 @@ const ManualOrderAnalytics = ({ date, activeDateFilter, impersonatedOwnerId, emp
     };
 
     const getDateRange = () => {
-        const now = new Date();
+        const now = getBusinessDate();
         if (activeDateFilter === 'Today') return { from: toYMD(now), to: toYMD(now) };
         if (activeDateFilter === 'This Week') {
             const start = new Date(now); start.setDate(now.getDate() - now.getDay());
@@ -1385,8 +1396,8 @@ function AnalyticsPageContent() {
     const [activeTab, setActiveTab] = useState('sales');
     const [activeDateFilter, setActiveDateFilter] = useState('This Month');
     const [date, setDate] = useState({
-        from: addDays(new Date(), -29),
-        to: new Date(),
+        from: addDays(getBusinessDate(), -29),
+        to: getBusinessDate(),
     });
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
     const searchParams = useSearchParams();
