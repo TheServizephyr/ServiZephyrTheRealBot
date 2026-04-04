@@ -25,7 +25,7 @@ const GoogleMap = NextDynamic(() => import('@/components/GoogleMap'), {
     loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>
 });
 
-const OwnerLocationPage = () => {
+const OwnerLocationContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -179,7 +179,7 @@ const OwnerLocationPage = () => {
                 startCurrentGeolocation();
             }
         }
-    }, [desktopRuntime, employeeOfOwnerId, impersonatedOwnerId, locationCacheKey, handleMapIdle]);
+    }, [desktopRuntime, employeeOfOwnerId, impersonatedOwnerId, locationCacheKey]);
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -202,7 +202,8 @@ const OwnerLocationPage = () => {
                         lat: position.coords.latitude,
                         lng: position.coords.longitude,
                     };
-                    handleMapIdle(coords);
+                    setMapCenter(coords);
+                    reverseGeocode(coords);
                 },
                 (err) => {
                     setError('Could not get your location. Please search manually or check browser permissions.');
@@ -242,7 +243,8 @@ const OwnerLocationPage = () => {
         setSearchQuery(suggestion.placeAddress);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
-        handleMapIdle(coords);
+        setMapCenter(coords);
+        reverseGeocode(coords);
     };
 
     const reverseGeocode = useCallback(async (coords) => {
@@ -441,6 +443,14 @@ const OwnerLocationPage = () => {
                 </div>
             </div>
         </div>
+    );
+};
+
+const OwnerLocationPage = () => {
+    return (
+        <Suspense fallback={<div className="h-full w-full flex items-center justify-center bg-background"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>}>
+            <OwnerLocationContent />
+        </Suspense>
     );
 };
 
