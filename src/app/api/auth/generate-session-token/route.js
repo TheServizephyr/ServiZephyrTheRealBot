@@ -4,6 +4,12 @@ import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { nanoid } from 'nanoid';
 import { checkIpRateLimit } from '@/lib/rateLimiter';
 import { issueGuestAccessRef, verifyAppCheckToken } from '@/lib/public-auth';
+import {
+    DINE_IN_SESSION_TOKEN_TTL_MS,
+    WHATSAPP_SESSION_TOKEN_TTL_MS,
+    ttlDateFromNow,
+    ttlDateFromSource,
+} from '@/lib/firestoreTtl';
 
 export async function POST(req) {
     console.log("[API][generate-session-token] POST request received.");
@@ -52,13 +58,14 @@ export async function POST(req) {
             }
 
             const token = nanoid(32); // Longer token for security
-            const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity for dine-in
+            const expiresAt = ttlDateFromNow(DINE_IN_SESSION_TOKEN_TTL_MS);
 
             const authTokenRef = firestore.collection('auth_tokens').doc(token);
             await authTokenRef.set({
                 tableId: effectiveTableId,
                 restaurantId: restaurantId,
                 expiresAt: expiresAt,
+                cleanupAt: ttlDateFromSource(expiresAt, 1000),
                 type: 'dine-in'
             });
             
@@ -86,7 +93,7 @@ export async function POST(req) {
         }
 
         const token = nanoid(24);
-        const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
+        const expiresAt = ttlDateFromNow(WHATSAPP_SESSION_TOKEN_TTL_MS);
 
         const authTokenRef = firestore.collection('auth_tokens').doc(token);
         const { ref } = await issueGuestAccessRef(firestore, {
@@ -101,6 +108,7 @@ export async function POST(req) {
         await authTokenRef.set({
             phone: phone,
             expiresAt: expiresAt,
+            cleanupAt: ttlDateFromSource(expiresAt, 1000),
             uid: uid, // legacy compatibility
             userId: uid, // ref-based verification support
             type: 'whatsapp',

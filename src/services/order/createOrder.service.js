@@ -27,6 +27,12 @@ import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
+import {
+    IDEMPOTENCY_TTL_MS,
+    TRACKING_TOKEN_TTL_MS,
+    ttlDateFromNow,
+    ttlDateFromSource
+} from '@/lib/firestoreTtl';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 
@@ -1188,6 +1194,7 @@ export async function createOrderV2(req, options = {}) {
                 await firestore.collection('auth_tokens').doc(trackingToken).set({
                     userId,
                     expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+                    cleanupAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
                     type: 'tracking',
                     scopes: ['track_orders', 'active_orders']
                 });
@@ -1343,11 +1350,12 @@ export async function createOrderV2(req, options = {}) {
  */
 async function generateSecureToken(firestore, userId) {
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6h validity
+    const expiry = ttlDateFromNow(TRACKING_TOKEN_TTL_MS);
 
     const tokenData = {
         userId: userId,  // Store unified userId (UID or guest ID)
         expiresAt: expiry,
+        cleanupAt: ttlDateFromSource(expiry, 1000),
         type: 'tracking',
         scopes: ['track_orders', 'active_orders']
     };

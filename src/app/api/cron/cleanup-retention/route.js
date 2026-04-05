@@ -107,42 +107,42 @@ export async function GET(req) {
         // 1b) public_api_limits cleanup by expiresAt/updatedAt/createdAt
         const publicApiLimits = await cleanupCollectionByFields(firestore, {
             collectionName: 'public_api_limits',
-            fields: ['expiresAt', 'updatedAt', 'createdAt'],
+            fields: ['cleanupAt', 'expiresAt', 'updatedAt', 'createdAt'],
             cutoffDate: publicLimitCutoffDate,
         });
 
         // 2) idempotency_keys cleanup by completedAt/failedAt/createdAt
         const idempotencyKeys = await cleanupCollectionByFields(firestore, {
             collectionName: 'idempotency_keys',
-            fields: ['completedAt', 'failedAt', 'createdAt'],
+            fields: ['cleanupAt', 'completedAt', 'failedAt', 'createdAt'],
             cutoffDate,
         });
 
         // 3) auth_tokens cleanup by expiresAt (fallback createdAt)
         const authTokens = await cleanupCollectionByFields(firestore, {
             collectionName: 'auth_tokens',
-            fields: ['expiresAt', 'createdAt'],
+            fields: ['cleanupAt', 'expiresAt', 'createdAt'],
             cutoffDate,
         });
 
         // 4) audit_logs cleanup by createdAt (fallback timestamp)
         const auditLogs = await cleanupCollectionByFields(firestore, {
             collectionName: 'audit_logs',
-            fields: ['createdAt', 'timestamp'],
+            fields: ['cleanupAt', 'createdAt', 'timestamp'],
             cutoffDate,
         });
 
         // 5) security_events cleanup
         const securityEvents = await cleanupCollectionByFields(firestore, {
             collectionName: 'security_events',
-            fields: ['createdAt'],
+            fields: ['cleanupAt', 'createdAt'],
             cutoffDate: securityEventsCutoffDate,
         });
 
         // 6) security_anomaly_windows cleanup
         const securityAnomalyWindows = await cleanupCollectionByFields(firestore, {
             collectionName: 'security_anomaly_windows',
-            fields: ['lastSeenAt', 'flaggedAt', 'createdAt'],
+            fields: ['cleanupAt', 'lastSeenAt', 'flaggedAt', 'createdAt'],
             cutoffDate: securityAnomalyCutoffDate,
         });
 

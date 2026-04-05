@@ -6,16 +6,18 @@ import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
+import { TRACKING_TOKEN_TTL_MS, ttlDateFromNow, ttlDateFromSource } from '@/lib/firestoreTtl';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
     console.log(`[API /customer/register] generateSecureToken for phone: ${customerPhone}`);
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity for tracking link
+    const expiry = ttlDateFromNow(TRACKING_TOKEN_TTL_MS);
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
         expiresAt: expiry,
+        cleanupAt: ttlDateFromSource(expiry, 1000),
         type: 'tracking'
     });
     console.log(`[API /customer/register] Token generated: ${token}`);

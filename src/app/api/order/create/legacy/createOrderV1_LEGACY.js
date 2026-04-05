@@ -11,16 +11,18 @@ import { deobfuscateGuestId } from '@/lib/guest-utils';
 import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError } from '@/services/order/orderPricing';
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
+import { IDEMPOTENCY_TTL_MS, TRACKING_TOKEN_TTL_MS, ttlDateFromNow, ttlDateFromSource } from '@/lib/firestoreTtl';
 
 const generateSecureToken = async (firestore, identifier) => {
     console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity for tracking link
+    const expiry = ttlDateFromNow(TRACKING_TOKEN_TTL_MS);
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
 
     // Determine if identifier is GuestID or Phone
     const data = {
         expiresAt: expiry,
+        cleanupAt: ttlDateFromSource(expiry, 1000),
         type: 'tracking'
     };
 
@@ -298,7 +300,8 @@ export async function processOrderV1(body, firestore) {
                             status: 'reserved',
                             orderId: existingOrderId,
                             type: 'addon',
-                            createdAt: FieldValue.serverTimestamp()
+                            createdAt: FieldValue.serverTimestamp(),
+                            cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
                         }, { merge: true });
 
                         return { duplicate: false };
@@ -337,7 +340,8 @@ export async function processOrderV1(body, firestore) {
                     await firestore.collection('idempotency_keys').doc(idempotencyKey).update({
                         razorpayOrderId: razorpayOrder.id,
                         status: 'completed',
-                        completedAt: FieldValue.serverTimestamp()
+                        completedAt: FieldValue.serverTimestamp(),
+                        cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
                     });
 
                     // Fetch token
@@ -355,7 +359,8 @@ export async function processOrderV1(body, firestore) {
                     await firestore.collection('idempotency_keys').doc(idempotencyKey).update({
                         status: 'failed',
                         error: error.message,
-                        failedAt: FieldValue.serverTimestamp()
+                        failedAt: FieldValue.serverTimestamp(),
+                        cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
                     });
 
                     console.error(`[API /order/create] ADD-ON FLOW: Razorpay creation failed:`, error);
@@ -1220,7 +1225,8 @@ export async function processOrderV1(body, firestore) {
                 status: 'completed',
                 orderId: firestoreOrderId,
                 razorpayOrderId: razorpayOrder.id,
-                completedAt: FieldValue.serverTimestamp()
+                completedAt: FieldValue.serverTimestamp(),
+                cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
             });
             console.log(`[Idempotency] Key marked as completed: ${idempotencyKey}`);
             return NextResponse.json({
@@ -1569,7 +1575,8 @@ export async function processOrderV1(body, firestore) {
         await firestore.collection('idempotency_keys').doc(idempotencyKey).update({
             status: 'completed',
             orderId: newOrderRef.id,
-            completedAt: FieldValue.serverTimestamp()
+            completedAt: FieldValue.serverTimestamp(),
+            cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
         });
 
         // CRITICAL: Activate the tab if it's a dine-in order with a tab
