@@ -97,30 +97,228 @@ function buildCategoryConfig(businessType, customCategories = []) {
   return base;
 }
 
-function buildMenuData({ menuDocs = [], customCategories = [], businessType = 'restaurant' }) {
+function sanitizeMenuItem(itemDoc) {
+  const item = itemDoc.data() || {};
+  const normalized = {
+    id: itemDoc.id,
+    name: item.name || '',
+    categoryId: item.categoryId || 'general',
+    isVeg: Boolean(item.isVeg),
+    isAvailable: item.isAvailable !== false,
+    order: Number(item.order || 999),
+  };
+
+  if (item.description) normalized.description = item.description;
+  if (item.imageUrl) normalized.imageUrl = item.imageUrl;
+  if (Array.isArray(item.tags) && item.tags.length > 0) normalized.tags = item.tags;
+  if (Array.isArray(item.portions) && item.portions.length > 0) normalized.portions = item.portions;
+  if (Array.isArray(item.addOnGroups) && item.addOnGroups.length > 0) normalized.addOnGroups = item.addOnGroups;
+  if (item.isDineInExclusive === true) normalized.isDineInExclusive = true;
+
+  return normalized;
+}
+
+function buildStructuredMenu({ menuDocs = [], customCategories = [], businessType = 'restaurant' }) {
   const categoryConfig = buildCategoryConfig(businessType, customCategories);
-  const menuData = {};
+  const itemsByCategory = {};
 
   Object.keys(categoryConfig).forEach((key) => {
-    menuData[key] = [];
+    itemsByCategory[key] = [];
   });
 
   menuDocs.forEach((doc) => {
     const item = doc.data() || {};
     const categoryKey = String(item.categoryId || 'general').trim() || 'general';
     if (categoryKey.toLowerCase() === RESERVED_OPEN_ITEMS_CATEGORY_ID) return;
-    if (!menuData[categoryKey]) menuData[categoryKey] = [];
-    menuData[categoryKey].push({
-      id: doc.id,
-      ...item,
-    });
+    if (!itemsByCategory[categoryKey]) itemsByCategory[categoryKey] = [];
+    itemsByCategory[categoryKey].push(sanitizeMenuItem(doc));
   });
 
-  Object.keys(menuData).forEach((key) => {
-    menuData[key].sort((a, b) => Number(a?.order || 999) - Number(b?.order || 999));
+  Object.keys(itemsByCategory).forEach((key) => {
+    itemsByCategory[key].sort((a, b) => Number(a?.order || 999) - Number(b?.order || 999));
   });
 
-  return menuData;
+  const customCategoryMap = new Map(
+    customCategories.map((category) => [
+      category.id,
+      {
+        id: category.id,
+        title: category.title || category.name || category.id,
+        order: Number(category.order || 0),
+      },
+    ])
+  );
+
+  const categories = Object.keys(itemsByCategory)
+    .filter((key) => itemsByCategory[key]?.length > 0 || customCategoryMap.has(key))
+    .map((key, index) => {
+      const custom = customCategoryMap.get(key);
+      return {
+        id: key,
+        title: custom?.title || categoryConfig[key]?.title || key,
+        order: Number(custom?.order ?? index),
+      };
+    })
+    .sort((a, b) => a.order - b.order);
+
+  return {
+    categories,
+    itemsByCategory,
+  };
+}
+
+function buildOrderingPayload({ publicSettings = {}, deliveryConfigState = {}, businessData = {} }) {
+  return {
+    deliveryEnabled: publicSettings?.deliveryEnabled ?? businessData?.deliveryEnabled ?? true,
+    pickupEnabled: publicSettings?.pickupEnabled ?? businessData?.pickupEnabled ?? false,
+    dineInEnabled: publicSettings?.dineInEnabled ?? businessData?.dineInEnabled ?? false,
+    dineInModel: businessData?.dineInModel || 'post-paid',
+    payments: {
+      deliveryCod: publicSettings?.deliveryCodEnabled ?? false,
+      deliveryOnline: publicSettings?.deliveryOnlinePaymentEnabled ?? false,
+      pickupOnline: publicSettings?.pickupOnlinePaymentEnabled ?? false,
+      pickupPod: publicSettings?.pickupPodEnabled ?? false,
+      dineInOnline: publicSettings?.dineInOnlinePaymentEnabled ?? false,
+      dineInPayAtCounter: publicSettings?.dineInPayAtCounterEnabled ?? false,
+    },
+    charges: {
+      gst: {
+        enabled: publicSettings?.gstEnabled ?? false,
+        rate: publicSettings?.gstRate ?? publicSettings?.gstPercentage ?? 0,
+        minAmount: publicSettings?.gstMinAmount ?? 0,
+        mode: publicSettings?.gstCalculationMode ?? 'excluded',
+        includedInPrice: publicSettings?.gstIncludedInPrice ?? false,
+      },
+      serviceFee: {
+        enabled: publicSettings?.serviceFeeEnabled ?? false,
+        label: publicSettings?.serviceFeeLabel || 'Additional Charge',
+        type: publicSettings?.serviceFeeType || 'fixed',
+        value: publicSettings?.serviceFeeValue ?? 0,
+        applyOn: publicSettings?.serviceFeeApplyOn || 'all',
+      },
+      packaging: {
+        enabled: publicSettings?.packagingChargeEnabled ?? false,
+        amount: publicSettings?.packagingChargeAmount ?? 0,
+      },
+      convenience: {
+        enabled: publicSettings?.convenienceFeeEnabled ?? false,
+        rate: publicSettings?.convenienceFeeRate ?? 0,
+        paidBy: publicSettings?.convenienceFeePaidBy || 'customer',
+        label: publicSettings?.convenienceFeeLabel || 'Payment Processing Fee',
+      },
+    },
+    delivery: {
+      deliveryCharge: publicSettings?.deliveryCharge ?? 0,
+      feeModel: deliveryConfigState?.deliveryFeeType ?? businessData?.deliveryFeeType ?? 'fixed',
+      baseFee: deliveryConfigState?.deliveryFixedFee ?? businessData?.deliveryFixedFee ?? 30,
+      baseDistanceKm: deliveryConfigState?.deliveryBaseDistance ?? businessData?.deliveryBaseDistance ?? 0,
+      perKmFee: deliveryConfigState?.deliveryPerKmFee ?? businessData?.deliveryPerKmFee ?? 0,
+      radiusKm: deliveryConfigState?.deliveryRadius ?? businessData?.deliveryRadius ?? 5,
+      freeAbove: deliveryConfigState?.deliveryFreeThreshold ?? businessData?.deliveryFreeThreshold ?? 500,
+      minOrderValue: deliveryConfigState?.minOrderValue ?? businessData?.minOrderValue ?? 0,
+      roadDistanceFactor: deliveryConfigState?.roadDistanceFactor ?? businessData?.roadDistanceFactor ?? 1.0,
+      freeDeliveryRadius: deliveryConfigState?.freeDeliveryRadius ?? businessData?.freeDeliveryRadius ?? 0,
+      freeDeliveryMinOrder: deliveryConfigState?.freeDeliveryMinOrder ?? businessData?.freeDeliveryMinOrder ?? 0,
+      deliveryTiers: deliveryConfigState?.deliveryTiers || businessData?.deliveryTiers || [],
+      slabs: {
+        rules: deliveryConfigState?.deliveryOrderSlabRules || businessData?.deliveryOrderSlabRules || [],
+        aboveFee: deliveryConfigState?.deliveryOrderSlabAboveFee ?? businessData?.deliveryOrderSlabAboveFee ?? 0,
+        baseDistanceKm: deliveryConfigState?.deliveryOrderSlabBaseDistance ?? businessData?.deliveryOrderSlabBaseDistance ?? 1,
+        perKmFee: deliveryConfigState?.deliveryOrderSlabPerKmFee ?? businessData?.deliveryOrderSlabPerKmFee ?? 15,
+      },
+      engineMode: deliveryConfigState?.deliveryEngineMode ?? businessData?.deliveryEngineMode ?? 'legacy',
+      useZones: deliveryConfigState?.deliveryUseZones === true || businessData?.deliveryUseZones === true,
+      zoneFallbackToLegacy: deliveryConfigState?.zoneFallbackToLegacy !== false && businessData?.zoneFallbackToLegacy !== false,
+      zones: deliveryConfigState?.deliveryZones || businessData?.deliveryZones || [],
+    },
+  };
+}
+
+export function buildLegacyMenuDataFromSnapshot(snapshot = {}) {
+  const business = snapshot.business || {};
+  const ordering = snapshot.ordering || {};
+  const delivery = ordering.delivery || {};
+  const menu = snapshot.menu || {};
+  return {
+    latitude: business.location?.lat ?? null,
+    longitude: business.location?.lng ?? null,
+    restaurantName: business.name || '',
+    approvalStatus: business.approvalStatus || 'approved',
+    logoUrl: business.logoUrl || '',
+    bannerUrls: business.bannerUrls || [],
+    deliveryCharge: delivery.deliveryCharge ?? 0,
+    deliveryFixedFee: delivery.baseFee ?? 0,
+    deliveryBaseDistance: delivery.baseDistanceKm ?? 0,
+    deliveryFreeThreshold: delivery.freeAbove,
+    minOrderValue: delivery.minOrderValue ?? 0,
+    deliveryFeeType: delivery.feeModel || 'fixed',
+    deliveryPerKmFee: delivery.perKmFee ?? 0,
+    deliveryRadius: delivery.radiusKm ?? 0,
+    roadDistanceFactor: delivery.roadDistanceFactor ?? 1.0,
+    freeDeliveryRadius: delivery.freeDeliveryRadius ?? 0,
+    freeDeliveryMinOrder: delivery.freeDeliveryMinOrder ?? 0,
+    deliveryTiers: delivery.deliveryTiers || [],
+    deliveryOrderSlabRules: delivery.slabs?.rules || [],
+    deliveryOrderSlabAboveFee: delivery.slabs?.aboveFee || 0,
+    deliveryOrderSlabBaseDistance: delivery.slabs?.baseDistanceKm || 1,
+    deliveryOrderSlabPerKmFee: delivery.slabs?.perKmFee || 15,
+    deliveryEngineMode: delivery.engineMode || 'legacy',
+    deliveryUseZones: delivery.useZones === true,
+    zoneFallbackToLegacy: delivery.zoneFallbackToLegacy !== false,
+    deliveryZones: delivery.zones || [],
+    menu: menu.itemsByCategory || {},
+    customCategories: menu.categories || [],
+    coupons: menu.coupons || [],
+    loyaltyPoints: 0,
+    deliveryEnabled: ordering.deliveryEnabled ?? true,
+    pickupEnabled: ordering.pickupEnabled ?? false,
+    dineInEnabled: ordering.dineInEnabled ?? false,
+    businessAddress: business.address || null,
+    businessType: business.type || 'restaurant',
+    collectionName: business.collection || '',
+    dineInModel: ordering.dineInModel || 'post-paid',
+    isOpen: business.isOpen === true,
+    autoScheduleEnabled: business.hours?.autoScheduleEnabled === true,
+    openingTime: business.hours?.opening || '09:00',
+    closingTime: business.hours?.closing || '22:00',
+    timeZone: business.hours?.timeZone || 'Asia/Kolkata',
+  };
+}
+
+export function buildLegacySettingsFromSnapshot(snapshot = {}) {
+  const ordering = snapshot.ordering || {};
+  const charges = ordering.charges || {};
+  const delivery = ordering.delivery || {};
+  return {
+    deliveryEnabled: ordering.deliveryEnabled ?? true,
+    pickupEnabled: ordering.pickupEnabled ?? false,
+    dineInEnabled: ordering.dineInEnabled ?? false,
+    deliveryCodEnabled: ordering.payments?.deliveryCod ?? false,
+    deliveryOnlinePaymentEnabled: ordering.payments?.deliveryOnline ?? false,
+    pickupOnlinePaymentEnabled: ordering.payments?.pickupOnline ?? false,
+    pickupPodEnabled: ordering.payments?.pickupPod ?? false,
+    dineInOnlinePaymentEnabled: ordering.payments?.dineInOnline ?? false,
+    dineInPayAtCounterEnabled: ordering.payments?.dineInPayAtCounter ?? false,
+    deliveryCharge: delivery.deliveryCharge ?? 0,
+    deliveryFreeThreshold: delivery.freeAbove,
+    gstEnabled: charges.gst?.enabled ?? false,
+    gstRate: charges.gst?.rate ?? 0,
+    gstPercentage: charges.gst?.rate ?? 0,
+    gstMinAmount: charges.gst?.minAmount ?? 0,
+    gstCalculationMode: charges.gst?.mode ?? 'excluded',
+    gstIncludedInPrice: charges.gst?.includedInPrice ?? false,
+    convenienceFeeEnabled: charges.convenience?.enabled ?? false,
+    convenienceFeeRate: charges.convenience?.rate ?? 0,
+    convenienceFeePaidBy: charges.convenience?.paidBy || 'customer',
+    convenienceFeeLabel: charges.convenience?.label || 'Payment Processing Fee',
+    packagingChargeEnabled: charges.packaging?.enabled ?? false,
+    packagingChargeAmount: charges.packaging?.amount ?? 0,
+    serviceFeeEnabled: charges.serviceFee?.enabled ?? false,
+    serviceFeeLabel: charges.serviceFee?.label || 'Additional Charge',
+    serviceFeeType: charges.serviceFee?.type || 'fixed',
+    serviceFeeValue: charges.serviceFee?.value ?? 0,
+    serviceFeeApplyOn: charges.serviceFee?.applyOn || 'all',
+  };
 }
 
 export async function buildMenuSnapshotPayload({
@@ -146,87 +344,59 @@ export async function buildMenuSnapshotPayload({
   const publicCoupons = filterCouponsForPublicRequest(allCouponDocs, new Date());
   const deliveryConfigState = deliveryConfigSnap.exists ? (deliveryConfigSnap.data() || {}) : {};
   const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData || {});
-  const menuData = buildMenuData({
-    menuDocs: menuSnap.docs.filter((doc) => doc.data()?.isDeleted !== true),
+  const menuDocs = menuSnap.docs.filter((doc) => doc.data()?.isDeleted !== true);
+  const structuredMenu = buildStructuredMenu({
+    menuDocs,
     customCategories,
     businessType: normalizedBusinessType,
   });
-
-  const publicMenuPayload = {
-    latitude: businessData?.coordinates?.lat ?? businessData?.address?.latitude ?? businessData?.businessAddress?.latitude ?? null,
-    longitude: businessData?.coordinates?.lng ?? businessData?.address?.longitude ?? businessData?.businessAddress?.longitude ?? null,
-    restaurantName: businessData?.name || '',
-    approvalStatus: businessData?.approvalStatus || 'approved',
-    logoUrl: businessData?.logoUrl || '',
-    bannerUrls: businessData?.bannerUrls || [],
-    deliveryCharge: publicSettings?.deliveryCharge ?? 0,
-    deliveryFixedFee: deliveryConfigState?.deliveryFixedFee ?? businessData?.deliveryFixedFee ?? 30,
-    deliveryBaseDistance: deliveryConfigState?.deliveryBaseDistance ?? businessData?.deliveryBaseDistance ?? 0,
-    deliveryFreeThreshold: deliveryConfigState?.deliveryFreeThreshold ?? businessData?.deliveryFreeThreshold ?? 500,
-    minOrderValue: deliveryConfigState?.minOrderValue ?? businessData?.minOrderValue ?? 0,
-    deliveryFeeType: deliveryConfigState?.deliveryFeeType ?? businessData?.deliveryFeeType ?? 'fixed',
-    deliveryPerKmFee: deliveryConfigState?.deliveryPerKmFee ?? businessData?.deliveryPerKmFee ?? 0,
-    deliveryRadius: deliveryConfigState?.deliveryRadius ?? businessData?.deliveryRadius ?? 5,
-    roadDistanceFactor: deliveryConfigState?.roadDistanceFactor ?? businessData?.roadDistanceFactor ?? 1.0,
-    freeDeliveryRadius: deliveryConfigState?.freeDeliveryRadius ?? businessData?.freeDeliveryRadius ?? 0,
-    freeDeliveryMinOrder: deliveryConfigState?.freeDeliveryMinOrder ?? businessData?.freeDeliveryMinOrder ?? 0,
-    deliveryTiers: deliveryConfigState?.deliveryTiers || businessData?.deliveryTiers || [],
-    deliveryOrderSlabRules: deliveryConfigState?.deliveryOrderSlabRules || businessData?.deliveryOrderSlabRules || [],
-    deliveryOrderSlabAboveFee: deliveryConfigState?.deliveryOrderSlabAboveFee ?? businessData?.deliveryOrderSlabAboveFee ?? 0,
-    deliveryOrderSlabBaseDistance: deliveryConfigState?.deliveryOrderSlabBaseDistance ?? businessData?.deliveryOrderSlabBaseDistance ?? 1,
-    deliveryOrderSlabPerKmFee: deliveryConfigState?.deliveryOrderSlabPerKmFee ?? businessData?.deliveryOrderSlabPerKmFee ?? 15,
-    deliveryEngineMode: deliveryConfigState?.deliveryEngineMode ?? businessData?.deliveryEngineMode ?? 'legacy',
-    deliveryUseZones: deliveryConfigState?.deliveryUseZones === true || businessData?.deliveryUseZones === true,
-    zoneFallbackToLegacy: deliveryConfigState?.zoneFallbackToLegacy !== false && businessData?.zoneFallbackToLegacy !== false,
-    deliveryZones: deliveryConfigState?.deliveryZones || businessData?.deliveryZones || [],
-    menu: menuData,
-    customCategories,
-    coupons: publicCoupons,
-    loyaltyPoints: 0,
-    deliveryEnabled: publicSettings?.deliveryEnabled ?? businessData?.deliveryEnabled,
-    pickupEnabled: publicSettings?.pickupEnabled ?? businessData?.pickupEnabled,
-    dineInEnabled: publicSettings?.dineInEnabled ?? businessData?.dineInEnabled,
-    businessAddress: businessData?.address || null,
-    businessType: normalizedBusinessType,
-    collectionName,
-    dineInModel: businessData?.dineInModel || 'post-paid',
-    isOpen: effectiveIsOpen,
-    autoScheduleEnabled: businessData?.autoScheduleEnabled === true,
-    openingTime: businessData?.openingTime || '09:00',
-    closingTime: businessData?.closingTime || '22:00',
-    timeZone: businessData?.timeZone || businessData?.timezone || 'Asia/Kolkata',
+  const ordering = buildOrderingPayload({ publicSettings, deliveryConfigState, businessData });
+  const structuredPayload = {
+    business: {
+      id: businessId,
+      collection: collectionName,
+      type: normalizedBusinessType,
+      name: businessData?.name || '',
+      approvalStatus: businessData?.approvalStatus || 'approved',
+      logoUrl: businessData?.logoUrl || '',
+      bannerUrls: businessData?.bannerUrls || [],
+      botDisplayNumber: businessData?.botDisplayNumber || '',
+      isOpen: effectiveIsOpen,
+      location: {
+        lat: businessData?.coordinates?.lat ?? businessData?.address?.latitude ?? businessData?.businessAddress?.latitude ?? null,
+        lng: businessData?.coordinates?.lng ?? businessData?.address?.longitude ?? businessData?.businessAddress?.longitude ?? null,
+      },
+      address: businessData?.address || null,
+      hours: {
+        opening: businessData?.openingTime || '09:00',
+        closing: businessData?.closingTime || '22:00',
+        timeZone: businessData?.timeZone || businessData?.timezone || 'Asia/Kolkata',
+        autoScheduleEnabled: businessData?.autoScheduleEnabled === true,
+      },
+    },
+    ordering,
+    menu: {
+      ...structuredMenu,
+      coupons: publicCoupons,
+      meta: {
+        currency: businessData?.currency || 'INR',
+      },
+    },
   };
 
   return {
     businessId,
     collectionName,
     businessType: normalizedBusinessType,
+    schemaVersion: 2,
     menuVersion: Number(businessData?.menuVersion || 0),
     generatedAt: new Date().toISOString(),
     stale: false,
-    business: {
-      id: businessId,
-      collectionName,
-      businessType: normalizedBusinessType,
-      name: businessData?.name || '',
-      approvalStatus: businessData?.approvalStatus || 'approved',
-      logoUrl: businessData?.logoUrl || '',
-      bannerUrls: businessData?.bannerUrls || [],
-      botDisplayNumber: businessData?.botDisplayNumber || '',
-    },
-    publicSettings,
-    deliveryConfig: {
-      exists: deliveryConfigSnap.exists,
-      data: deliveryConfigState,
-    },
+    ...structuredPayload,
     couponCatalog: allCouponDocs,
-    publicMenuPayload,
     hash: buildMenuHash({
       menuVersion: Number(businessData?.menuVersion || 0),
-      publicSettings,
-      deliveryConfigState,
-      couponCatalog: allCouponDocs,
-      publicMenuPayload,
+      structuredPayload,
     }),
   };
 }

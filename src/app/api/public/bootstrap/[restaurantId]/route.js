@@ -115,68 +115,129 @@ export async function GET(req, { params }) {
       ),
     ]);
 
-    const publicSettings = menuSnapshot?.publicSettings || await getPublicSettings(firestore, businessId);
-    const menuData = menuSnapshot?.publicMenuPayload || {};
+    const publicSettings = menuSnapshot ? null : await getPublicSettings(firestore, businessId);
     const activeOrder = Array.isArray(activeOrderResult?.activeOrders) ? activeOrderResult.activeOrders[0] || null : null;
+
+    const businessPayload = menuSnapshot?.business || {
+      id: businessId,
+      collection: business.collection,
+      type: business.type || businessData?.businessType || 'restaurant',
+      name: businessData?.name || '',
+      logoUrl: businessData?.logoUrl || '',
+      bannerUrls: businessData?.bannerUrls || [],
+      approvalStatus: businessData?.approvalStatus || 'approved',
+      botDisplayNumber: businessData?.botDisplayNumber || '',
+      isOpen: true,
+      location: {
+        lat: businessData?.coordinates?.lat ?? null,
+        lng: businessData?.coordinates?.lng ?? null,
+      },
+      address: businessData?.address || null,
+      hours: {
+        opening: businessData?.openingTime || '09:00',
+        closing: businessData?.closingTime || '22:00',
+        timeZone: businessData?.timeZone || businessData?.timezone || 'Asia/Kolkata',
+        autoScheduleEnabled: businessData?.autoScheduleEnabled === true,
+      },
+    };
+    const orderingPayload = menuSnapshot?.ordering || {
+      deliveryEnabled: publicSettings?.deliveryEnabled ?? true,
+      pickupEnabled: publicSettings?.pickupEnabled ?? false,
+      dineInEnabled: publicSettings?.dineInEnabled ?? false,
+      dineInModel: businessData?.dineInModel || 'post-paid',
+      payments: {
+        deliveryCod: publicSettings?.deliveryCodEnabled ?? false,
+        deliveryOnline: publicSettings?.deliveryOnlinePaymentEnabled ?? false,
+        pickupOnline: publicSettings?.pickupOnlinePaymentEnabled ?? false,
+        pickupPod: publicSettings?.pickupPodEnabled ?? false,
+        dineInOnline: publicSettings?.dineInOnlinePaymentEnabled ?? false,
+        dineInPayAtCounter: publicSettings?.dineInPayAtCounterEnabled ?? false,
+      },
+      charges: {
+        gst: {
+          enabled: publicSettings?.gstEnabled ?? false,
+          rate: publicSettings?.gstRate ?? publicSettings?.gstPercentage ?? 0,
+          minAmount: publicSettings?.gstMinAmount ?? 0,
+          mode: publicSettings?.gstCalculationMode ?? 'excluded',
+          includedInPrice: publicSettings?.gstIncludedInPrice ?? false,
+        },
+        serviceFee: {
+          enabled: publicSettings?.serviceFeeEnabled ?? false,
+          label: publicSettings?.serviceFeeLabel || 'Additional Charge',
+          type: publicSettings?.serviceFeeType || 'fixed',
+          value: publicSettings?.serviceFeeValue ?? 0,
+          applyOn: publicSettings?.serviceFeeApplyOn || 'all',
+        },
+        packaging: {
+          enabled: publicSettings?.packagingChargeEnabled ?? false,
+          amount: publicSettings?.packagingChargeAmount ?? 0,
+        },
+        convenience: {
+          enabled: publicSettings?.convenienceFeeEnabled ?? false,
+          rate: publicSettings?.convenienceFeeRate ?? 0,
+          paidBy: publicSettings?.convenienceFeePaidBy || 'customer',
+          label: publicSettings?.convenienceFeeLabel || 'Payment Processing Fee',
+        },
+      },
+      delivery: {
+        deliveryCharge: publicSettings?.deliveryCharge ?? 0,
+        feeModel: 'fixed',
+        baseFee: 0,
+        baseDistanceKm: 0,
+        perKmFee: 0,
+        radiusKm: 0,
+        freeAbove: 0,
+        minOrderValue: 0,
+        roadDistanceFactor: 1,
+        freeDeliveryRadius: 0,
+        freeDeliveryMinOrder: 0,
+        deliveryTiers: [],
+        slabs: {
+          rules: [],
+          aboveFee: 0,
+          baseDistanceKm: 1,
+          perKmFee: 15,
+        },
+        engineMode: 'legacy',
+        useZones: false,
+        zoneFallbackToLegacy: true,
+        zones: [],
+      },
+    };
+    const menuPayload = menuSnapshot?.menu || {
+      categories: [],
+      itemsByCategory: {},
+      coupons: [],
+      meta: { currency: 'INR' },
+    };
 
     return NextResponse.json({
       ok: true,
-      version: 1,
+      schemaVersion: Number(menuSnapshot?.schemaVersion || 2),
       generatedAt: new Date().toISOString(),
-      cache: {
-        menuSnapshotVersion: Number(menuSnapshot?.menuVersion || businessData?.menuVersion || 0),
+      versions: {
+        menu: Number(menuSnapshot?.menuVersion || businessData?.menuVersion || 0),
         runtimeVersion: Number(runtimeData?.runtimeVersion || 0),
         activeOrderVersion: Number(runtimeData?.activeOrderVersion || 0),
       },
-      business: {
-        id: businessId,
-        collectionName: business.collection,
-        businessType: menuSnapshot?.businessType || business.type || businessData?.businessType || 'restaurant',
-        name: menuData?.restaurantName || businessData?.name || '',
-        logoUrl: menuData?.logoUrl || businessData?.logoUrl || '',
-        bannerUrls: menuData?.bannerUrls || businessData?.bannerUrls || [],
-        approvalStatus: menuData?.approvalStatus || businessData?.approvalStatus || 'approved',
-      },
-      menu: menuData,
-      delivery: {
-        ...publicSettings,
-        deliveryCharge: menuData?.deliveryCharge ?? publicSettings?.deliveryCharge ?? 0,
-        deliveryFeeType: menuData?.deliveryFeeType ?? 'fixed',
-        deliveryFixedFee: menuData?.deliveryFixedFee ?? 0,
-        deliveryBaseDistance: menuData?.deliveryBaseDistance ?? 0,
-        deliveryPerKmFee: menuData?.deliveryPerKmFee ?? 0,
-        deliveryRadius: menuData?.deliveryRadius ?? 0,
-        deliveryFreeThreshold: menuData?.deliveryFreeThreshold,
-        roadDistanceFactor: menuData?.roadDistanceFactor ?? 1.0,
-        freeDeliveryRadius: menuData?.freeDeliveryRadius ?? 0,
-        freeDeliveryMinOrder: menuData?.freeDeliveryMinOrder ?? 0,
-        deliveryTiers: menuData?.deliveryTiers || [],
-        deliveryOrderSlabRules: menuData?.deliveryOrderSlabRules || [],
-        deliveryOrderSlabAboveFee: menuData?.deliveryOrderSlabAboveFee || 0,
-        deliveryOrderSlabBaseDistance: menuData?.deliveryOrderSlabBaseDistance || 1,
-        deliveryOrderSlabPerKmFee: menuData?.deliveryOrderSlabPerKmFee || 15,
-        deliveryEngineMode: menuData?.deliveryEngineMode || 'legacy',
-        deliveryUseZones: menuData?.deliveryUseZones === true,
-        zoneFallbackToLegacy: menuData?.zoneFallbackToLegacy !== false,
-        deliveryZones: menuData?.deliveryZones || [],
-      },
-      customer: customerResult?.found ? customerResult.response : {
-        resolved: false,
-        name: '',
-        phone: '',
-        addresses: [],
-        isVerified: false,
-        isGuest: true,
-      },
-      activeOrder: activeOrder ? {
-        exists: true,
-        ...activeOrder,
-      } : {
-        exists: false,
-      },
-      legacy: {
-        menuData,
-        settingsData: publicSettings,
+      business: businessPayload,
+      ordering: orderingPayload,
+      menu: menuPayload,
+      user: {
+        customer: customerResult?.found ? customerResult.response : {
+          resolved: false,
+          name: '',
+          phone: '',
+          addresses: [],
+          isVerified: false,
+          isGuest: true,
+        },
+        activeOrder: activeOrder ? {
+          exists: true,
+          ...activeOrder,
+        } : {
+          exists: false,
+        },
       },
     }, {
       status: 200,

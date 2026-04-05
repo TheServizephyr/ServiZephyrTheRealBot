@@ -7,7 +7,7 @@ import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { findBusinessById } from '@/services/business/businessService';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
-import { getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
+import { buildLegacyMenuDataFromSnapshot, getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
 
 // --- Analytics Badge Thresholds ---
 // Strict thresholds to prevent badge inflation — only truly top-performing items qualify
@@ -715,8 +715,8 @@ export async function GET(req, { params }) {
                     allowInlineRebuild: true,
                 });
 
-                if (snapshot?.publicMenuPayload) {
-                    const publicPayload = snapshot.publicMenuPayload;
+                if (snapshot?.menu) {
+                    const publicPayload = buildLegacyMenuDataFromSnapshot(snapshot);
                     const couponCatalog = Array.isArray(snapshot.couponCatalog) ? snapshot.couponCatalog : [];
                     let payload = {
                         ...publicPayload,
