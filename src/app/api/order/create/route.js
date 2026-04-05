@@ -19,6 +19,7 @@ import { trackEndpointRead, trackEndpointWrite } from '@/lib/readTelemetry';
 import { findBusinessById } from '@/services/business/businessService';
 import { getFirestore } from '@/lib/firebase-admin';
 import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
+import { enforceRateLimit } from '@/lib/public-auth';
 
 // Allow up to 30s for order creation (8+ Firestore ops + payment gateway)
 export const maxDuration = 30;
@@ -58,6 +59,20 @@ export async function POST(req) {
     let paymentMethod = '';
 
     try {
+        // --- Rate limiting: 10 orders per IP per minute ---
+        const clientIp = (req.headers.get('x-forwarded-for') || '').split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
+        const firestore = await getFirestore();
+        const rate = await enforceRateLimit(firestore, {
+            key: `order-create:${clientIp}`,
+            limit: 10,
+            windowSec: 60,
+            req,
+            auditContext: 'order_create',
+        });
+        if (!rate.allowed) {
+            return NextResponse.json({ message: 'Too many order requests. Please wait a moment.' }, { status: 429 });
+        }
+
         // Clone body once so business handler can still read original request stream.
         try {
             const body = await req.clone().json();

@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { getFirestore, FieldValue } from './firebase-admin.js';
+import { whatsappBreaker } from '@/lib/server/circuitBreaker';
 
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 
@@ -49,7 +50,7 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
     console.log('[WhatsApp Lib] Full request payload:', JSON.stringify(dataPayload, null, 2));
 
     try {
-        const response = await axios({
+        const result = await whatsappBreaker.call(() => axios({
             method: 'POST',
             url: `https://graph.facebook.com/v19.0/${businessPhoneNumberId}/messages`,
             headers: {
@@ -57,7 +58,16 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
                 'Content-Type': 'application/json'
             },
             data: dataPayload
-        });
+        }));
+        if (!result.ok) {
+            console.error(`[WhatsApp Lib] Circuit breaker blocked/failed for ${phoneNumber}:`, result.error);
+            if (result.circuitOpen) {
+                // Service is down — don't throw, just return undefined so callers degrade gracefully
+                return undefined;
+            }
+            throw new Error(result.error);
+        }
+        const response = result.data;
         console.log(`[WhatsApp Lib] Successfully initiated message to ${phoneNumber}. Response:`, JSON.stringify(response.data, null, 2));
         return response.data; // ✅ FIX: Return data so we can get the WAMID
     } catch (error) {
