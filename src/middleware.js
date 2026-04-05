@@ -175,12 +175,7 @@ export async function middleware(request) {
     return NextResponse.next();
   }
 
-  // Load test bypass: skip request shield for authorized load tests
-  const loadTestKey = request.headers.get('x-load-test-key') || '';
-  const cronSecret = process.env.CRON_SECRET || '';
-  if (loadTestKey && cronSecret && loadTestKey === cronSecret) {
-    return NextResponse.next();
-  }
+
 
   const policy = classifyRequest(request.nextUrl.pathname, request.method);
   if (!policy) {
