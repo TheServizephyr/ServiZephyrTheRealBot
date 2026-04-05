@@ -11,6 +11,7 @@ import { FEATURE_FLAGS } from '@/lib/featureFlags';
 
 export const MENU_SNAPSHOT_COLLECTION = 'menu_snapshot';
 export const MENU_SNAPSHOT_DOC_ID = 'current';
+export const MENU_SNAPSHOT_SCHEMA_VERSION = 2;
 
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 
@@ -60,6 +61,19 @@ function buildMenuHash(payload) {
   return createHash('sha256')
     .update(JSON.stringify(payload || {}))
     .digest('hex');
+}
+
+function isStructuredMenuSnapshot(snapshotData = {}, expectedMenuVersion = 0) {
+  if (!snapshotData || typeof snapshotData !== 'object') return false;
+  if (Number(snapshotData.schemaVersion || 0) !== MENU_SNAPSHOT_SCHEMA_VERSION) return false;
+  if (snapshotData.stale === true) return false;
+  if (Number(snapshotData.menuVersion || 0) !== Number(expectedMenuVersion || 0)) return false;
+  if (!snapshotData.business || typeof snapshotData.business !== 'object') return false;
+  if (!snapshotData.ordering || typeof snapshotData.ordering !== 'object') return false;
+  if (!snapshotData.menu || typeof snapshotData.menu !== 'object') return false;
+  if (!Array.isArray(snapshotData.menu.categories)) return false;
+  if (!snapshotData.menu.itemsByCategory || typeof snapshotData.menu.itemsByCategory !== 'object') return false;
+  return true;
 }
 
 function filterCouponsForPublicRequest(couponDocs = [], now = new Date()) {
@@ -388,7 +402,7 @@ export async function buildMenuSnapshotPayload({
     businessId,
     collectionName,
     businessType: normalizedBusinessType,
-    schemaVersion: 2,
+    schemaVersion: MENU_SNAPSHOT_SCHEMA_VERSION,
     menuVersion: Number(businessData?.menuVersion || 0),
     generatedAt: new Date().toISOString(),
     stale: false,
@@ -520,11 +534,7 @@ export async function getFreshMenuSnapshot({
       const snapshotData = snapshotSnap.exists ? (snapshotSnap.data() || null) : null;
       const currentMenuVersion = Number(businessData?.menuVersion || 0);
 
-      if (
-        snapshotData &&
-        snapshotData.stale !== true &&
-        Number(snapshotData.menuVersion || 0) === currentMenuVersion
-      ) {
+      if (isStructuredMenuSnapshot(snapshotData, currentMenuVersion)) {
         return snapshotData;
       }
 
@@ -533,7 +543,7 @@ export async function getFreshMenuSnapshot({
           businessRef: business.ref,
           businessId,
           collectionName: business.collection,
-          reason: snapshotData ? 'stale_snapshot' : 'missing_snapshot',
+          reason: snapshotData ? 'stale_or_legacy_snapshot' : 'missing_snapshot',
           targetMenuVersion: currentMenuVersion,
         });
         return snapshotData;
