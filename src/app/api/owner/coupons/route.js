@@ -5,6 +5,7 @@ import { logAuditEvent, AUDIT_ACTIONS } from '@/lib/security/audit-log';
 import { sendSystemMessage } from '@/lib/whatsapp';
 import { couponLimiter } from '@/lib/security/rate-limiter';
 import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
+import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 
 
 export async function GET(req) {
@@ -140,8 +141,15 @@ export async function POST(req) {
         }
 
         // 🔄 CACHE INVALIDATION: Increment menuVersion to force public API refresh
-        await firestore.collection(collectionName).doc(businessId).update({
+        const businessRef = firestore.collection(collectionName).doc(businessId);
+        await businessRef.update({
             menuVersion: FieldValue.increment(1)
+        });
+        await markMenuSnapshotStale({
+            businessRef,
+            businessId,
+            collectionName,
+            reason: 'coupon_created',
         });
 
         return NextResponse.json({ message: 'Coupon created successfully!', id: newCouponRef.id }, { status: 201 });
@@ -186,8 +194,15 @@ export async function PATCH(req) {
         await couponRef.update(updateData);
 
         // 🔄 CACHE INVALIDATION: Increment menuVersion to force public API refresh
-        await firestore.collection(collectionName).doc(businessId).update({
+        const businessRef = firestore.collection(collectionName).doc(businessId);
+        await businessRef.update({
             menuVersion: FieldValue.increment(1)
+        });
+        await markMenuSnapshotStale({
+            businessRef,
+            businessId,
+            collectionName,
+            reason: 'coupon_updated',
         });
 
         return NextResponse.json({ message: 'Coupon updated successfully!' }, { status: 200 });
@@ -244,8 +259,15 @@ export async function DELETE(req) {
         await couponRef.delete();
 
         // 🔄 CACHE INVALIDATION: Increment menuVersion to force public API refresh
-        await firestore.collection(collectionName).doc(businessId).update({
+        const businessRef = firestore.collection(collectionName).doc(businessId);
+        await businessRef.update({
             menuVersion: FieldValue.increment(1)
+        });
+        await markMenuSnapshotStale({
+            businessRef,
+            businessId,
+            collectionName,
+            reason: 'coupon_deleted',
         });
 
         // 🔍 Audit log: COUPON_DELETE (fire-and-forget)

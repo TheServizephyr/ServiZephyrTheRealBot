@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
+import { findBusinessById } from '@/services/business/businessService';
+import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +57,24 @@ export async function POST(req) {
         });
 
         await batch.commit();
+
+        try {
+            const business = await findBusinessById(firestore, restaurantId, {
+                includeDeliverySettings: false,
+            });
+            if (business?.ref) {
+                await queueDashboardStatsRefresh({
+                    businessRef: business.ref,
+                    businessId: restaurantId,
+                    collectionName: business.collection,
+                    reason: 'order_mark_paid',
+                    bumpStatsVersion: true,
+                    bumpActiveOrderVersion: true,
+                });
+            }
+        } catch (derivedError) {
+            console.warn('[Mark Paid] Failed to queue derived refresh:', derivedError?.message || derivedError);
+        }
 
         console.log(`[Mark Paid] Marked ${ordersQuery.size} orders as paid for tab ${tabId}`);
 

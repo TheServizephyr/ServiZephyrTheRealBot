@@ -55,4 +55,56 @@ export const FEATURE_FLAGS = {
      * - /api/owner/dinein-tabs/cleanup
      */
     USE_NEW_DINEIN_ENDPOINTS: process.env.NEXT_PUBLIC_USE_NEW_DINEIN_ENDPOINTS !== 'false', // Default TRUE
+
+    /**
+     * Phase 6: Public bootstrap API for order/checkout first load
+     *
+     * When TRUE: client runtime fetchers prefer /api/public/bootstrap/[restaurantId]
+     * When FALSE: legacy menu/settings/customer/order waterfall remains active
+     */
+    USE_PUBLIC_BOOTSTRAP:
+        process.env.NEXT_PUBLIC_USE_PUBLIC_BOOTSTRAP === 'true' ||
+        process.env.USE_PUBLIC_BOOTSTRAP === 'true',
+
+    /**
+     * Phase 6: Menu snapshot derived document
+     *
+     * When TRUE: public menu/bootstrap may serve from menu_snapshot/current
+     * When FALSE: legacy raw menu collection fan-out remains active
+     */
+    USE_MENU_SNAPSHOT:
+        process.env.NEXT_PUBLIC_USE_MENU_SNAPSHOT === 'true' ||
+        process.env.USE_MENU_SNAPSHOT === 'true',
+
+    /**
+     * Phase 6: Owner dashboard stats derived document
+     *
+     * When TRUE: owner dashboard-data may serve from dashboard_stats/current
+     * When FALSE: route computes directly from raw collections
+     */
+    USE_DASHBOARD_STATS:
+        process.env.NEXT_PUBLIC_USE_DASHBOARD_STATS === 'true' ||
+        process.env.USE_DASHBOARD_STATS === 'true',
+
+    /**
+     * Phase 6: Cron-driven stats reconciliation
+     *
+     * When TRUE: cron processor can reconcile dashboard_stats/current
+     */
+    USE_DASHBOARD_STATS_RECONCILE:
+        process.env.NEXT_PUBLIC_USE_DASHBOARD_STATS_RECONCILE === 'true' ||
+        process.env.USE_DASHBOARD_STATS_RECONCILE === 'true',
+
+    /**
+     * Phase 6: Cross-tab primary live session behavior
+     *
+     * Placeholder server/client gate for future owner live-session dedupe.
+     */
+    USE_CROSS_TAB_LIVE_LEADER:
+        process.env.NEXT_PUBLIC_USE_CROSS_TAB_LIVE_LEADER === 'true' ||
+        process.env.USE_CROSS_TAB_LIVE_LEADER === 'true',
 };
+
+export function isEnabledFeatureFlag(flagName) {
+    return FEATURE_FLAGS?.[flagName] === true;
+}

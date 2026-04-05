@@ -16,9 +16,36 @@ import { createOrderV1 } from './legacy/createOrderV1_LEGACY';
 import { createOrderV2 } from '@/services/orderService';
 import { normalizeFlow, trackApiTelemetry, trackFunnelEvent } from '@/lib/opsTelemetry';
 import { trackEndpointRead, trackEndpointWrite } from '@/lib/readTelemetry';
+import { findBusinessById } from '@/services/business/businessService';
+import { getFirestore } from '@/lib/firebase-admin';
+import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
 
 // Allow up to 30s for order creation (8+ Firestore ops + payment gateway)
 export const maxDuration = 30;
+
+async function touchDerivedOrderState(restaurantId) {
+    const safeRestaurantId = String(restaurantId || '').trim();
+    if (!safeRestaurantId) return;
+
+    try {
+        const firestore = await getFirestore();
+        const business = await findBusinessById(firestore, safeRestaurantId, {
+            includeDeliverySettings: false,
+        });
+        if (!business?.ref) return;
+
+        await queueDashboardStatsRefresh({
+            businessRef: business.ref,
+            businessId: safeRestaurantId,
+            collectionName: business.collection,
+            reason: 'order_created',
+            bumpStatsVersion: true,
+            bumpActiveOrderVersion: true,
+        });
+    } catch (error) {
+        console.warn('[Order Create API] Failed to queue derived-state refresh:', error?.message || error);
+    }
+}
 
 export async function POST(req) {
     const startedAt = Date.now();
@@ -74,6 +101,7 @@ export async function POST(req) {
                     );
                 }
                 void trackFunnelEvent('order_create_success', flow);
+                await touchDerivedOrderState(restaurantId);
             }
             console.log(`[Order Create API] ✅ V2 completed in ${Date.now() - startedAt}ms`);
             return response;
@@ -103,6 +131,7 @@ export async function POST(req) {
                 );
             }
             void trackFunnelEvent('order_create_success', flow);
+            await touchDerivedOrderState(restaurantId);
         }
         console.log(`[Order Create API] ✅ V1 completed in ${Date.now() - startedAt}ms`);
         return response;

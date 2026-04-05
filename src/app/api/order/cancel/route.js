@@ -5,6 +5,7 @@ import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
 
 export const dynamic = 'force-dynamic';
 
@@ -240,6 +241,21 @@ export async function POST(req) {
             } catch (cacheError) {
                 console.warn('[API /order/cancel] Failed to clear cache:', cacheError);
                 // Don't fail the cancel operation if cache clear fails
+            }
+        }
+
+        if (businessRef) {
+            try {
+                await queueDashboardStatsRefresh({
+                    businessRef,
+                    businessId: effectiveRestaurantId,
+                    collectionName: businessRef.parent.id,
+                    reason: 'order_cancelled',
+                    bumpStatsVersion: true,
+                    bumpActiveOrderVersion: true,
+                });
+            } catch (derivedError) {
+                console.warn('[API /order/cancel] Failed to queue derived refresh:', derivedError?.message || derivedError);
             }
         }
 

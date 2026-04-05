@@ -15,6 +15,7 @@ const CUSTOMER_LOOKUP_TTL_MS = 60 * 1000;
 const RESTAURANT_BOOTSTRAP_TTL_MS = 60 * 1000;
 const ORDER_STATUS_TTL_MS = 8 * 1000;
 const ACTIVE_ORDER_TTL_MS = 15 * 1000;
+const USE_PUBLIC_BOOTSTRAP = process.env.NEXT_PUBLIC_USE_PUBLIC_BOOTSTRAP === 'true';
 
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
 const getTokenSignature = (value) => String(value || '').slice(-24);
@@ -190,6 +191,48 @@ export async function fetchCachedRestaurantBootstrap({
         if (ref) query.set('ref', ref);
 
         const encodedRestaurantId = encodeURIComponent(String(restaurantId));
+        if (USE_PUBLIC_BOOTSTRAP) {
+            try {
+                const bootstrapData = await fetchJsonOrThrow(`/api/public/bootstrap/${encodedRestaurantId}?${query.toString()}`);
+                const menuData = bootstrapData?.legacy?.menuData || bootstrapData?.menu || {};
+                const settingsData = bootstrapData?.legacy?.settingsData || bootstrapData?.delivery || {};
+
+                if (bootstrapData?.customer && bootstrapData?.customer?.resolved !== false) {
+                    primeCustomerLookupCache({
+                        phone: normalizedPhone,
+                        ref,
+                        guestId: '',
+                        user: null,
+                    }, bootstrapData.customer, CUSTOMER_LOOKUP_TTL_MS);
+                }
+
+                if (bootstrapData?.activeOrder?.exists) {
+                    primeCachedClientResource(
+                        [
+                            ACTIVE_ORDER_CACHE_PREFIX,
+                            toCacheKeyPart(restaurantId),
+                            toCacheKeyPart(''),
+                            toCacheKeyPart(ref),
+                            toCacheKeyPart(normalizedPhone),
+                            toCacheKeyPart(tokenSignature),
+                        ].join(''),
+                        { activeOrders: [bootstrapData.activeOrder] },
+                        { ttlMs: ACTIVE_ORDER_TTL_MS, storage: 'memory' }
+                    );
+                }
+
+                return {
+                    menuData,
+                    settingsData: settingsData || {},
+                    bootstrapData,
+                };
+            } catch (error) {
+                if (error?.status !== 404 && error?.status !== 409) {
+                    console.warn('[runtimeFetchers] Bootstrap route failed, falling back to legacy path:', error?.message || error);
+                }
+            }
+        }
+
         const [menuData, settingsData] = await Promise.all([
             fetchJsonOrThrow(`/api/public/menu/${encodedRestaurantId}?${query.toString()}`),
             fetchJsonOrThrow(`/api/public/settings/${encodedRestaurantId}`).catch((error) => {

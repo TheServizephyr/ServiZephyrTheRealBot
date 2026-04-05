@@ -7,6 +7,7 @@ import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { findBusinessById } from '@/services/business/businessService';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
+import { getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
 
 // --- Analytics Badge Thresholds ---
 // Strict thresholds to prevent badge inflation — only truly top-performing items qualify
@@ -704,6 +705,62 @@ export async function GET(req, { params }) {
         debugLog(`[Menu API]    ├─ Redis KV available: ${isKvAvailable ? '✅ YES' : '❌ NO'}`);
         debugLog(`[Menu API]    ├─ Skip Cache Requested: ${skipCache ? '⚠️ YES' : 'NO'}`);
         debugLog(`[Menu API]    └─ Timestamp: ${new Date().toISOString()}`);
+
+        if (!skipCache) {
+            try {
+                const snapshot = await getFreshMenuSnapshot({
+                    firestore,
+                    businessId: cacheRestaurantId,
+                    collectionNameHint: collectionName,
+                    allowInlineRebuild: true,
+                });
+
+                if (snapshot?.publicMenuPayload) {
+                    const publicPayload = snapshot.publicMenuPayload;
+                    const couponCatalog = Array.isArray(snapshot.couponCatalog) ? snapshot.couponCatalog : [];
+                    let payload = {
+                        ...publicPayload,
+                        isOpen: effectiveIsOpen,
+                        autoScheduleEnabled: businessData.autoScheduleEnabled === true,
+                        openingTime: businessData.openingTime || '09:00',
+                        closingTime: businessData.closingTime || '22:00',
+                        timeZone: businessData.timeZone || businessData.timezone || 'Asia/Kolkata',
+                    };
+
+                    if (personalizedRequest) {
+                        const hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
+                        if (couponCatalog.length > 0 && hasAssignedCoupons) {
+                            const eligibleCustomerIds = await resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams });
+                            payload = {
+                                ...payload,
+                                coupons: filterCouponsForRequest(couponCatalog, new Date(), eligibleCustomerIds),
+                            };
+                        }
+                    }
+
+                    const cacheableResponseData = {
+                        ...publicPayload,
+                        __couponCatalog: couponCatalog,
+                    };
+                    writeMenuToMemoryCache(cacheKey, cacheableResponseData);
+                    if (isKvAvailable) {
+                        void kv.set(cacheKey, cacheableResponseData, { ex: 43200 }).catch((cacheError) => {
+                            console.warn('[Menu API] Snapshot cache storage failed:', cacheError?.message || cacheError);
+                        });
+                    }
+
+                    await trackEndpointRead(telemetryEndpoint, 1);
+                    return respond(payload, 200, {
+                        'X-Cache': 'SNAPSHOT',
+                        'X-Menu-Version': menuVersion.toString(),
+                        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600',
+                        'Vary': 'Accept-Encoding',
+                    });
+                }
+            } catch (snapshotError) {
+                console.warn('[Menu API] Snapshot path failed, continuing with raw menu flow:', snapshotError?.message || snapshotError);
+            }
+        }
 
         // STEP 3: Check Redis cache with version-specific key
         // Even personalized requests can reuse the cached base menu payload; we

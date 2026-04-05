@@ -12,6 +12,7 @@ import { validatePriceChange, extractPortions } from '@/lib/security/validation-
 import { normalizeMenuItemImageUrl } from '@/lib/server/menu-image-storage';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
+import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 
 // --- 1. SINGLE ITEM AVAILABILITY UPDATE ---
 // (Logic moved inside methods below)
@@ -425,6 +426,12 @@ export async function POST(req) {
             await businessRef.update({
                 menuVersion: FieldValue.increment(1)
             });
+            await markMenuSnapshotStale({
+                businessRef,
+                businessId,
+                collectionName,
+                reason: isEditing ? 'menu_item_updated' : 'menu_item_created',
+            });
             console.log(`[Menu API] ✅ menuVersion incremented for ${businessId}`);
         } catch (versionError) {
             console.error('[Menu API] ❌ menuVersion increment failed:', versionError);
@@ -474,6 +481,12 @@ export async function DELETE(req) {
             const businessRef = firestore.collection(collectionName).doc(businessId);
             await businessRef.update({
                 menuVersion: FieldValue.increment(1)
+            });
+            await markMenuSnapshotStale({
+                businessRef,
+                businessId,
+                collectionName,
+                reason: 'menu_item_deleted',
             });
             console.log(`[Menu API] ✅ menuVersion incremented for ${businessId}`);
         } catch (versionError) {
@@ -563,6 +576,12 @@ export async function PATCH(req) {
             try {
                 const businessRef = firestore.collection(collectionName).doc(businessId);
                 await businessRef.update({ menuVersion: FieldValue.increment(1) });
+                await markMenuSnapshotStale({
+                    businessRef,
+                    businessId,
+                    collectionName,
+                    reason: 'category_image_updated',
+                });
             } catch (versionError) {
                 console.error('[Menu API] menuVersion increment failed after category image update:', versionError);
             }
@@ -585,6 +604,12 @@ export async function PATCH(req) {
             try {
                 const businessRef = firestore.collection(collectionName).doc(businessId);
                 await businessRef.update({ menuVersion: FieldValue.increment(1) });
+                await markMenuSnapshotStale({
+                    businessRef,
+                    businessId,
+                    collectionName,
+                    reason: 'menu_availability_updated',
+                });
                 console.log(`[Menu API] ✅ menuVersion incremented for single availability update on ${businessId}`);
             } catch (versionError) {
                 console.error('[Menu API] ❌ menuVersion increment failed after single availability update:', versionError);
@@ -695,6 +720,12 @@ export async function PATCH(req) {
             const businessRef = firestore.collection(collectionName).doc(businessId);
             await businessRef.update({
                 menuVersion: FieldValue.increment(1)
+            });
+            await markMenuSnapshotStale({
+                businessRef,
+                businessId,
+                collectionName,
+                reason: `menu_bulk_${action}`,
             });
             console.log(`[Menu API] ✅ menuVersion incremented for ${businessId}`);
         } catch (versionError) {

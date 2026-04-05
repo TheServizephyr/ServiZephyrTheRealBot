@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 import { kv, isKvConfigured } from '@/lib/kv';
+import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -252,6 +253,12 @@ export async function PATCH(req) {
         await businessRef.update({
             menuVersion: FieldValue.increment(1),
             updatedAt: new Date()
+        });
+        await markMenuSnapshotStale({
+            businessRef,
+            businessId,
+            collectionName: businessRef.parent.id,
+            reason: 'delivery_settings_updated',
         });
 
         // Invalidate menu cache (legacy key)

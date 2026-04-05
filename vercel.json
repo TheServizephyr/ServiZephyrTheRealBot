@@ -16,6 +16,10 @@
     ],
     "crons": [
         {
+            "path": "/api/cron/process-derived-jobs",
+            "schedule": "*/5 * * * *"
+        },
+        {
             "path": "/api/cron/cleanup-retention",
             "schedule": "0 3 * * *"
         }
