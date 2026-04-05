@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { FieldValue, getFirestore } from '@/lib/firebase-admin';
+import { SECURITY_EVENT_TTL_MS, ttlDateFromNow } from '@/lib/firestoreTtl';
 import { kv, isKvConfigured } from '@/lib/kv';
 
 export const SECURITY_EVENT_TYPES = {
@@ -130,6 +131,7 @@ export async function logSecurityEvent({
       userAgent: getUserAgent(req),
       metadata: safeMetadata(metadata),
       createdAt: FieldValue.serverTimestamp(),
+      cleanupAt: ttlDateFromNow(SECURITY_EVENT_TTL_MS),
     });
   } catch (error) {
     console.error('[SECURITY_EVENT_LOG_FAILED]', error?.message || error);

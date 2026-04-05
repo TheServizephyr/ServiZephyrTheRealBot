@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFreshDashboardStats } from '@/lib/server/dashboardStats';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,6 +131,38 @@ export async function GET(req) {
 
         const url = new URL(req.url);
         const filter = url.searchParams.get('filter') || 'Today';
+
+        if (filter === 'Today') {
+            const derivedStats = await getFreshDashboardStats({
+                firestore,
+                businessId,
+                collectionNameHint: collectionName,
+                allowInlineRebuild: true,
+            });
+
+            if (derivedStats) {
+                return NextResponse.json({
+                    stats: {
+                        sales: derivedStats?.today?.sales || 0,
+                        salesChange: derivedStats?.todayComparisons?.salesChange || 0,
+                        orders: derivedStats?.today?.orders || 0,
+                        ordersChange: derivedStats?.todayComparisons?.ordersChange || 0,
+                        newCustomers: derivedStats?.today?.newCustomers || 0,
+                        newCustomersChange: derivedStats?.todayComparisons?.newCustomersChange || 0,
+                        avgOrderValue: derivedStats?.today?.avgOrderValue || 0,
+                        avgOrderValueChange: derivedStats?.todayComparisons?.avgOrderValueChange || 0,
+                        todayRejections: derivedStats?.today?.todayRejections || 0,
+                    },
+                    liveOrders: derivedStats?.live?.orders || [],
+                    salesChart: derivedStats?.charts?.salesChart || [],
+                    topItems: derivedStats?.topItems || [],
+                    businessInfo: {
+                        businessType: derivedStats?.businessType || 'restaurant',
+                    },
+                    source: 'dashboard_stats',
+                }, { status: 200 });
+            }
+        }
         const businessRef = firestore.collection(collectionName).doc(businessId);
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
         const customersRef = businessRef.collection('customers');

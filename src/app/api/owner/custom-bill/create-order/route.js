@@ -8,6 +8,7 @@ import { sendSystemMessage, sendSystemTemplateMessage, sendWhatsAppMessage } fro
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { issueGuestAccessRef } from '@/lib/public-auth';
 import { createOrderV2 } from '@/services/order/createOrder.service';
+import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
 
 const SHORT_LINK_COLLECTION = 'short_links';
 const SHORT_LINK_LENGTH = 8;
@@ -533,6 +534,19 @@ export async function POST(req) {
             }
         } else {
             whatsappError = 'Business botPhoneNumberId is not configured.';
+        }
+
+        try {
+            await queueDashboardStatsRefresh({
+                businessRef: businessSnap.ref,
+                businessId,
+                collectionName,
+                reason: 'manual_call_order_created',
+                bumpStatsVersion: true,
+                bumpActiveOrderVersion: true,
+            });
+        } catch (derivedError) {
+            console.warn('[Custom Bill Create Order] Failed to queue derived refresh:', derivedError?.message || derivedError);
         }
 
         return NextResponse.json({

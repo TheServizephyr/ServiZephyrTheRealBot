@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { recalculateTabTotals, verifyTabIntegrity } from '@/lib/dinein-utils';
+import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
 
 import Razorpay from 'razorpay';
 import axios from 'axios';
@@ -145,6 +146,19 @@ export async function POST(req) {
             });
 
             await batch.commit();
+
+            try {
+                await queueDashboardStatsRefresh({
+                    businessRef,
+                    businessId: restaurantId,
+                    collectionName: businessRef.parent.id,
+                    reason: 'order_settle_pay_at_counter',
+                    bumpStatsVersion: true,
+                    bumpActiveOrderVersion: true,
+                });
+            } catch (derivedError) {
+                console.warn('[Settle Payment] Failed to queue derived refresh:', derivedError?.message || derivedError);
+            }
 
             return NextResponse.json({
                 message: 'Payment marked as pay at counter',

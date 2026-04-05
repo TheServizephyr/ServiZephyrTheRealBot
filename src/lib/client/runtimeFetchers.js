@@ -15,6 +15,7 @@ const CUSTOMER_LOOKUP_TTL_MS = 60 * 1000;
 const RESTAURANT_BOOTSTRAP_TTL_MS = 60 * 1000;
 const ORDER_STATUS_TTL_MS = 8 * 1000;
 const ACTIVE_ORDER_TTL_MS = 15 * 1000;
+const USE_PUBLIC_BOOTSTRAP = process.env.NEXT_PUBLIC_USE_PUBLIC_BOOTSTRAP === 'true';
 
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
 const getTokenSignature = (value) => String(value || '').slice(-24);
@@ -115,6 +116,94 @@ function getBrowserStorage() {
     return window.localStorage;
 }
 
+function toLegacyMenuDataFromBootstrap(bootstrapData = {}) {
+    const business = bootstrapData?.business || {};
+    const ordering = bootstrapData?.ordering || {};
+    const delivery = ordering?.delivery || {};
+    const menu = bootstrapData?.menu || {};
+
+    return {
+        latitude: business?.location?.lat ?? null,
+        longitude: business?.location?.lng ?? null,
+        restaurantName: business?.name || '',
+        approvalStatus: business?.approvalStatus || 'approved',
+        logoUrl: business?.logoUrl || '',
+        bannerUrls: business?.bannerUrls || [],
+        deliveryCharge: delivery?.deliveryCharge ?? 0,
+        deliveryFixedFee: delivery?.baseFee ?? 0,
+        deliveryBaseDistance: delivery?.baseDistanceKm ?? 0,
+        deliveryFreeThreshold: delivery?.freeAbove,
+        minOrderValue: delivery?.minOrderValue ?? 0,
+        deliveryFeeType: delivery?.feeModel || 'fixed',
+        deliveryPerKmFee: delivery?.perKmFee ?? 0,
+        deliveryRadius: delivery?.radiusKm ?? 0,
+        roadDistanceFactor: delivery?.roadDistanceFactor ?? 1,
+        freeDeliveryRadius: delivery?.freeDeliveryRadius ?? 0,
+        freeDeliveryMinOrder: delivery?.freeDeliveryMinOrder ?? 0,
+        deliveryTiers: delivery?.deliveryTiers || [],
+        deliveryOrderSlabRules: delivery?.slabs?.rules || [],
+        deliveryOrderSlabAboveFee: delivery?.slabs?.aboveFee || 0,
+        deliveryOrderSlabBaseDistance: delivery?.slabs?.baseDistanceKm || 1,
+        deliveryOrderSlabPerKmFee: delivery?.slabs?.perKmFee || 15,
+        deliveryEngineMode: delivery?.engineMode || 'legacy',
+        deliveryUseZones: delivery?.useZones === true,
+        zoneFallbackToLegacy: delivery?.zoneFallbackToLegacy !== false,
+        deliveryZones: delivery?.zones || [],
+        menu: menu?.itemsByCategory || {},
+        customCategories: menu?.categories || [],
+        coupons: menu?.coupons || [],
+        loyaltyPoints: 0,
+        deliveryEnabled: ordering?.deliveryEnabled ?? true,
+        pickupEnabled: ordering?.pickupEnabled ?? false,
+        dineInEnabled: ordering?.dineInEnabled ?? false,
+        businessAddress: business?.address || null,
+        businessType: business?.type || 'restaurant',
+        dineInModel: ordering?.dineInModel || 'post-paid',
+        isOpen: business?.isOpen === true,
+        autoScheduleEnabled: business?.hours?.autoScheduleEnabled === true,
+        openingTime: business?.hours?.opening || '09:00',
+        closingTime: business?.hours?.closing || '22:00',
+        timeZone: business?.hours?.timeZone || 'Asia/Kolkata',
+    };
+}
+
+function toLegacySettingsDataFromBootstrap(bootstrapData = {}) {
+    const ordering = bootstrapData?.ordering || {};
+    const charges = ordering?.charges || {};
+    const delivery = ordering?.delivery || {};
+
+    return {
+        deliveryEnabled: ordering?.deliveryEnabled ?? true,
+        pickupEnabled: ordering?.pickupEnabled ?? false,
+        dineInEnabled: ordering?.dineInEnabled ?? false,
+        deliveryCodEnabled: ordering?.payments?.deliveryCod ?? false,
+        deliveryOnlinePaymentEnabled: ordering?.payments?.deliveryOnline ?? false,
+        pickupOnlinePaymentEnabled: ordering?.payments?.pickupOnline ?? false,
+        pickupPodEnabled: ordering?.payments?.pickupPod ?? false,
+        dineInOnlinePaymentEnabled: ordering?.payments?.dineInOnline ?? false,
+        dineInPayAtCounterEnabled: ordering?.payments?.dineInPayAtCounter ?? false,
+        deliveryCharge: delivery?.deliveryCharge ?? 0,
+        deliveryFreeThreshold: delivery?.freeAbove,
+        gstEnabled: charges?.gst?.enabled ?? false,
+        gstRate: charges?.gst?.rate ?? 0,
+        gstPercentage: charges?.gst?.rate ?? 0,
+        gstMinAmount: charges?.gst?.minAmount ?? 0,
+        gstCalculationMode: charges?.gst?.mode ?? 'excluded',
+        gstIncludedInPrice: charges?.gst?.includedInPrice ?? false,
+        convenienceFeeEnabled: charges?.convenience?.enabled ?? false,
+        convenienceFeeRate: charges?.convenience?.rate ?? 0,
+        convenienceFeePaidBy: charges?.convenience?.paidBy || 'customer',
+        convenienceFeeLabel: charges?.convenience?.label || 'Payment Processing Fee',
+        packagingChargeEnabled: charges?.packaging?.enabled ?? false,
+        packagingChargeAmount: charges?.packaging?.amount ?? 0,
+        serviceFeeEnabled: charges?.serviceFee?.enabled ?? false,
+        serviceFeeLabel: charges?.serviceFee?.label || 'Additional Charge',
+        serviceFeeType: charges?.serviceFee?.type || 'fixed',
+        serviceFeeValue: charges?.serviceFee?.value ?? 0,
+        serviceFeeApplyOn: charges?.serviceFee?.applyOn || 'all',
+    };
+}
+
 export function readCustomerAddressesSnapshot() {
     const storage = getBrowserStorage();
     if (!storage) return [];
@@ -190,6 +279,48 @@ export async function fetchCachedRestaurantBootstrap({
         if (ref) query.set('ref', ref);
 
         const encodedRestaurantId = encodeURIComponent(String(restaurantId));
+        if (USE_PUBLIC_BOOTSTRAP) {
+            try {
+                const bootstrapData = await fetchJsonOrThrow(`/api/public/bootstrap/${encodedRestaurantId}?${query.toString()}`);
+                const menuData = toLegacyMenuDataFromBootstrap(bootstrapData);
+                const settingsData = toLegacySettingsDataFromBootstrap(bootstrapData);
+
+                if (bootstrapData?.user?.customer && bootstrapData?.user?.customer?.resolved !== false) {
+                    primeCustomerLookupCache({
+                        phone: normalizedPhone,
+                        ref,
+                        guestId: '',
+                        user: null,
+                    }, bootstrapData.user.customer, CUSTOMER_LOOKUP_TTL_MS);
+                }
+
+                if (bootstrapData?.user?.activeOrder?.exists) {
+                    primeCachedClientResource(
+                        [
+                            ACTIVE_ORDER_CACHE_PREFIX,
+                            toCacheKeyPart(restaurantId),
+                            toCacheKeyPart(''),
+                            toCacheKeyPart(ref),
+                            toCacheKeyPart(normalizedPhone),
+                            toCacheKeyPart(tokenSignature),
+                        ].join(''),
+                        { activeOrders: [bootstrapData.user.activeOrder] },
+                        { ttlMs: ACTIVE_ORDER_TTL_MS, storage: 'memory' }
+                    );
+                }
+
+                return {
+                    menuData,
+                    settingsData: settingsData || {},
+                    bootstrapData,
+                };
+            } catch (error) {
+                if (error?.status !== 404 && error?.status !== 409) {
+                    console.warn('[runtimeFetchers] Bootstrap route failed, falling back to legacy path:', error?.message || error);
+                }
+            }
+        }
+
         const [menuData, settingsData] = await Promise.all([
             fetchJsonOrThrow(`/api/public/menu/${encodedRestaurantId}?${query.toString()}`),
             fetchJsonOrThrow(`/api/public/settings/${encodedRestaurantId}`).catch((error) => {

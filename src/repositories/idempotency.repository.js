@@ -7,6 +7,7 @@
  */
 
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { IDEMPOTENCY_TTL_MS, ttlDateFromNow } from '@/lib/firestoreTtl';
 
 export class IdempotencyRepository {
     constructor() {
@@ -61,7 +62,8 @@ export class IdempotencyRepository {
         await docRef.set({
             status: 'reserved',
             ...metadata,
-            createdAt: FieldValue.serverTimestamp()
+            createdAt: FieldValue.serverTimestamp(),
+            cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
         }, { merge: true });
 
         console.log(`[IdempotencyRepository] Key reserved: ${idempotencyKey}`);
@@ -77,7 +79,8 @@ export class IdempotencyRepository {
         await docRef.set({
             status: 'completed',
             ...result,
-            completedAt: FieldValue.serverTimestamp()
+            completedAt: FieldValue.serverTimestamp(),
+            cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
         }, { merge: true });
 
         console.log(`[IdempotencyRepository] Key completed: ${idempotencyKey}`);
@@ -93,7 +96,8 @@ export class IdempotencyRepository {
         await docRef.set({
             status: 'failed',
             error: error.message,
-            failedAt: FieldValue.serverTimestamp()
+            failedAt: FieldValue.serverTimestamp(),
+            cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
         }, { merge: true });
 
         console.log(`[IdempotencyRepository] Key marked as failed: ${idempotencyKey}`);
@@ -135,7 +139,8 @@ export class IdempotencyRepository {
             transaction.set(keyRef, {
                 status: 'reserved',
                 ...metadata,
-                createdAt: FieldValue.serverTimestamp()
+                createdAt: FieldValue.serverTimestamp(),
+                cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
             }, { merge: true });
 
             return { isDuplicate: false };

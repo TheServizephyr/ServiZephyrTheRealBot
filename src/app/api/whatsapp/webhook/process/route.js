@@ -17,6 +17,7 @@ import { issueGuestAccessRef, WHATSAPP_GUEST_SESSION_TTL_MS } from '@/lib/public
 import { getAdminSystemConfig, storeAdminInboundMessage } from '@/lib/admin-system';
 import { handleAdminOwnerReportMessage } from '@/lib/owner-whatsapp-reports';
 import { createShortLink } from '@/lib/short-link';
+import { TRACKING_TOKEN_TTL_MS, ttlDateFromNow, ttlDateFromSource } from '@/lib/firestoreTtl';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -113,11 +114,12 @@ async function getBusiness(firestore, botPhoneNumberId) {
 const generateSecureToken = async (firestore, userId) => {
     console.log(`[Webhook WA] generateSecureToken: Generating for userId: ${userId}`);
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity
+    const expiry = ttlDateFromNow(TRACKING_TOKEN_TTL_MS);
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         userId: userId, // Store User ID (UID or Guest ID)
         expiresAt: expiry,
+        cleanupAt: ttlDateFromSource(expiry, 1000),
         type: 'tracking'
     });
     console.log("[Webhook WA] generateSecureToken: Token generated linked to User ID.");

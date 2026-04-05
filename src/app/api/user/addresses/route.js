@@ -5,6 +5,7 @@ import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { findBusinessById } from '@/services/business/businessService';
 import { calculateDeliveryChargeForBusiness } from '@/services/delivery/deliveryCharge.service';
 import { readSignedGuestSessionCookie, resolveGuestAccessRef } from '@/lib/public-auth';
+import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
 
 function toNum(value, fallback = 0) {
     const n = Number(value);
@@ -272,6 +273,8 @@ export async function POST(req) {
                         if (alreadyCapturedWithSameLocation) {
                             console.log(`[API][user/addresses] Skipping duplicate order patch for ${activeOrderId} (same location already captured).`);
                         } else {
+                            let derivedBusinessRef = null;
+                            let derivedCollectionName = null;
                             const statusEvents = [
                                 {
                                     status: 'address_captured',
@@ -296,6 +299,8 @@ export async function POST(req) {
                                 }
 
                                 const businessData = business.data || {};
+                                derivedBusinessRef = business.ref;
+                                derivedCollectionName = business.collection;
                                 const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
                                 const deliveryConfig = deliveryConfigSnap.exists ? deliveryConfigSnap.data() : {};
 
@@ -391,6 +396,29 @@ export async function POST(req) {
 
                             patchData.statusHistory = FieldValue.arrayUnion(...statusEvents);
                             await orderRef.set(patchData, { merge: true });
+
+                            try {
+                                if (!derivedBusinessRef && orderData.restaurantId) {
+                                    const business = await findBusinessById(firestore, orderData.restaurantId, {
+                                        includeDeliverySettings: false,
+                                    });
+                                    derivedBusinessRef = business?.ref || null;
+                                    derivedCollectionName = business?.collection || null;
+                                }
+
+                                if (derivedBusinessRef && derivedCollectionName) {
+                                    await queueDashboardStatsRefresh({
+                                        businessRef: derivedBusinessRef,
+                                        businessId: orderData.restaurantId,
+                                        collectionName: derivedCollectionName,
+                                        reason: 'customer_address_captured',
+                                        bumpActiveOrderVersion: true,
+                                    });
+                                }
+                            } catch (derivedError) {
+                                console.warn('[API][user/addresses] Failed to queue derived refresh after address capture:', derivedError?.message || derivedError);
+                            }
+
                             console.log(`[API][user/addresses] Linked active order ${activeOrderId} updated with customer location.`);
                         }
                     } else {

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { verifyScopedAuthToken } from '@/lib/public-auth';
+import { findBusinessById } from '@/services/business/businessService';
+import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
 
 /**
  * PATCH /api/order/update
@@ -139,6 +141,28 @@ export async function PATCH(req) {
         });
 
         await batch.commit();
+
+        const firstOrderData = ordersToUpdate[0]?.data ? ordersToUpdate[0].data() : null;
+        const targetRestaurantId = String(firstOrderData?.restaurantId || '').trim();
+        if (targetRestaurantId) {
+            try {
+                const business = await findBusinessById(firestore, targetRestaurantId, {
+                    includeDeliverySettings: false,
+                });
+                if (business?.ref) {
+                    await queueDashboardStatsRefresh({
+                        businessRef: business.ref,
+                        businessId: targetRestaurantId,
+                        collectionName: business.collection,
+                        reason: 'order_updated',
+                        bumpStatsVersion: true,
+                        bumpActiveOrderVersion: true,
+                    });
+                }
+            } catch (derivedError) {
+                console.warn('[API][PATCH /order/update] Failed to queue derived refresh:', derivedError?.message || derivedError);
+            }
+        }
 
         console.log(`[API][PATCH /order/update] Updated ${ordersToUpdate.length} orders`);
 
