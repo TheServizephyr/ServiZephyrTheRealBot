@@ -91,7 +91,7 @@ export async function POST(req) {
 
         void trackFunnelEvent('order_create_attempt', flow);
 
-        const isTestOrder = body?.isTestOrder === true; if (FEATURE_FLAGS.USE_NEW_ORDER_SERVICE || isTestOrder) {
+        if (FEATURE_FLAGS.USE_NEW_ORDER_SERVICE) {
             console.log('[Order Create API] 🆕 Using V2 (Service Layer)');
             const response = await createOrderV2(req);
             statusCode = response?.status || 200;

@@ -134,48 +134,44 @@ async function simulateOrderStatusCheck(userId) {
   return { success: result.status !== 0 && result.status < 500, status: result.status, duration: result.duration };
 }
 
-// ─── Step 3: Order Create Check (Write Mode) ─────────────────────
+// ─── Step 3: Order Create ─────────────────────────────────────────
 async function simulateOrderCreate(userId) {
   const url = `${BASE_URL}/api/order/create`;
-  
-  // Real payload pointing to the ACTUAL restaurant but with isTestOrder flag!
-  // This solves the 500 error because the real restaurant HAS a menu snapshot.
+
   const result = await timedFetch(url, {
     method: 'POST',
     body: JSON.stringify({
-      restaurantId: RESTAURANT_ID, // Use the real one!
-      isTestOrder: true,           // <== THIS triggers the V2 test_orders safe collection!
+      restaurantId: RESTAURANT_ID,
       deliveryType: 'delivery',
-      businessType: 'restaurant',
       paymentMethod: 'cod',
       items: [{
-          id: 'test_item_1', // We should honestly query the menu first if it still 500s.
-          name: 'Load Test Item',
-          price: 10,
-          quantity: 1,
-          totalPrice: 10,
-          categoryId: 'general'
+        id: '2NaDtrfT2qXTR5BL7Yz2',
+        name: 'Mix Veg. Raita',
+        price: 63,
+        quantity: 1,
+        totalPrice: 63,
+        categoryId: 'raita',
+        portions: [{ name: 'Full', price: 63 }]
       }],
-      subtotal: 10,
-      grandTotal: 10,
+      subtotal: 63,
+      grandTotal: 63,
       customer: {
-        name: `TestUser_${userId}`,
+        name: `LoadUser_${userId}`,
         phone: `9999999${(userId % 1000).toString().padStart(3, '0')}`
       },
       address: {
-        full: "123 Test Street",
+        full: '123 Test Street, Delhi',
         lat: 28.6139,
         lng: 77.2090
       },
       idempotencyKey: `loadtest_${userId}_${Date.now()}`
     })
   });
-  
+
   trackResponse('orderCreate', result.duration, result.status, result.error);
-  
-  // The backend executes the actual V2 logic and saves the order
+
+  // 200 = order created successfully
   const isSuccess = result.status === 200;
-  
   return { success: isSuccess, status: result.status, duration: result.duration };
 }
 
@@ -183,7 +179,6 @@ async function simulateOrderCreate(userId) {
 async function runVirtualUser(userId) {
   const userResults = [];
 
-  // ONLY Test Order Create
   if (ENABLE_WRITES) {
     const createCheck = await simulateOrderCreate(userId);
     userResults.push({ step: 'orderCreate', ...createCheck });
