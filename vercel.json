@@ -17,7 +17,7 @@
     "crons": [
         {
             "path": "/api/cron/process-derived-jobs",
-            "schedule": "*/5 * * * *"
+            "schedule": "0 4 * * *"
         },
         {
             "path": "/api/cron/cleanup-retention",
