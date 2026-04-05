@@ -1628,10 +1628,10 @@ const OrderPageInternal = () => {
     // ✅ NEW: Prefetch critical routes to ensure instant navigation
     useEffect(() => {
         if (!router) return;
-        
+
         // Background prefetch for common paths
         router.prefetch('/add-address');
-        
+
         // Prefetch with useCurrent variation
         const useCurrentUrl = buildAddAddressUrl({ useCurrent: true });
         router.prefetch(useCurrentUrl);
@@ -3466,7 +3466,7 @@ const OrderPageInternal = () => {
                 // Enforce maximum 10% of total active items for Top Picks
                 const totalActiveItemsCount = Object.values(sourceMenu).flat().filter(item => !item.isDineInExclusive || deliveryType === 'dine-in').length;
                 const maxTopPicks = Math.max(1, Math.ceil(totalActiveItemsCount * 0.10));
-                
+
                 newMenu['top-picks'] = recommendedItems.slice(0, maxTopPicks);
             }
         }
@@ -3494,13 +3494,13 @@ const OrderPageInternal = () => {
                 count: (processedMenu[key] || []).length
             }))
             .filter(category => category.count > 0);
-            
+
         cats.sort((a, b) => {
             if (a.key === 'top-picks') return -1;
             if (b.key === 'top-picks') return 1;
             return 0; // retain default relative order
         });
-        
+
         return cats;
     }, [processedMenu]);
 
@@ -4220,622 +4220,622 @@ const OrderPageInternal = () => {
 
     return (
         <MotionConfig reducedMotion={customerFlowSafeMode ? 'always' : 'never'}>
-        <>
-            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
-            <AnimatePresence>
-                {waiterToast.isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -12, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                        className={cn(
-                            "fixed top-4 left-1/2 -translate-x-1/2 z-[120] px-3.5 py-2 rounded-lg border shadow-lg text-xs sm:text-sm font-medium backdrop-blur-sm",
-                            waiterToast.type === 'error'
-                                ? "bg-red-500/95 text-white border-red-400"
-                                : "bg-emerald-500/95 text-white border-emerald-400"
-                        )}
-                        role="status"
-                        aria-live="polite"
-                    >
-                        {waiterToast.message}
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {isQrScannerOpen && <QrScanner onClose={() => setIsQrScannerOpen(false)} onScanSuccess={(decodedText) => { setIsQrScannerOpen(false); window.location.href = decodedText; }} />}
-
-            <AnimatePresence>
-                {isBannerExpanded && (
-                    <motion.div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBannerExpanded(false)}>
-                        <motion.div className="relative w-full max-w-4xl" style={{ aspectRatio: '16 / 9' }} onClick={(e) => e.stopPropagation()}>
-                            <Image
-                                src={restaurantData.bannerUrls[currentBannerIndex] || restaurantData.bannerUrls[0]}
-                                alt="Banner Expanded"
-                                layout="fill"
-                                objectFit="contain"
-                                unoptimized
-                            />
-                        </motion.div>
-                        <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white" onClick={() => setIsBannerExpanded(false)}><X /></Button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-            <div className="min-h-screen min-h-[100dvh] bg-background text-foreground green-theme overflow-x-hidden max-w-full customer-flow-surface">
-                <DineInModal
-                    isOpen={isDineInModalOpen}
-                    onClose={handleCloseDineInModal}
-                    onBookTable={handleBookTable}
-                    tableStatus={tableStatus}
-                    onStartNewTab={handleStartNewTab}
-                    onJoinTab={handleJoinTab}
-                    setIsQrScannerOpen={setIsQrScannerOpen}
-                    setInfoDialog={setInfoDialog}
-                    newTabPax={newTabPax}
-                    setNewTabPax={setNewTabPax}
-                    newTabName={newTabName}
-                    setNewTabName={setNewTabName}
-                    isEditing={isEditingModal}
-                    onUpdateTab={handleUpdateTab}
-                />
-                {/* ✅ Car Order Modal */}
-                <CarOrderModal
-                    isOpen={isCarOrderModalOpen}
-                    onClose={() => setIsCarOrderModalOpen(false)}
-                    onConfirm={handleCarOrderConfirm}
-                    carSpot={carSpotFromUrl}
-                />
-
-                <CustomizationDrawer
-                    item={customizationItem}
-                    isOpen={!!customizationItem}
-                    onClose={() => setCustomizationItem(null)}
-                    onAddToCart={handleAddToCart}
-                    isStoreBusiness={isStoreBusiness}
-                />
-                <MenuBrowserModal
-                    isOpen={isMenuBrowserOpen}
-                    onClose={() => setIsMenuBrowserOpen(false)}
-                    categories={menuCategories}
-                    onCategoryClick={handleCategoryClick}
-                    catalogLabel={catalogLabel}
-                    hideCounts={isStoreBusiness}
-                />
-
-                {/* ADDRESS SELECTION DRAWER - TOP SHEET */}
+            <>
+                <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} type={infoDialog.type} />
                 <AnimatePresence>
-                    {isAddressSelectorOpen && (
-                        <>
-                            <motion.div
-                                className={cn(
-                                    "fixed inset-0 z-[60]",
-                                    customerFlowSafeMode ? "bg-black/45" : "bg-black/50"
-                                )}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={handleCloseAddressSelector}
-                            />
-                            <motion.div
-                                className="fixed inset-x-0 bottom-0 h-[92dvh] max-h-[92dvh] md:h-screen md:max-h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden rounded-t-[28px] md:rounded-none"
-                                initial={{ y: customerFlowSafeMode ? 32 : '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: customerFlowSafeMode ? 32 : '100%' }}
-                                transition={customerFlowSafeMode
-                                    ? { duration: 0.16, ease: 'easeOut' }
-                                    : { type: 'spring', damping: 30, stiffness: 260, mass: 0.9 }}
-                            >
-                                <div className="p-4 border-b flex items-center justify-between shrink-0 bg-background z-10">
-                                    <div className="absolute left-1/2 top-2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-muted-foreground/25" />
-                                    <h2 className="font-bold text-lg">Select Address</h2>
-                                    <Button variant="ghost" size="icon" onClick={handleCloseAddressSelector}>
-                                        <X />
-                                    </Button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-4 overscroll-contain customer-flow-sheet">
-                                    <AddressSelectionList
-                                        addresses={userAddresses}
-                                        selectedAddressId={customerLocation?.id}
-                                        onSelect={(addr) => {
-                                            isAddressSelectionInProgress.current = true;
-                                            handleSelectNewAddress(addr);
-                                        }}
-                                        loading={addressLoading}
-                                        onUseCurrentLocation={() => {
-                                            setIsAddressSelectorOpen(false);
-                                            openAddAddressPage({ useCurrent: true });
-                                        }}
-                                        onAddNewAddress={() => {
-                                            setIsAddressSelectorOpen(false);
-                                            openAddAddressPage({ useCurrent: true });
-                                        }}
-                                        onPrefetch={(opts) => router.prefetch(buildAddAddressUrl(opts))}
-                                        onDelete={(addr) => setAddressPendingDelete(addr)}
-                                        onEdit={(addr) => {
-                                            setIsAddressSelectorOpen(false);
-                                            openAddAddressPage({ editAddress: addr });
-                                        }}
-                                    />
-                                </div>
-                            </motion.div>
-                        </>
+                    {waiterToast.isOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                            className={cn(
+                                "fixed top-4 left-1/2 -translate-x-1/2 z-[120] px-3.5 py-2 rounded-lg border shadow-lg text-xs sm:text-sm font-medium backdrop-blur-sm",
+                                waiterToast.type === 'error'
+                                    ? "bg-red-500/95 text-white border-red-400"
+                                    : "bg-emerald-500/95 text-white border-emerald-400"
+                            )}
+                            role="status"
+                            aria-live="polite"
+                        >
+                            {waiterToast.message}
+                        </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* Back Button Handler Effect */}
-                {isAddressSelectorOpen && (
-                    <BackButtonHandler onClose={handleCloseAddressSelector} />
-                )}
+                {isQrScannerOpen && <QrScanner onClose={() => setIsQrScannerOpen(false)} onScanSuccess={(decodedText) => { setIsQrScannerOpen(false); window.location.href = decodedText; }} />}
 
-                {isStoreBusiness ? (
-                    <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-md">
-                        <div className="container mx-auto px-4 py-3">
-                            <h1 className="text-xl font-extrabold text-foreground truncate">{restaurantData.name || 'Your Store'}</h1>
-                            {showStoreModeSwitcher && (
-                                <div className="mt-3 rounded-xl border border-border bg-card p-3">
-                                    <div className="flex rounded-lg bg-muted p-1">
-                                        {restaurantData.deliveryEnabled && (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDeliveryTypeChange('delivery')}
-                                                className={cn(
-                                                    "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
-                                                    deliveryType === 'delivery' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
-                                                )}
-                                            >
-                                                Delivery
-                                            </button>
-                                        )}
-                                        {restaurantData.pickupEnabled && (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDeliveryTypeChange('pickup')}
-                                                className={cn(
-                                                    "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
-                                                    deliveryType === 'pickup' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
-                                                )}
-                                            >
-                                                Pickup
-                                            </button>
-                                        )}
+                <AnimatePresence>
+                    {isBannerExpanded && (
+                        <motion.div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBannerExpanded(false)}>
+                            <motion.div className="relative w-full max-w-4xl" style={{ aspectRatio: '16 / 9' }} onClick={(e) => e.stopPropagation()}>
+                                <Image
+                                    src={restaurantData.bannerUrls[currentBannerIndex] || restaurantData.bannerUrls[0]}
+                                    alt="Banner Expanded"
+                                    layout="fill"
+                                    objectFit="contain"
+                                    unoptimized
+                                />
+                            </motion.div>
+                            <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white" onClick={() => setIsBannerExpanded(false)}><X /></Button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+                <div className="min-h-screen min-h-[100dvh] bg-background text-foreground green-theme overflow-x-hidden max-w-full customer-flow-surface">
+                    <DineInModal
+                        isOpen={isDineInModalOpen}
+                        onClose={handleCloseDineInModal}
+                        onBookTable={handleBookTable}
+                        tableStatus={tableStatus}
+                        onStartNewTab={handleStartNewTab}
+                        onJoinTab={handleJoinTab}
+                        setIsQrScannerOpen={setIsQrScannerOpen}
+                        setInfoDialog={setInfoDialog}
+                        newTabPax={newTabPax}
+                        setNewTabPax={setNewTabPax}
+                        newTabName={newTabName}
+                        setNewTabName={setNewTabName}
+                        isEditing={isEditingModal}
+                        onUpdateTab={handleUpdateTab}
+                    />
+                    {/* ✅ Car Order Modal */}
+                    <CarOrderModal
+                        isOpen={isCarOrderModalOpen}
+                        onClose={() => setIsCarOrderModalOpen(false)}
+                        onConfirm={handleCarOrderConfirm}
+                        carSpot={carSpotFromUrl}
+                    />
+
+                    <CustomizationDrawer
+                        item={customizationItem}
+                        isOpen={!!customizationItem}
+                        onClose={() => setCustomizationItem(null)}
+                        onAddToCart={handleAddToCart}
+                        isStoreBusiness={isStoreBusiness}
+                    />
+                    <MenuBrowserModal
+                        isOpen={isMenuBrowserOpen}
+                        onClose={() => setIsMenuBrowserOpen(false)}
+                        categories={menuCategories}
+                        onCategoryClick={handleCategoryClick}
+                        catalogLabel={catalogLabel}
+                        hideCounts={isStoreBusiness}
+                    />
+
+                    {/* ADDRESS SELECTION DRAWER - TOP SHEET */}
+                    <AnimatePresence>
+                        {isAddressSelectorOpen && (
+                            <>
+                                <motion.div
+                                    className={cn(
+                                        "fixed inset-0 z-[60]",
+                                        customerFlowSafeMode ? "bg-black/45" : "bg-black/50"
+                                    )}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={handleCloseAddressSelector}
+                                />
+                                <motion.div
+                                    className="fixed inset-x-0 bottom-0 h-[92dvh] max-h-[92dvh] md:h-screen md:max-h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden rounded-t-[28px] md:rounded-none"
+                                    initial={{ y: customerFlowSafeMode ? 32 : '100%' }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: customerFlowSafeMode ? 32 : '100%' }}
+                                    transition={customerFlowSafeMode
+                                        ? { duration: 0.16, ease: 'easeOut' }
+                                        : { type: 'spring', damping: 30, stiffness: 260, mass: 0.9 }}
+                                >
+                                    <div className="p-4 border-b flex items-center justify-between shrink-0 bg-background z-10">
+                                        <div className="absolute left-1/2 top-2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-muted-foreground/25" />
+                                        <h2 className="font-bold text-lg">Select Address</h2>
+                                        <Button variant="ghost" size="icon" onClick={handleCloseAddressSelector}>
+                                            <X />
+                                        </Button>
                                     </div>
+                                    <div className="flex-1 overflow-y-auto p-4 overscroll-contain customer-flow-sheet">
+                                        <AddressSelectionList
+                                            addresses={userAddresses}
+                                            selectedAddressId={customerLocation?.id}
+                                            onSelect={(addr) => {
+                                                isAddressSelectionInProgress.current = true;
+                                                handleSelectNewAddress(addr);
+                                            }}
+                                            loading={addressLoading}
+                                            onUseCurrentLocation={() => {
+                                                setIsAddressSelectorOpen(false);
+                                                openAddAddressPage({ useCurrent: true });
+                                            }}
+                                            onAddNewAddress={() => {
+                                                setIsAddressSelectorOpen(false);
+                                                openAddAddressPage({ useCurrent: true });
+                                            }}
+                                            onPrefetch={(opts) => router.prefetch(buildAddAddressUrl(opts))}
+                                            onDelete={(addr) => setAddressPendingDelete(addr)}
+                                            onEdit={(addr) => {
+                                                setIsAddressSelectorOpen(false);
+                                                openAddAddressPage({ editAddress: addr });
+                                            }}
+                                        />
+                                    </div>
+                                </motion.div>
+                            </>
+                        )}
+                    </AnimatePresence>
 
-                                    {deliveryType === 'delivery' ? (
-                                        <button
-                                            type="button"
-                                            className="mt-3 w-full appearance-none rounded-lg bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                                            onClick={handleOpenAddressDrawer}
-                                            aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
-                                        >
-                                            <div className="flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
+                    {/* Back Button Handler Effect */}
+                    {isAddressSelectorOpen && (
+                        <BackButtonHandler onClose={handleCloseAddressSelector} />
+                    )}
+
+                    {isStoreBusiness ? (
+                        <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-md">
+                            <div className="container mx-auto px-4 py-3">
+                                <h1 className="text-xl font-extrabold text-foreground truncate">{restaurantData.name || 'Your Store'}</h1>
+                                {showStoreModeSwitcher && (
+                                    <div className="mt-3 rounded-xl border border-border bg-card p-3">
+                                        <div className="flex rounded-lg bg-muted p-1">
+                                            {restaurantData.deliveryEnabled && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeliveryTypeChange('delivery')}
+                                                    className={cn(
+                                                        "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
+                                                        deliveryType === 'delivery' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                                                    )}
+                                                >
+                                                    Delivery
+                                                </button>
+                                            )}
+                                            {restaurantData.pickupEnabled && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeliveryTypeChange('pickup')}
+                                                    className={cn(
+                                                        "flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors",
+                                                        deliveryType === 'pickup' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                                                    )}
+                                                >
+                                                    Pickup
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {deliveryType === 'delivery' ? (
+                                            <button
+                                                type="button"
+                                                className="mt-3 w-full appearance-none rounded-lg bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                onClick={handleOpenAddressDrawer}
+                                                aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
+                                            >
+                                                <div className="flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
+                                                    <div className="min-w-0 flex items-center gap-2">
+                                                        <MapPin className="text-primary shrink-0" size={16} />
+                                                        <p className="truncate text-xs text-muted-foreground">
+                                                            {customerLocation?.full || 'No address selected'}
+                                                        </p>
+                                                    </div>
+                                                    <span className="shrink-0 text-sm font-semibold text-primary">
+                                                        {customerLocation?.full ? 'Change' : 'Add Address'}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        ) : (
+                                            <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
                                                 <div className="min-w-0 flex items-center gap-2">
-                                                    <MapPin className="text-primary shrink-0" size={16} />
+                                                    <Store className="text-primary shrink-0" size={16} />
                                                     <p className="truncate text-xs text-muted-foreground">
-                                                        {customerLocation?.full || 'No address selected'}
+                                                        Pickup from {restaurantData.businessAddress?.full || restaurantData.name}
                                                     </p>
                                                 </div>
-                                                <span className="shrink-0 text-sm font-semibold text-primary">
-                                                    {customerLocation?.full ? 'Change' : 'Add Address'}
-                                                </span>
                                             </div>
-                                        </button>
-                                    ) : (
-                                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
-                                            <div className="min-w-0 flex items-center gap-2">
-                                                <Store className="text-primary shrink-0" size={16} />
-                                                <p className="truncate text-xs text-muted-foreground">
-                                                    Pickup from {restaurantData.businessAddress?.full || restaurantData.name}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </header>
-                ) : (
-                    <header className="mb-16">
-                        <BannerCarousel
-                            images={restaurantData.bannerUrls}
-                            onClick={() => setIsBannerExpanded(true)}
-                            onIndexChange={setCurrentBannerIndex}
-                            onLogoClick={() => setIsLogoExpanded(true)}
-                            restaurantName={restaurantData.name}
-                            logoUrl={restaurantData.logoUrl}
-                        />
-                    </header>
-                )}
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </header>
+                    ) : (
+                        <header className="mb-16">
+                            <BannerCarousel
+                                images={restaurantData.bannerUrls}
+                                onClick={() => setIsBannerExpanded(true)}
+                                onIndexChange={setCurrentBannerIndex}
+                                onLogoClick={() => setIsLogoExpanded(true)}
+                                restaurantName={restaurantData.name}
+                                logoUrl={restaurantData.logoUrl}
+                            />
+                        </header>
+                    )}
 
-                {/* Logo Expansion Modal */}
-                <AnimatePresence>
-                    {isLogoExpanded && (
+                    {/* Logo Expansion Modal */}
+                    <AnimatePresence>
+                        {isLogoExpanded && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+                                onClick={() => setIsLogoExpanded(false)}
+                            >
+                                <div className="relative w-full max-w-sm aspect-square bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                                    <Image
+                                        src={restaurantData.logoUrl}
+                                        alt={restaurantData.name}
+                                        layout="fill"
+                                        objectFit="cover"
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute top-2 right-2 bg-black/20 hover:bg-black/40 text-white rounded-full"
+                                        onClick={() => setIsLogoExpanded(false)}
+                                    >
+                                        <X size={20} />
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* NEW: Welcome Message for Dine-In Users */}
+                    {showWelcome && detailsProvided && userDetails && tableIdFromUrl && (
                         <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
-                            onClick={() => setIsLogoExpanded(false)}
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="container mx-auto px-4 mt-4"
                         >
-                            <div className="relative w-full max-w-sm aspect-square bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-                                <Image
-                                    src={restaurantData.logoUrl}
-                                    alt={restaurantData.name}
-                                    layout="fill"
-                                    objectFit="cover"
-                                />
+                            <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-lg p-4 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
+                                    <div>
+                                        <h3 className="font-semibold text-lg text-foreground">
+                                            Welcome back, {userDetails.tab_name}!
+                                        </h3>
+                                        <p className="text-sm text-muted-foreground">
+                                            Party of {userDetails.pax_count} • Table {tableIdFromUrl}
+                                        </p>
+                                    </div>
+                                </div>
                                 <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute top-2 right-2 bg-black/20 hover:bg-black/40 text-white rounded-full"
-                                    onClick={() => setIsLogoExpanded(false)}
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        // Pre-fill modal fields with current details
+                                        setNewTabPax(userDetails.pax_count || 1);
+                                        setNewTabName(userDetails.tab_name || '');
+                                        setIsEditingModal(true);
+                                        setIsDineInModalOpen(true);
+                                    }}
+                                    className="gap-2"
                                 >
-                                    <X size={20} />
+                                    <Edit2 className="h-4 w-4" />
+                                    Edit
                                 </Button>
                             </div>
                         </motion.div>
                     )}
-                </AnimatePresence>
 
-                {/* NEW: Welcome Message for Dine-In Users */}
-                {showWelcome && detailsProvided && userDetails && tableIdFromUrl && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="container mx-auto px-4 mt-4"
-                    >
-                        <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-lg p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
-                                <div>
-                                    <h3 className="font-semibold text-lg text-foreground">
-                                        Welcome back, {userDetails.tab_name}!
-                                    </h3>
-                                    <p className="text-sm text-muted-foreground">
-                                        Party of {userDetails.pax_count} • Table {tableIdFromUrl}
-                                    </p>
-                                </div>
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                    // Pre-fill modal fields with current details
-                                    setNewTabPax(userDetails.pax_count || 1);
-                                    setNewTabName(userDetails.tab_name || '');
-                                    setIsEditingModal(true);
-                                    setIsDineInModalOpen(true);
-                                }}
-                                className="gap-2"
-                            >
-                                <Edit2 className="h-4 w-4" />
-                                Edit
-                            </Button>
-                        </div>
-                    </motion.div>
-                )}
-
-                {isStoreBusiness ? (
-                    <>
-                        <div className="z-20 border-b border-border bg-background/95 backdrop-blur-md px-4 py-3">
-                            <div className="flex items-center gap-2">
-                                <div className="relative flex-1">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                                    <input
-                                        type="text"
-                                        placeholder='Search "atta, dal, soap and more"'
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-base md:text-sm outline-none focus:ring-2 focus:ring-primary/40"
-                                    />
-                                </div>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className={cn(
-                                                "h-11 px-3 rounded-xl",
-                                                sortBy !== 'default' && "border-primary text-primary"
-                                            )}
-                                        >
-                                            <ArrowUpDown size={16} />
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent align="end" className="w-52">
-                                        <div className="space-y-2">
-                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sort</p>
-                                            <div className="flex flex-col gap-2">
-                                                <Button
-                                                    variant={sortBy === 'price-asc' ? 'default' : 'outline'}
-                                                    size="sm"
-                                                    onClick={() => handleSortChange('price-asc')}
-                                                >
-                                                    Price: Low to High
-                                                </Button>
-                                                <Button
-                                                    variant={sortBy === 'price-desc' ? 'default' : 'outline'}
-                                                    size="sm"
-                                                    onClick={() => handleSortChange('price-desc')}
-                                                >
-                                                    Price: High to Low
-                                                </Button>
-                                                <Button
-                                                    variant={sortBy === 'rating-desc' ? 'default' : 'outline'}
-                                                    size="sm"
-                                                    onClick={() => handleSortChange('rating-desc')}
-                                                >
-                                                    Top Rated
-                                                </Button>
-                                                <Button
-                                                    variant={sortBy === 'default' ? 'default' : 'ghost'}
-                                                    size="sm"
-                                                    onClick={() => setSortBy('default')}
-                                                >
-                                                    Reset Sort
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </PopoverContent>
-                                </Popover>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className={cn(
-                                                "h-11 px-3 rounded-xl",
-                                                hasActiveStoreFilters && "border-primary text-primary"
-                                            )}
-                                        >
-                                            <SlidersHorizontal size={16} />
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent align="end" className="w-72">
-                                        <div className="space-y-3">
-                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter</p>
-                                            {!isStoreFilterContextActive ? (
-                                                <div className="rounded-lg border border-dashed border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-                                                    Filters apply only on active search results or on a selected category.
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Applying on <span className="font-semibold text-foreground">{storeFilterContextLabel}</span>
-                                                    </p>
-                                                    {hasSelectedStoreCategoryContext && !hasStoreSearchContext && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="w-full"
-                                                            onClick={() => setSelectedStoreCategoryId('')}
-                                                        >
-                                                            Clear Selected Category
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        variant={filters.recommended ? 'default' : 'outline'}
-                                                        size="sm"
-                                                        className="w-full"
-                                                        onClick={() => handleFilterChange('recommended')}
-                                                    >
-                                                        Recommended
-                                                    </Button>
-
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs text-muted-foreground">Brand</Label>
-                                                        <select
-                                                            value={storeFilters.brand}
-                                                            onChange={(event) => handleStoreFilterValueChange('brand', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
-                                                        >
-                                                            <option value="all">All brands</option>
-                                                            {storeBrandOptions.map((option) => (
-                                                                <option key={option.value} value={option.value}>
-                                                                    {option.label}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs text-muted-foreground">Type</Label>
-                                                        <select
-                                                            value={storeFilters.type}
-                                                            onChange={(event) => handleStoreFilterValueChange('type', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
-                                                        >
-                                                            <option value="all">All types</option>
-                                                            {storeTypeOptions.map((option) => (
-                                                                <option key={option.value} value={option.value}>
-                                                                    {option.label}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs text-muted-foreground">Price Range</Label>
-                                                        <select
-                                                            value={storeFilters.priceRange}
-                                                            onChange={(event) => handleStoreFilterValueChange('priceRange', event.target.value)}
-                                                            className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
-                                                        >
-                                                            <option value="all">All prices</option>
-                                                            <option value="under-100">Under Rs 100</option>
-                                                            <option value="100-250">Rs 100 - Rs 250</option>
-                                                            <option value="250-500">Rs 251 - Rs 500</option>
-                                                            <option value="above-500">Above Rs 500</option>
-                                                        </select>
-                                                    </div>
-                                                </>
-                                            )}
-
+                    {isStoreBusiness ? (
+                        <>
+                            <div className="z-20 border-b border-border bg-background/95 backdrop-blur-md px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                                        <input
+                                            type="text"
+                                            placeholder='Search "atta, dal, soap and more"'
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="w-full rounded-xl border border-border bg-input pl-10 pr-4 py-3 text-base md:text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                                        />
+                                    </div>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
                                             <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="w-full"
-                                                onClick={clearStoreFilters}
-                                                disabled={!hasActiveStoreFilters}
+                                                type="button"
+                                                variant="outline"
+                                                className={cn(
+                                                    "h-11 px-3 rounded-xl",
+                                                    sortBy !== 'default' && "border-primary text-primary"
+                                                )}
                                             >
-                                                Clear Filters
+                                                <ArrowUpDown size={16} />
                                             </Button>
-                                        </div>
-                                    </PopoverContent>
-                                </Popover>
-                            </div>
-                        </div>
-
-                        <div className="container mx-auto px-4 mt-4 space-y-5 pb-44">
-                            {restaurantData.isOpen ? (
-                                <>
-                                    <section className="space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <h2 className="text-lg font-extrabold text-foreground">Shop by Category</h2>
-                                            <Button variant="ghost" className="h-auto p-0 text-xs text-primary" onClick={() => setIsMenuBrowserOpen(true)}>
-                                                See all
-                                            </Button>
-                                        </div>
-                                        {storeSuperCategorySections.map((section) => (
-                                            <div key={section.id} className="space-y-3">
-                                                <h3 className="text-xl font-extrabold text-foreground">{section.title}</h3>
-                                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                                                    {section.categories.map((category) => (
-                                                        <button
-                                                            key={category.key}
-                                                            type="button"
-                                                            onClick={() => handleCategoryClick(category.key)}
-                                                            className={cn(
-                                                                "rounded-xl border border-border bg-card p-2 text-center hover:border-primary/60 hover:bg-muted/40 transition-colors",
-                                                                selectedStoreCategoryId === category.key && "border-primary/70 bg-primary/5"
-                                                            )}
-                                                        >
-                                                            <div className="relative h-20 w-full rounded-lg bg-muted overflow-hidden">
-                                                                {category.imageUrl ? (
-                                                                    <Image src={category.imageUrl} alt={category.title} layout="fill" objectFit="cover" />
-                                                                ) : (
-                                                                    <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                                                                        <ShoppingBag size={20} />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <p className="mt-2 text-xs font-bold text-foreground line-clamp-2">{category.title}</p>
-                                                        </button>
-                                                    ))}
+                                        </PopoverTrigger>
+                                        <PopoverContent align="end" className="w-52">
+                                            <div className="space-y-2">
+                                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sort</p>
+                                                <div className="flex flex-col gap-2">
+                                                    <Button
+                                                        variant={sortBy === 'price-asc' ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        onClick={() => handleSortChange('price-asc')}
+                                                    >
+                                                        Price: Low to High
+                                                    </Button>
+                                                    <Button
+                                                        variant={sortBy === 'price-desc' ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        onClick={() => handleSortChange('price-desc')}
+                                                    >
+                                                        Price: High to Low
+                                                    </Button>
+                                                    <Button
+                                                        variant={sortBy === 'rating-desc' ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        onClick={() => handleSortChange('rating-desc')}
+                                                    >
+                                                        Top Rated
+                                                    </Button>
+                                                    <Button
+                                                        variant={sortBy === 'default' ? 'default' : 'ghost'}
+                                                        size="sm"
+                                                        onClick={() => setSortBy('default')}
+                                                    >
+                                                        Reset Sort
+                                                    </Button>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </section>
-
-                                    <section className="space-y-6">
-                                        {visibleStoreCategoryShelves.map((category) => {
-                                            const isCategoryFocused = selectedStoreCategoryId === category.key;
-                                            const visibleItems = isCategoryFocused ? category.items : category.items.slice(0, 6);
-
-                                            return (
-                                                <div id={category.key} key={category.key} className="scroll-mt-32 space-y-3">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <h3 className="text-lg font-extrabold text-foreground">{category.title}</h3>
-                                                        {isCategoryFocused && (
+                                        </PopoverContent>
+                                    </Popover>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={cn(
+                                                    "h-11 px-3 rounded-xl",
+                                                    hasActiveStoreFilters && "border-primary text-primary"
+                                                )}
+                                            >
+                                                <SlidersHorizontal size={16} />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent align="end" className="w-72">
+                                            <div className="space-y-3">
+                                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter</p>
+                                                {!isStoreFilterContextActive ? (
+                                                    <div className="rounded-lg border border-dashed border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                                                        Filters apply only on active search results or on a selected category.
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Applying on <span className="font-semibold text-foreground">{storeFilterContextLabel}</span>
+                                                        </p>
+                                                        {hasSelectedStoreCategoryContext && !hasStoreSearchContext && (
                                                             <Button
-                                                                type="button"
                                                                 variant="ghost"
-                                                                className="h-auto p-0 text-xs text-primary"
+                                                                size="sm"
+                                                                className="w-full"
                                                                 onClick={() => setSelectedStoreCategoryId('')}
                                                             >
-                                                                Show all categories
+                                                                Clear Selected Category
                                                             </Button>
                                                         )}
-                                                    </div>
-                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                        {visibleItems.map((item) => (
-                                                            <StoreProductCard
-                                                                key={item.id}
-                                                                item={item}
-                                                                layout="grid"
-                                                                quantity={cartItemQuantities[item.id] || 0}
-                                                                onAdd={handleIncrement}
-                                                                onIncrement={handleIncrement}
-                                                                onDecrement={handleDecrement}
-                                                            />
+                                                        <Button
+                                                            variant={filters.recommended ? 'default' : 'outline'}
+                                                            size="sm"
+                                                            className="w-full"
+                                                            onClick={() => handleFilterChange('recommended')}
+                                                        >
+                                                            Recommended
+                                                        </Button>
+
+                                                        <div className="space-y-1">
+                                                            <Label className="text-xs text-muted-foreground">Brand</Label>
+                                                            <select
+                                                                value={storeFilters.brand}
+                                                                onChange={(event) => handleStoreFilterValueChange('brand', event.target.value)}
+                                                                className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
+                                                            >
+                                                                <option value="all">All brands</option>
+                                                                {storeBrandOptions.map((option) => (
+                                                                    <option key={option.value} value={option.value}>
+                                                                        {option.label}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+
+                                                        <div className="space-y-1">
+                                                            <Label className="text-xs text-muted-foreground">Type</Label>
+                                                            <select
+                                                                value={storeFilters.type}
+                                                                onChange={(event) => handleStoreFilterValueChange('type', event.target.value)}
+                                                                className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
+                                                            >
+                                                                <option value="all">All types</option>
+                                                                {storeTypeOptions.map((option) => (
+                                                                    <option key={option.value} value={option.value}>
+                                                                        {option.label}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+
+                                                        <div className="space-y-1">
+                                                            <Label className="text-xs text-muted-foreground">Price Range</Label>
+                                                            <select
+                                                                value={storeFilters.priceRange}
+                                                                onChange={(event) => handleStoreFilterValueChange('priceRange', event.target.value)}
+                                                                className="h-9 w-full rounded-md border border-border bg-input px-3 text-base md:text-sm"
+                                                            >
+                                                                <option value="all">All prices</option>
+                                                                <option value="under-100">Under Rs 100</option>
+                                                                <option value="100-250">Rs 100 - Rs 250</option>
+                                                                <option value="250-500">Rs 251 - Rs 500</option>
+                                                                <option value="above-500">Above Rs 500</option>
+                                                            </select>
+                                                        </div>
+                                                    </>
+                                                )}
+
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="w-full"
+                                                    onClick={clearStoreFilters}
+                                                    disabled={!hasActiveStoreFilters}
+                                                >
+                                                    Clear Filters
+                                                </Button>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                            </div>
+
+                            <div className="container mx-auto px-4 mt-4 space-y-5 pb-44">
+                                {restaurantData.isOpen ? (
+                                    <>
+                                        <section className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <h2 className="text-lg font-extrabold text-foreground">Shop by Category</h2>
+                                                <Button variant="ghost" className="h-auto p-0 text-xs text-primary" onClick={() => setIsMenuBrowserOpen(true)}>
+                                                    See all
+                                                </Button>
+                                            </div>
+                                            {storeSuperCategorySections.map((section) => (
+                                                <div key={section.id} className="space-y-3">
+                                                    <h3 className="text-xl font-extrabold text-foreground">{section.title}</h3>
+                                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                                                        {section.categories.map((category) => (
+                                                            <button
+                                                                key={category.key}
+                                                                type="button"
+                                                                onClick={() => handleCategoryClick(category.key)}
+                                                                className={cn(
+                                                                    "rounded-xl border border-border bg-card p-2 text-center hover:border-primary/60 hover:bg-muted/40 transition-colors",
+                                                                    selectedStoreCategoryId === category.key && "border-primary/70 bg-primary/5"
+                                                                )}
+                                                            >
+                                                                <div className="relative h-20 w-full rounded-lg bg-muted overflow-hidden">
+                                                                    {category.imageUrl ? (
+                                                                        <Image src={category.imageUrl} alt={category.title} layout="fill" objectFit="cover" />
+                                                                    ) : (
+                                                                        <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                                                                            <ShoppingBag size={20} />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <p className="mt-2 text-xs font-bold text-foreground line-clamp-2">{category.title}</p>
+                                                            </button>
                                                         ))}
                                                     </div>
-                                                    {category.items.length > 6 && !isCategoryFocused && (
-                                                        <div className="pt-1">
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                className="w-full h-10 rounded-xl font-semibold"
-                                                                onClick={() => setSelectedStoreCategoryId(category.key)}
-                                                            >
-                                                                See all items
-                                                            </Button>
-                                                        </div>
-                                                    )}
                                                 </div>
-                                            );
-                                        })}
-                                    </section>
-                                </>
-                            ) : (
-                                <div className="max-w-md rounded-2xl border-2 border-red-500/30 bg-card p-7 shadow-xl">
-                                    <div className="flex flex-col items-center text-center space-y-3">
-                                        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
-                                            <AlertCircle className="w-9 h-9 text-red-500" />
-                                        </div>
-                                        <h2 className="text-xl font-bold text-foreground">Store Closed Right Now</h2>
-                                        <p className="text-sm text-muted-foreground">{closedOrderingMessage}</p>
-                                        <div className="pt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Clock className="w-4 h-4" />
-                                            <span>{nextOpeningTimeLabel ? `Next opening time: ${nextOpeningTimeLabel}` : `We'll be back soon!`}</span>
+                                            ))}
+                                        </section>
+
+                                        <section className="space-y-6">
+                                            {visibleStoreCategoryShelves.map((category) => {
+                                                const isCategoryFocused = selectedStoreCategoryId === category.key;
+                                                const visibleItems = isCategoryFocused ? category.items : category.items.slice(0, 6);
+
+                                                return (
+                                                    <div id={category.key} key={category.key} className="scroll-mt-32 space-y-3">
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <h3 className="text-lg font-extrabold text-foreground">{category.title}</h3>
+                                                            {isCategoryFocused && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    className="h-auto p-0 text-xs text-primary"
+                                                                    onClick={() => setSelectedStoreCategoryId('')}
+                                                                >
+                                                                    Show all categories
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                            {visibleItems.map((item) => (
+                                                                <StoreProductCard
+                                                                    key={item.id}
+                                                                    item={item}
+                                                                    layout="grid"
+                                                                    quantity={cartItemQuantities[item.id] || 0}
+                                                                    onAdd={handleIncrement}
+                                                                    onIncrement={handleIncrement}
+                                                                    onDecrement={handleDecrement}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                        {category.items.length > 6 && !isCategoryFocused && (
+                                                            <div className="pt-1">
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    className="w-full h-10 rounded-xl font-semibold"
+                                                                    onClick={() => setSelectedStoreCategoryId(category.key)}
+                                                                >
+                                                                    See all items
+                                                                </Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </section>
+                                    </>
+                                ) : (
+                                    <div className="max-w-md rounded-2xl border-2 border-red-500/30 bg-card p-7 shadow-xl">
+                                        <div className="flex flex-col items-center text-center space-y-3">
+                                            <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
+                                                <AlertCircle className="w-9 h-9 text-red-500" />
+                                            </div>
+                                            <h2 className="text-xl font-bold text-foreground">Store Closed Right Now</h2>
+                                            <p className="text-sm text-muted-foreground">{closedOrderingMessage}</p>
+                                            <div className="pt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                                                <Clock className="w-4 h-4" />
+                                                <span>{nextOpeningTimeLabel ? `Next opening time: ${nextOpeningTimeLabel}` : `We'll be back soon!`}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 backdrop-blur-md">
-                            <div className="grid grid-cols-3">
-                                <button
-                                    type="button"
-                                    className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-foreground"
-                                    onClick={() => window.scrollTo({ top: 0, behavior: interactionScrollBehavior })}
-                                >
-                                    <Home size={18} />
-                                    Home
-                                </button>
-                                <button
-                                    type="button"
-                                    className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
-                                    onClick={() => {
-                                        if (trackingUrl) {
-                                            router.push(trackingUrl);
-                                            return;
-                                        }
-                                        setInfoDialog({
-                                            isOpen: true,
-                                            title: 'No Active Order',
-                                            message: 'Place an order first to track it.'
-                                        });
-                                    }}
-                                >
-                                    <RefreshCw size={18} />
-                                    Orders
-                                </button>
-                                <button
-                                    type="button"
-                                    className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
-                                    onClick={() => setIsMenuBrowserOpen(true)}
-                                >
-                                    <BookOpen size={18} />
-                                    Categories
-                                </button>
+                                )}
                             </div>
-                        </nav>
-                    </>
-                ) : (
-                    <>
-                        <div className="container mx-auto px-4 mt-6 space-y-4">
 
-                            {/* ✅ NEW: Delivery Distance Validation Status - HIDDEN AS PER USER REQUEST
+                            <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 backdrop-blur-md">
+                                <div className="grid grid-cols-3">
+                                    <button
+                                        type="button"
+                                        className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-foreground"
+                                        onClick={() => window.scrollTo({ top: 0, behavior: interactionScrollBehavior })}
+                                    >
+                                        <Home size={18} />
+                                        Home
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                                        onClick={() => {
+                                            if (trackingUrl) {
+                                                router.push(trackingUrl);
+                                                return;
+                                            }
+                                            setInfoDialog({
+                                                isOpen: true,
+                                                title: 'No Active Order',
+                                                message: 'Place an order first to track it.'
+                                            });
+                                        }}
+                                    >
+                                        <RefreshCw size={18} />
+                                        Orders
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="flex flex-col items-center justify-center gap-1 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                                        onClick={() => setIsMenuBrowserOpen(true)}
+                                    >
+                                        <BookOpen size={18} />
+                                        Categories
+                                    </button>
+                                </div>
+                            </nav>
+                        </>
+                    ) : (
+                        <>
+                            <div className="container mx-auto px-4 mt-6 space-y-4">
+
+                                {/* ✅ NEW: Delivery Distance Validation Status - HIDDEN AS PER USER REQUEST
                     {deliveryType === 'delivery' && deliveryValidation && !deliveryValidation.allowed && (
                         <motion.div
                             initial={{ opacity: 0, y: -10 }}
@@ -4871,413 +4871,413 @@ const OrderPageInternal = () => {
                     */}
 
 
-                            {/* NEW: Cleaning Info Banner - When seats available but cleaning pending */}
-                            {
-                                tableStatus?.cleaningWarning && (
-                                    <Alert className="border-orange-500 bg-orange-500/10">
-                                        <Wind className="h-4 w-4 text-orange-500" />
-                                        <AlertTitle className="text-orange-600 dark:text-orange-400 font-bold">Table Partially Occupied</AlertTitle>
-                                        <AlertDescription className="text-orange-600/90 dark:text-orange-400/90">
-                                            Some guests are finishing up. <strong>{tableStatus.cleaningWarning.availableSeats} seat{tableStatus.cleaningWarning.availableSeats > 1 ? 's' : ''} available</strong> for you to order. {tableStatus.cleaningWarning.uncleanedCount} order{tableStatus.cleaningWarning.uncleanedCount > 1 ? 's' : ''} being cleaned.
-                                        </AlertDescription>
-                                    </Alert>
-                                )
-                            }
+                                {/* NEW: Cleaning Info Banner - When seats available but cleaning pending */}
+                                {
+                                    tableStatus?.cleaningWarning && (
+                                        <Alert className="border-orange-500 bg-orange-500/10">
+                                            <Wind className="h-4 w-4 text-orange-500" />
+                                            <AlertTitle className="text-orange-600 dark:text-orange-400 font-bold">Table Partially Occupied</AlertTitle>
+                                            <AlertDescription className="text-orange-600/90 dark:text-orange-400/90">
+                                                Some guests are finishing up. <strong>{tableStatus.cleaningWarning.availableSeats} seat{tableStatus.cleaningWarning.availableSeats > 1 ? 's' : ''} available</strong> for you to order. {tableStatus.cleaningWarning.uncleanedCount} order{tableStatus.cleaningWarning.uncleanedCount > 1 ? 's' : ''} being cleaned.
+                                            </AlertDescription>
+                                        </Alert>
+                                    )
+                                }
 
 
-                            {
-                                restaurantData.businessType !== 'street-vendor' &&
-                                !tableIdFromUrl &&
-                                deliveryType !== 'car-order' &&
-                                orderTypeFromUrl !== 'car' &&
-                                deliveryTypeFromUrl !== 'car-order' &&
-                                !isCarSessionFromUrl && (
-                                    <div className="bg-card p-4 rounded-lg border border-border">
-                                        <div className="flex bg-muted p-1 rounded-lg">
-                                            {restaurantData.deliveryEnabled && (
-                                                <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-primary text-primary-foreground')}>
-                                                    <Bike size={16} /> Delivery
-                                                </button>
-                                            )}
-                                            {restaurantData.pickupEnabled && (
-                                                <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-primary text-primary-foreground')}>
-                                                    <ShoppingBag size={16} /> Pickup
-                                                </button>
-                                            )}
-                                            {canShowDineIn && (
-                                                <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
-                                                    <ConciergeBell size={16} /> Dine-In
-                                                </button>
-                                            )}
-                                        </div>
-                                        {deliveryType === 'delivery' ? (
-                                            <button
-                                                type="button"
-                                                className="mt-4 w-full appearance-none rounded-lg border-t border-dashed border-border bg-transparent p-0 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                                                onClick={handleOpenAddressDrawer}
-                                                aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
-                                            >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-3 overflow-hidden">
-                                                        <MapPin className="text-primary flex-shrink-0" size={20} />
-                                                        <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
-                                                    </div>
-                                                    <span className="flex-shrink-0 text-sm font-semibold text-primary">
-                                                        {customerLocation?.full ? 'Change' : 'Add Address'}
-                                                    </span>
-                                                </div>
-                                            </button>
-                                        ) : deliveryType === 'pickup' ? (
-                                            <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
-                                                <div className="flex items-center gap-3 overflow-hidden">
-                                                    <Store className="text-primary flex-shrink-0" size={20} />
-                                                    <div>
-                                                        <p className="text-xs text-muted-foreground">{pickupLabel}</p>
-                                                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantData.businessAddress?.full || restaurantData.name)}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-foreground truncate flex items-center gap-1 hover:underline text-primary">
-                                                            {restaurantData.businessAddress?.full || 'N/A'} <ExternalLink size={12} />
-                                                        </a>
-                                                    </div>
-                                                </div>
+                                {
+                                    restaurantData.businessType !== 'street-vendor' &&
+                                    !tableIdFromUrl &&
+                                    deliveryType !== 'car-order' &&
+                                    orderTypeFromUrl !== 'car' &&
+                                    deliveryTypeFromUrl !== 'car-order' &&
+                                    !isCarSessionFromUrl && (
+                                        <div className="bg-card p-4 rounded-lg border border-border">
+                                            <div className="flex bg-muted p-1 rounded-lg">
+                                                {restaurantData.deliveryEnabled && (
+                                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-primary text-primary-foreground')}>
+                                                        <Bike size={16} /> Delivery
+                                                    </button>
+                                                )}
+                                                {restaurantData.pickupEnabled && (
+                                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-primary text-primary-foreground')}>
+                                                        <ShoppingBag size={16} /> Pickup
+                                                    </button>
+                                                )}
+                                                {canShowDineIn && (
+                                                    <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
+                                                        <ConciergeBell size={16} /> Dine-In
+                                                    </button>
+                                                )}
                                             </div>
-                                        ) : null}
-                                    </div>
-                                )
-                            }
-                            {/* ✅ Car Order Info Block (Replacing Header) */}
-                            {
-                                deliveryType === 'car-order' && carOrderDetails && (
-                                    <div className="bg-card p-4 rounded-lg border border-border shadow-sm flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-primary/10 p-2.5 rounded-full">
-                                                <Car className="text-primary h-6 w-6" />
-                                            </div>
-                                            <div>
-                                                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                                                    Car Order
-                                                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20 uppercase tracking-wide font-bold">
-                                                        {carOrderDetails.carSpot || 'No Spot'}
-                                                    </span>
-                                                </h2>
-                                                <p className="text-sm text-muted-foreground font-medium">
-                                                    {carOrderDetails.carDetails} • {carOrderDetails.phone}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setIsCarOrderModalOpen(true)}
-                                            className="gap-1 text-primary hover:text-primary hover:bg-primary/10"
-                                        >
-                                            <Edit2 className="h-4 w-4" /> Edit
-                                        </Button>
-                                    </div>
-                                )
-                            }
-                            {
-                                tableIdFromUrl && (
-                                    <div className="bg-card p-4 rounded-lg border border-border space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <ConciergeBell className="text-primary" />
-                                            <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
-                                        </div>
-                                        <div className="flex flex-wrap items-center justify-end gap-2">
-                                            <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
-                                                <Bell size={18} className="text-primary" /> Call Waiter
-                                            </Button>
-                                            {detailsProvided && (
-                                                <Button
-                                                    onClick={() => setIsConfirmReleaseOpen(true)}
-                                                    variant="outline"
-                                                    disabled={isReleasingSeat}
-                                                    className="flex items-center gap-2 border-orange-500/60 text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 font-semibold"
+                                            {deliveryType === 'delivery' ? (
+                                                <button
+                                                    type="button"
+                                                    className="mt-4 w-full appearance-none rounded-lg border-t border-dashed border-border bg-transparent p-0 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                    onClick={handleOpenAddressDrawer}
+                                                    aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
                                                 >
-                                                    {isReleasingSeat ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
-                                                    {isReleasingSeat ? 'Releasing...' : 'Release Seat'}
-                                                </Button>
-                                            )}
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                            <MapPin className="text-primary flex-shrink-0" size={20} />
+                                                            <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
+                                                        </div>
+                                                        <span className="flex-shrink-0 text-sm font-semibold text-primary">
+                                                            {customerLocation?.full ? 'Change' : 'Add Address'}
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                            ) : deliveryType === 'pickup' ? (
+                                                <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
+                                                    <div className="flex items-center gap-3 overflow-hidden">
+                                                        <Store className="text-primary flex-shrink-0" size={20} />
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">{pickupLabel}</p>
+                                                            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantData.businessAddress?.full || restaurantData.name)}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-foreground truncate flex items-center gap-1 hover:underline text-primary">
+                                                                {restaurantData.businessAddress?.full || 'N/A'} <ExternalLink size={12} />
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : null}
                                         </div>
-                                    </div>
-                                )
-                            }
-
-                            {/* Track Live Order Button - Only for Dine-In with existing order */}
-                            {
-                                deliveryType === 'dine-in' && liveOrder && liveOrder.restaurantId === restaurantId && trackingUrl && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: -10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        className="bg-gradient-to-r from-yellow-400 to-orange-400 p-4 rounded-lg border-2 border-yellow-500 shadow-lg"
-                                    >
-                                        <div className="flex justify-between items-center">
+                                    )
+                                }
+                                {/* ✅ Car Order Info Block (Replacing Header) */}
+                                {
+                                    deliveryType === 'car-order' && carOrderDetails && (
+                                        <div className="bg-card p-4 rounded-lg border border-border shadow-sm flex items-center justify-between">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
-                                                    <Navigation className="text-white" size={20} />
+                                                <div className="bg-primary/10 p-2.5 rounded-full">
+                                                    <Car className="text-primary h-6 w-6" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-white font-bold text-sm">Your Order is Active</p>
-                                                    <p className="text-white/80 text-xs">Track your order status</p>
+                                                    <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                                        Car Order
+                                                        <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20 uppercase tracking-wide font-bold">
+                                                            {carOrderDetails.carSpot || 'No Spot'}
+                                                        </span>
+                                                    </h2>
+                                                    <p className="text-sm text-muted-foreground font-medium">
+                                                        {carOrderDetails.carDetails} • {carOrderDetails.phone}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <Button
-                                                asChild
-                                                className="bg-white text-black hover:bg-white/90 font-bold"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setIsCarOrderModalOpen(true)}
+                                                className="gap-1 text-primary hover:text-primary hover:bg-primary/10"
                                             >
-                                                <a href={trackingUrl}>
-                                                    Track Order
-                                                </a>
+                                                <Edit2 className="h-4 w-4" /> Edit
                                             </Button>
                                         </div>
-                                    </motion.div>
-                                )
-                            }
-
-                            <div className="relative w-full">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-                                <input
-                                    type="text"
-                                    placeholder={searchPlaceholder}
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-base md:text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
-                                />
-                            </div>
-                        </div >
-
-                        {/* Only show menu if restaurant is open */}
-                        {
-                            restaurantData.isOpen ? (
-                                <>
-
-                                    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
-                                        <div className="container mx-auto px-4">
-                                            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
-                                                            <SlidersHorizontal size={14} /> Filters <ChevronDown size={14} />
-                                                        </button>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-64">
-                                                        <div className="grid gap-4">
-                                                            <div className="space-y-2">
-                                                                <h4 className="font-medium leading-none">Sort by</h4>
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
-                                                                    <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
-                                                                    <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
-                                                                </div>
-                                                            </div>
-                                                            {!isStoreBusiness && (
-                                                                <>
-                                                                    <div className="h-px bg-border w-full"></div>
-                                                                    <div className="space-y-2">
-                                                                        <h4 className="font-medium leading-none">Filter by Tags</h4>
-                                                                        <div className="flex flex-wrap gap-2">
-                                                                            <Button 
-                                                                                variant={filters.bestseller ? 'default' : 'outline'} 
-                                                                                size="sm" 
-                                                                                onClick={() => handleFilterChange('bestseller')} 
-                                                                                className={cn(filters.bestseller && 'bg-primary hover:bg-primary/90 text-primary-foreground')}
-                                                                            >
-                                                                                <i className="fas fa-crown text-[10px] mr-1"></i> Bestseller
-                                                                            </Button>
-                                                                            <Button 
-                                                                                variant={filters.highlyReordered ? 'default' : 'outline'} 
-                                                                                size="sm" 
-                                                                                onClick={() => handleFilterChange('highlyReordered')} 
-                                                                                className={cn(filters.highlyReordered && 'bg-primary hover:bg-primary/90 text-primary-foreground')}
-                                                                            >
-                                                                                <i className="fas fa-history text-[10px] mr-1"></i> Highly Reordered
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </PopoverContent>
-                                                </Popover>
-
-                                                {!isStoreBusiness && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => handleFilterChange('veg')}
-                                                            className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
-                                                        >
-                                                            <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
-                                                            Veg
-                                                        </button>
-
-                                                        <button
-                                                            onClick={() => handleFilterChange('nonVeg')}
-                                                            className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
-                                                        >
-                                                            <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
-                                                            Non-veg
-                                                        </button>
-                                                    </>
+                                    )
+                                }
+                                {
+                                    tableIdFromUrl && (
+                                        <div className="bg-card p-4 rounded-lg border border-border space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <ConciergeBell className="text-primary" />
+                                                <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
+                                            </div>
+                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                                <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
+                                                    <Bell size={18} className="text-primary" /> Call Waiter
+                                                </Button>
+                                                {detailsProvided && (
+                                                    <Button
+                                                        onClick={() => setIsConfirmReleaseOpen(true)}
+                                                        variant="outline"
+                                                        disabled={isReleasingSeat}
+                                                        className="flex items-center gap-2 border-orange-500/60 text-orange-600 hover:bg-orange-500/10 hover:text-orange-600 font-semibold"
+                                                    >
+                                                        {isReleasingSeat ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+                                                        {isReleasingSeat ? 'Releasing...' : 'Release Seat'}
+                                                    </Button>
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
+                                    )
+                                }
 
-                                    <div className="container mx-auto px-4 mt-6 pb-40">
-                                        <main>
-                                            <div className="space-y-8">
-                                                {menuCategories.map(({ key, title }) => (
-                                                    <section id={key} key={key} className="scroll-mt-24">
-                                                        <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                                        <div className="flex flex-col">
-                                                            {processedMenu[key].map(item => (
-                                                                <MenuItemCard
-                                                                    key={item.id}
-                                                                    item={item}
-                                                                    quantity={cartItemQuantities[item.id] || 0}
-                                                                    onAdd={handleIncrement}
-                                                                    onIncrement={handleIncrement}
-                                                                    onDecrement={handleDecrement}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                    </section>
-                                                ))}
-                                            </div>
-                                        </main>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="container mx-auto px-4 mt-6 pb-40">
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 20 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        className="max-w-md mx-auto"
-                                    >
-                                        <div className="bg-card border-2 border-red-500/30 rounded-2xl p-8 shadow-2xl">
-                                            <div className="flex flex-col items-center text-center space-y-4">
-                                                {/* Icon */}
-                                                <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center">
-                                                    <AlertCircle className="w-12 h-12 text-red-500" />
+                                {/* Track Live Order Button - Only for Dine-In with existing order */}
+                                {
+                                    deliveryType === 'dine-in' && liveOrder && liveOrder.restaurantId === restaurantId && trackingUrl && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="bg-gradient-to-r from-yellow-400 to-orange-400 p-4 rounded-lg border-2 border-yellow-500 shadow-lg"
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
+                                                        <Navigation className="text-white" size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-white font-bold text-sm">Your Order is Active</p>
+                                                        <p className="text-white/80 text-xs">Track your order status</p>
+                                                    </div>
                                                 </div>
-
-                                                {/* Title */}
-                                                <h2 className="text-2xl font-bold text-foreground">
-                                                    We&apos;re Currently Closed
-                                                </h2>
-
-                                                {/* Message */}
-                                                <p className="text-muted-foreground text-base leading-relaxed">{closedOrderingMessage}</p>
-
-                                                {/* Decorative element */}
-                                                <div className="pt-4 flex items-center gap-2 text-sm text-muted-foreground">
-                                                    <Clock className="w-4 h-4" />
-                                                    <span>{nextOpeningTimeLabel ? `Next opening time: ${nextOpeningTimeLabel}` : `We'll be back soon!`}</span>
-                                                </div>
+                                                <Button
+                                                    asChild
+                                                    className="bg-white text-black hover:bg-white/90 font-bold"
+                                                >
+                                                    <a href={trackingUrl}>
+                                                        Track Order
+                                                    </a>
+                                                </Button>
                                             </div>
-                                        </div>
-                                    </motion.div>
+                                        </motion.div>
+                                    )
+                                }
+
+                                <div className="relative w-full">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+                                    <input
+                                        type="text"
+                                        placeholder={searchPlaceholder}
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-base md:text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                                    />
                                 </div>
-                            )
-                        }
-                    </>
-                )}
+                            </div >
 
-                <AnimatePresence>
-                    {shouldShowFloatingTrackToast && (
-                        <motion.div
-                            className="fixed left-4 right-4 bottom-4 z-40 pointer-events-none"
-                            initial={{ y: 24, opacity: 0 }}
-                            animate={{ y: floatingTrackOffset, opacity: 1 }}
-                            exit={{ y: 24, opacity: 0 }}
-                            transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-                        >
-                            <Link href={trackingUrl} className="pointer-events-auto block">
-                                <motion.div
-                                    whileTap={customerFlowSafeMode ? undefined : { scale: 0.98 }}
-                                    className={cn(
-                                        "rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md",
-                                        "flex items-center justify-between gap-3",
-                                        liveOrder?.status === 'Ready' || liveOrder?.status === 'ready_for_pickup'
-                                            ? 'bg-green-400/95 border-green-500 text-black'
-                                            : 'bg-yellow-400/95 border-yellow-500 text-black'
-                                    )}
-                                >
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <div className="w-9 h-9 rounded-full bg-black/10 flex items-center justify-center">
-                                            <Navigation size={18} />
+                            {/* Only show menu if restaurant is open */}
+                            {
+                                restaurantData.isOpen ? (
+                                    <>
+
+                                        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
+                                            <div className="container mx-auto px-4">
+                                                <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
+                                                                <SlidersHorizontal size={14} /> Filters <ChevronDown size={14} />
+                                                            </button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent className="w-64">
+                                                            <div className="grid gap-4">
+                                                                <div className="space-y-2">
+                                                                    <h4 className="font-medium leading-none">Sort by</h4>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
+                                                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
+                                                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
+                                                                    </div>
+                                                                </div>
+                                                                {!isStoreBusiness && (
+                                                                    <>
+                                                                        <div className="h-px bg-border w-full"></div>
+                                                                        <div className="space-y-2">
+                                                                            <h4 className="font-medium leading-none">Filter by Tags</h4>
+                                                                            <div className="flex flex-wrap gap-2">
+                                                                                <Button
+                                                                                    variant={filters.bestseller ? 'default' : 'outline'}
+                                                                                    size="sm"
+                                                                                    onClick={() => handleFilterChange('bestseller')}
+                                                                                    className={cn(filters.bestseller && 'bg-primary hover:bg-primary/90 text-primary-foreground')}
+                                                                                >
+                                                                                    <i className="fas fa-crown text-[10px] mr-1"></i> Bestseller
+                                                                                </Button>
+                                                                                <Button
+                                                                                    variant={filters.highlyReordered ? 'default' : 'outline'}
+                                                                                    size="sm"
+                                                                                    onClick={() => handleFilterChange('highlyReordered')}
+                                                                                    className={cn(filters.highlyReordered && 'bg-primary hover:bg-primary/90 text-primary-foreground')}
+                                                                                >
+                                                                                    <i className="fas fa-history text-[10px] mr-1"></i> Highly Reordered
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </PopoverContent>
+                                                    </Popover>
+
+                                                    {!isStoreBusiness && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleFilterChange('veg')}
+                                                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
+                                                            >
+                                                                <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
+                                                                Veg
+                                                            </button>
+
+                                                            <button
+                                                                onClick={() => handleFilterChange('nonVeg')}
+                                                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
+                                                            >
+                                                                <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
+                                                                Non-veg
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-extrabold truncate">{trackOrdersLabel}</p>
-                                            <p className="text-xs text-black/70 truncate">Live order status: {trackOrdersStatusSummary || 'In Progress'}</p>
+
+                                        <div className="container mx-auto px-4 mt-6 pb-40">
+                                            <main>
+                                                <div className="space-y-8">
+                                                    {menuCategories.map(({ key, title }) => (
+                                                        <section id={key} key={key} className="scroll-mt-24">
+                                                            <h3 className="text-2xl font-bold mb-4">{title}</h3>
+                                                            <div className="flex flex-col">
+                                                                {processedMenu[key].map(item => (
+                                                                    <MenuItemCard
+                                                                        key={item.id}
+                                                                        item={item}
+                                                                        quantity={cartItemQuantities[item.id] || 0}
+                                                                        onAdd={handleIncrement}
+                                                                        onIncrement={handleIncrement}
+                                                                        onDecrement={handleDecrement}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </section>
+                                                    ))}
+                                                </div>
+                                            </main>
                                         </div>
+                                    </>
+                                ) : (
+                                    <div className="container mx-auto px-4 mt-6 pb-40">
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 20 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="max-w-md mx-auto"
+                                        >
+                                            <div className="bg-card border-2 border-red-500/30 rounded-2xl p-8 shadow-2xl">
+                                                <div className="flex flex-col items-center text-center space-y-4">
+                                                    {/* Icon */}
+                                                    <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center">
+                                                        <AlertCircle className="w-12 h-12 text-red-500" />
+                                                    </div>
+
+                                                    {/* Title */}
+                                                    <h2 className="text-2xl font-bold text-foreground">
+                                                        We&apos;re Currently Closed
+                                                    </h2>
+
+                                                    {/* Message */}
+                                                    <p className="text-muted-foreground text-base leading-relaxed">{closedOrderingMessage}</p>
+
+                                                    {/* Decorative element */}
+                                                    <div className="pt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                                                        <Clock className="w-4 h-4" />
+                                                        <span>{nextOpeningTimeLabel ? `Next opening time: ${nextOpeningTimeLabel}` : `We'll be back soon!`}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </motion.div>
                                     </div>
-                                    <ArrowRight className="h-4 w-4 shrink-0" />
-                                </motion.div>
-                            </Link>
-                        </motion.div>
+                                )
+                            }
+                        </>
                     )}
-                </AnimatePresence>
 
-                <AnimatePresence>
-                    {totalCartItems > 0 && (
+                    <AnimatePresence>
+                        {shouldShowFloatingTrackToast && (
+                            <motion.div
+                                className="fixed left-4 right-4 bottom-4 z-40 pointer-events-none"
+                                initial={{ y: 24, opacity: 0 }}
+                                animate={{ y: floatingTrackOffset, opacity: 1 }}
+                                exit={{ y: 24, opacity: 0 }}
+                                transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+                            >
+                                <Link href={trackingUrl} className="pointer-events-auto block">
+                                    <motion.div
+                                        whileTap={customerFlowSafeMode ? undefined : { scale: 0.98 }}
+                                        className={cn(
+                                            "rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md",
+                                            "flex items-center justify-between gap-3",
+                                            liveOrder?.status === 'Ready' || liveOrder?.status === 'ready_for_pickup'
+                                                ? 'bg-green-400/95 border-green-500 text-black'
+                                                : 'bg-yellow-400/95 border-yellow-500 text-black'
+                                        )}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-9 h-9 rounded-full bg-black/10 flex items-center justify-center">
+                                                <Navigation size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-extrabold truncate">{trackOrdersLabel}</p>
+                                                <p className="text-xs text-black/70 truncate">Live order status: {trackOrdersStatusSummary || 'In Progress'}</p>
+                                            </div>
+                                        </div>
+                                        <ArrowRight className="h-4 w-4 shrink-0" />
+                                    </motion.div>
+                                </Link>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <AnimatePresence>
+                        {totalCartItems > 0 && (
+                            <motion.div
+                                className={cn("fixed left-0 right-0 z-30", isStoreBusiness ? "bottom-12" : "bottom-0")}
+                                initial={{ y: 100, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 100, opacity: 0 }}
+                            >
+                                <div className="bg-background/80 backdrop-blur-sm border-t border-border">
+                                    <Button onClick={handleCheckout} disabled={isBusinessClosed} className={cn("h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60", isCheckoutLaunching && "opacity-90")}>
+                                        <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
+                                        <span className="flex items-center">
+                                            {isBusinessClosed ? 'Currently Closed' : (isCheckoutLaunching ? 'Opening...' : ((liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'))} <ArrowRight className="ml-2 h-5 w-5" />
+                                        </span>
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {!isStoreBusiness && (
                         <motion.div
-                            className={cn("fixed left-0 right-0 z-30", isStoreBusiness ? "bottom-12" : "bottom-0")}
-                            initial={{ y: 100, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: 100, opacity: 0 }}
+                            className="fixed bottom-4 right-4 z-20"
+                            animate={{ y: menuFabOffset }}
+                            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                         >
-                            <div className="bg-background/80 backdrop-blur-sm border-t border-border">
-                                <Button onClick={handleCheckout} disabled={isBusinessClosed} className={cn("h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60", isCheckoutLaunching && "opacity-90")}>
-                                    <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
-                                    <span className="flex items-center">
-                                        {isBusinessClosed ? 'Currently Closed' : (isCheckoutLaunching ? 'Opening...' : ((liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'))} <ArrowRight className="ml-2 h-5 w-5" />
-                                    </span>
-                                </Button>
-                            </div>
+                            <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
+                                <BookOpen size={28} />
+                            </Button>
                         </motion.div>
                     )}
-                </AnimatePresence>
 
-                {!isStoreBusiness && (
-                    <motion.div
-                        className="fixed bottom-4 right-4 z-20"
-                        animate={{ y: menuFabOffset }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                    >
-                        <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
-                            <BookOpen size={28} />
-                        </Button>
-                    </motion.div>
-                )}
-
-                <QrScannerModal
-                    isOpen={isQrScannerOpen}
-                    onClose={() => setIsQrScannerOpen(false)}
-                />
-                <ConfirmationDialog
-                    isOpen={isConfirmReleaseOpen}
-                    onClose={() => setIsConfirmReleaseOpen(false)}
-                    onConfirm={handleReleaseSeat}
-                    title="Release Seat?"
-                    description="Are you sure you want to release this seat? Your current session will be closed."
-                    confirmText="Yes, Release"
-                    cancelText="Cancel"
-                    variant="destructive"
-                    icon={LogOut}
-                />
-                <ConfirmationDialog
-                    isOpen={Boolean(addressPendingDelete)}
-                    onClose={() => setAddressPendingDelete(null)}
-                    onConfirm={() => handleDeleteSavedAddress(addressPendingDelete)}
-                    title="Delete Address?"
-                    description={addressPendingDelete?.full
-                        ? `This will remove "${addressPendingDelete.label || addressPendingDelete.name || 'saved address'}" from your saved addresses.`
-                        : 'This will remove the selected address from your saved addresses.'}
-                    confirmText="Delete"
-                    cancelText="Keep"
-                    variant="destructive"
-                />
-            </div >
-        </>
+                    <QrScannerModal
+                        isOpen={isQrScannerOpen}
+                        onClose={() => setIsQrScannerOpen(false)}
+                    />
+                    <ConfirmationDialog
+                        isOpen={isConfirmReleaseOpen}
+                        onClose={() => setIsConfirmReleaseOpen(false)}
+                        onConfirm={handleReleaseSeat}
+                        title="Release Seat?"
+                        description="Are you sure you want to release this seat? Your current session will be closed."
+                        confirmText="Yes, Release"
+                        cancelText="Cancel"
+                        variant="destructive"
+                        icon={LogOut}
+                    />
+                    <ConfirmationDialog
+                        isOpen={Boolean(addressPendingDelete)}
+                        onClose={() => setAddressPendingDelete(null)}
+                        onConfirm={() => handleDeleteSavedAddress(addressPendingDelete)}
+                        title="Delete Address?"
+                        description={addressPendingDelete?.full
+                            ? `This will remove "${addressPendingDelete.label || addressPendingDelete.name || 'saved address'}" from your saved addresses.`
+                            : 'This will remove the selected address from your saved addresses.'}
+                        confirmText="Delete"
+                        cancelText="Keep"
+                        variant="destructive"
+                    />
+                </div >
+            </>
         </MotionConfig>
     );
 };

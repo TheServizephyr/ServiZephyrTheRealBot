@@ -11,7 +11,7 @@ import { buildLegacyMenuDataFromSnapshot, getFreshMenuSnapshot } from '@/lib/ser
 
 // --- Analytics Badge Thresholds ---
 // Strict thresholds to prevent badge inflation — only truly top-performing items qualify
-const BADGE_LOOKBACK_DAYS = 30;          // Only consider last 30 days of orders
+const BADGE_LOOKBACK_DAYS = 7;           // Reduced from 30 to 7 to save 75% Firebase Reads
 const BESTSELLER_MIN_UNITS = 15;         // Must have sold at least 15 units
 const BESTSELLER_TOP_PERCENT = 0.05;     // Must be in top 5% of TOTAL menu items
 const BESTSELLER_MAX_ITEMS = 5;          // Hard cap: max 5 bestsellers per restaurant
@@ -167,7 +167,7 @@ const BUSINESS_COLLECTION_CACHE_TTL_SECONDS = 60 * 60; // 1 hour
 const MENU_MEMORY_CACHE_TTL_MS = 30 * 1000;
 const MENU_MEMORY_CACHE_MAX_ENTRIES = 200;
 const ENABLE_PUBLIC_MENU_INSIGHT_BADGES = process.env.ENABLE_PUBLIC_MENU_INSIGHT_BADGES === 'true';
-const MENU_BADGE_CACHE_TTL_SECONDS = Math.max(5 * 60, Number(process.env.PUBLIC_MENU_INSIGHT_BADGES_TTL_SECONDS || (6 * 60 * 60)) || (6 * 60 * 60));
+const MENU_BADGE_CACHE_TTL_SECONDS = Math.max(5 * 60, Number(process.env.PUBLIC_MENU_INSIGHT_BADGES_TTL_SECONDS || (24 * 60 * 60)) || (24 * 60 * 60));
 const MENU_BADGE_MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
 const MENU_BADGE_MEMORY_CACHE_MAX_ENTRIES = 200;
 const MENU_SUPPORT_CACHE_TTL_SECONDS = Math.max(60, Number(process.env.PUBLIC_MENU_SUPPORT_CACHE_TTL_SECONDS || (5 * 60)) || (5 * 60));

@@ -3,13 +3,14 @@ import { cookies } from 'next/headers';
 
 import { getDecodedAuthContext, getFirestore } from '@/lib/firebase-admin';
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
-import { getPublicSettings } from '@/services/business/publicSettings.service';
+import { getPublicSettings, buildPublicSettingsFromData } from '@/services/business/publicSettings.service';
 import { findBusinessById } from '@/services/business/businessService';
 import { resolveCustomerLookupProfile } from '@/services/customer/customerLookup.service';
 import { resolveActiveOrdersForCustomerContext } from '@/services/order/activeOrderLookup.service';
 import { enforceRateLimit, readSignedGuestSessionCookie, verifyAppCheckToken } from '@/lib/public-auth';
 import { getBusinessRuntime, resolveScopedFeatureFlagValue } from '@/lib/server/businessRuntime';
 import { getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
+import { getOrSetSharedCache } from '@/lib/server/sharedCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,14 @@ export async function GET(req, { params }) {
     }
 
     const businessData = business.data || {};
-    const runtimeData = await getBusinessRuntime(business.ref);
+
+    // Cache business runtime (30s L1, 60s KV) — avoids repeated reads on warm instances
+    const runtimeData = await getOrSetSharedCache(`business-runtime:${businessId}`, {
+      ttlMs: 30 * 1000,
+      kvTtlSec: 60,
+      compute: () => getBusinessRuntime(business.ref),
+    });
+
     const bootstrapEnabled = resolveScopedFeatureFlagValue('bootstrap_enabled', {
       businessData,
       runtimeData,
@@ -90,6 +98,8 @@ export async function GET(req, { params }) {
         firestore,
         businessId,
         collectionNameHint: business.collection,
+        businessRef: business.ref,
+        businessData: businessData,
         allowInlineRebuild: true,
       }),
       withTimeout(
@@ -115,7 +125,7 @@ export async function GET(req, { params }) {
       ),
     ]);
 
-    const publicSettings = menuSnapshot ? null : await getPublicSettings(firestore, businessId);
+    const publicSettings = menuSnapshot ? null : buildPublicSettingsFromData(businessData);
     const activeOrder = Array.isArray(activeOrderResult?.activeOrders) ? activeOrderResult.activeOrders[0] || null : null;
 
     const businessPayload = menuSnapshot?.business || {

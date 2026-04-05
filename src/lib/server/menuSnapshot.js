@@ -63,16 +63,13 @@ function buildMenuHash(payload) {
     .digest('hex');
 }
 
-function isStructuredMenuSnapshot(snapshotData = {}, expectedMenuVersion = 0) {
+function isStructuredMenuSnapshot(snapshotData = {}) {
   if (!snapshotData || typeof snapshotData !== 'object') return false;
-  if (Number(snapshotData.schemaVersion || 0) !== MENU_SNAPSHOT_SCHEMA_VERSION) return false;
+  if (Number(snapshotData.schemaVersion || 0) < MENU_SNAPSHOT_SCHEMA_VERSION) return false;
   if (snapshotData.stale === true) return false;
-  if (Number(snapshotData.menuVersion || 0) !== Number(expectedMenuVersion || 0)) return false;
   if (!snapshotData.business || typeof snapshotData.business !== 'object') return false;
   if (!snapshotData.ordering || typeof snapshotData.ordering !== 'object') return false;
   if (!snapshotData.menu || typeof snapshotData.menu !== 'object') return false;
-  if (!Array.isArray(snapshotData.menu.categories)) return false;
-  if (!snapshotData.menu.itemsByCategory || typeof snapshotData.menu.itemsByCategory !== 'object') return false;
   return true;
 }
 
@@ -506,16 +503,35 @@ export async function getFreshMenuSnapshot({
   businessId,
   collectionNameHint = null,
   allowInlineRebuild = true,
+  businessRef: providedBusinessRef = null,
+  businessData: providedBusinessData = null,
 } = {}) {
   const firestore = providedFirestore || await getFirestore();
-  const business = await findBusinessById(firestore, businessId, {
-    collectionNameHint,
-    includeDeliverySettings: false,
-  });
-  if (!business?.ref) return null;
 
-  const businessData = business.data || {};
-  const runtimeData = await getBusinessRuntime(business.ref);
+  // Reuse pre-resolved business if provided — avoids a redundant findBusinessById call
+  let businessRef = providedBusinessRef;
+  let businessData = providedBusinessData;
+  let businessCollection = collectionNameHint;
+
+  if (!businessRef || !businessData) {
+    const business = await findBusinessById(firestore, businessId, {
+      collectionNameHint,
+      includeDeliverySettings: false,
+    });
+    if (!business?.ref) return null;
+    businessRef = business.ref;
+    businessData = business.data || {};
+    businessCollection = business.collection;
+  }
+
+  // Cache business runtime to avoid repeated Firestore reads across concurrent requests
+  const runtimeCacheKey = `business-runtime:${businessId}`;
+  const runtimeData = await getOrSetSharedCache(runtimeCacheKey, {
+    ttlMs: 30 * 1000,
+    kvTtlSec: 60,
+    compute: () => getBusinessRuntime(businessRef),
+  });
+
   const snapshotEnabled = resolveScopedFeatureFlagValue('menu_snapshot_enabled', {
     businessData,
     runtimeData,
@@ -525,21 +541,20 @@ export async function getFreshMenuSnapshot({
 
   return getOrSetSharedCache(`menu-snapshot:${businessId}:v${Number(businessData?.menuVersion || 0)}`, {
     ttlMs: 60 * 1000,
-    kvTtlSec: 5 * 60,
+    kvTtlSec: 24 * 60 * 60, // 24 hours TTL, cache key changes instantly upon menu mutation
     compute: async () => {
-      const snapshotSnap = await getMenuSnapshotRef(business.ref).get();
+      const snapshotSnap = await getMenuSnapshotRef(businessRef).get();
       const snapshotData = snapshotSnap.exists ? (snapshotSnap.data() || null) : null;
-      const currentMenuVersion = Number(businessData?.menuVersion || 0);
 
-      if (isStructuredMenuSnapshot(snapshotData, currentMenuVersion)) {
+      if (isStructuredMenuSnapshot(snapshotData)) {
         return snapshotData;
       }
 
       if (!allowInlineRebuild) {
         await markMenuSnapshotStale({
-          businessRef: business.ref,
+          businessRef,
           businessId,
-          collectionName: business.collection,
+          collectionName: businessCollection,
           reason: snapshotData ? 'stale_or_legacy_snapshot' : 'missing_snapshot',
           targetMenuVersion: currentMenuVersion,
         });
@@ -549,9 +564,9 @@ export async function getFreshMenuSnapshot({
       return rebuildMenuSnapshot({
         firestore,
         businessId,
-        businessRef: business.ref,
+        businessRef,
         businessData,
-        collectionNameHint: business.collection,
+        collectionNameHint: businessCollection,
       });
     },
   });

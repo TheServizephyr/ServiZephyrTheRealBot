@@ -39,52 +39,15 @@ function normalizeGstCalculationMode(businessData = {}) {
     return 'included';
 }
 
-export async function getPublicSettings(firestore, restaurantId) {
-    const safeRestaurantId = String(restaurantId || '').trim();
-    if (!safeRestaurantId) {
-        throw new Error('Restaurant ID is required');
-    }
-
-    const cached = readPublicSettingsCache(safeRestaurantId);
-    if (cached) return cached;
-
-    const business = await findBusinessById(firestore, safeRestaurantId, {
-        includeDeliverySettings: false,
-    });
-
-    if (!business?.ref) {
-        const safeDefaults = {
-            deliveryEnabled: true,
-            pickupEnabled: true,
-            dineInEnabled: true,
-            deliveryCodEnabled: true,
-            deliveryOnlinePaymentEnabled: true,
-            pickupOnlinePaymentEnabled: true,
-            pickupPodEnabled: true,
-            dineInOnlinePaymentEnabled: true,
-            dineInPayAtCounterEnabled: true,
-        };
-        writePublicSettingsCache(safeRestaurantId, safeDefaults);
-        return safeDefaults;
-    }
-
-    const businessDoc = await business.ref.get();
-    const data = businessDoc.exists ? (businessDoc.data() || {}) : {};
-
-    let deliveryConfig = {};
-    try {
-        const deliveryConfigSnap = await businessDoc.ref.collection('delivery_settings').doc('config').get();
-        if (deliveryConfigSnap.exists) {
-            deliveryConfig = deliveryConfigSnap.data() || {};
-        }
-    } catch (err) {
-        console.warn('[public-settings-service] Failed to fetch delivery_settings config:', err?.message || err);
-    }
-
+/**
+ * Build publicSettings directly from already-fetched businessData (zero Firestore reads).
+ * Reuse whenever businessData is already in scope to avoid redundant lookups.
+ */
+export function buildPublicSettingsFromData(data = {}, deliveryConfig = {}) {
     const fallback = (key, defaultVal) => deliveryConfig[key] ?? data[key] ?? defaultVal;
     const gstCalcMode = normalizeGstCalculationMode(data);
 
-    const publicSettings = {
+    return {
         deliveryEnabled: fallback('deliveryEnabled', true),
         pickupEnabled: fallback('pickupEnabled', true),
         dineInEnabled: fallback('dineInEnabled', true),
@@ -120,7 +83,52 @@ export async function getPublicSettings(firestore, restaurantId) {
         serviceFeeValue: Number(data.serviceFeeValue) || 0,
         serviceFeeApplyOn: data.serviceFeeApplyOn || 'all',
     };
+}
 
+export async function getPublicSettings(firestore, restaurantId) {
+    const safeRestaurantId = String(restaurantId || '').trim();
+    if (!safeRestaurantId) {
+        throw new Error('Restaurant ID is required');
+    }
+
+    const cached = readPublicSettingsCache(safeRestaurantId);
+    if (cached) return cached;
+
+    const business = await findBusinessById(firestore, safeRestaurantId, {
+        includeDeliverySettings: false,
+    });
+
+    if (!business?.ref) {
+        const safeDefaults = {
+            deliveryEnabled: true,
+            pickupEnabled: true,
+            dineInEnabled: true,
+            deliveryCodEnabled: true,
+            deliveryOnlinePaymentEnabled: true,
+            pickupOnlinePaymentEnabled: true,
+            pickupPodEnabled: true,
+            dineInOnlinePaymentEnabled: true,
+            dineInPayAtCounterEnabled: true,
+        };
+        writePublicSettingsCache(safeRestaurantId, safeDefaults);
+        return safeDefaults;
+    }
+
+    // Use already-loaded business data; avoid re-fetching the main document
+    const data = business.data || {};
+
+    let deliveryConfig = {};
+    try {
+        const deliveryConfigSnap = await business.ref.collection('delivery_settings').doc('config').get();
+        if (deliveryConfigSnap.exists) {
+            deliveryConfig = deliveryConfigSnap.data() || {};
+        }
+    } catch (err) {
+        console.warn('[public-settings-service] Failed to fetch delivery_settings config:', err?.message || err);
+    }
+
+    const publicSettings = buildPublicSettingsFromData(data, deliveryConfig);
     writePublicSettingsCache(safeRestaurantId, publicSettings);
     return publicSettings;
 }
+
