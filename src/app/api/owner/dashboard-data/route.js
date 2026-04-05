@@ -132,37 +132,49 @@ export async function GET(req) {
         const url = new URL(req.url);
         const filter = url.searchParams.get('filter') || 'Today';
 
-        if (filter === 'Today') {
-            const derivedStats = await getFreshDashboardStats({
-                firestore,
-                businessId,
-                collectionNameHint: collectionName,
-                allowInlineRebuild: true,
-            });
+        const derivedStats = await getFreshDashboardStats({
+            firestore,
+            businessId,
+            collectionNameHint: collectionName,
+            allowInlineRebuild: true,
+        });
 
-            if (derivedStats) {
-                return NextResponse.json({
-                    stats: {
-                        sales: derivedStats?.today?.sales || 0,
-                        salesChange: derivedStats?.todayComparisons?.salesChange || 0,
-                        orders: derivedStats?.today?.orders || 0,
-                        ordersChange: derivedStats?.todayComparisons?.ordersChange || 0,
-                        newCustomers: derivedStats?.today?.newCustomers || 0,
-                        newCustomersChange: derivedStats?.todayComparisons?.newCustomersChange || 0,
-                        avgOrderValue: derivedStats?.today?.avgOrderValue || 0,
-                        avgOrderValueChange: derivedStats?.todayComparisons?.avgOrderValueChange || 0,
-                        todayRejections: derivedStats?.today?.todayRejections || 0,
-                    },
-                    liveOrders: derivedStats?.live?.orders || [],
-                    salesChart: derivedStats?.charts?.salesChart || [],
-                    topItems: derivedStats?.topItems || [],
-                    businessInfo: {
-                        businessType: derivedStats?.businessType || 'restaurant',
-                    },
-                    source: 'dashboard_stats',
-                }, { status: 200 });
+        if (derivedStats) {
+            let filterKey = 'today';
+            let comparisonsKey = 'todayComparisons';
+            if (filter === 'This Week') {
+                filterKey = 'thisWeek';
+                comparisonsKey = 'thisWeekComparisons';
+            } else if (filter === 'This Month') {
+                filterKey = 'thisMonth';
+                comparisonsKey = 'thisMonthComparisons';
             }
+
+            const targetStats = derivedStats[filterKey] || derivedStats.today || {};
+            const targetComparisons = derivedStats[comparisonsKey] || derivedStats.todayComparisons || {};
+
+            return NextResponse.json({
+                stats: {
+                    sales: targetStats.sales || 0,
+                    salesChange: targetComparisons.salesChange || 0,
+                    orders: targetStats.orders || 0,
+                    ordersChange: targetComparisons.ordersChange || 0,
+                    newCustomers: targetStats.newCustomers || 0,
+                    newCustomersChange: targetComparisons.newCustomersChange || 0,
+                    avgOrderValue: targetStats.avgOrderValue || 0,
+                    avgOrderValueChange: targetComparisons.avgOrderValueChange || 0,
+                    todayRejections: targetStats.todayRejections || 0,
+                },
+                liveOrders: derivedStats.live?.orders || [],
+                salesChart: derivedStats.charts?.salesChart || [],
+                topItems: derivedStats.topItems || [],
+                businessInfo: {
+                    businessType: derivedStats.businessType || 'restaurant',
+                },
+                source: 'dashboard_stats',
+            }, { status: 200 });
         }
+
         const businessRef = firestore.collection(collectionName).doc(businessId);
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
         const customersRef = businessRef.collection('customers');

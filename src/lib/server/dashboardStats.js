@@ -77,6 +77,7 @@ export function getDashboardStatsRef(businessRef) {
   return businessRef.collection(DASHBOARD_STATS_COLLECTION).doc(DASHBOARD_STATS_DOC_ID);
 }
 
+
 async function computeDashboardStatsPayload({ firestore, businessRef, businessId, collectionName, now = new Date() }) {
   const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
   const customersRef = businessRef.collection('customers');
@@ -87,68 +88,94 @@ async function computeDashboardStatsPayload({ firestore, businessRef, businessId
   const todayRange = getRangeDays('Today', now);
   const weekRange = getRangeDays('This Week', now);
   const monthRange = getRangeDays('This Month', now);
-  const { prevStart, prevEnd } = getPreviousRange(todayRange.start, todayRange.end);
+  
+  const prevTodayRange = getPreviousRange(todayRange.start, todayRange.end);
+  const prevWeekRange = getPreviousRange(weekRange.start, weekRange.end);
+  const prevMonthRange = getPreviousRange(monthRange.start, monthRange.end);
+
+  // Use the oldest comparison start date for an efficient single query
+  const oldestStart = new Date(Math.min(
+    prevMonthRange.prevStart.getTime(),
+    prevWeekRange.prevStart.getTime(),
+    prevTodayRange.prevStart.getTime()
+  ));
 
   const [
-    currentOrdersSnap,
-    prevOrdersSnap,
-    currentManualSnap,
-    prevManualSnap,
+    allRecentOrdersSnap,
+    allRecentManualSnap,
     customersSnap,
     liveOrdersSnap,
-    weekOrdersSnap,
-    weekManualSnap,
-    monthOrdersSnap,
-    monthManualSnap,
-    todayRejectedSnap,
   ] = await Promise.all([
-    ordersRef.where('orderDate', '>=', todayRange.start).where('orderDate', '<=', todayRange.end).get(),
-    ordersRef.where('orderDate', '>=', prevStart).where('orderDate', '<=', prevEnd).get(),
-    customBillHistoryRef.where('printedAt', '>=', todayRange.start).where('printedAt', '<=', todayRange.end).get(),
-    customBillHistoryRef.where('printedAt', '>=', prevStart).where('printedAt', '<=', prevEnd).get(),
+    ordersRef.where('orderDate', '>=', oldestStart).where('orderDate', '<=', todayRange.end).get(),
+    customBillHistoryRef.where('printedAt', '>=', oldestStart).where('printedAt', '<=', todayRange.end).get(),
     customersRef.get(),
-    ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(6).get(),
-    ordersRef.where('orderDate', '>=', weekRange.start).where('orderDate', '<=', weekRange.end).get(),
-    customBillHistoryRef.where('printedAt', '>=', weekRange.start).where('printedAt', '<=', weekRange.end).get(),
-    ordersRef.where('orderDate', '>=', monthRange.start).where('orderDate', '<=', monthRange.end).get(),
-    customBillHistoryRef.where('printedAt', '>=', monthRange.start).where('printedAt', '<=', monthRange.end).get(),
-    ordersRef.where('orderDate', '>=', todayRange.start).where('orderDate', '<=', todayRange.end).get(),
+    ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(15).get(),
   ]);
 
-  const acceptedCurrentOrders = currentOrdersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((order) => !LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase()));
-  const acceptedPrevOrders = prevOrdersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((order) => !LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase()));
-  const currentManualBills = currentManualSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((bill) => !isCancelledManualBill(bill));
-  const prevManualBills = prevManualSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((bill) => !isCancelledManualBill(bill));
+  const allOrders = allRecentOrdersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const allManualBills = allRecentManualSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const customers = customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  const currentOrderSales = acceptedCurrentOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0);
-  const prevOrderSales = acceptedPrevOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0);
-  const currentManualSales = currentManualBills.reduce((sum, bill) => sum + toAmount(bill.totalAmount || bill.grandTotal), 0);
-  const prevManualSales = prevManualBills.reduce((sum, bill) => sum + toAmount(bill.totalAmount || bill.grandTotal), 0);
+  const filterInRange = (items, start, end, dateField) => items.filter(item => {
+    const d = timestampToDate(item[dateField]);
+    return d && d >= start && d <= end;
+  });
 
-  const totalSales = currentOrderSales + currentManualSales;
-  const prevTotalSales = prevOrderSales + prevManualSales;
-  const totalOrders = acceptedCurrentOrders.length + currentManualBills.length;
-  const prevTotalOrders = acceptedPrevOrders.length + prevManualBills.length;
-  const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-  const prevAvgOrderValue = prevTotalOrders > 0 ? prevTotalSales / prevTotalOrders : 0;
+  const aggregateMetrics = (orders, bills) => {
+    const acceptedOrders = orders.filter(o => !LOST_ORDER_STATUSES.has(String(o.status || '').toLowerCase()));
+    const acceptedBills = bills.filter(b => !isCancelledManualBill(b));
+    const onlineSales = acceptedOrders.reduce((sum, o) => sum + toAmount(o.totalAmount), 0);
+    const manualSales = acceptedBills.reduce((sum, b) => sum + toAmount(b.totalAmount || b.grandTotal), 0);
+    const totalSales = onlineSales + manualSales;
+    const totalOrders = acceptedOrders.length + acceptedBills.length;
+    const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+    return { onlineSales, manualSales, totalSales, totalOrders, avgOrderValue, acceptedOrders, acceptedBills };
+  };
 
-  const customers = customersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const newCustomersCurrent = customers.filter((customer) => {
-    const joinedAt = timestampToDate(customer.joinedAt);
-    return joinedAt && joinedAt >= todayRange.start && joinedAt <= todayRange.end;
-  }).length;
-  const newCustomersPrevious = customers.filter((customer) => {
-    const joinedAt = timestampToDate(customer.joinedAt);
-    return joinedAt && joinedAt >= prevStart && joinedAt <= prevEnd;
-  }).length;
+  const computeForRange = (rangeStart, rangeEnd, prevRangeStart, prevRangeEnd) => {
+    const orders = filterInRange(allOrders, rangeStart, rangeEnd, 'orderDate');
+    const bills = filterInRange(allManualBills, rangeStart, rangeEnd, 'printedAt');
+    const prevOrders = filterInRange(allOrders, prevRangeStart, prevRangeEnd, 'orderDate');
+    const prevBills = filterInRange(allManualBills, prevRangeStart, prevRangeEnd, 'printedAt');
 
-  const todayRejections = todayRejectedSnap.docs.filter((doc) =>
-    LOST_ORDER_STATUSES.has(String(doc.data()?.status || '').toLowerCase())
-  ).length;
+    const metrics = aggregateMetrics(orders, bills);
+    const prevMetrics = aggregateMetrics(prevOrders, prevBills);
+
+    const rejections = orders.filter(o => LOST_ORDER_STATUSES.has(String(o.status || '').toLowerCase())).length;
+
+    const newCustomers = customers.filter(c => {
+      const j = timestampToDate(c.joinedAt);
+      return j && j >= rangeStart && j <= rangeEnd;
+    }).length;
+    const prevNewCustomers = customers.filter(c => {
+      const j = timestampToDate(c.joinedAt);
+      return j && j >= prevRangeStart && j <= prevRangeEnd;
+    }).length;
+
+    return {
+      sales: metrics.totalSales,
+      orders: metrics.totalOrders,
+      newCustomers,
+      avgOrderValue: metrics.avgOrderValue,
+      rejections,
+      manualBills: metrics.acceptedBills.length,
+      manualSales: metrics.manualSales,
+      onlineOrders: metrics.acceptedOrders.length,
+      onlineSales: metrics.onlineSales,
+      acceptedOrders: metrics.acceptedOrders,
+      acceptedBills: metrics.acceptedBills,
+      comparisons: {
+        salesChange: Number(calcChange(metrics.totalSales, prevMetrics.totalSales).toFixed(1)),
+        ordersChange: Number(calcChange(metrics.totalOrders, prevMetrics.totalOrders).toFixed(1)),
+        newCustomersChange: Number(calcChange(newCustomers, prevNewCustomers).toFixed(1)),
+        avgOrderValueChange: Number(calcChange(metrics.avgOrderValue, prevMetrics.avgOrderValue).toFixed(1)),
+      }
+    };
+  };
+
+  const todayMetrics = computeForRange(todayRange.start, todayRange.end, prevTodayRange.prevStart, prevTodayRange.prevEnd);
+  const weekMetrics = computeForRange(weekRange.start, weekRange.end, prevWeekRange.prevStart, prevWeekRange.prevEnd);
+  const monthMetrics = computeForRange(monthRange.start, monthRange.end, prevMonthRange.prevStart, prevMonthRange.prevEnd);
 
   const liveOrders = liveOrdersSnap.docs.map((doc) => {
     const orderData = doc.data() || {};
@@ -156,10 +183,7 @@ async function computeDashboardStatsPayload({ firestore, businessRef, businessId
       id: doc.id,
       customer: orderData.customerName || orderData.name || 'Customer',
       amount: toAmount(orderData.totalAmount),
-      items: (orderData.items || []).map((item) => ({
-        name: item.name,
-        quantity: item.qty || item.quantity || 0,
-      })),
+      items: (orderData.items || []).map(item => ({ name: item.name, quantity: item.qty || item.quantity || 0 })),
       status: orderData.status || 'pending',
     };
   });
@@ -169,26 +193,15 @@ async function computeDashboardStatsPayload({ firestore, businessRef, businessId
     const date = timestampToDate(dateValue);
     if (!date) return;
     const key = date.toISOString().slice(0, 10);
-    const current = salesByDay.get(key) || {
-      day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-      sales: 0,
-      ts: date.getTime(),
-    };
+    const current = salesByDay.get(key) || { day: date.toLocaleDateString('en-US', { weekday: 'short' }), sales: 0, ts: date.getTime() };
     current.sales += amount;
     salesByDay.set(key, current);
   };
 
-  [...weekOrdersSnap.docs, ...monthOrdersSnap.docs].forEach((doc) => {
-    const order = doc.data() || {};
-    if (LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase())) return;
-    addChartSale(order.orderDate, toAmount(order.totalAmount));
-  });
-
-  [...weekManualSnap.docs, ...monthManualSnap.docs].forEach((doc) => {
-    const bill = doc.data() || {};
-    if (isCancelledManualBill(bill)) return;
-    addChartSale(bill.printedAt || bill.createdAt, toAmount(bill.totalAmount || bill.grandTotal));
-  });
+  if(monthMetrics.acceptedOrders) {
+      monthMetrics.acceptedOrders.forEach(o => addChartSale(o.orderDate, toAmount(o.totalAmount)));
+      monthMetrics.acceptedBills.forEach(b => addChartSale(b.printedAt || b.createdAt, toAmount(b.totalAmount || b.grandTotal)));
+  }
 
   const salesChart = Array.from(salesByDay.values())
     .sort((a, b) => a.ts - b.ts)
@@ -196,29 +209,25 @@ async function computeDashboardStatsPayload({ firestore, businessRef, businessId
 
   const itemCounts = {};
   const addItemCounts = (items = []) => {
-    items.forEach((item) => {
+    items.forEach(item => {
       const name = String(item?.name || '').trim();
       if (!name) return;
-      const quantity = toAmount(item?.quantity || item?.qty || 0);
-      itemCounts[name] = (itemCounts[name] || 0) + quantity;
+      itemCounts[name] = (itemCounts[name] || 0) + toAmount(item?.quantity || item?.qty || 0);
     });
   };
-  acceptedCurrentOrders.forEach((order) => addItemCounts(order.items || []));
-  currentManualBills.forEach((bill) => addItemCounts(bill.items || []));
+  
+  todayMetrics.acceptedOrders.forEach(order => addItemCounts(order.items || []));
+  todayMetrics.acceptedBills.forEach(bill => addItemCounts(bill.items || []));
 
   const topItems = Object.entries(itemCounts)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 6)
     .map(([name, count]) => ({ name, count }));
 
-  const weekAcceptedOrders = weekOrdersSnap.docs.map((doc) => doc.data() || {})
-    .filter((order) => !LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase()));
-  const weekAcceptedBills = weekManualSnap.docs.map((doc) => doc.data() || {})
-    .filter((bill) => !isCancelledManualBill(bill));
-  const monthAcceptedOrders = monthOrdersSnap.docs.map((doc) => doc.data() || {})
-    .filter((order) => !LOST_ORDER_STATUSES.has(String(order.status || '').toLowerCase()));
-  const monthAcceptedBills = monthManualSnap.docs.map((doc) => doc.data() || {})
-    .filter((bill) => !isCancelledManualBill(bill));
+  const buildFinalOutput = (metrics) => {
+      const { acceptedOrders, acceptedBills, comparisons, rejections, ...rest } = metrics;
+      return { ...rest, todayRejections: rejections };
+  };
 
   return {
     businessId,
@@ -226,44 +235,28 @@ async function computeDashboardStatsPayload({ firestore, businessRef, businessId
     businessType: normalizeBusinessType(businessData?.businessType || collectionName?.slice(0, -1)),
     version: Number(businessData?.statsVersion || 0),
     updatedAt: new Date().toISOString(),
-    today: {
-      sales: totalSales,
-      orders: totalOrders,
-      newCustomers: newCustomersCurrent,
-      avgOrderValue,
-      todayRejections,
-      manualBills: currentManualBills.length,
-      manualSales: currentManualSales,
-      onlineOrders: acceptedCurrentOrders.length,
-      onlineSales: currentOrderSales,
-    },
-    todayComparisons: {
-      salesChange: Number(calcChange(totalSales, prevTotalSales).toFixed(1)),
-      ordersChange: Number(calcChange(totalOrders, prevTotalOrders).toFixed(1)),
-      newCustomersChange: Number(calcChange(newCustomersCurrent, newCustomersPrevious).toFixed(1)),
-      avgOrderValueChange: Number(calcChange(avgOrderValue, prevAvgOrderValue).toFixed(1)),
-    },
+    today: buildFinalOutput(todayMetrics),
+    todayComparisons: todayMetrics.comparisons,
+    thisWeek: buildFinalOutput(weekMetrics),
+    thisWeekComparisons: weekMetrics.comparisons,
+    thisMonth: buildFinalOutput(monthMetrics),
+    thisMonthComparisons: monthMetrics.comparisons,
     live: {
-      pending: liveOrders.filter((order) => String(order.status).toLowerCase() === 'pending').length,
-      confirmed: liveOrders.filter((order) => String(order.status).toLowerCase() === 'confirmed').length,
+      pending: liveOrders.filter(o => String(o.status).toLowerCase() === 'pending').length,
+      confirmed: liveOrders.filter(o => String(o.status).toLowerCase() === 'confirmed').length,
       orderCount: liveOrders.length,
       orders: liveOrders,
     },
     rolling: {
-      last7DaysSales: weekAcceptedOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0)
-        + weekAcceptedBills.reduce((sum, bill) => sum + toAmount(bill.totalAmount || bill.grandTotal), 0),
-      last7DaysOrders: weekAcceptedOrders.length + weekAcceptedBills.length,
-      thisMonthSales: monthAcceptedOrders.reduce((sum, order) => sum + toAmount(order.totalAmount), 0)
-        + monthAcceptedBills.reduce((sum, bill) => sum + toAmount(bill.totalAmount || bill.grandTotal), 0),
-      thisMonthOrders: monthAcceptedOrders.length + monthAcceptedBills.length,
+      last7DaysSales: weekMetrics.sales,
+      last7DaysOrders: weekMetrics.orders,
+      thisMonthSales: monthMetrics.sales,
+      thisMonthOrders: monthMetrics.orders,
     },
-    charts: {
-      salesChart,
-    },
+    charts: { salesChart },
     topItems,
   };
 }
-
 export async function rebuildDashboardStats({
   firestore: providedFirestore = null,
   businessId,
@@ -300,7 +293,7 @@ export async function rebuildDashboardStats({
     lastStatsReconciledAt: new Date(),
   });
 
-  invalidateSharedCache(`dashboard-stats:${businessId}`);
+  invalidateSharedCache(`dashboard-stats:${businessId}`, { prefixMatch: true });
   return payload;
 }
 

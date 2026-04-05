@@ -456,7 +456,7 @@ export async function rebuildMenuSnapshot({
     lastSnapshotGeneratedAt: new Date(),
   });
 
-  invalidateSharedCache(`menu-snapshot:${businessId}`);
+  invalidateSharedCache(`menu-snapshot:${businessId}`, { prefixMatch: true });
   return snapshotPayload;
 }
 
