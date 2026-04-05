@@ -45,11 +45,12 @@ export class OrderRepository {
      * Create new order
      * Automatically generates a 10-digit customer-facing order ID
      */
-    async create(orderData, customId = null) {
+    async create(orderData, customId = null, options = {}) {
         const firestore = await getFirestore();
+        const targetCollection = options.collection || this.collectionName;
         const docRef = customId
-            ? firestore.collection(this.collectionName).doc(customId)
-            : firestore.collection(this.collectionName).doc();
+            ? firestore.collection(targetCollection).doc(customId)
+            : firestore.collection(targetCollection).doc();
 
         const timestamp = FieldValue.serverTimestamp();
 

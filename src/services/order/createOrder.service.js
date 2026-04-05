@@ -990,6 +990,7 @@ export async function createOrderV2(req, options = {}) {
                 business,
                 actorId: userId || normalizedPhone || 'customer',
                 actorRole: 'customer',
+            isTestOrder: body?.isTestOrder === true,
             });
             console.log(`[createOrderV2] Firestore order created: ${firestoreOrderId}`);
 
@@ -1176,7 +1177,8 @@ export async function createOrderV2(req, options = {}) {
         // STEP 7: PARALLEL DATABASE SAVING
         // ========================================
         // Generate Order ID beforehand to decouple dependencies
-        const orderId = firestore.collection('orders').doc().id;
+        const ORDER_COLLECTION = body?.isTestOrder ? 'test_orders' : 'orders';
+        const orderId = firestore.collection(ORDER_COLLECTION).doc().id;
         console.log(`[createOrderV2] Order ID reserved: ${orderId}`);
 
         const saveOrderPromise = persistOrderWithInventory({
@@ -1186,6 +1188,7 @@ export async function createOrderV2(req, options = {}) {
             business,
             actorId: userId || normalizedPhone || 'customer',
             actorRole: 'customer',
+        isTestOrder: body?.isTestOrder === true,
         });
 
         // Keep tracking-token persistence on the critical path so redirects can track immediately.
@@ -1372,12 +1375,14 @@ async function persistOrderWithInventory({
     business,
     actorId,
     actorRole = 'customer',
+    isTestOrder = false,
 }) {
+    const targetCollection = isTestOrder ? 'test_orders' : 'orders';
     if (!isInventoryManagedBusinessType(business?.type)) {
-        return orderRepository.create(orderData, orderId);
+        return orderRepository.create(orderData, orderId, { collection: targetCollection });
     }
 
-    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderRef = firestore.collection(targetCollection).doc(orderId);
     const businessRef = firestore.collection(business.collection).doc(business.id);
     const customerOrderId = generateCustomerOrderId();
 
