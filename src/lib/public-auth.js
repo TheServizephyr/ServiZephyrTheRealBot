@@ -448,6 +448,13 @@ export async function enforceRateLimit(_firestore, {
   const safeKey = String(key || '').trim();
   if (!safeKey) return { allowed: true };
 
+  // Load test bypass: if X-Load-Test-Key matches CRON_SECRET, skip rate limiting
+  const loadTestKey = req?.headers?.get?.('x-load-test-key') || '';
+  const cronSecret = process.env.CRON_SECRET || '';
+  if (loadTestKey && cronSecret && loadTestKey === cronSecret) {
+    return { allowed: true, source: 'load_test_bypass' };
+  }
+
   let result = null;
   try {
     result = await consumeKvRateLimit(bucket, safeKey, limit, windowSec);
