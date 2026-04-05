@@ -7,9 +7,6 @@ import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
-import { db, auth } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
 import { format } from 'date-fns';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
@@ -74,6 +71,28 @@ const StatusTimeline = ({ currentStatus }) => {
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
+const FINAL_ORDER_STATES = ['delivered', 'cancelled', 'rejected'];
+
+const normalizeApiOrder = (payload) => {
+    const apiOrder = payload?.order || {};
+    const apiRestaurant = payload?.restaurant || {};
+
+    return {
+        ...apiOrder,
+        id: apiOrder.id || null,
+        restaurantId: apiOrder.restaurantId || apiRestaurant.id || null,
+        restaurantName: apiRestaurant.name || apiOrder.restaurantName || 'ServiZephyr',
+        businessType: apiRestaurant.businessType || apiOrder.businessType || 'street-vendor',
+        packagingCharge: apiOrder.packagingCharge || 0,
+        convenienceFee: apiOrder.convenienceFee || 0,
+        tipAmount: apiOrder.tipAmount || 0,
+        discount: apiOrder.discount || 0,
+        grandTotal: apiOrder.grandTotal || apiOrder.totalAmount || 0,
+        items: Array.isArray(apiOrder.items) ? apiOrder.items : [],
+        orderDate: apiOrder.createdAt || apiOrder.orderDate || null,
+    };
+};
+
 function PreOrderTrackingContent() {
     const router = useRouter();
     const { orderId } = useParams();
@@ -94,6 +113,7 @@ function PreOrderTrackingContent() {
     const [showRipple, setShowRipple] = useState(false);
     const [animationState, setAnimationState] = useState('drop');
     const [isFlipped, setIsFlipped] = useState(false);
+    const [isVisible, setIsVisible] = useState(true);
     const tiltWrapperRef = useRef(null);
 
     // ✅ SMART CELEBRATION & CANCELLATION LOGIC
@@ -168,98 +188,94 @@ function PreOrderTrackingContent() {
         }
     }, [showFullScreenCelebration, order?.restaurantId, order?.businessType]);
 
-    useEffect(() => {
-        let unsubscribe = () => { };
+    const fetchOrder = useCallback(async (isBackground = false) => {
+        if (!currentOrderId) {
+            setError("Order ID is missing.");
+            setLoading(false);
+            return null;
+        }
 
-        const setupListener = async () => {
-            if (!orderId) {
-                setError("Order ID is missing.");
-                setLoading(false);
-                return;
+        if (!currentToken) {
+            setError("Tracking token is missing.");
+            setLoading(false);
+            return null;
+        }
+
+        if (!isBackground) setLoading(true);
+
+        try {
+            const queryParams = new URLSearchParams();
+            queryParams.set('token', currentToken);
+            queryParams.set('t', String(Date.now()));
+
+            const res = await fetch(`/api/order/status/${currentOrderId}?${queryParams.toString()}`, {
+                cache: 'no-store'
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data?.message || 'Failed to load order session.');
             }
 
-            try {
-                // Ensure anonymous auth for guest users
-                if (!auth.currentUser) {
-                    await signInAnonymously(auth);
-                }
+            const normalizedOrder = normalizeApiOrder(data);
+            setOrder(normalizedOrder);
+            setError(null);
 
-                const docRef = doc(db, 'orders', currentOrderId);
-
-                // ✅ Use ref to track if we should stop processing updates
-                const shouldStopRef = { current: false };
-
-                unsubscribe = onSnapshot(docRef, (docSnap) => {
-                    // Skip processing if we already stopped
-                    if (shouldStopRef.current) return;
-
-                    if (docSnap.exists()) {
-                        const data = { id: docSnap.id, ...docSnap.data() };
-                        // Robust token check with trim()
-                        if (!data.trackingToken || data.trackingToken.trim() !== (currentToken || '').trim()) {
-                            console.log(`[Track Page] Token Mismatch! Expected: ${data.trackingToken}, Got: ${tokenFromUrl}`);
-                            setError("Invalid token. You do not have permission to view this order.");
-                            setOrder(null);
-                        } else {
-                            setOrder(data);
-                            setError(null);
-
-                            // ✅ CRITICAL: Stop processing if order reached final state
-                            const finalStates = ['delivered', 'cancelled', 'rejected'];
-                            if (finalStates.includes(data.status)) {
-                                console.log(`[Track Page] Order ${currentOrderId} reached final state: ${data.status} - Stopping listener processing`);
-                                // Set flag to stop processing future updates
-                                shouldStopRef.current = true;
-                                // Unsubscribe will happen automatically on cleanup
-                            }
-
-                            // ✅ AUTO-SAVE: If order not in localStorage, add it now
-                            // (Fixes issue where /order/placed page is skipped)
-                            if (data.restaurantId && data.businessType === 'street-vendor') {
-                                import('@/lib/vendorOrdersStorage').then(({ hasVendorOrder, addVendorOrder, updateVendorOrderStatus }) => {
-                                    if (!hasVendorOrder(data.restaurantId, currentOrderId)) {
-                                        addVendorOrder(data.restaurantId, {
-                                            orderId: currentOrderId,
-                                            token: currentToken,
-                                            customerOrderId: data.customerOrderId, // NEW: Pass customer-facing ID
-                                            totalAmount: data.totalAmount || 0,
-                                            itemCount: data.items?.length || 0,
-                                            status: data.status // NEW: Track initial status
-                                        });
-                                        console.log(`[Track Page] Auto-saved order ${currentOrderId} (CustomerID: ${data.customerOrderId}) to multi-order storage`);
-                                    } else {
-                                        // Update status in localStorage if it changed
-                                        updateVendorOrderStatus(data.restaurantId, currentOrderId, data.status);
-                                    }
-                                });
-                            }
-                        }
+            if (normalizedOrder.restaurantId && normalizedOrder.businessType === 'street-vendor') {
+                import('@/lib/vendorOrdersStorage').then(({ hasVendorOrder, addVendorOrder, updateVendorOrderStatus }) => {
+                    if (!hasVendorOrder(normalizedOrder.restaurantId, currentOrderId)) {
+                        addVendorOrder(normalizedOrder.restaurantId, {
+                            orderId: currentOrderId,
+                            token: currentToken,
+                            customerOrderId: normalizedOrder.customerOrderId,
+                            totalAmount: normalizedOrder.totalAmount || normalizedOrder.grandTotal || 0,
+                            itemCount: normalizedOrder.items?.length || 0,
+                            status: normalizedOrder.status
+                        });
+                        console.log(`[Track Page] Auto-saved order ${currentOrderId} (CustomerID: ${normalizedOrder.customerOrderId}) to multi-order storage`);
                     } else {
-                        setError("This order could not be found.");
+                        updateVendorOrderStatus(normalizedOrder.restaurantId, currentOrderId, normalizedOrder.status);
                     }
-                    setLoading(false);
-                }, (err) => {
-                    console.error("Firestore onSnapshot error:", err);
-                    // Explicitly handle permission errors visually
-                    if (err.code === 'permission-denied') {
-                        setError("Access Denied: Please refresh the page or try again.");
-                    } else {
-                        setError("Could not load the order session.");
-                    }
-                    setLoading(false);
                 });
+            }
 
-            } catch (e) {
-                console.error("Auth/Setup Error:", e);
-                setError("Failed to initialize secure session.");
-                setLoading(false);
+            return normalizedOrder;
+        } catch (e) {
+            console.error('[Track Page] Failed to fetch pre-order status:', e);
+            setOrder(null);
+            setError(e.message || "Could not load the order session.");
+            return null;
+        } finally {
+            if (!isBackground) setLoading(false);
+        }
+    }, [currentOrderId, currentToken]);
+
+    useEffect(() => {
+        fetchOrder();
+    }, [fetchOrder]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            const visible = !document.hidden;
+            setIsVisible(visible);
+            if (visible) {
+                fetchOrder(true);
             }
         };
 
-        setupListener();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [fetchOrder]);
 
-        return () => unsubscribe();
-    }, [currentOrderId, currentToken]);
+    useEffect(() => {
+        if (!isVisible || !order || FINAL_ORDER_STATES.includes(order.status)) return;
+
+        const intervalId = setInterval(() => {
+            fetchOrder(true);
+        }, 8000);
+
+        return () => clearInterval(intervalId);
+    }, [fetchOrder, isVisible, order]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -387,7 +403,7 @@ function PreOrderTrackingContent() {
     const token = order?.dineInToken || '----';
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
     const qrValue = orderId ? `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}` : '';
-    const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date();
+    const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : (order.orderDate ? new Date(order.orderDate) : new Date());
     const formattedDate = format(orderDate, 'dd MMM, p');
 
     return (
