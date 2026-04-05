@@ -266,7 +266,7 @@ export async function fetchCachedRestaurantBootstrap({
     const cacheKey = [
         RESTAURANT_BOOTSTRAP_CACHE_PREFIX,
         toCacheKeyPart(restaurantId),
-        toCacheKeyPart(src),
+        
         toCacheKeyPart(normalizedPhone),
         toCacheKeyPart(ref),
         toCacheKeyPart(tokenSignature),
