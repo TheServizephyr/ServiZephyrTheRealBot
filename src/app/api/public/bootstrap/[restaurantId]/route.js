@@ -120,13 +120,11 @@ export async function GET(req, { params }) {
 
     const businessPayload = menuSnapshot?.business || {
       id: businessId,
-      collection: business.collection,
       type: business.type || businessData?.businessType || 'restaurant',
       name: businessData?.name || '',
       logoUrl: businessData?.logoUrl || '',
       bannerUrls: businessData?.bannerUrls || [],
       approvalStatus: businessData?.approvalStatus || 'approved',
-      botDisplayNumber: businessData?.botDisplayNumber || '',
       isOpen: true,
       location: {
         lat: businessData?.coordinates?.lat ?? null,

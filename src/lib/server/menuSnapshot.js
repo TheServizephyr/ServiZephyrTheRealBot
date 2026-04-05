@@ -289,7 +289,6 @@ export function buildLegacyMenuDataFromSnapshot(snapshot = {}) {
     dineInEnabled: ordering.dineInEnabled ?? false,
     businessAddress: business.address || null,
     businessType: business.type || 'restaurant',
-    collectionName: business.collection || '',
     dineInModel: ordering.dineInModel || 'post-paid',
     isOpen: business.isOpen === true,
     autoScheduleEnabled: business.hours?.autoScheduleEnabled === true,
@@ -368,13 +367,11 @@ export async function buildMenuSnapshotPayload({
   const structuredPayload = {
     business: {
       id: businessId,
-      collection: collectionName,
       type: normalizedBusinessType,
       name: businessData?.name || '',
       approvalStatus: businessData?.approvalStatus || 'approved',
       logoUrl: businessData?.logoUrl || '',
       bannerUrls: businessData?.bannerUrls || [],
-      botDisplayNumber: businessData?.botDisplayNumber || '',
       isOpen: effectiveIsOpen,
       location: {
         lat: businessData?.coordinates?.lat ?? businessData?.address?.latitude ?? businessData?.businessAddress?.latitude ?? null,

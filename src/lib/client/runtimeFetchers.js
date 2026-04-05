@@ -158,7 +158,6 @@ function toLegacyMenuDataFromBootstrap(bootstrapData = {}) {
         dineInEnabled: ordering?.dineInEnabled ?? false,
         businessAddress: business?.address || null,
         businessType: business?.type || 'restaurant',
-        collectionName: business?.collection || '',
         dineInModel: ordering?.dineInModel || 'post-paid',
         isOpen: business?.isOpen === true,
         autoScheduleEnabled: business?.hours?.autoScheduleEnabled === true,
