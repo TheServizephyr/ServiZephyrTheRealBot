@@ -10,6 +10,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { findBusinessById } from '@/services/business/businessService';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
+import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
+import { invalidateSharedCache } from '@/lib/server/sharedCache';
+import { bumpBusinessRuntimeVersions } from '@/lib/server/businessRuntime';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -124,6 +127,56 @@ function normalizePhone(phone) {
     const digits = String(phone).replace(/\D/g, '');
     if (!digits) return '';
     return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function shouldBumpPublicMenuVersion({
+    businessUpdateData = {},
+    hasDeliveryUpdates = false,
+} = {}) {
+    if (hasDeliveryUpdates) return true;
+
+    const publicFacingFields = new Set([
+        'name',
+        'logoUrl',
+        'bannerUrls',
+        'address',
+        'isOpen',
+        'autoScheduleEnabled',
+        'openingTime',
+        'closingTime',
+        'gstEnabled',
+        'gstPercentage',
+        'gstRate',
+        'gstMinAmount',
+        'gstCalculationMode',
+        'gstIncludedInPrice',
+        'convenienceFeeEnabled',
+        'convenienceFeeRate',
+        'convenienceFeePaidBy',
+        'convenienceFeeLabel',
+        'packagingChargeEnabled',
+        'packagingChargeAmount',
+        'serviceFeeEnabled',
+        'serviceFeeLabel',
+        'serviceFeeType',
+        'serviceFeeValue',
+        'serviceFeeApplyOn',
+        'serviceFeeApplyOnManualOrders',
+        'dineInEnabled',
+        'dineInModel',
+        'dineInRbacEnabled',
+        'pickupEnabled',
+        'pickupOnlinePaymentEnabled',
+        'pickupPodEnabled',
+        'dineInOnlinePaymentEnabled',
+        'dineInPayAtCounterEnabled',
+        'isWaitlistEnabled',
+        'waitlistSeatingMode',
+        'waitlistManualCapacity',
+        'waitlistNoShowTimeoutMinutes',
+    ]);
+
+    return Object.keys(businessUpdateData).some((key) => publicFacingFields.has(key));
 }
 
 async function resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams }) {
@@ -637,6 +690,15 @@ export async function PATCH(req) {
             await businessRef.collection('delivery_settings').doc('config').set(deliveryUpdates, { merge: true });
         }
 
+        const shouldInvalidatePublicSnapshot = shouldBumpPublicMenuVersion({
+            businessUpdateData,
+            hasDeliveryUpdates,
+        });
+
+        if (shouldInvalidatePublicSnapshot && businessUpdateData.menuVersion === undefined) {
+            businessUpdateData.menuVersion = FieldValue.increment(1);
+        }
+
         if (Object.keys(businessUpdateData).length > 0) {
             if (!businessRef) {
                 throw { message: 'Business not found. Cannot update settings.', status: 404 };
@@ -653,6 +715,21 @@ export async function PATCH(req) {
         const finalUserDataSnap = await userRef.get(); // Re-fetch user data
         const finalUserData = finalUserDataSnap.data();
         const finalBusinessId = businessId;
+
+        if (shouldInvalidatePublicSnapshot) {
+            await Promise.allSettled([
+                bumpBusinessRuntimeVersions(businessRef, { menuVersion: true }),
+                markMenuSnapshotStale({
+                    businessRef,
+                    businessId,
+                    collectionName: context.collectionName,
+                    reason: 'owner_settings_patch',
+                    targetMenuVersion: Number(finalBusinessData?.menuVersion || 0),
+                }),
+            ]);
+            invalidateSharedCache(`menu-snapshot:${businessId}`, { prefixMatch: true });
+            invalidateSharedCache(`business-runtime:${businessId}`, { prefixMatch: true });
+        }
 
         // Fetch fresh delivery config
         const deliveryConfigSnap = await businessRef.collection('delivery_settings').doc('config').get();

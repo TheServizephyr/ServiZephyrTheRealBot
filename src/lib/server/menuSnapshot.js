@@ -73,6 +73,17 @@ function isStructuredMenuSnapshot(snapshotData = {}) {
   return true;
 }
 
+function getSnapshotVersion(snapshotData = {}) {
+  if (!snapshotData || typeof snapshotData !== 'object') return -1;
+  const directVersion = Number(snapshotData.menuVersion ?? snapshotData.version);
+  return Number.isFinite(directVersion) ? directVersion : -1;
+}
+
+function isFreshStructuredMenuSnapshot(snapshotData = {}, targetMenuVersion = 0) {
+  if (!isStructuredMenuSnapshot(snapshotData)) return false;
+  return getSnapshotVersion(snapshotData) === Number(targetMenuVersion || 0);
+}
+
 function filterCouponsForPublicRequest(couponDocs = [], now = new Date()) {
   return couponDocs.filter((coupon) => {
     const assignedCustomerId = String(coupon?.customerId || '').trim();
@@ -539,14 +550,16 @@ export async function getFreshMenuSnapshot({
   });
   if (!snapshotEnabled) return null;
 
-  return getOrSetSharedCache(`menu-snapshot:${businessId}:v${Number(businessData?.menuVersion || 0)}`, {
+  const currentMenuVersion = Number(businessData?.menuVersion || 0);
+
+  return getOrSetSharedCache(`menu-snapshot:${businessId}:v${currentMenuVersion}`, {
     ttlMs: 60 * 1000,
     kvTtlSec: 24 * 60 * 60, // 24 hours TTL, cache key changes instantly upon menu mutation
     compute: async () => {
       const snapshotSnap = await getMenuSnapshotRef(businessRef).get();
       const snapshotData = snapshotSnap.exists ? (snapshotSnap.data() || null) : null;
 
-      if (isStructuredMenuSnapshot(snapshotData)) {
+      if (isFreshStructuredMenuSnapshot(snapshotData, currentMenuVersion)) {
         return snapshotData;
       }
 
@@ -555,7 +568,9 @@ export async function getFreshMenuSnapshot({
           businessRef,
           businessId,
           collectionName: businessCollection,
-          reason: snapshotData ? 'stale_or_legacy_snapshot' : 'missing_snapshot',
+          reason: snapshotData
+            ? (isStructuredMenuSnapshot(snapshotData) ? 'version_mismatch_snapshot' : 'stale_or_legacy_snapshot')
+            : 'missing_snapshot',
           targetMenuVersion: currentMenuVersion,
         });
         return snapshotData;
