@@ -13,6 +13,7 @@ const ANALYTICS_TAG_KEYS = new Set([
 ]);
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car, Crown } from 'lucide-react';
@@ -1594,6 +1595,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
 
     // ADDRESS SELECTION STATE
     const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
+    const [isAddressDrawerActivating, setIsAddressDrawerActivating] = useState(false);
     const [userAddresses, setUserAddresses] = useState([]);
     const [addressLoading, setAddressLoading] = useState(false);
     const [addressPendingDelete, setAddressPendingDelete] = useState(null);
@@ -1613,6 +1615,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
     // Handler to close address selector with validation
     const handleCloseAddressSelector = () => {
         if (isAddressSelectionInProgress.current) {
+            setIsAddressDrawerActivating(false);
             setIsAddressSelectorOpen(false);
             return;
         }
@@ -1643,24 +1646,30 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
             return;
         }
 
+        setIsAddressDrawerActivating(false);
         setIsAddressSelectorOpen(false);
     };
 
     const handleOpenAddressDrawer = useCallback(() => {
-        if (tableIdFromUrl || deliveryType !== 'delivery') {
+        if (tableIdFromUrl || deliveryType !== 'delivery' || isAddressSelectorOpen || isAddressDrawerActivating) {
             return;
         }
-        setIsAddressSelectorOpen(true);
+
         const snapshotAddresses = readCustomerAddressesSnapshot();
         const hasSnapshotAddresses = snapshotAddresses.length > 0;
-        if (hasSnapshotAddresses) {
-            setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
-            setAddressLoading(false);
-        } else {
-            setAddressLoading(true);
-        }
 
-        window.setTimeout(() => {
+        flushSync(() => {
+            setIsAddressDrawerActivating(true);
+            setIsAddressSelectorOpen(true);
+            if (hasSnapshotAddresses) {
+                setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
+                setAddressLoading(false);
+            } else {
+                setAddressLoading(true);
+            }
+        });
+
+        window.requestAnimationFrame(() => {
             void (async () => {
                 try {
                     const savedPhone = localStorage.getItem('customerPhone') || '';
@@ -1682,11 +1691,12 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                 } catch (e) {
                     console.error("[handleOpenAddressDrawer] Failed to load addresses", e);
                 } finally {
+                    setIsAddressDrawerActivating(false);
                     setAddressLoading(false);
                 }
             })();
-        }, 0);
-    }, [tableIdFromUrl, deliveryType, phone, ref]);
+        });
+    }, [tableIdFromUrl, deliveryType, isAddressSelectorOpen, isAddressDrawerActivating, phone, ref]);
 
     const getAddressReturnUrl = useCallback(() => {
         if (typeof window !== 'undefined') {
@@ -4491,6 +4501,8 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                                                 type="button"
                                                 className="mt-3 w-full appearance-none rounded-lg bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                                                 onClick={handleOpenAddressDrawer}
+                                                disabled={isAddressDrawerActivating}
+                                                aria-busy={isAddressDrawerActivating}
                                                 aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
                                             >
                                                 <div className="flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
@@ -5002,6 +5014,8 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                                                     type="button"
                                                     className="mt-4 w-full appearance-none rounded-lg border-t border-dashed border-border bg-transparent p-0 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                                                     onClick={handleOpenAddressDrawer}
+                                                    disabled={isAddressDrawerActivating}
+                                                    aria-busy={isAddressDrawerActivating}
                                                     aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
                                                 >
                                                     <div className="flex items-center justify-between gap-3">
