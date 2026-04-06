@@ -17,6 +17,16 @@ function normalizeBusinessType(value) {
   return 'restaurant';
 }
 
+function getStatsPayloadVersion(statsData = {}) {
+  const version = Number(statsData?.version);
+  return Number.isFinite(version) ? version : -1;
+}
+
+function isFreshDashboardStatsPayload(statsData = {}, targetStatsVersion = 0) {
+  if (!statsData || typeof statsData !== 'object') return false;
+  return getStatsPayloadVersion(statsData) === Number(targetStatsVersion || 0);
+}
+
 function isCancelledManualBill(bill = {}) {
   return String(bill.status || '').toLowerCase() === 'cancelled';
 }
@@ -78,7 +88,14 @@ export function getDashboardStatsRef(businessRef) {
 }
 
 
-async function computeDashboardStatsPayload({ firestore, businessRef, businessId, collectionName, now = new Date() }) {
+async function computeDashboardStatsPayload({
+  firestore,
+  businessRef,
+  businessId,
+  collectionName,
+  now = new Date(),
+  targetStatsVersion = 0,
+} = {}) {
   const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
   const customersRef = businessRef.collection('customers');
   const customBillHistoryRef = businessRef.collection('custom_bill_history');
@@ -233,7 +250,7 @@ async function computeDashboardStatsPayload({ firestore, businessRef, businessId
     businessId,
     collectionName,
     businessType: normalizeBusinessType(businessData?.businessType || collectionName?.slice(0, -1)),
-    version: Number(businessData?.statsVersion || 0),
+    version: Number(targetStatsVersion || 0),
     updatedAt: new Date().toISOString(),
     today: buildFinalOutput(todayMetrics),
     todayComparisons: todayMetrics.comparisons,
@@ -262,6 +279,7 @@ export async function rebuildDashboardStats({
   businessId,
   collectionNameHint = null,
   businessRef: providedBusinessRef = null,
+  targetStatsVersion = null,
 } = {}) {
   const firestore = providedFirestore || await getFirestore();
   let businessRef = providedBusinessRef;
@@ -279,16 +297,22 @@ export async function rebuildDashboardStats({
     collectionName = business.collection;
   }
 
+  const runtimeData = await getBusinessRuntime(businessRef);
+  const resolvedTargetStatsVersion = Number.isFinite(Number(targetStatsVersion))
+    ? Number(targetStatsVersion)
+    : Number(runtimeData?.statsVersion || 0);
+
   const payload = await computeDashboardStatsPayload({
     firestore,
     businessRef,
     businessId,
     collectionName,
+    targetStatsVersion: resolvedTargetStatsVersion,
   });
 
   await getDashboardStatsRef(businessRef).set(payload, { merge: true });
   await setBusinessRuntimeFlags(businessRef, {
-    statsVersion: Number(payload.version || 0),
+    statsVersion: resolvedTargetStatsVersion,
     statsReconcileQueued: false,
     lastStatsReconciledAt: new Date(),
   });
@@ -319,14 +343,17 @@ export async function getFreshDashboardStats({
   });
   if (!statsEnabled) return null;
 
-  return getOrSetSharedCache(`dashboard-stats:${businessId}:v${Number(runtimeData?.statsVersion || businessData?.statsVersion || 0)}`, {
+  const currentStatsVersion = Number(runtimeData?.statsVersion || 0);
+
+  return getOrSetSharedCache(`dashboard-stats:${businessId}:v${currentStatsVersion}`, {
     ttlMs: 30 * 1000,
     kvTtlSec: 60,
     compute: async () => {
       const statsSnap = await getDashboardStatsRef(business.ref).get();
       const statsData = statsSnap.exists ? (statsSnap.data() || null) : null;
-      if (statsData && !allowInlineRebuild) return statsData;
-      if (statsData) return statsData;
+      if (isFreshDashboardStatsPayload(statsData, currentStatsVersion)) {
+        return statsData;
+      }
 
       if (!allowInlineRebuild) {
         await setBusinessRuntimeFlags(business.ref, { statsReconcileQueued: true });
@@ -336,6 +363,7 @@ export async function getFreshDashboardStats({
           payload: {
             businessId,
             collectionName: business.collection,
+            targetStatsVersion: currentStatsVersion,
           },
         });
         return null;
@@ -346,6 +374,7 @@ export async function getFreshDashboardStats({
         businessId,
         collectionNameHint: business.collection,
         businessRef: business.ref,
+        targetStatsVersion: currentStatsVersion,
       });
     },
   });

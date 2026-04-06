@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
+import { getBusinessRuntime } from '@/lib/server/businessRuntime';
+import { getOrSetSharedCache } from '@/lib/server/sharedCache';
 import { format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
@@ -316,7 +318,21 @@ export async function GET(req) {
         const businessCollectionName = collectionName;
         const businessRef = firestore.collection(businessCollectionName).doc(restaurantId);
         const customBillHistoryRef = businessRef.collection('custom_bill_history');
+        const runtimeData = await getBusinessRuntime(businessRef);
+        const statsVersion = Number(runtimeData?.statsVersion || 0);
+        const analyticsCacheKey = [
+            'owner-analytics',
+            restaurantId,
+            `v${statsVersion}`,
+            filter,
+            fromDate || 'na',
+            toDate || 'na',
+        ].join(':');
 
+        const responsePayload = await getOrSetSharedCache(analyticsCacheKey, {
+            ttlMs: 30 * 1000,
+            kvTtlSec: 60,
+            compute: async () => {
         const [
             currentPeriodOrdersSnap,
             prevPeriodOrdersSnap,
@@ -1098,20 +1114,21 @@ export async function GET(req) {
         const businessTypeRaw = restaurantData.businessType || collectionName.slice(0, -1);
         const businessType = businessTypeRaw === 'shop' ? 'store' : businessTypeRaw;
 
-        return NextResponse.json(
-            {
-                salesData,
-                menuPerformance,
-                storeInsights,
-                customerStats,
-                riderAnalytics,
-                aiInsights,
-                businessInfo: {
-                    businessType,
-                },
+        return {
+            salesData,
+            menuPerformance,
+            storeInsights,
+            customerStats,
+            riderAnalytics,
+            aiInsights,
+            businessInfo: {
+                businessType,
             },
-            { status: 200 }
-        );
+        };
+            },
+        });
+
+        return NextResponse.json(responsePayload, { status: 200 });
     } catch (error) {
         console.error('ANALYTICS API ERROR:', error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import admin from 'firebase-admin';
 
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
 import { listProcessableDerivedJobs, markDerivedJobProcessing, completeDerivedJob, failDerivedJob, enqueueDerivedJob } from '@/lib/server/derivedJobs';
@@ -22,27 +23,47 @@ async function ensureStatsReconcileJobs(firestore) {
   if (!FEATURE_FLAGS.USE_DASHBOARD_STATS_RECONCILE) return 0;
   const collections = ['restaurants', 'shops', 'street_vendors'];
   let enqueued = 0;
+  const pageSize = 100;
 
   for (const collectionName of collections) {
-    const businessesSnap = await firestore.collection(collectionName).limit(50).get();
-    for (const doc of businessesSnap.docs) {
-      const businessData = doc.data() || {};
-      const runtimeData = await getBusinessRuntime(doc.ref);
-      const enabled = resolveScopedFeatureFlagValue('stats_reconcile_enabled', {
-        businessData,
-        runtimeData,
-        envDefault: FEATURE_FLAGS.USE_DASHBOARD_STATS_RECONCILE,
-      });
-      if (!enabled) continue;
-      await enqueueDerivedJob({
-        type: 'dashboard_stats_reconcile',
-        jobKey: `dashboard_stats_reconcile:${doc.id}`,
-        payload: {
-          businessId: doc.id,
-          collectionName,
-        },
-      });
-      enqueued += 1;
+    let lastDoc = null;
+
+    while (true) {
+      let queryRef = firestore
+        .collection(collectionName)
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(pageSize);
+
+      if (lastDoc) {
+        queryRef = queryRef.startAfter(lastDoc);
+      }
+
+      const businessesSnap = await queryRef.get();
+      if (businessesSnap.empty) break;
+
+      for (const doc of businessesSnap.docs) {
+        const businessData = doc.data() || {};
+        const runtimeData = await getBusinessRuntime(doc.ref);
+        const enabled = resolveScopedFeatureFlagValue('stats_reconcile_enabled', {
+          businessData,
+          runtimeData,
+          envDefault: FEATURE_FLAGS.USE_DASHBOARD_STATS_RECONCILE,
+        });
+        if (!enabled) continue;
+        await enqueueDerivedJob({
+          type: 'dashboard_stats_reconcile',
+          jobKey: `dashboard_stats_reconcile:${doc.id}`,
+          payload: {
+            businessId: doc.id,
+            collectionName,
+            targetStatsVersion: Number(runtimeData?.statsVersion || 0),
+          },
+        });
+        enqueued += 1;
+      }
+
+      lastDoc = businessesSnap.docs[businessesSnap.docs.length - 1];
+      if (businessesSnap.size < pageSize) break;
     }
   }
 
@@ -81,6 +102,7 @@ export async function GET(req) {
           firestore,
           businessId: job?.payload?.businessId,
           collectionNameHint: job?.payload?.collectionName,
+          targetStatsVersion: job?.payload?.targetStatsVersion,
         });
         await completeDerivedJob(job.ref, {
           statsVersion: Number(result?.version || 0),
@@ -102,6 +124,7 @@ export async function GET(req) {
           businessId: targetBusinessId,
           collectionNameHint: business.collection,
           businessRef: business.ref,
+          targetStatsVersion: job?.payload?.targetStatsVersion,
         });
         await completeDerivedJob(job.ref, {
           statsVersion: Number(result?.version || 0),

@@ -31,7 +31,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, getDocs, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, limit } from 'firebase/firestore';
 import Image from 'next/image';
 import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
@@ -458,291 +458,114 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     pathname === '/owner-dashboard/live-orders' ||
     pathname === '/street-vendor-dashboard';
 
-  // Realtime Listener for WhatsApp Unread Count
-  useEffect(() => {
-    // Only fetch if user is owner or has access (and not impersonating for now to keep it simple/secure in client)
-    if (!auth.currentUser) return;
-    if (impersonatedOwnerId || employeeOfOwnerId) return; // Skip for now until we handle composite query permissions perfectly
-    if (isOnWhatsAppDirectPage || isOnLiveOrdersPage) return; // Avoid duplicate listeners on heavy dashboard pages
-    if (!badgeMonitoringReady) return;
-    if (!isPageVisible) return;
-
-    let intervalId = null;
-    let cancelled = false;
-
-    const pollUnreadCount = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
-        const business = await resolveOwnedBusiness(user.uid, businessType);
-        if (!business?.id) return;
-
-        // 2. Listen to Conversations with unreadCount > 0
-        const q = query(
-          collection(db, business.collectionName, business.id, 'conversations'),
-          where('unreadCount', '>', 0)
-        );
-
-        const snapshot = await getDocs(q);
-        if (cancelled) return;
-        const totalUnread = snapshot.docs.reduce((acc, doc) => {
-          const data = doc.data() || {};
-          if (data.state !== 'direct_chat') return acc;
-          return acc + (data.unreadCount || 0);
-        }, 0);
-        setWhatsappUnreadCount(totalUnread);
-      } catch (error) {
-        console.error("Error polling whatsapp conversations:", error);
-      }
-    };
-
-    void pollUnreadCount();
-    intervalId = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      void pollUnreadCount();
-    }, badgePollIntervalMs);
-
-    return () => {
-      cancelled = true;
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isOnWhatsAppDirectPage, isPageVisible]);
-
-  // Fetch Pending Orders Count (Real-time and Fallback)
   useEffect(() => {
     if (!auth.currentUser) return;
-    if (isOnLiveOrdersPage) return; // Live Orders page already has direct realtime; avoid duplicate listener
-    if (!badgeMonitoringReady) return;
-    if (!isPageVisible) return;
-
-    let pollInterval = null;
-
-    const handleCountUpdate = (count) => {
-      setPendingOrdersCount(count);
-
-      if (count > 0) {
-        setAppNotificationAlarmState('owner', {
-          alarmId: 'live_orders_pending',
-          title: 'New Live Order',
-          message: count === 1
-            ? '1 new order is waiting in Live Orders.'
-            : count + ' new orders are waiting in Live Orders.',
-          sound: '/notification-owner-manager.mp3',
-          href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders',
-          disableAutoStop: true,
-        });
-      } else {
-        clearAppNotificationAlarmState('owner', 'live_orders_pending');
-      }
-      if (!hasBootstrappedPendingNotifRef.current) {
-        hasBootstrappedPendingNotifRef.current = true;
-        prevPendingCountRef.current = count;
-        return;
-      }
-
-      if (count > prevPendingCountRef.current) {
-        const delta = count - prevPendingCountRef.current;
-        emitAppNotification({
-          scope: 'owner',
-          title: 'New Live Order',
-          message: delta === 1
-            ? '1 new order is waiting in Live Orders.'
-            : `${delta} new orders are waiting in Live Orders.`,
-          dedupeKey: `sidebar_pending_${count}_${Date.now()}`,
-          alarmId: 'live_orders_pending',
-          disableAutoStop: true,
-          sound: '/notification-owner-manager.mp3',
-          href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders'
-        });
-      }
-      if (count === 0 && prevPendingCountRef.current > 0) {
-        emitAppNotification({
-          scope: 'owner',
-          action: 'stop_alarm',
-          alarmId: 'live_orders_pending'
-        });
-      }
-      prevPendingCountRef.current = count;
-    };
-
-    const pollData = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
-        const idToken = await user.getIdToken();
-        let url = new URL('/api/owner/orders', window.location.origin);
-        url.searchParams.append('context', 'live_orders');
-        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-        else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
-
-        const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
-        if (!res.ok) return;
-        const data = await res.json();
-        const count = (data.orders || []).filter(o => String(o.status || '').toLowerCase() === 'pending').length;
-        handleCountUpdate(count);
-      } catch (error) {
-        console.error("Error polling pending orders:", error);
-      }
-    };
-
-    void pollData();
-    pollInterval = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      void pollData();
-    }, badgePollIntervalMs);
-
-    return () => {
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
-
-  // Dine-In badge counts (pending dine-in orders + pending service requests)
-  useEffect(() => {
-    if ((normalizeBusinessType(businessType) || 'restaurant') !== 'restaurant') {
-      setDineInPendingOrdersCount(0);
-      return;
-    }
-    if (isOnLiveOrdersPage) return;
-    if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
-    if (!badgeMonitoringReady) return;
-    if (!isPageVisible) return;
-
-    let intervalId = null;
-
-    const pollDineInOrders = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
-        const business = await resolveOwnedBusiness(user.uid, 'restaurant');
-        if (!business?.id) return;
-
-        const dineInOrdersQuery = query(
-          collection(db, 'orders'),
-          where('restaurantId', '==', business.id),
-          where('deliveryType', '==', 'dine-in'),
-          where('status', '==', 'pending')
-        );
-
-        const snapshot = await getDocs(dineInOrdersQuery);
-        setDineInPendingOrdersCount(snapshot.size);
-      } catch (error) {
-        console.error('Error polling dine-in pending orders:', error);
-      }
-    };
-
-    void pollDineInOrders();
-    intervalId = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      void pollDineInOrders();
-    }, badgePollIntervalMs);
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
-
-  // Fetch Waitlist Count (Real-time)
-  useEffect(() => {
-    if ((normalizeBusinessType(businessType) || 'restaurant') !== 'restaurant') {
-      setWaitlistEntriesCount(0);
-      return;
-    }
-    if (isOnLiveOrdersPage) return;
-    if (impersonatedOwnerId || employeeOfOwnerId || !auth.currentUser) return;
-    if (!badgeMonitoringReady) return;
-    if (!isPageVisible) return;
-
-    let intervalId = null;
-
-    const pollWaitlist = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
-        const business = await resolveOwnedBusiness(user.uid, 'restaurant');
-        if (!business?.id) return;
-
-        const waitlistQuery = query(
-          collection(db, 'restaurants', business.id, 'waitlist'),
-          where('status', 'in', ['pending', 'notified'])
-        );
-
-        const snapshot = await getDocs(waitlistQuery);
-        setWaitlistEntriesCount(snapshot.size);
-
-      } catch (error) {
-        console.error("Error polling waitlist:", error);
-      }
-    };
-
-    void pollWaitlist();
-    intervalId = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      void pollWaitlist();
-    }, badgePollIntervalMs);
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
-
-  // Service request count via API (more reliable with Firestore security rules)
-  useEffect(() => {
-    if ((normalizeBusinessType(businessType) || 'restaurant') !== 'restaurant') {
-      setDineInServiceRequestsCount(0);
-      return;
-    }
-    if (isOnLiveOrdersPage) return;
-    if (employeeOfOwnerId || !auth.currentUser) return;
     if (!badgeMonitoringReady) return;
     if (!isPageVisible) return;
 
     let intervalId = null;
     let isMounted = true;
 
-    const setCountSafely = (count) => {
-      if (isMounted) {
-        setDineInServiceRequestsCount(Math.max(0, Number(count) || 0));
+    const applyBadgePayload = (payload = {}) => {
+      if (!isMounted) return;
+      setWhatsappUnreadCount(Math.max(0, Number(payload?.whatsappUnreadCount || 0)));
+      setPendingOrdersCount(Math.max(0, Number(payload?.pendingOrdersCount || 0)));
+      setWaitlistEntriesCount(Math.max(0, Number(payload?.waitlistEntriesCount || 0)));
+      setDineInPendingOrdersCount(Math.max(0, Number(payload?.dineInPendingOrdersCount || 0)));
+      setDineInServiceRequestsCount(Math.max(0, Number(payload?.dineInServiceRequestsCount || 0)));
+
+      const nextBusinessType = normalizeBusinessType(payload?.businessType);
+      if (nextBusinessType && nextBusinessType !== businessType) {
+        setBusinessType(nextBusinessType);
       }
     };
 
-    const fetchServiceRequestCount = async () => {
+    const fetchBadgeSummary = async () => {
       try {
         const user = auth.currentUser;
         if (!user || !isMounted) return;
         const idToken = await user.getIdToken();
-        const url = new URL('/api/owner/service-requests', window.location.origin);
+        const url = new URL('/api/owner/dashboard-badges', window.location.origin);
         if (impersonatedOwnerId) {
           url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+          url.searchParams.append('employee_of', employeeOfOwnerId);
         }
 
         const res = await fetch(url.toString(), {
           headers: { Authorization: `Bearer ${idToken}` }
         });
 
-        if (!res.ok) {
-          setCountSafely(0);
-          return;
-        }
-
+        if (!res.ok) return;
         const data = await res.json();
-        setCountSafely(Array.isArray(data?.requests) ? data.requests.length : 0);
+        applyBadgePayload(data);
       } catch (error) {
-        console.error('Error fetching dine-in service requests count:', error);
-        setCountSafely(0);
+        console.error('Error fetching sidebar badge summary:', error);
       }
     };
 
-    void fetchServiceRequestCount();
+    void fetchBadgeSummary();
     intervalId = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
-      void fetchServiceRequestCount();
+      void fetchBadgeSummary();
     }, badgePollIntervalMs);
 
     return () => {
       isMounted = false;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, desktopRuntime, employeeOfOwnerId, impersonatedOwnerId, isOnLiveOrdersPage, isPageVisible]);
+  }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isPageVisible]);
+
+  useEffect(() => {
+    const count = pendingOrdersCount || 0;
+
+    if (count > 0) {
+      setAppNotificationAlarmState('owner', {
+        alarmId: 'live_orders_pending',
+        title: 'New Live Order',
+        message: count === 1
+          ? '1 new order is waiting in Live Orders.'
+          : count + ' new orders are waiting in Live Orders.',
+        sound: '/notification-owner-manager.mp3',
+        href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders',
+        disableAutoStop: true,
+      });
+    } else {
+      clearAppNotificationAlarmState('owner', 'live_orders_pending');
+    }
+
+    if (!hasBootstrappedPendingNotifRef.current) {
+      hasBootstrappedPendingNotifRef.current = true;
+      prevPendingCountRef.current = count;
+      return;
+    }
+
+    if (!isOnLiveOrdersPage && count > prevPendingCountRef.current) {
+      const delta = count - prevPendingCountRef.current;
+      emitAppNotification({
+        scope: 'owner',
+        title: 'New Live Order',
+        message: delta === 1
+          ? '1 new order is waiting in Live Orders.'
+          : `${delta} new orders are waiting in Live Orders.`,
+        dedupeKey: `sidebar_pending_${count}_${Date.now()}`,
+        alarmId: 'live_orders_pending',
+        disableAutoStop: true,
+        sound: '/notification-owner-manager.mp3',
+        href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders'
+      });
+    }
+
+    if (count === 0 && prevPendingCountRef.current > 0) {
+      emitAppNotification({
+        scope: 'owner',
+        action: 'stop_alarm',
+        alarmId: 'live_orders_pending'
+      });
+    }
+
+    prevPendingCountRef.current = count;
+  }, [pendingOrdersCount, businessType, isOnLiveOrdersPage]);
 
   useEffect(() => {
     if (impersonatedOwnerId || employeeOfOwnerId) return;

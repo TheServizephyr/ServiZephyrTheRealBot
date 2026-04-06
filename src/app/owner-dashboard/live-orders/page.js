@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
 import { formatSafeDate, formatSafeTime, formatSafeRelativeTime, formatSafeDateShort, safeToDate } from '@/lib/safeDateFormat';
 import { useSearchParams } from 'next/navigation';
+import dynamicImport from 'next/dynamic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -21,8 +22,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import PrintOrderDialog from '@/components/PrintOrderDialog';
-import BillToPrint from '@/components/BillToPrint';
 import { useReactToPrint } from 'react-to-print';
 import { usePolling } from '@/lib/usePolling';
 import { emitAppNotification } from '@/lib/appNotifications';
@@ -37,6 +36,15 @@ import {
     OwnerDashboardShortcutsDialog,
     useOwnerDashboardShortcuts,
 } from '@/lib/ownerDashboardShortcuts';
+
+const PrintOrderDialog = dynamicImport(() => import('@/components/PrintOrderDialog'), {
+    ssr: false,
+    loading: () => null,
+});
+const BillToPrint = dynamicImport(() => import('@/components/BillToPrint'), {
+    ssr: false,
+    loading: () => null,
+});
 
 
 export const dynamic = 'force-dynamic';
@@ -1294,6 +1302,7 @@ export default function LiveOrdersPage() {
     const [detailModalData, setDetailModalData] = useState({ isOpen: false, data: null });
     const [activeFilter, setActiveFilter] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
+    const deferredSearchQuery = useDeferredValue(searchQuery);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [selectedOrders, setSelectedOrders] = useState([]);
     const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
@@ -2265,15 +2274,15 @@ export default function LiveOrdersPage() {
             sortableItems = sortableItems.filter(filterMap[activeFilter]);
         }
 
-        if (searchQuery) {
-            const lowercasedQuery = searchQuery.toLowerCase();
+        if (deferredSearchQuery) {
+            const lowercasedQuery = deferredSearchQuery.toLowerCase();
             sortableItems = sortableItems.filter(order => {
                 const matchesId = order.id.toLowerCase().includes(lowercasedQuery);
                 const matchesCustomerOrderId = (order.customerOrderId || '').toString().toLowerCase().includes(lowercasedQuery);
                 // Check both customerName and customer fields
                 const matchesCustomerName = (order.customerName || order.customer || '').toLowerCase().includes(lowercasedQuery);
                 // Check both customerPhone and phoneNumber fields
-                const matchesCustomerPhone = (order.customerPhone || order.phoneNumber || '').includes(searchQuery);
+                const matchesCustomerPhone = (order.customerPhone || order.phoneNumber || '').includes(deferredSearchQuery);
                 const matchesCustomerAddress = (order.customerAddress || order.deliveryAddress || '').toLowerCase().includes(lowercasedQuery);
                 const matchesItems = (order.items || []).some(item => {
                     const itemName = item.name || item.itemName || '';
@@ -2301,7 +2310,7 @@ export default function LiveOrdersPage() {
             return 0;
         });
         return sortableItems;
-    }, [orders, sortConfig, activeFilter, searchQuery, isChefRole]);
+    }, [orders, sortConfig, activeFilter, deferredSearchQuery, isChefRole]);
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
