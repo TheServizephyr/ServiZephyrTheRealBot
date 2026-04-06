@@ -1595,7 +1595,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
 
     // ADDRESS SELECTION STATE
     const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
-    const [isAddressDrawerActivating, setIsAddressDrawerActivating] = useState(false);
+    const [isAddressDrawerMounted, setIsAddressDrawerMounted] = useState(false);
     const [userAddresses, setUserAddresses] = useState([]);
     const [addressLoading, setAddressLoading] = useState(false);
     const [addressPendingDelete, setAddressPendingDelete] = useState(null);
@@ -1609,13 +1609,14 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
     const hasAttemptedAutoOpen = useRef(false);
     const hasPrefetchedAddressBook = useRef(false);
     const isAddressSelectionInProgress = useRef(false);
+    const isAddressDrawerActivatingRef = useRef(false);
     const hasTrackedOrderPageOpen = useRef(false);
     const [deliveryType, setDeliveryType] = useState(() => (tableIdFromUrl ? 'dine-in' : 'delivery'));
 
     // Handler to close address selector with validation
     const handleCloseAddressSelector = () => {
         if (isAddressSelectionInProgress.current) {
-            setIsAddressDrawerActivating(false);
+            isAddressDrawerActivatingRef.current = false;
             setIsAddressSelectorOpen(false);
             return;
         }
@@ -1646,20 +1647,28 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
             return;
         }
 
-        setIsAddressDrawerActivating(false);
+        isAddressDrawerActivatingRef.current = false;
         setIsAddressSelectorOpen(false);
     };
 
-    const handleOpenAddressDrawer = useCallback(() => {
-        if (tableIdFromUrl || deliveryType !== 'delivery' || isAddressSelectorOpen || isAddressDrawerActivating) {
+    const prepareAddressDrawer = useCallback(() => {
+        if (tableIdFromUrl || deliveryType !== 'delivery') {
             return;
         }
+        setIsAddressDrawerMounted(true);
+    }, [tableIdFromUrl, deliveryType]);
+
+    const handleOpenAddressDrawer = useCallback(() => {
+        if (tableIdFromUrl || deliveryType !== 'delivery' || isAddressSelectorOpen || isAddressDrawerActivatingRef.current) {
+            return;
+        }
+        isAddressDrawerActivatingRef.current = true;
 
         const snapshotAddresses = readCustomerAddressesSnapshot();
         const hasSnapshotAddresses = snapshotAddresses.length > 0;
 
         flushSync(() => {
-            setIsAddressDrawerActivating(true);
+            setIsAddressDrawerMounted(true);
             setIsAddressSelectorOpen(true);
             if (hasSnapshotAddresses) {
                 setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
@@ -1691,12 +1700,12 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                 } catch (e) {
                     console.error("[handleOpenAddressDrawer] Failed to load addresses", e);
                 } finally {
-                    setIsAddressDrawerActivating(false);
+                    isAddressDrawerActivatingRef.current = false;
                     setAddressLoading(false);
                 }
             })();
         });
-    }, [tableIdFromUrl, deliveryType, isAddressSelectorOpen, isAddressDrawerActivating, phone, ref]);
+    }, [tableIdFromUrl, deliveryType, isAddressSelectorOpen, phone, ref]);
 
     const getAddressReturnUrl = useCallback(() => {
         if (typeof window !== 'undefined') {
@@ -1785,6 +1794,19 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
         router.prefetch('/add-address');
         router.prefetch(buildAddAddressUrl({ useCurrent: true }));
     }, [buildAddAddressUrl, deliveryType, restaurantId, router, tableIdFromUrl]);
+
+    useEffect(() => {
+        if (tableIdFromUrl || deliveryType !== 'delivery' || isAddressDrawerMounted) return;
+
+        const warmDrawer = () => setIsAddressDrawerMounted(true);
+        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+            const idleId = window.requestIdleCallback(warmDrawer, { timeout: 800 });
+            return () => window.cancelIdleCallback?.(idleId);
+        }
+
+        const timer = window.setTimeout(warmDrawer, 180);
+        return () => window.clearTimeout(timer);
+    }, [tableIdFromUrl, deliveryType, isAddressDrawerMounted]);
 
     useEffect(() => {
         if (!isAddressSelectorOpen || typeof document === 'undefined') return undefined;
@@ -4399,64 +4421,68 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                     />
 
                     {/* ADDRESS SELECTION DRAWER - TOP SHEET */}
-                    <AnimatePresence>
-                        {isAddressSelectorOpen && (
-                            <>
-                                <motion.div
-                                    className={cn(
-                                        "fixed inset-0 z-[60]",
-                                        customerFlowSafeMode ? "bg-black/45" : "bg-black/50"
-                                    )}
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    onClick={handleCloseAddressSelector}
-                                />
-                                <motion.div
-                                    className="fixed inset-x-0 bottom-0 h-[92dvh] max-h-[92dvh] md:h-screen md:max-h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden rounded-t-[28px] md:rounded-none"
-                                    initial={{ y: customerFlowSafeMode ? 32 : '100%' }}
-                                    animate={{ y: 0 }}
-                                    exit={{ y: customerFlowSafeMode ? 32 : '100%' }}
-                                    transition={customerFlowSafeMode
-                                        ? { duration: 0.16, ease: 'easeOut' }
-                                        : { type: 'spring', damping: 30, stiffness: 260, mass: 0.9 }}
-                                >
-                                    <div className="p-4 border-b flex items-center justify-between shrink-0 bg-background z-10">
-                                        <div className="absolute left-1/2 top-2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-muted-foreground/25" />
-                                        <h2 className="font-bold text-lg">Select Address</h2>
-                                        <Button variant="ghost" size="icon" onClick={handleCloseAddressSelector}>
-                                            <X />
-                                        </Button>
-                                    </div>
-                                    <div className="flex-1 overflow-y-auto p-4 overscroll-contain customer-flow-sheet">
-                                        <AddressSelectionList
-                                            addresses={userAddresses}
-                                            selectedAddressId={customerLocation?.id}
-                                            onSelect={(addr) => {
-                                                isAddressSelectionInProgress.current = true;
-                                                handleSelectNewAddress(addr);
-                                            }}
-                                            loading={addressLoading}
-                                            onUseCurrentLocation={() => {
-                                                setIsAddressSelectorOpen(false);
-                                                openAddAddressPage({ useCurrent: true });
-                                            }}
-                                            onAddNewAddress={() => {
-                                                setIsAddressSelectorOpen(false);
-                                                openAddAddressPage({ useCurrent: true });
-                                            }}
-                                            onPrefetch={(opts) => router.prefetch(buildAddAddressUrl(opts))}
-                                            onDelete={(addr) => setAddressPendingDelete(addr)}
-                                            onEdit={(addr) => {
-                                                setIsAddressSelectorOpen(false);
-                                                openAddAddressPage({ editAddress: addr });
-                                            }}
-                                        />
-                                    </div>
-                                </motion.div>
-                            </>
-                        )}
-                    </AnimatePresence>
+                    {isAddressDrawerMounted && (
+                        <>
+                            <motion.div
+                                className={cn(
+                                    "fixed inset-0 z-[60]",
+                                    customerFlowSafeMode ? "bg-black/45" : "bg-black/50",
+                                    !isAddressSelectorOpen && "pointer-events-none"
+                                )}
+                                initial={false}
+                                animate={{ opacity: isAddressSelectorOpen ? 1 : 0 }}
+                                transition={{ duration: 0.14, ease: 'easeOut' }}
+                                onClick={handleCloseAddressSelector}
+                                aria-hidden={!isAddressSelectorOpen}
+                            />
+                            <motion.div
+                                className={cn(
+                                    "fixed inset-x-0 bottom-0 h-[92dvh] max-h-[92dvh] md:h-screen md:max-h-screen bg-background z-[70] shadow-2xl flex flex-col overflow-hidden rounded-t-[28px] md:rounded-none",
+                                    !isAddressSelectorOpen && "pointer-events-none"
+                                )}
+                                style={{ willChange: 'transform' }}
+                                initial={false}
+                                animate={{ y: isAddressSelectorOpen ? 0 : '100%' }}
+                                transition={customerFlowSafeMode
+                                    ? { duration: 0.14, ease: 'easeOut' }
+                                    : { duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                                aria-hidden={!isAddressSelectorOpen}
+                            >
+                                <div className="p-4 border-b flex items-center justify-between shrink-0 bg-background z-10">
+                                    <div className="absolute left-1/2 top-2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-muted-foreground/25" />
+                                    <h2 className="font-bold text-lg">Select Address</h2>
+                                    <Button variant="ghost" size="icon" onClick={handleCloseAddressSelector}>
+                                        <X />
+                                    </Button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 overscroll-contain customer-flow-sheet">
+                                    <AddressSelectionList
+                                        addresses={userAddresses}
+                                        selectedAddressId={customerLocation?.id}
+                                        onSelect={(addr) => {
+                                            isAddressSelectionInProgress.current = true;
+                                            handleSelectNewAddress(addr);
+                                        }}
+                                        loading={addressLoading}
+                                        onUseCurrentLocation={() => {
+                                            setIsAddressSelectorOpen(false);
+                                            openAddAddressPage({ useCurrent: true });
+                                        }}
+                                        onAddNewAddress={() => {
+                                            setIsAddressSelectorOpen(false);
+                                            openAddAddressPage({ useCurrent: true });
+                                        }}
+                                        onPrefetch={(opts) => router.prefetch(buildAddAddressUrl(opts))}
+                                        onDelete={(addr) => setAddressPendingDelete(addr)}
+                                        onEdit={(addr) => {
+                                            setIsAddressSelectorOpen(false);
+                                            openAddAddressPage({ editAddress: addr });
+                                        }}
+                                    />
+                                </div>
+                            </motion.div>
+                        </>
+                    )}
 
                     {/* Back Button Handler Effect */}
                     {isAddressSelectorOpen && (
@@ -4500,9 +4526,10 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                                             <button
                                                 type="button"
                                                 className="mt-3 w-full appearance-none rounded-lg bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                onPointerDown={prepareAddressDrawer}
+                                                onMouseEnter={prepareAddressDrawer}
+                                                onFocus={prepareAddressDrawer}
                                                 onClick={handleOpenAddressDrawer}
-                                                disabled={isAddressDrawerActivating}
-                                                aria-busy={isAddressDrawerActivating}
                                                 aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
                                             >
                                                 <div className="flex items-center justify-between gap-3 border-t border-dashed border-border pt-3">
@@ -5013,9 +5040,10 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                                                 <button
                                                     type="button"
                                                     className="mt-4 w-full appearance-none rounded-lg border-t border-dashed border-border bg-transparent p-0 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                    onPointerDown={prepareAddressDrawer}
+                                                    onMouseEnter={prepareAddressDrawer}
+                                                    onFocus={prepareAddressDrawer}
                                                     onClick={handleOpenAddressDrawer}
-                                                    disabled={isAddressDrawerActivating}
-                                                    aria-busy={isAddressDrawerActivating}
                                                     aria-label={customerLocation?.full ? 'Change delivery address' : 'Add delivery address'}
                                                 >
                                                     <div className="flex items-center justify-between gap-3">
