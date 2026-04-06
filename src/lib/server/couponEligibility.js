@@ -84,6 +84,19 @@ export async function resolveCouponAudienceContext({
   if (normalizedPhone) eligibleIds.add(`phone:${normalizedPhone}`);
 
   if (businessRef && eligibleIds.size > 0) {
+    const directIds = [...eligibleIds].filter((value) => value && !String(value).startsWith('phone:'));
+
+    for (const directId of directIds) {
+      try {
+        const directDocSnap = await businessRef.collection('customers').doc(String(directId)).get();
+        if (directDocSnap.exists) {
+          matchedCustomerDocs.set(directDocSnap.id, directDocSnap);
+        }
+      } catch (error) {
+        console.warn('[Coupon Eligibility] Direct customer lookup failed:', error?.message || error);
+      }
+    }
+
     const lookupPhones = [...eligibleIds]
       .filter((value) => value.startsWith('phone:'))
       .map((value) => value.slice('phone:'.length));
