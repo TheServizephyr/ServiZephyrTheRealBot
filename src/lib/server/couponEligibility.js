@@ -54,6 +54,58 @@ export function getCouponMilestoneLabel(coupon = {}) {
   }).join(', ');
 }
 
+export function buildCouponRedemptionKeys({
+  eligibleIds = new Set(),
+  phone = '',
+} = {}) {
+  const redemptionKeys = new Set();
+  const normalizedPhone = normalizeCouponPhone(phone);
+
+  if (normalizedPhone) {
+    redemptionKeys.add(normalizedPhone);
+    redemptionKeys.add(`phone:${normalizedPhone}`);
+  }
+
+  [...eligibleIds].forEach((value) => {
+    const safeValue = String(value || '').trim();
+    if (!safeValue) return;
+
+    redemptionKeys.add(safeValue);
+
+    if (safeValue.startsWith('phone:')) {
+      const phoneDigits = normalizeCouponPhone(safeValue.slice('phone:'.length));
+      if (phoneDigits) {
+        redemptionKeys.add(phoneDigits);
+        redemptionKeys.add(`phone:${phoneDigits}`);
+      }
+    }
+  });
+
+  return redemptionKeys;
+}
+
+export function hasCouponBeenRedeemedByAudience(coupon = {}, redemptionKeys = new Set()) {
+  if (coupon?.singleUsePerCustomer !== true) return false;
+
+  const normalizedRedemptionKeys = redemptionKeys instanceof Set
+    ? redemptionKeys
+    : new Set(
+      [...(Array.isArray(redemptionKeys) ? redemptionKeys : [])]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    );
+
+  if (normalizedRedemptionKeys.size === 0) return false;
+
+  const redeemedCustomerIds = Array.isArray(coupon?.redeemedCustomerIds)
+    ? coupon.redeemedCustomerIds.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+
+  if (redeemedCustomerIds.length === 0) return false;
+
+  return redeemedCustomerIds.some((value) => normalizedRedemptionKeys.has(value));
+}
+
 export async function resolveCouponAudienceContext({
   firestore,
   businessRef,
@@ -64,6 +116,7 @@ export async function resolveCouponAudienceContext({
 } = {}) {
   const eligibleIds = new Set();
   const matchedCustomerDocs = new Map();
+  const matchedOrderDocs = new Map();
   const normalizedPhone = normalizeCouponPhone(phone);
   const safeActorUid = String(actorUid || '').trim();
   const safeRef = String(ref || '').trim();
@@ -117,6 +170,35 @@ export async function resolveCouponAudienceContext({
       }
     }
 
+    const businessId = String(businessRef.id || '').trim();
+    const nonCountableStatuses = new Set(['cancelled', 'rejected', 'failed', 'payment_failed', 'awaiting_payment']);
+    const lookupIds = [...eligibleIds].filter((value) => value && !String(value).startsWith('phone:')).slice(0, 10);
+
+    try {
+      const orderLookups = [];
+      if (lookupIds.length > 0) {
+        orderLookups.push(firestore.collection('orders').where('customerId', 'in', lookupIds).get());
+        orderLookups.push(firestore.collection('orders').where('userId', 'in', lookupIds).get());
+      }
+      if (lookupPhones.length > 0) {
+        orderLookups.push(firestore.collection('orders').where('customerPhone', 'in', lookupPhones.slice(0, 10)).get());
+      }
+
+      const orderSnapshots = await Promise.all(orderLookups);
+      orderSnapshots.forEach((snapshot) => {
+        snapshot.forEach((doc) => {
+          const data = doc.data() || {};
+          const orderBusinessId = String(data.restaurantId || '').trim();
+          const orderStatus = String(data.status || '').trim().toLowerCase();
+          if (businessId && orderBusinessId !== businessId) return;
+          if (nonCountableStatuses.has(orderStatus)) return;
+          matchedOrderDocs.set(doc.id, doc);
+        });
+      });
+    } catch (error) {
+      console.warn('[Coupon Eligibility] Order history lookup failed:', error?.message || error);
+    }
+
     matchedCustomerDocs.forEach((doc) => {
       eligibleIds.add(String(doc.id));
       const customerData = doc.data() || {};
@@ -130,18 +212,21 @@ export async function resolveCouponAudienceContext({
     const customerData = doc.data() || {};
     return Math.max(maxOrders, Number(customerData.totalOrders) || 0);
   }, 0);
+  const resolvedCompletedOrderCount = Math.max(completedOrderCount, matchedOrderDocs.size);
 
   return {
     eligibleIds,
+    redemptionKeys: buildCouponRedemptionKeys({ eligibleIds, phone: normalizedPhone }),
     matchedCustomerDocs,
-    completedOrderCount,
-    nextOrderNumber: completedOrderCount + 1,
+    completedOrderCount: resolvedCompletedOrderCount,
+    nextOrderNumber: resolvedCompletedOrderCount + 1,
   };
 }
 
 export function filterCouponsForAudience(couponDocs = [], {
   now = new Date(),
   eligibleIds = new Set(),
+  redemptionKeys = new Set(),
   nextOrderNumber = 0,
 } = {}) {
   return couponDocs.filter((coupon) => {
@@ -160,6 +245,10 @@ export function filterCouponsForAudience(couponDocs = [], {
       String(coupon?.status || '').trim().toLowerCase() === 'active';
 
     if (!isValid || (!isPublic && !isAssignedToCurrentCustomer)) {
+      return false;
+    }
+
+    if (hasCouponBeenRedeemedByAudience(coupon, redemptionKeys)) {
       return false;
     }
 

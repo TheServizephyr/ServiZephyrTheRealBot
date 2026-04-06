@@ -307,6 +307,7 @@ export async function GET(req) {
                     responsePayload.coupons = filterCouponsForAudience(coupons, {
                         now,
                         eligibleIds: couponAudience.eligibleIds,
+                        redemptionKeys: couponAudience.redemptionKeys,
                         nextOrderNumber: couponAudience.nextOrderNumber,
                     });
                 } catch (err) {

@@ -12,6 +12,12 @@ import { calculateServerTotal, validatePriceMatch, calculateTaxes, PricingError 
 import { calculateHaversineDistance, calculateDeliveryCharge } from '@/lib/distance';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { IDEMPOTENCY_TTL_MS, TRACKING_TOKEN_TTL_MS, ttlDateFromNow, ttlDateFromSource } from '@/lib/firestoreTtl';
+import {
+    couponAppliesToOrderNumber,
+    getCouponMilestoneLabel,
+    hasCouponBeenRedeemedByAudience,
+    resolveCouponAudienceContext,
+} from '@/lib/server/couponEligibility';
 
 const generateSecureToken = async (firestore, identifier) => {
     console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
@@ -53,6 +59,33 @@ const getBusinessLabel = (businessType = 'restaurant') => {
     if (businessType === 'street-vendor') return 'stall';
     return 'restaurant';
 };
+
+async function resolveCouponOwnership({
+    firestore,
+    businessRef,
+    couponCustomerId,
+    userId,
+    normalizedPhone,
+}) {
+    const assignedCustomerId = String(couponCustomerId || '').trim();
+    if (!assignedCustomerId) return true;
+    if (assignedCustomerId === String(userId || '').trim()) return true;
+
+    const safePhone = String(normalizedPhone || '').trim();
+    if (assignedCustomerId.startsWith('phone:')) return assignedCustomerId.slice('phone:'.length) === safePhone;
+    if (!safePhone) return false;
+
+    try {
+        const customerDoc = await businessRef.collection('customers').doc(assignedCustomerId).get();
+        if (!customerDoc.exists) return false;
+        const customerData = customerDoc.data() || {};
+        const customerPhone = String(customerData.phone || customerData.phoneNumber || '').replace(/\D/g, '').slice(-10);
+        return Boolean(customerPhone) && customerPhone === safePhone;
+    } catch (error) {
+        console.warn('[API /order/create] Coupon ownership lookup failed:', error?.message || error);
+        return false;
+    }
+}
 
 // Statuses that still belong to the same live dine-in tab token/session.
 const ACTIVE_DINE_IN_TOKEN_STATUSES = [
@@ -708,6 +741,18 @@ export async function processOrderV1(body, firestore) {
             console.warn('[API /order/create] Ignoring client-provided loyaltyDiscount; server side validation required.');
         }
         let verifiedCoupon = null;
+        const couponAudience = coupon && coupon.id
+            ? await resolveCouponAudienceContext({
+                firestore,
+                businessRef,
+                phone: normalizedPhone || securePhone || '',
+                actorUid: validGuestId || '',
+                resolveRef: false,
+            })
+            : { nextOrderNumber: 0, redemptionKeys: new Set() };
+        const couponRedemptionKeys = couponAudience?.redemptionKeys instanceof Set
+            ? couponAudience.redemptionKeys
+            : new Set([String(validGuestId || normalizedPhone || securePhone || '').trim()].filter(Boolean));
 
         if (coupon && coupon.id) {
             console.log(`[API /order/create] Re-validating coupon: ${coupon.id}`);
@@ -718,6 +763,7 @@ export async function processOrderV1(body, firestore) {
                 if (couponSnap.exists) {
                     const couponData = couponSnap.data();
                     const now = new Date();
+                    const startDate = couponData.startDate?.toDate ? couponData.startDate.toDate() : (couponData.startDate ? new Date(couponData.startDate) : null);
                     const expiryDate = couponData.expiryDate?.toDate ? couponData.expiryDate.toDate() : new Date(couponData.expiryDate);
                     const couponType = String(couponData.type || '').toLowerCase() === 'fixed'
                         ? 'flat'
@@ -725,34 +771,77 @@ export async function processOrderV1(body, firestore) {
                     const couponMinOrder = Number(couponData.minOrder) || 0;
                     const couponUsageLimit = Number(couponData.usageLimit) || 0;
                     const couponTimesUsed = Number(couponData.timesUsed) || 0;
+                    const singleUsePerCustomer = couponData.singleUsePerCustomer === true;
+                    const redeemedCustomerIds = Array.isArray(couponData.redeemedCustomerIds) ? couponData.redeemedCustomerIds.map(String) : [];
 
-                    // 1. Basic Eligibility Checks
-                    const isExpired = expiryDate < now;
-                    const isBelowMinOrder = pricing.serverSubtotal < couponMinOrder;
-                    const isUsageLimitMet = couponUsageLimit > 0 && couponTimesUsed >= couponUsageLimit;
-
-                    if (isExpired || isBelowMinOrder || isUsageLimitMet) {
-                        console.warn(`[API /order/create] Coupon ${coupon.code} invalid: Expired=${isExpired}, MinOrder=${isBelowMinOrder}, LimitMet=${isUsageLimitMet}`);
-                    } else {
-                        // 2. Calculate Discount
-                        let discountAmount = 0;
-                        if (couponType === 'flat') {
-                            discountAmount = Number(couponData.value) || 0;
-                        } else if (couponType === 'percentage') {
-                            discountAmount = (pricing.serverSubtotal * (Number(couponData.value) || 0)) / 100;
-                            const couponMaxDiscount = Number(couponData.maxDiscount) || 0;
-                            if (couponMaxDiscount > 0 && discountAmount > couponMaxDiscount) {
-                                discountAmount = couponMaxDiscount;
-                            }
-                        } else if (couponType === 'free_delivery') {
-                            // Handled in delivery charge logic below if applicable
-                            console.log("[API /order/create] Free delivery coupon detected");
-                        }
-
-                        finalDiscount += discountAmount;
-                        verifiedCoupon = { ...couponData, type: couponType, id: couponSnap.id };
-                        console.log(`[API /order/create] ✅ Coupon ${couponData.code} validated. Discount: ₹${discountAmount}`);
+                    if (couponData.status && String(couponData.status).trim().toLowerCase() !== 'active') {
+                        return NextResponse.json({ message: 'This coupon is inactive.' }, { status: 400 });
                     }
+
+                    if (startDate && startDate > now) {
+                        return NextResponse.json({ message: 'This coupon is not active yet.' }, { status: 400 });
+                    }
+
+                    if (expiryDate < now) {
+                        return NextResponse.json({ message: 'This coupon has expired.' }, { status: 400 });
+                    }
+
+                    if (pricing.serverSubtotal < couponMinOrder) {
+                        return NextResponse.json({ message: `Coupon valid on minimum order of ₹${couponMinOrder}.` }, { status: 400 });
+                    }
+
+                    if (couponUsageLimit > 0 && couponTimesUsed >= couponUsageLimit) {
+                        return NextResponse.json({ message: 'Coupon usage limit reached.' }, { status: 400 });
+                    }
+
+                    if (hasCouponBeenRedeemedByAudience({
+                        singleUsePerCustomer,
+                        redeemedCustomerIds,
+                    }, couponRedemptionKeys)) {
+                        return NextResponse.json({ message: 'This coupon has already been used by this customer.' }, { status: 400 });
+                    }
+
+                    if (couponData.customerId) {
+                        const isCouponOwnedByCurrentCustomer = await resolveCouponOwnership({
+                            firestore,
+                            businessRef,
+                            couponCustomerId: couponData.customerId,
+                            userId: validGuestId || '',
+                            normalizedPhone: normalizedPhone || securePhone || '',
+                        });
+
+                        if (!isCouponOwnedByCurrentCustomer) {
+                            return NextResponse.json({ message: 'This reward is assigned to another customer.' }, { status: 403 });
+                        }
+                    }
+
+                    if (!couponAppliesToOrderNumber(couponData, couponAudience.nextOrderNumber)) {
+                        const milestoneLabel = getCouponMilestoneLabel(couponData);
+                        return NextResponse.json({
+                            message: milestoneLabel
+                                ? `This offer is valid only on your ${milestoneLabel} order.`
+                                : 'This offer is not valid for your current order number.',
+                        }, { status: 400 });
+                    }
+
+                    // 2. Calculate Discount
+                    let discountAmount = 0;
+                    if (couponType === 'flat') {
+                        discountAmount = Number(couponData.value) || 0;
+                    } else if (couponType === 'percentage') {
+                        discountAmount = (pricing.serverSubtotal * (Number(couponData.value) || 0)) / 100;
+                        const couponMaxDiscount = Number(couponData.maxDiscount) || 0;
+                        if (couponMaxDiscount > 0 && discountAmount > couponMaxDiscount) {
+                            discountAmount = couponMaxDiscount;
+                        }
+                    } else if (couponType === 'free_delivery') {
+                        // Handled in delivery charge logic below if applicable
+                        console.log("[API /order/create] Free delivery coupon detected");
+                    }
+
+                    finalDiscount += discountAmount;
+                    verifiedCoupon = { ...couponData, type: couponType, id: couponSnap.id };
+                    console.log(`[API /order/create] ✅ Coupon ${couponData.code} validated. Discount: ₹${discountAmount}`);
                 }
             } catch (err) {
                 console.error("[API /order/create] Coupon validation error (non-fatal):", err);
@@ -1454,10 +1543,14 @@ export async function processOrderV1(body, firestore) {
             }
         }
 
-        if (coupon && coupon.id) {
-            console.log(`[API /order/create] Incrementing usage count for coupon ${coupon.id}`);
-            const couponRef = businessRef.collection('coupons').doc(coupon.id);
-            batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
+        if (verifiedCoupon?.id) {
+            console.log(`[API /order/create] Incrementing usage count for coupon ${verifiedCoupon.id}`);
+            const couponRef = businessRef.collection('coupons').doc(verifiedCoupon.id);
+            const couponUpdate = { timesUsed: FieldValue.increment(1) };
+            if (verifiedCoupon.singleUsePerCustomer === true && couponRedemptionKeys.size > 0) {
+                couponUpdate.redeemedCustomerIds = FieldValue.arrayUnion(...Array.from(couponRedemptionKeys));
+            }
+            batch.update(couponRef, couponUpdate);
         }
 
 

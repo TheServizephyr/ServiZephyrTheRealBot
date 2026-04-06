@@ -662,6 +662,7 @@ export async function GET(req, { params }) {
                             coupons: filterCouponsForAudience(couponCatalog, {
                                 now: new Date(),
                                 eligibleIds: couponAudience.eligibleIds,
+                                redemptionKeys: couponAudience.redemptionKeys,
                                 nextOrderNumber: couponAudience.nextOrderNumber,
                             }),
                         };
@@ -720,6 +721,7 @@ export async function GET(req, { params }) {
                             coupons: filterCouponsForAudience(couponCatalog, {
                                 now: new Date(),
                                 eligibleIds: couponAudience.eligibleIds,
+                                redemptionKeys: couponAudience.redemptionKeys,
                                 nextOrderNumber: couponAudience.nextOrderNumber,
                             }),
                         };
@@ -740,6 +742,7 @@ export async function GET(req, { params }) {
                             coupons: filterCouponsForAudience(couponDocs, {
                                 now: new Date(),
                                 eligibleIds: couponAudience.eligibleIds,
+                                redemptionKeys: couponAudience.redemptionKeys,
                                 nextOrderNumber: couponAudience.nextOrderNumber,
                             }),
                         };
@@ -786,6 +789,7 @@ export async function GET(req, { params }) {
                                 coupons: filterCouponsForAudience(couponCatalog, {
                                     now: new Date(),
                                     eligibleIds: couponAudience.eligibleIds,
+                                    redemptionKeys: couponAudience.redemptionKeys,
                                     nextOrderNumber: couponAudience.nextOrderNumber,
                                 }),
                             };
@@ -806,6 +810,7 @@ export async function GET(req, { params }) {
                                 coupons: filterCouponsForAudience(couponDocs, {
                                     now: new Date(),
                                     eligibleIds: couponAudience.eligibleIds,
+                                    redemptionKeys: couponAudience.redemptionKeys,
                                     nextOrderNumber: couponAudience.nextOrderNumber,
                                 }),
                             };
@@ -991,6 +996,7 @@ export async function GET(req, { params }) {
         const coupons = filterCouponsForAudience(allCouponDocs, {
             now,
             eligibleIds: couponAudience.eligibleIds,
+            redemptionKeys: couponAudience.redemptionKeys,
             nextOrderNumber: couponAudience.nextOrderNumber,
         });
         const publicCoupons = filterCouponsForAudience(allCouponDocs, {

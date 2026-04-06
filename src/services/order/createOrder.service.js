@@ -34,7 +34,12 @@ import {
     ttlDateFromSource
 } from '@/lib/firestoreTtl';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
-import { couponAppliesToOrderNumber, getCouponMilestoneLabel, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
+import {
+    couponAppliesToOrderNumber,
+    getCouponMilestoneLabel,
+    hasCouponBeenRedeemedByAudience,
+    resolveCouponAudienceContext
+} from '@/lib/server/couponEligibility';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 
 // Services
@@ -626,7 +631,6 @@ export async function createOrderV2(req, options = {}) {
         }
         console.log(`[createOrderV2] ✅ All Discovery & Validation completed in total ${Date.now() - discoveryStart}ms`);
         console.log(`[createOrderV2] ✅ Identity: ${userId}, Phone: ${normalizedPhone}, Name: ${finalCustomerName}`);
-        const couponRedemptionKey = String(userId || normalizedPhone || '').trim();
         const couponAudience = await resolveCouponAudienceContext({
             firestore,
             businessRef: firestore.collection(business.collection).doc(String(business.id)),
@@ -634,6 +638,9 @@ export async function createOrderV2(req, options = {}) {
             actorUid: userId,
             resolveRef: false,
         });
+        const couponRedemptionKeys = couponAudience?.redemptionKeys instanceof Set
+            ? couponAudience.redemptionKeys
+            : new Set([String(userId || normalizedPhone || '').trim()].filter(Boolean));
 
         validatePriceMatch(subtotal, pricingResult.serverSubtotal);
         console.log(`[createOrderV2] Price validation passed: ₹${pricingResult.serverSubtotal}`);
@@ -720,7 +727,10 @@ export async function createOrderV2(req, options = {}) {
                     });
                 }
 
-                if (singleUsePerCustomer && couponRedemptionKey && redeemedCustomerIds.includes(couponRedemptionKey)) {
+                if (hasCouponBeenRedeemedByAudience({
+                    singleUsePerCustomer,
+                    redeemedCustomerIds,
+                }, couponRedemptionKeys)) {
                     await idempotencyRepository.fail(idempotencyKey, new Error('Coupon already redeemed by this customer'));
                     return buildErrorResponse({
                         message: 'This coupon has already been used by this customer.',
@@ -1258,8 +1268,8 @@ export async function createOrderV2(req, options = {}) {
                 const couponUpdate = {
                     timesUsed: FieldValue.increment(1),
                 };
-                if (verifiedCoupon.singleUsePerCustomer === true && couponRedemptionKey) {
-                    couponUpdate.redeemedCustomerIds = FieldValue.arrayUnion(couponRedemptionKey);
+                if (verifiedCoupon.singleUsePerCustomer === true && couponRedemptionKeys.size > 0) {
+                    couponUpdate.redeemedCustomerIds = FieldValue.arrayUnion(...Array.from(couponRedemptionKeys));
                 }
                 await firestore
                     .collection(business.collection)

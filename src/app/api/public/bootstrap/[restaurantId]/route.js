@@ -227,6 +227,7 @@ export async function GET(req, { params }) {
       ? filterCouponsForAudience(couponCatalog, {
           now: new Date(),
           eligibleIds: couponAudience.eligibleIds,
+          redemptionKeys: couponAudience.redemptionKeys,
           nextOrderNumber: couponAudience.nextOrderNumber,
         })
       : (menuSnapshot?.menu?.coupons || []);
