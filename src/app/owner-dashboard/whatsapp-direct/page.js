@@ -391,6 +391,14 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
     </Dialog>
 );
 
+const normalizeRewardPhone = (phone) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
+const generateRewardCode = () => `VIP${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
 
 const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
     const [coupon, setCoupon] = useState(null);
@@ -439,7 +447,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
         });
     };
     const generateRandomCode = () => {
-        const code = VIP--;
+        const code = generateRewardCode();
         handleChange('code', code);
     };
     const handleSubmit = async (e) => {
@@ -660,7 +668,8 @@ function WhatsAppDirectPageContent() {
     const rewardCustomer = useMemo(() => {
         if (!activeConversation) return null;
 
-        const resolvedCustomerId = customerDetails?.id || activeConversation.customerPhone;
+        const normalizedPhone = normalizeRewardPhone(activeConversation.customerPhone);
+        const resolvedCustomerId = customerDetails?.id || (normalizedPhone ? `phone:${normalizedPhone}` : '');
         return {
             ...activeConversation,
             id: resolvedCustomerId,
@@ -2219,5 +2228,3 @@ function WhatsAppDirectPageContent() {
 }
 
 export default WhatsAppDirectPageContent;
-
-

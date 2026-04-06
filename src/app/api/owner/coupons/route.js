@@ -7,6 +7,12 @@ import { couponLimiter } from '@/lib/security/rate-limiter';
 import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 
+const normalizePhone = (phone) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 
 export async function GET(req) {
     try {
@@ -102,7 +108,7 @@ export async function POST(req) {
         }).catch(err => console.error('[AUDIT_LOG_FAILED]', err));
 
         // 📱 SEND WHATSAPP NOTIFICATION
-        if (businessData.botPhoneNumberId && coupon.customerId) {
+        if (false && businessData.botPhoneNumberId && coupon.customerId) {
             try {
                 // 1. Fetch Customer to get Phone Number
                 const customerDoc = await firestore.collection(collectionName).doc(businessId).collection('customers').doc(coupon.customerId).get();
@@ -141,6 +147,50 @@ export async function POST(req) {
         }
 
         // 🔄 CACHE INVALIDATION: Increment menuVersion to force public API refresh
+        if (businessData.botPhoneNumberId && coupon.customerId) {
+            try {
+                const customersRef = firestore.collection(collectionName).doc(businessId).collection('customers');
+                let customerData = null;
+                let phone = '';
+
+                if (String(coupon.customerId).startsWith('phone:')) {
+                    phone = normalizePhone(String(coupon.customerId).slice('phone:'.length));
+                } else {
+                    const customerDoc = await customersRef.doc(coupon.customerId).get();
+                    if (customerDoc.exists) {
+                        customerData = customerDoc.data() || {};
+                        phone = customerData.phone || customerData.phoneNumber || customerData.contactInfo?.phone || '';
+                    }
+                }
+
+                if (phone) {
+                    let formattedPhone = String(phone).replace(/\D/g, '');
+                    if (formattedPhone.length === 10) formattedPhone = `91${formattedPhone}`;
+
+                    const customerLabel = customerData?.name?.split(' ')[0] || customerData?.customName?.split(' ')[0] || 'there';
+                    const discountText = isFreeDelivery ? 'FREE DELIVERY' : (coupon.type === 'percentage' ? `${coupon.value}% OFF` : `₹${coupon.value} OFF`);
+                    const message = `High five, ${customerLabel}!\n\nYou've just unlocked a special reward at ${businessData.name}: *${discountText}*!\n\nUse Code: *${coupon.code}*\n${coupon.description || ''}\n\nMinimum Order: ₹${coupon.minOrder}\nValid until: ${new Date(coupon.expiryDate).toLocaleDateString('en-IN')}\n\nOrder now to redeem!`;
+
+                    await sendSystemMessage(
+                        formattedPhone,
+                        message,
+                        businessData.botPhoneNumberId,
+                        businessId,
+                        businessData.name || 'Your Restaurant',
+                        collectionName,
+                        {
+                            customerName: customerData?.name || customerData?.customName || null,
+                            conversationPreview: `Reward sent: ${coupon.code}`,
+                        }
+                    );
+                } else {
+                    console.warn(`[Coupon API] Customer ${coupon.customerId} has no phone number. Skipped WhatsApp.`);
+                }
+            } catch (waError) {
+                console.error(`[Coupon API] Failed to send WhatsApp notification: ${waError.message}`);
+            }
+        }
+
         const businessRef = firestore.collection(collectionName).doc(businessId);
         await businessRef.update({
             menuVersion: FieldValue.increment(1)

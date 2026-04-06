@@ -176,6 +176,7 @@ async function resolveCouponOwnership({
     if (assignedCustomerId === String(userId || '').trim()) return true;
 
     const safePhone = String(normalizedPhone || '').trim();
+    if (assignedCustomerId.startsWith('phone:')) return assignedCustomerId.slice('phone:'.length) === safePhone;
     if (!safePhone) return false;
 
     try {
@@ -188,7 +189,7 @@ async function resolveCouponOwnership({
 
         if (!customerDoc.exists) return false;
         const customerData = customerDoc.data() || {};
-        const customerPhone = String(customerData.phone || '').replace(/\D/g, '').slice(-10);
+        const customerPhone = String(customerData.phone || customerData.phoneNumber || '').replace(/\D/g, '').slice(-10);
         return Boolean(customerPhone) && customerPhone === safePhone;
     } catch (error) {
         console.warn('[createOrderV2] Coupon ownership lookup failed:', error?.message || error);

@@ -209,8 +209,20 @@ async function resolveEligibleCouponCustomerIds({ firestore, businessRef, search
 
     for (const phone of phones) {
         try {
-            const customerSnap = await businessRef.collection('customers').where('phone', '==', phone).limit(10).get();
-            customerSnap.forEach((doc) => {
+            const [phoneSnap, phoneNumberSnap, directDocSnap] = await Promise.all([
+                businessRef.collection('customers').where('phone', '==', phone).limit(10).get(),
+                businessRef.collection('customers').where('phoneNumber', '==', phone).limit(10).get(),
+                businessRef.collection('customers').doc(phone).get(),
+            ]);
+
+            const matches = new Map();
+            phoneSnap.forEach((doc) => matches.set(doc.id, doc));
+            phoneNumberSnap.forEach((doc) => matches.set(doc.id, doc));
+            if (directDocSnap.exists) {
+                matches.set(directDocSnap.id, directDocSnap);
+            }
+
+            matches.forEach((doc) => {
                 eligibleIds.add(String(doc.id));
                 const customerData = doc.data() || {};
                 if (customerData.customerId) eligibleIds.add(String(customerData.customerId));

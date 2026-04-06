@@ -149,7 +149,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
         });
     };
     const generateRandomCode = () => {
-        const code = VIP--;
+        const code = `VIP${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
         handleChange('code', code);
     };
     const handleSubmit = async (e) => {
@@ -1454,5 +1454,4 @@ export default function CustomersPage() {
         </div>
     );
 }
-
 
