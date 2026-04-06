@@ -6,6 +6,7 @@ import { sendSystemMessage } from '@/lib/whatsapp';
 import { couponLimiter } from '@/lib/security/rate-limiter';
 import { verifyOwnerFeatureAccess } from '@/lib/verify-owner-with-audit';
 import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
+import { parseOrderMilestones } from '@/lib/server/couponEligibility';
 
 const normalizePhone = (phone) => {
     const digits = String(phone || '').replace(/\D/g, '');
@@ -78,6 +79,7 @@ export async function POST(req) {
             timesUsed: 0,
             value: isFreeDelivery ? 0 : Number(coupon.value),
             maxDiscount: coupon.type === 'percentage' ? (Number(coupon.maxDiscount) || 0) : 0,
+            orderMilestones: parseOrderMilestones(coupon.orderMilestones),
             singleUsePerCustomer: coupon.singleUsePerCustomer === true,
             redeemedCustomerIds: [],
             createdAt: FieldValue.serverTimestamp(),
@@ -233,6 +235,7 @@ export async function PATCH(req) {
         }
 
         updateData.singleUsePerCustomer = updateData.singleUsePerCustomer === true;
+        updateData.orderMilestones = parseOrderMilestones(updateData.orderMilestones);
 
         if (updateData.startDate) {
             updateData.startDate = new Date(updateData.startDate);

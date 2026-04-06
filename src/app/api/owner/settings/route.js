@@ -13,6 +13,7 @@ import { resolveGuestAccessRef } from '@/lib/public-auth';
 import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 import { invalidateSharedCache } from '@/lib/server/sharedCache';
 import { bumpBusinessRuntimeVersions } from '@/lib/server/businessRuntime';
+import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -179,64 +180,6 @@ function shouldBumpPublicMenuVersion({
     return Object.keys(businessUpdateData).some((key) => publicFacingFields.has(key));
 }
 
-async function resolveEligibleCouponCustomerIds({ firestore, businessRef, searchParams }) {
-    const eligibleIds = new Set();
-    const normalizedPhone = normalizePhone(searchParams.get('phone'));
-    const ref = String(searchParams.get('ref') || '').trim();
-
-    if (ref) {
-        try {
-            const refSession = await resolveGuestAccessRef(firestore, ref, { allowLegacy: true });
-            if (refSession?.subjectId) eligibleIds.add(String(refSession.subjectId));
-            const refPhone = normalizePhone(refSession?.phone);
-            if (refPhone) eligibleIds.add(`phone:${refPhone}`);
-        } catch (error) {
-            console.warn('[Settings API] Reward ref resolution failed:', error?.message || error);
-        }
-    }
-
-    if (normalizedPhone) {
-        eligibleIds.add(`phone:${normalizedPhone}`);
-    }
-
-    if (!businessRef || eligibleIds.size === 0) {
-        return eligibleIds;
-    }
-
-    const phones = [...eligibleIds]
-        .filter((value) => value.startsWith('phone:'))
-        .map((value) => value.slice('phone:'.length));
-
-    for (const phone of phones) {
-        try {
-            const [phoneSnap, phoneNumberSnap, directDocSnap] = await Promise.all([
-                businessRef.collection('customers').where('phone', '==', phone).limit(10).get(),
-                businessRef.collection('customers').where('phoneNumber', '==', phone).limit(10).get(),
-                businessRef.collection('customers').doc(phone).get(),
-            ]);
-
-            const matches = new Map();
-            phoneSnap.forEach((doc) => matches.set(doc.id, doc));
-            phoneNumberSnap.forEach((doc) => matches.set(doc.id, doc));
-            if (directDocSnap.exists) {
-                matches.set(directDocSnap.id, directDocSnap);
-            }
-
-            matches.forEach((doc) => {
-                eligibleIds.add(String(doc.id));
-                const customerData = doc.data() || {};
-                if (customerData.customerId) eligibleIds.add(String(customerData.customerId));
-                if (customerData.userId) eligibleIds.add(String(customerData.userId));
-                if (customerData.uid) eligibleIds.add(String(customerData.uid));
-            });
-        } catch (error) {
-            console.warn('[Settings API] Phone based reward lookup failed:', error?.message || error);
-        }
-    }
-
-    return eligibleIds;
-}
-
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
@@ -339,10 +282,11 @@ export async function GET(req) {
             // Coupons fetch is optional to avoid unnecessary Firestore reads on high-traffic public pages.
             if (includeCoupons) {
                 try {
-                    const eligibleCustomerIds = await resolveEligibleCouponCustomerIds({
+                    const couponAudience = await resolveCouponAudienceContext({
                         firestore,
                         businessRef: businessDoc.ref,
-                        searchParams
+                        phone: searchParams.get('phone'),
+                        ref: searchParams.get('ref'),
                     });
                     const couponsSnap = await businessDoc.ref.collection('coupons')
                         .where('status', '==', 'active')
@@ -358,15 +302,13 @@ export async function GET(req) {
                                 startDate: data.startDate?.toDate ? data.startDate.toDate().toISOString() : data.startDate,
                                 expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
                             };
-                        })
-                        .filter((c) => {
-                            const assignedCustomerId = String(c.customerId || '').trim();
-                            const isPublic = !assignedCustomerId;
-                            const isAssignedToCurrentCustomer = assignedCustomerId && eligibleCustomerIds.has(assignedCustomerId);
-                            return new Date(c.expiryDate) > now && (isPublic || isAssignedToCurrentCustomer);
                         });
 
-                    responsePayload.coupons = coupons;
+                    responsePayload.coupons = filterCouponsForAudience(coupons, {
+                        now,
+                        eligibleIds: couponAudience.eligibleIds,
+                        nextOrderNumber: couponAudience.nextOrderNumber,
+                    });
                 } catch (err) {
                     console.error("Error fetching coupons for public settings:", err);
                     responsePayload.coupons = [];

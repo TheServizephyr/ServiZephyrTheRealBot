@@ -19,6 +19,25 @@ import InfoDialog from '@/components/InfoDialog';
 
 export const dynamic = 'force-dynamic';
 
+const parseOrderMilestonesInput = (value) => {
+    if (Array.isArray(value)) {
+        return [...new Set(
+            value
+                .map((item) => Number.parseInt(item, 10))
+                .filter((item) => Number.isInteger(item) && item > 0)
+        )].sort((a, b) => a - b);
+    }
+
+    return [...new Set(
+        String(value || '')
+            .split(',')
+            .map((item) => Number.parseInt(item.trim(), 10))
+            .filter((item) => Number.isInteger(item) && item > 0)
+    )].sort((a, b) => a - b);
+};
+
+const formatOrderMilestones = (value) => parseOrderMilestonesInput(value).join(', ');
+
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
@@ -48,7 +67,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                     id: null, code: '', description: '', type: 'flat', value: '',
                     maxDiscount: '',
                     minOrder: '', startDate: new Date(), expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-                    status: 'active', timesUsed: 0, customerId: null, singleUsePerCustomer: false
+                    status: 'active', timesUsed: 0, customerId: null, singleUsePerCustomer: false, orderMilestones: ''
                 });
             }
         }
@@ -129,6 +148,19 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                             <div>
                                 <Label htmlFor="description">Description</Label>
                                 <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={3} placeholder="e.g., Get 20% off on your first order" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
+                            </div>
+                            <div>
+                                <Label htmlFor="orderMilestones">Eligible Order Numbers</Label>
+                                <input
+                                    id="orderMilestones"
+                                    value={Array.isArray(coupon.orderMilestones) ? coupon.orderMilestones.join(', ') : (coupon.orderMilestones || '')}
+                                    onChange={e => handleChange('orderMilestones', e.target.value)}
+                                    placeholder="e.g., 2, 5"
+                                    className="mt-1 p-2 border rounded-md bg-input border-border w-full"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Leave blank for all orders. Example: `2,5` means only the 2nd and 5th order.
+                                </p>
                             </div>
                             <div>
                                 <Label>Discount Type</Label>
@@ -280,6 +312,7 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
     const expiryDate = new Date(coupon.expiryDate);
     const isExpired = expiryDate < new Date();
     const status = isExpired ? 'Expired' : coupon.status;
+    const orderMilestoneLabel = formatOrderMilestones(coupon.orderMilestones);
 
     const statusConfig = {
         'active': { text: 'text-green-400', bg: 'bg-green-500/10', icon: <CheckCircle />, label: 'Active' },
@@ -312,6 +345,7 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
                 <p className="text-sm text-muted-foreground mb-4">{coupon.description}</p>
                 <div className="text-sm space-y-2">
                     <p><span className="font-semibold text-muted-foreground">Min. Order:</span> ₹{coupon.minOrder}</p>
+                    <p><span className="font-semibold text-muted-foreground">Eligible Orders:</span> {orderMilestoneLabel || 'All orders'}</p>
                     <p><span className="font-semibold text-muted-foreground">Expires:</span> {formatDate(expiryDate)}</p>
                     <p><span className="font-semibold text-muted-foreground">Times Used:</span> {coupon.timesUsed}</p>
                     <p><span className="font-semibold text-muted-foreground">Usage Rule:</span> {coupon.singleUsePerCustomer ? 'One time per customer' : 'Multiple times allowed'}</p>
@@ -447,6 +481,7 @@ export default function CouponsPage() {
             const isEditing = !!couponData.id;
             const payload = {
                 ...couponData,
+                orderMilestones: parseOrderMilestonesInput(couponData.orderMilestones),
                 startDate: couponData.startDate.toISOString(),
                 expiryDate: couponData.expiryDate.toISOString(),
             };

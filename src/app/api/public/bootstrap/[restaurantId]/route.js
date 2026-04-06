@@ -11,105 +11,12 @@ import { enforceRateLimit, readSignedGuestSessionCookie, verifyAppCheckToken } f
 import { getBusinessRuntime, resolveScopedFeatureFlagValue } from '@/lib/server/businessRuntime';
 import { getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
 import { getOrSetSharedCache } from '@/lib/server/sharedCache';
-import { resolveGuestAccessRef } from '@/lib/public-auth';
+import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
 
 export const dynamic = 'force-dynamic';
 
 const CUSTOMER_TIMEOUT_MS = Math.max(150, Number(process.env.PUBLIC_BOOTSTRAP_CUSTOMER_TIMEOUT_MS || 300));
 const ACTIVE_ORDER_TIMEOUT_MS = Math.max(150, Number(process.env.PUBLIC_BOOTSTRAP_ACTIVE_ORDER_TIMEOUT_MS || 300));
-const normalizePhone = (phone) => {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  return digits.length > 10 ? digits.slice(-10) : digits;
-};
-
-async function resolveEligibleCouponCustomerIds({
-  firestore,
-  businessRef,
-  phone = '',
-  ref = '',
-  actorUid = '',
-}) {
-  const eligibleIds = new Set();
-  const normalizedPhone = normalizePhone(phone);
-  const safeActorUid = String(actorUid || '').trim();
-  const safeRef = String(ref || '').trim();
-
-  if (safeActorUid) {
-    eligibleIds.add(safeActorUid);
-  }
-
-  if (safeRef) {
-    try {
-      const refSession = await resolveGuestAccessRef(firestore, safeRef, { allowLegacy: true });
-      if (refSession?.subjectId) eligibleIds.add(String(refSession.subjectId));
-      const refPhone = normalizePhone(refSession?.phone);
-      if (refPhone) eligibleIds.add(`phone:${refPhone}`);
-    } catch (error) {
-      console.warn('[Bootstrap API] Reward ref resolution failed:', error?.message || error);
-    }
-  }
-
-  if (normalizedPhone) {
-    eligibleIds.add(`phone:${normalizedPhone}`);
-  }
-
-  if (!businessRef || eligibleIds.size === 0) {
-    return eligibleIds;
-  }
-
-  const phones = [...eligibleIds]
-    .filter((value) => value.startsWith('phone:'))
-    .map((value) => value.slice('phone:'.length));
-
-  for (const lookupPhone of phones) {
-    try {
-      const [phoneSnap, phoneNumberSnap, directDocSnap] = await Promise.all([
-        businessRef.collection('customers').where('phone', '==', lookupPhone).limit(10).get(),
-        businessRef.collection('customers').where('phoneNumber', '==', lookupPhone).limit(10).get(),
-        businessRef.collection('customers').doc(lookupPhone).get(),
-      ]);
-
-      const matches = new Map();
-      phoneSnap.forEach((doc) => matches.set(doc.id, doc));
-      phoneNumberSnap.forEach((doc) => matches.set(doc.id, doc));
-      if (directDocSnap.exists) matches.set(directDocSnap.id, directDocSnap);
-
-      matches.forEach((doc) => {
-        eligibleIds.add(String(doc.id));
-        const customerData = doc.data() || {};
-        if (customerData.customerId) eligibleIds.add(String(customerData.customerId));
-        if (customerData.userId) eligibleIds.add(String(customerData.userId));
-        if (customerData.uid) eligibleIds.add(String(customerData.uid));
-      });
-    } catch (error) {
-      console.warn('[Bootstrap API] Phone based reward lookup failed:', error?.message || error);
-    }
-  }
-
-  return eligibleIds;
-}
-
-function filterCouponsForRequest(couponDocs = [], now = new Date(), eligibleCustomerIds = new Set()) {
-  return couponDocs.filter((coupon) => {
-    const startDate = coupon?.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon?.startDate);
-    const expiryDate = coupon?.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon?.expiryDate);
-    const assignedCustomerId = String(coupon?.customerId || '').trim();
-    const isPublic = !assignedCustomerId;
-    const isAssignedToCurrentCustomer = assignedCustomerId && eligibleCustomerIds.has(assignedCustomerId);
-    const isValid =
-      startDate instanceof Date &&
-      !Number.isNaN(startDate.getTime()) &&
-      expiryDate instanceof Date &&
-      !Number.isNaN(expiryDate.getTime()) &&
-      startDate <= now &&
-      expiryDate >= now &&
-      String(coupon?.status || '').trim().toLowerCase() === 'active';
-
-    return isValid && (isPublic || isAssignedToCurrentCustomer);
-  });
-}
-
 function withTimeout(promise, timeoutMs, fallbackValue = null) {
   return Promise.race([
     promise,
@@ -307,17 +214,21 @@ export async function GET(req, { params }) {
     };
     const couponCatalog = Array.isArray(menuSnapshot?.couponCatalog) ? menuSnapshot.couponCatalog : [];
     const hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
-    const eligibleCustomerIds = hasAssignedCoupons
-      ? await resolveEligibleCouponCustomerIds({
+    const couponAudience = hasAssignedCoupons || couponCatalog.some((coupon) => Array.isArray(coupon?.orderMilestones) && coupon.orderMilestones.length > 0)
+      ? await resolveCouponAudienceContext({
           firestore,
           businessRef: business.ref,
           phone,
           ref,
           actorUid: customerResult?.actorUid || loggedInUid || '',
         })
-      : new Set();
-    const personalizedCoupons = hasAssignedCoupons
-      ? filterCouponsForRequest(couponCatalog, new Date(), eligibleCustomerIds)
+      : { eligibleIds: new Set(), nextOrderNumber: 0 };
+    const personalizedCoupons = couponCatalog.length > 0
+      ? filterCouponsForAudience(couponCatalog, {
+          now: new Date(),
+          eligibleIds: couponAudience.eligibleIds,
+          nextOrderNumber: couponAudience.nextOrderNumber,
+        })
       : (menuSnapshot?.menu?.coupons || []);
 
     const menuPayload = menuSnapshot?.menu ? {

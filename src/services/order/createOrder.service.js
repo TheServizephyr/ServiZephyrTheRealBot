@@ -34,6 +34,7 @@ import {
     ttlDateFromSource
 } from '@/lib/firestoreTtl';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { couponAppliesToOrderNumber, getCouponMilestoneLabel, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
 
 // Services
@@ -626,6 +627,13 @@ export async function createOrderV2(req, options = {}) {
         console.log(`[createOrderV2] ✅ All Discovery & Validation completed in total ${Date.now() - discoveryStart}ms`);
         console.log(`[createOrderV2] ✅ Identity: ${userId}, Phone: ${normalizedPhone}, Name: ${finalCustomerName}`);
         const couponRedemptionKey = String(userId || normalizedPhone || '').trim();
+        const couponAudience = await resolveCouponAudienceContext({
+            firestore,
+            businessRef: firestore.collection(business.collection).doc(String(business.id)),
+            phone: normalizedPhone,
+            actorUid: userId,
+            resolveRef: false,
+        });
 
         validatePriceMatch(subtotal, pricingResult.serverSubtotal);
         console.log(`[createOrderV2] Price validation passed: ₹${pricingResult.serverSubtotal}`);
@@ -736,6 +744,17 @@ export async function createOrderV2(req, options = {}) {
                             status: 403
                         });
                     }
+                }
+
+                if (!couponAppliesToOrderNumber(couponData, couponAudience.nextOrderNumber)) {
+                    const milestoneLabel = getCouponMilestoneLabel(couponData);
+                    await idempotencyRepository.fail(idempotencyKey, new Error('Coupon not eligible for this order number'));
+                    return buildErrorResponse({
+                        message: milestoneLabel
+                            ? `This offer is valid only on your ${milestoneLabel} order.`
+                            : 'This offer is not valid for your current order number.',
+                        status: 400
+                    });
                 }
 
                 if (!['flat', 'percentage', 'free_delivery'].includes(couponType)) {
