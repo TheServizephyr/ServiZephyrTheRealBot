@@ -751,7 +751,8 @@ const CheckoutPageInternal = () => {
                 token,
                 ref,
                 src: 'checkout_page',
-                ttlMs: 60000,
+                ttlMs: 5000,
+                force: true,
             });
 
             console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
@@ -1398,6 +1399,13 @@ const CheckoutPageInternal = () => {
         }
 
         setAppliedCoupons([eligibility.coupon]);
+        if (restaurantId) {
+            const savedData = safeReadCart(restaurantId) || {};
+            safeWriteCart(restaurantId, {
+                ...savedData,
+                appliedCoupons: [eligibility.coupon],
+            });
+        }
         toast({
             title: 'Coupon Applied!',
             description: `${eligibility.coupon.code} applied successfully.`
@@ -1771,7 +1779,7 @@ const CheckoutPageInternal = () => {
                     }
                     if (cachedValidation.charge !== undefined) {
                         orderData.deliveryCharge = cachedValidation.charge;
-                        orderData.grandTotal = subtotal + cgst + sgst + cachedValidation.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
+                        orderData.grandTotal = Math.max(0, subtotal - Number(totalDiscount || 0)) + cgst + sgst + cachedValidation.charge + (packagingCharge || 0) + (serviceFee || 0) + (convenienceFee || 0) + (tipAmount || 0);
                     }
                 }
                 // If no cache, let the server handle it Ã¢â‚¬â€ don't block the order

@@ -615,9 +615,9 @@ export async function GET(req, { params }) {
         // PATCH: Added _patch8 to force cache refresh for dynamic relative volume thresholds (Min orders scaled by traffic)
         const cacheKey = `menu:${cacheRestaurantId}:v${menuVersion}_patch8`;
         const insightBadgeCacheKey = `menu_badges:${cacheRestaurantId}:v${menuVersion}_patch1`;
-        const couponCatalogCacheKey = `menu_coupon_catalog:${cacheRestaurantId}`;
-        const deliveryConfigCacheKey = `menu_delivery_config:${cacheRestaurantId}`;
-        const customCategoriesCacheKey = `menu_custom_categories:${cacheRestaurantId}`;
+        const couponCatalogCacheKey = `menu_coupon_catalog:${cacheRestaurantId}:v${menuVersion}`;
+        const deliveryConfigCacheKey = `menu_delivery_config:${cacheRestaurantId}:v${menuVersion}`;
+        const customCategoriesCacheKey = `menu_custom_categories:${cacheRestaurantId}:v${menuVersion}`;
         const skipCache = searchParams.get('skip_cache') === 'true';
 
         // 🔍 PROOF: Show Redis cache usage and menuVersion

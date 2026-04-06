@@ -106,6 +106,28 @@ export function hasCouponBeenRedeemedByAudience(coupon = {}, redemptionKeys = ne
   return redeemedCustomerIds.some((value) => normalizedRedemptionKeys.has(value));
 }
 
+function addMatchedCustomerDocIdentifiers(eligibleIds, doc) {
+  if (!doc?.id) return;
+
+  eligibleIds.add(String(doc.id));
+
+  const customerData = doc.data() || {};
+  if (customerData.customerId) eligibleIds.add(String(customerData.customerId));
+  if (customerData.userId) eligibleIds.add(String(customerData.userId));
+  if (customerData.uid) eligibleIds.add(String(customerData.uid));
+
+  const customerPhone = normalizeCouponPhone(customerData.phone || customerData.phoneNumber);
+  if (customerPhone) eligibleIds.add(`phone:${customerPhone}`);
+}
+
+function splitIntoChunks(values = [], size = 10) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 export async function resolveCouponAudienceContext({
   firestore,
   businessRef,
@@ -170,19 +192,29 @@ export async function resolveCouponAudienceContext({
       }
     }
 
+    matchedCustomerDocs.forEach((doc) => addMatchedCustomerDocIdentifiers(eligibleIds, doc));
+
     const businessId = String(businessRef.id || '').trim();
     const nonCountableStatuses = new Set(['cancelled', 'rejected', 'failed', 'payment_failed', 'awaiting_payment']);
-    const lookupIds = [...eligibleIds].filter((value) => value && !String(value).startsWith('phone:')).slice(0, 10);
+    const lookupIds = [...eligibleIds].filter((value) => value && !String(value).startsWith('phone:'));
+    const enrichedLookupPhones = [...new Set(
+      [...eligibleIds]
+        .filter((value) => String(value).startsWith('phone:'))
+        .map((value) => value.slice('phone:'.length))
+        .filter(Boolean)
+    )];
 
     try {
       const orderLookups = [];
-      if (lookupIds.length > 0) {
-        orderLookups.push(firestore.collection('orders').where('customerId', 'in', lookupIds).get());
-        orderLookups.push(firestore.collection('orders').where('userId', 'in', lookupIds).get());
-      }
-      if (lookupPhones.length > 0) {
-        orderLookups.push(firestore.collection('orders').where('customerPhone', 'in', lookupPhones.slice(0, 10)).get());
-      }
+      splitIntoChunks(lookupIds, 10).forEach((idChunk) => {
+        if (!idChunk.length) return;
+        orderLookups.push(firestore.collection('orders').where('customerId', 'in', idChunk).get());
+        orderLookups.push(firestore.collection('orders').where('userId', 'in', idChunk).get());
+      });
+      splitIntoChunks(enrichedLookupPhones, 10).forEach((phoneChunk) => {
+        if (!phoneChunk.length) return;
+        orderLookups.push(firestore.collection('orders').where('customerPhone', 'in', phoneChunk).get());
+      });
 
       const orderSnapshots = await Promise.all(orderLookups);
       orderSnapshots.forEach((snapshot) => {
@@ -198,14 +230,6 @@ export async function resolveCouponAudienceContext({
     } catch (error) {
       console.warn('[Coupon Eligibility] Order history lookup failed:', error?.message || error);
     }
-
-    matchedCustomerDocs.forEach((doc) => {
-      eligibleIds.add(String(doc.id));
-      const customerData = doc.data() || {};
-      if (customerData.customerId) eligibleIds.add(String(customerData.customerId));
-      if (customerData.userId) eligibleIds.add(String(customerData.userId));
-      if (customerData.uid) eligibleIds.add(String(customerData.uid));
-    });
   }
 
   const completedOrderCount = [...matchedCustomerDocs.values()].reduce((maxOrders, doc) => {

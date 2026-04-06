@@ -256,6 +256,7 @@ export async function fetchCachedRestaurantBootstrap({
     ref = '',
     src = 'runtime',
     ttlMs = RESTAURANT_BOOTSTRAP_TTL_MS,
+    force = false,
 } = {}) {
     if (!restaurantId) {
         throw new Error('Restaurant ID is required to load restaurant bootstrap data.');
@@ -271,6 +272,10 @@ export async function fetchCachedRestaurantBootstrap({
         toCacheKeyPart(ref),
         toCacheKeyPart(tokenSignature),
     ].join('');
+
+    if (force) {
+        invalidateCachedClientResource(cacheKey, { storage: 'memory' });
+    }
 
     return getCachedClientResource(cacheKey, async () => {
         const query = new URLSearchParams({ src });
