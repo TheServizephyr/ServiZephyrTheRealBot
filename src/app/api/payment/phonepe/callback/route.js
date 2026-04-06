@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { releaseCouponForOrder, reserveCouponForOrder } from '@/lib/server/orderLifecycle';
 
 // PhonePe Webhook Credentials
 const WEBHOOK_USERNAME = process.env.PHONEPE_WEBHOOK_USERNAME;
@@ -236,6 +237,16 @@ async function handleOrderCompleted(payload) {
         }
 
         await orderRef.update(updateData);
+        await reserveCouponForOrder({
+            firestore: adminDb,
+            orderRef,
+            orderData: {
+                ...orderData,
+                status: updateData.status || currentStatus,
+            },
+        }).catch((error) => {
+            console.error('[PhonePe Webhook] Coupon reservation sync failed:', error);
+        });
         console.log(`[PhonePe Webhook] Order ${merchantOrderId} updated to PAID (Status: ${updateData.status || currentStatus})`);
     } else {
         console.warn(`[PhonePe Webhook] Order ${merchantOrderId} not found in Firestore`);
@@ -300,6 +311,16 @@ async function handleOrderFailed(payload) {
                 updatedAt: new Date()
             });
         }
+        await releaseCouponForOrder({
+            firestore: adminDb,
+            orderRef,
+            orderData: {
+                ...orderData,
+                status: 'payment_failed',
+            },
+        }).catch((error) => {
+            console.error('[PhonePe Webhook] Coupon release sync failed:', error);
+        });
         console.log(`[PhonePe Webhook] Order ${merchantOrderId} marked as FAILED`);
     }
 }

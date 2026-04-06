@@ -1,11 +1,12 @@
 
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { kv, isKvConfigured } from '@/lib/kv';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { findBusinessById } from '@/services/business/businessService';
+import { resolveCustomerLookupProfile } from '@/services/customer/customerLookup.service';
 import { buildLegacyMenuDataFromSnapshot, getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
 import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
 
@@ -536,6 +537,55 @@ export async function GET(req, { params }) {
     const telemetryEndpoint = menuSource ? `api.public.menu.${menuSource}` : 'api.public.menu';
     const firestore = await getFirestore();
     const personalizedRequest = Boolean(normalizePhone(phone) || String(ref || '').trim() || String(token || '').trim());
+    let couponActorUid = '';
+    let couponAudiencePromise = null;
+
+    try {
+        couponActorUid = await verifyAndGetUid(req);
+    } catch {
+        couponActorUid = '';
+    }
+
+    const resolveCouponAudienceForRequest = async (businessRef) => {
+        if (!couponAudiencePromise) {
+            couponAudiencePromise = (async () => {
+                let effectiveActorUid = couponActorUid;
+
+                if (!effectiveActorUid && ref) {
+                    const customerLookup = await resolveCustomerLookupProfile(firestore, {
+                        phone: phone || '',
+                        explicitGuestId: null,
+                        ref,
+                        cookieGuestId: null,
+                        loggedInUid: '',
+                    }).catch(() => null);
+                    effectiveActorUid = customerLookup?.actorUid || '';
+                }
+
+                if (!effectiveActorUid && phone) {
+                    const customerLookup = await resolveCustomerLookupProfile(firestore, {
+                        phone,
+                        explicitGuestId: null,
+                        ref: '',
+                        cookieGuestId: null,
+                        loggedInUid: '',
+                    }).catch(() => null);
+                    effectiveActorUid = customerLookup?.actorUid || '';
+                }
+
+                return resolveCouponAudienceContext({
+                    firestore,
+                    businessRef,
+                    phone,
+                    ref,
+                    actorUid: effectiveActorUid,
+                });
+            })();
+        }
+
+        return couponAudiencePromise;
+    };
+
     const respond = (payload, status = 200, headers = undefined) => {
         telemetryStatus = status;
         return NextResponse.json(payload, {
@@ -651,12 +701,7 @@ export async function GET(req, { params }) {
                     };
 
                     if (personalizedRequest && couponCatalog.length > 0) {
-                        const couponAudience = await resolveCouponAudienceContext({
-                            firestore,
-                            businessRef,
-                            phone: searchParams.get('phone'),
-                            ref: searchParams.get('ref'),
-                        });
+                        const couponAudience = await resolveCouponAudienceForRequest(businessRef);
                         payload = {
                             ...payload,
                             coupons: filterCouponsForAudience(couponCatalog, {
@@ -710,12 +755,7 @@ export async function GET(req, { params }) {
                 };
                 if (personalizedRequest) {
                     if (couponCatalog.length > 0) {
-                        const couponAudience = await resolveCouponAudienceContext({
-                            firestore,
-                            businessRef,
-                            phone: searchParams.get('phone'),
-                            ref: searchParams.get('ref'),
-                        });
+                        const couponAudience = await resolveCouponAudienceForRequest(businessRef);
                         payload = {
                             ...payload,
                             coupons: filterCouponsForAudience(couponCatalog, {
@@ -729,12 +769,7 @@ export async function GET(req, { params }) {
                     } else {
                         const [couponsSnap, couponAudience] = await Promise.all([
                             businessRef.collection('coupons').where('status', '==', 'active').get(),
-                            resolveCouponAudienceContext({
-                                firestore,
-                                businessRef,
-                                phone: searchParams.get('phone'),
-                                ref: searchParams.get('ref'),
-                            })
+                            resolveCouponAudienceForRequest(businessRef)
                         ]);
                         const couponDocs = couponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         payload = {
@@ -778,12 +813,7 @@ export async function GET(req, { params }) {
                     };
                     if (personalizedRequest) {
                         if (couponCatalog.length > 0) {
-                            const couponAudience = await resolveCouponAudienceContext({
-                                firestore,
-                                businessRef,
-                                phone: searchParams.get('phone'),
-                                ref: searchParams.get('ref'),
-                            });
+                            const couponAudience = await resolveCouponAudienceForRequest(businessRef);
                             payload = {
                                 ...payload,
                                 coupons: filterCouponsForAudience(couponCatalog, {
@@ -797,12 +827,7 @@ export async function GET(req, { params }) {
                         } else {
                             const [couponsSnap, couponAudience] = await Promise.all([
                                 businessRef.collection('coupons').where('status', '==', 'active').get(),
-                                resolveCouponAudienceContext({
-                                    firestore,
-                                    businessRef,
-                                    phone: searchParams.get('phone'),
-                                    ref: searchParams.get('ref'),
-                                })
+                                resolveCouponAudienceForRequest(businessRef)
                             ]);
                             const couponDocs = couponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             payload = {
@@ -986,12 +1011,7 @@ export async function GET(req, { params }) {
             String(coupon?.customerId || '').trim() || (Array.isArray(coupon?.orderMilestones) && coupon.orderMilestones.length > 0)
         );
         const couponAudience = personalizedRequest && hasRestrictedCoupons
-            ? await resolveCouponAudienceContext({
-                firestore,
-                businessRef,
-                phone: searchParams.get('phone'),
-                ref: searchParams.get('ref'),
-            })
+            ? await resolveCouponAudienceForRequest(businessRef)
             : { eligibleIds: new Set(), nextOrderNumber: 0 };
         const coupons = filterCouponsForAudience(allCouponDocs, {
             now,

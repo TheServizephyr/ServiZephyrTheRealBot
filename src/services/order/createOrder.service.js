@@ -34,6 +34,7 @@ import {
     ttlDateFromSource
 } from '@/lib/firestoreTtl';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { rebuildCustomerProfileForOrder, releaseCouponForOrder } from '@/lib/server/orderLifecycle';
 import {
     couponAppliesToOrderNumber,
     getCouponMilestoneLabel,
@@ -171,36 +172,17 @@ async function verifyBearerUid(req) {
 }
 
 async function resolveCouponOwnership({
-    firestore,
-    business,
     couponCustomerId,
-    userId,
+    eligibleIds = new Set(),
     normalizedPhone,
 }) {
     const assignedCustomerId = String(couponCustomerId || '').trim();
     if (!assignedCustomerId) return true;
-    if (assignedCustomerId === String(userId || '').trim()) return true;
+    if (eligibleIds instanceof Set && eligibleIds.has(assignedCustomerId)) return true;
 
     const safePhone = String(normalizedPhone || '').trim();
     if (assignedCustomerId.startsWith('phone:')) return assignedCustomerId.slice('phone:'.length) === safePhone;
-    if (!safePhone) return false;
-
-    try {
-        const customerDoc = await firestore
-            .collection(business.collection)
-            .doc(String(business.id))
-            .collection('customers')
-            .doc(assignedCustomerId)
-            .get();
-
-        if (!customerDoc.exists) return false;
-        const customerData = customerDoc.data() || {};
-        const customerPhone = String(customerData.phone || customerData.phoneNumber || '').replace(/\D/g, '').slice(-10);
-        return Boolean(customerPhone) && customerPhone === safePhone;
-    } catch (error) {
-        console.warn('[createOrderV2] Coupon ownership lookup failed:', error?.message || error);
-        return false;
-    }
+    return false;
 }
 
 async function resolveDineInLikeToken({
@@ -631,11 +613,12 @@ export async function createOrderV2(req, options = {}) {
         }
         console.log(`[createOrderV2] ✅ All Discovery & Validation completed in total ${Date.now() - discoveryStart}ms`);
         console.log(`[createOrderV2] ✅ Identity: ${userId}, Phone: ${normalizedPhone}, Name: ${finalCustomerName}`);
+        const trustedCouponActorUid = String(refSession?.subjectId || bearerUid || '').trim();
         const couponAudience = await resolveCouponAudienceContext({
             firestore,
             businessRef: firestore.collection(business.collection).doc(String(business.id)),
             phone: normalizedPhone,
-            actorUid: userId,
+            actorUid: trustedCouponActorUid,
             resolveRef: false,
         });
         const couponRedemptionKeys = couponAudience?.redemptionKeys instanceof Set
@@ -740,10 +723,8 @@ export async function createOrderV2(req, options = {}) {
 
                 if (couponData.customerId) {
                     const isCouponOwnedByCurrentCustomer = await resolveCouponOwnership({
-                        firestore,
-                        business,
                         couponCustomerId: couponData.customerId,
-                        userId,
+                        eligibleIds: couponAudience?.eligibleIds,
                         normalizedPhone,
                     });
 
@@ -800,6 +781,7 @@ export async function createOrderV2(req, options = {}) {
         }
 
         const netSubtotal = Math.max(0, pricing.serverSubtotal - couponDiscountAmount);
+        const couponReservationKeys = verifiedCoupon?.id ? Array.from(couponRedemptionKeys) : [];
         const taxes = calculateTaxes(netSubtotal, business.data);
         const serverCgst = taxes.cgst;
         const serverSgst = taxes.sgst;
@@ -1003,6 +985,8 @@ export async function createOrderV2(req, options = {}) {
                 trackingToken: trackingToken,
                 dineInToken: dineInToken || null,
                 dineInTabId: resolvedDineInTabId || null,
+                couponRedemptionKeys: couponReservationKeys,
+                couponUsageState: verifiedCoupon?.id ? 'reserved' : 'none',
                 tableId: actualTableId || null,
                 ordered_by: body.ordered_by || 'customer',
                 ordered_by_name: body.ordered_by_name || null,
@@ -1022,6 +1006,47 @@ export async function createOrderV2(req, options = {}) {
                 actorRole: 'customer',
         });
             console.log(`[createOrderV2] Firestore order created: ${firestoreOrderId}`);
+
+            await Promise.all([
+                (async () => {
+                    try {
+                        await upsertBusinessCustomerProfile({
+                            firestore,
+                            businessCollection: business.collection,
+                            businessId: business.id,
+                            customerDocId: userId,
+                            customerName: orderData.customerName,
+                            customerEmail: finalCustomerEmail,
+                            customerPhone: normalizedPhone,
+                            customerAddress: address || orderData.customerAddress || null,
+                            customerStatus: isGuest ? 'unclaimed' : 'verified',
+                            orderId: firestoreOrderId,
+                            customerType: isGuest ? 'guest' : 'uid',
+                        });
+                    } catch (profileSyncError) {
+                        console.error('[createOrderV2] Customer profile sync failed for awaiting_payment order:', profileSyncError);
+                    }
+                })(),
+                (async () => {
+                    if (!verifiedCoupon?.id) return;
+                    try {
+                        const couponUpdate = {
+                            timesUsed: FieldValue.increment(1),
+                        };
+                        if (verifiedCoupon.singleUsePerCustomer === true && couponRedemptionKeys.size > 0) {
+                            couponUpdate.redeemedCustomerIds = FieldValue.arrayUnion(...Array.from(couponRedemptionKeys));
+                        }
+                        await firestore
+                            .collection(business.collection)
+                            .doc(String(business.id))
+                            .collection('coupons')
+                            .doc(String(verifiedCoupon.id))
+                            .set(couponUpdate, { merge: true });
+                    } catch (couponSyncError) {
+                        console.error('[createOrderV2] Coupon usage reservation failed for awaiting_payment order:', couponSyncError);
+                    }
+                })(),
+            ]);
 
             // Build servizephyr_payload for webhook (V1 parity)
             const servizephyrPayload = {
@@ -1059,18 +1084,40 @@ export async function createOrderV2(req, options = {}) {
 
             // Create payment gateway order
             const gateway = paymentService.determineGateway(normalizedPaymentMethod);
-            const paymentOrder = await paymentService.createPaymentOrder({
-                gateway,
-                amount: serverGrandTotal,
-                orderId: firestoreOrderId,
-                metadata: {
-                    restaurantName: business.data.name,
-                    restaurant_id: business.id,
-                    businessType: business.type,
-                    deliveryType,
-                },
-                servizephyrPayload
-            });
+            let paymentOrder;
+            try {
+                paymentOrder = await paymentService.createPaymentOrder({
+                    gateway,
+                    amount: serverGrandTotal,
+                    orderId: firestoreOrderId,
+                    metadata: {
+                        restaurantName: business.data.name,
+                        restaurant_id: business.id,
+                        businessType: business.type,
+                        deliveryType,
+                    },
+                    servizephyrPayload
+                });
+            } catch (paymentInitError) {
+                await compensateFailedOnlineInitialization({
+                    firestore,
+                    orderId: firestoreOrderId,
+                    orderData: {
+                        ...orderData,
+                        inventoryState: 'deducted',
+                    },
+                    business,
+                    failureReason: paymentInitError?.message || 'Payment initialization failed',
+                }).catch((compensationError) => {
+                    console.error('[createOrderV2] Failed to compensate payment init failure:', compensationError);
+                });
+
+                await idempotencyRepository.fail(idempotencyKey, paymentInitError);
+                return buildErrorResponse({
+                    message: paymentInitError?.message || 'Failed to initiate payment.',
+                    status: 500
+                });
+            }
 
             // Mark idempotency as completed
             const idempotencyCompletionPayload = {
@@ -1198,6 +1245,8 @@ export async function createOrderV2(req, options = {}) {
             dineInTabId: resolvedDineInTabId || null,
             tableId: actualTableId || null,  // USE normalized table ID
             dineInToken: dineInToken, // Token for post-paid dine-in
+            couponRedemptionKeys: couponReservationKeys,
+            couponUsageState: verifiedCoupon?.id ? 'reserved' : 'none',
         };
 
         console.log(`[createOrderV2] 💾 Order data prepared with dineInToken: '${dineInToken}'`);
@@ -1438,6 +1487,78 @@ async function persistOrderWithInventory({
 
     console.log(`[createOrderV2] Inventory deducted atomically for store order ${orderId}`);
     return orderId;
+}
+
+async function compensateFailedOnlineInitialization({
+    firestore,
+    orderId,
+    orderData,
+    business,
+    failureReason,
+}) {
+    if (!firestore || !orderId || !orderData || !business?.id) return;
+
+    const orderRef = firestore.collection('orders').doc(String(orderId));
+    const isInventoryManaged = isInventoryManagedBusinessType(business?.type);
+
+    if (isInventoryManaged && orderData.inventoryState !== 'restored') {
+        const businessRef = firestore.collection(business.collection).doc(business.id);
+        await firestore.runTransaction(async (transaction) => {
+            const currentOrderSnap = await transaction.get(orderRef);
+            if (!currentOrderSnap.exists) return;
+
+            const currentOrder = currentOrderSnap.data() || {};
+            if (currentOrder.inventoryState === 'deducted' && !currentOrder.inventoryRestoredAt) {
+                await applyInventoryMovementTransaction({
+                    transaction,
+                    businessRef,
+                    items: currentOrder.items || [],
+                    mode: 'restore',
+                    actorId: 'payment_init_failure',
+                    actorRole: 'system',
+                    referenceId: orderId,
+                    referenceType: 'payment_init_failure',
+                    note: 'Payment gateway initialization failed',
+                });
+            }
+
+            transaction.set(orderRef, {
+                status: 'payment_failed',
+                paymentStatus: 'failed',
+                paymentFailureReason: String(failureReason || 'Payment initialization failed'),
+                inventoryState: 'restored',
+                inventoryRestoredAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+            }, { merge: true });
+        });
+    } else {
+        await orderRef.set({
+            status: 'payment_failed',
+            paymentStatus: 'failed',
+            paymentFailureReason: String(failureReason || 'Payment initialization failed'),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+    }
+
+    await Promise.allSettled([
+        releaseCouponForOrder({
+            firestore,
+            orderRef,
+            orderData: {
+                ...orderData,
+                status: 'payment_failed',
+            },
+            fallbackCollection: business.collection,
+        }),
+        rebuildCustomerProfileForOrder({
+            firestore,
+            orderData: {
+                ...orderData,
+                status: 'payment_failed',
+            },
+            fallbackCollection: business.collection,
+        }),
+    ]);
 }
 
 

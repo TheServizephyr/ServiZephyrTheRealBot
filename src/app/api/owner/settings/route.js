@@ -9,6 +9,7 @@ import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 import { findBusinessById } from '@/services/business/businessService';
+import { resolveCustomerLookupProfile } from '@/services/customer/customerLookup.service';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
 import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 import { invalidateSharedCache } from '@/lib/server/sharedCache';
@@ -282,11 +283,41 @@ export async function GET(req) {
             // Coupons fetch is optional to avoid unnecessary Firestore reads on high-traffic public pages.
             if (includeCoupons) {
                 try {
+                    let couponActorUid = '';
+                    try {
+                        couponActorUid = await verifyAndGetUid(req);
+                    } catch {
+                        couponActorUid = '';
+                    }
+
+                    if (!couponActorUid && searchParams.get('ref')) {
+                        const customerLookup = await resolveCustomerLookupProfile(firestore, {
+                            phone: searchParams.get('phone') || '',
+                            explicitGuestId: null,
+                            ref: searchParams.get('ref'),
+                            cookieGuestId: null,
+                            loggedInUid: '',
+                        }).catch(() => null);
+                        couponActorUid = customerLookup?.actorUid || '';
+                    }
+
+                    if (!couponActorUid && searchParams.get('phone')) {
+                        const customerLookup = await resolveCustomerLookupProfile(firestore, {
+                            phone: searchParams.get('phone'),
+                            explicitGuestId: null,
+                            ref: '',
+                            cookieGuestId: null,
+                            loggedInUid: '',
+                        }).catch(() => null);
+                        couponActorUid = customerLookup?.actorUid || '';
+                    }
+
                     const couponAudience = await resolveCouponAudienceContext({
                         firestore,
                         businessRef: businessDoc.ref,
                         phone: searchParams.get('phone'),
                         ref: searchParams.get('ref'),
+                        actorUid: couponActorUid,
                     });
                     const couponsSnap = await businessDoc.ref.collection('coupons')
                         .where('status', '==', 'active')

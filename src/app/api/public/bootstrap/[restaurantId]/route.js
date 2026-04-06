@@ -214,13 +214,18 @@ export async function GET(req, { params }) {
     };
     const couponCatalog = Array.isArray(menuSnapshot?.couponCatalog) ? menuSnapshot.couponCatalog : [];
     const hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
+    const couponActorUid =
+      loggedInUid ||
+      customerResult?.actorUid ||
+      cookieGuestId ||
+      '';
     const couponAudience = hasAssignedCoupons || couponCatalog.some((coupon) => Array.isArray(coupon?.orderMilestones) && coupon.orderMilestones.length > 0)
       ? await resolveCouponAudienceContext({
           firestore,
           businessRef: business.ref,
           phone,
           ref,
-          actorUid: customerResult?.actorUid || loggedInUid || '',
+          actorUid: couponActorUid,
         })
       : { eligibleIds: new Set(), nextOrderNumber: 0 };
     const personalizedCoupons = couponCatalog.length > 0

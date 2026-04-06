@@ -9,6 +9,7 @@
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { logger } from '@/lib/logger';
 import { incrementMetric, METRICS } from '@/lib/metrics';
+import { releaseCouponForOrder, reserveCouponForOrder } from '@/lib/server/orderLifecycle';
 
 /**
  * Handle PhonePe webhook event
@@ -88,6 +89,20 @@ async function handlePhonePeSuccess(firestoreOrderId, payload) {
         updatedAt: FieldValue.serverTimestamp()
     });
 
+    await reserveCouponForOrder({
+        firestore,
+        orderRef,
+        orderData: {
+            ...orderData,
+            status: 'pending',
+        },
+    }).catch((error) => {
+        logger.error('Coupon reservation sync failed after PhonePe success', {
+            firestoreOrderId,
+            error: error?.message || error,
+        });
+    });
+
     logger.info('Order status updated to pending', { firestoreOrderId });
 
     // Metrics
@@ -109,6 +124,7 @@ async function handlePhonePeFailure(firestoreOrderId, payload) {
     });
 
     const orderRef = firestore.collection('orders').doc(firestoreOrderId);
+    const orderSnap = await orderRef.get();
 
     await orderRef.update({
         paymentDetails: FieldValue.arrayUnion({
@@ -121,6 +137,22 @@ async function handlePhonePeFailure(firestoreOrderId, payload) {
         }),
         updatedAt: FieldValue.serverTimestamp()
     });
+
+    if (orderSnap.exists) {
+        await releaseCouponForOrder({
+            firestore,
+            orderRef,
+            orderData: {
+                ...(orderSnap.data() || {}),
+                status: 'payment_failed',
+            },
+        }).catch((error) => {
+            logger.error('Coupon release sync failed after PhonePe failure', {
+                firestoreOrderId,
+                error: error?.message || error,
+            });
+        });
+    }
 
     // Metrics
     await incrementMetric(METRICS.PAYMENTS_FAILED);

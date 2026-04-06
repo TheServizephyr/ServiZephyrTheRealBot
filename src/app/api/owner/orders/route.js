@@ -12,6 +12,7 @@ import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { rebuildCustomerProfileForOrder, releaseCouponForOrder } from '@/lib/server/orderLifecycle';
 import { kv, isKvConfigured } from '@/lib/kv';
 import { getOrSetEphemeralCache, invalidateEphemeralCacheByPrefix } from '@/lib/server/ephemeralCache';
 
@@ -1185,6 +1186,26 @@ export async function PATCH(req) {
                             }
                         }
 
+                        if (newStatus === 'rejected' || newStatus === 'cancelled') {
+                            effects.push(releaseCouponForOrder({
+                                firestore,
+                                orderRef: orderSnap.ref,
+                                orderData,
+                                fallbackCollection: collectionName,
+                            }));
+                        }
+
+                        if (['delivered', 'picked_up', 'served', 'paid', 'rejected', 'cancelled'].includes(newStatus)) {
+                            effects.push(rebuildCustomerProfileForOrder({
+                                firestore,
+                                orderData: {
+                                    ...orderData,
+                                    status: newStatus,
+                                },
+                                fallbackCollection: collectionName,
+                            }));
+                        }
+
                         await Promise.allSettled(effects);
                     } catch (err) {
                         console.error(`[SideEffect Error] Order ${id}:`, err);
@@ -1231,4 +1252,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-

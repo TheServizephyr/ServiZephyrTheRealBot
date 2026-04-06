@@ -9,6 +9,7 @@
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { logger } from '@/lib/logger';
 import { incrementMetric, METRICS } from '@/lib/metrics';
+import { releaseCouponForOrder, reserveCouponForOrder } from '@/lib/server/orderLifecycle';
 
 /**
  * Handle Razorpay webhook event
@@ -101,6 +102,20 @@ async function handlePaymentCaptured(paymentEntity) {
         updatedAt: FieldValue.serverTimestamp()
     });
 
+    await reserveCouponForOrder({
+        firestore,
+        orderRef,
+        orderData: {
+            ...orderData,
+            status: 'pending',
+        },
+    }).catch((error) => {
+        logger.error('Coupon reservation sync failed after Razorpay capture', {
+            firestoreOrderId,
+            error: error?.message || error,
+        });
+    });
+
     logger.info('Order status updated to pending', { firestoreOrderId });
 
     // Increment metrics (best-effort, after success)
@@ -127,6 +142,7 @@ async function handlePaymentFailed(paymentEntity) {
 
     const firestore = await getFirestore();
     const orderRef = firestore.collection('orders').doc(firestoreOrderId);
+    const orderSnap = await orderRef.get();
 
     await orderRef.update({
         paymentDetails: FieldValue.arrayUnion({
@@ -138,6 +154,22 @@ async function handlePaymentFailed(paymentEntity) {
         }),
         updatedAt: FieldValue.serverTimestamp()
     });
+
+    if (orderSnap.exists) {
+        await releaseCouponForOrder({
+            firestore,
+            orderRef,
+            orderData: {
+                ...(orderSnap.data() || {}),
+                status: 'payment_failed',
+            },
+        }).catch((error) => {
+            logger.error('Coupon release sync failed after Razorpay failure', {
+                firestoreOrderId,
+                error: error?.message || error,
+            });
+        });
+    }
 
     // Increment metrics
     await incrementMetric(METRICS.PAYMENTS_FAILED);

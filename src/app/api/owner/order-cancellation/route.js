@@ -16,6 +16,7 @@ import {
 } from '@/lib/order-cancellation';
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { rebuildCustomerProfileForOrder, releaseCouponForOrder } from '@/lib/server/orderLifecycle';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,6 +184,26 @@ async function cancelOnlineOrder({
             console.warn('[Order Cancellation] Cache clear failed:', error?.message || error);
         }
     }
+
+    await Promise.allSettled([
+        releaseCouponForOrder({
+            firestore,
+            orderRef: orderDoc.ref,
+            orderData: {
+                ...data,
+                status: 'cancelled',
+            },
+            fallbackCollection: collectionName,
+        }),
+        rebuildCustomerProfileForOrder({
+            firestore,
+            orderData: {
+                ...data,
+                status: 'cancelled',
+            },
+            fallbackCollection: collectionName,
+        }),
+    ]);
 }
 
 export async function POST(req) {

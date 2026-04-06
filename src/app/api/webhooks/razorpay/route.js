@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import https from 'https';
 import { nanoid } from 'nanoid';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
+import { releaseCouponForOrder, reserveCouponForOrder } from '@/lib/server/orderLifecycle';
 import { TRACKING_TOKEN_TTL_MS, ttlDateFromNow, ttlDateFromSource } from '@/lib/firestoreTtl';
 
 function timingSafeEqualHex(a, b) {
@@ -311,6 +312,17 @@ export async function POST(req) {
                             });
                         });
                     }
+
+                    await releaseCouponForOrder({
+                        firestore,
+                        orderRef,
+                        orderData: {
+                            ...orderData,
+                            status: 'payment_failed',
+                        },
+                    }).catch((releaseError) => {
+                        console.error('[Webhook RZP] Coupon release failed after payment.failed:', releaseError);
+                    });
                 }
             }
 
@@ -473,6 +485,16 @@ export async function POST(req) {
                     }
 
                     await orderRef.update(updateData);
+                    await reserveCouponForOrder({
+                        firestore,
+                        orderRef,
+                        orderData: {
+                            ...orderData,
+                            status: isNewOrder ? 'pending' : orderData.status,
+                        },
+                    }).catch((reserveError) => {
+                        console.error('[Webhook RZP] Coupon reservation sync failed for existing order:', reserveError);
+                    });
                 }
 
                 return NextResponse.json({ status: 'ok', message: 'Payment processed.' });
@@ -623,6 +645,17 @@ export async function POST(req) {
 
             await batch.commit();
             console.log(`[Webhook RZP] Batch committed successfully.`);
+
+            const refreshedOrderSnap = await orderRef.get();
+            if (refreshedOrderSnap.exists) {
+                await reserveCouponForOrder({
+                    firestore,
+                    orderRef,
+                    orderData: refreshedOrderSnap.data() || {},
+                }).catch((reserveError) => {
+                    console.error('[Webhook RZP] Coupon reservation sync failed after batch commit:', reserveError);
+                });
+            }
 
             const collectionForBusinessLookup = businessType === 'street-vendor'
                 ? 'street_vendors'

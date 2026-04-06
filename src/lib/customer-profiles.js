@@ -5,6 +5,32 @@ function toNumber(value, fallback = 0) {
     return Number.isFinite(num) ? num : fallback;
 }
 
+function toDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value?.toDate === 'function') {
+        const parsed = value.toDate();
+        return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toIso(value) {
+    const parsed = toDate(value);
+    return parsed ? parsed.toISOString() : null;
+}
+
+function pickTimestamp(data, fields = []) {
+    for (const field of fields) {
+        const parsed = toDate(data?.[field]);
+        if (parsed) return parsed;
+    }
+    return null;
+}
+
 function normalizePhone(phone) {
     if (!phone) return '';
     const digits = String(phone).replace(/\D/g, '');
@@ -106,6 +132,163 @@ function computeBestDishes(dishStats) {
     }));
 }
 
+export const COUNTABLE_CUSTOMER_ORDER_STATUSES = new Set([
+    'completed',
+    'delivered',
+    'paid',
+    'picked_up',
+    'served',
+]);
+
+function isCountableCustomerOrderStatus(status) {
+    return COUNTABLE_CUSTOMER_ORDER_STATUSES.has(String(status || '').trim().toLowerCase());
+}
+
+function normalizeOnlineOrderEntry(doc) {
+    const data = doc.data() || {};
+    const orderDate = pickTimestamp(data, ['orderDate', 'deliveredAt', 'completedAt', 'updatedAt', 'createdAt']);
+
+    return {
+        id: doc.id,
+        source: 'order',
+        status: String(data.status || '').trim().toLowerCase(),
+        orderDate: orderDate ? orderDate.toISOString() : null,
+        subtotal: Math.max(0, toNumber(data.subtotal, 0)),
+        totalAmount: Math.max(0, toNumber(data.totalAmount ?? data.grandTotal, 0)),
+        customerAddress: data.customerAddress || data?.customer?.address?.full || data?.customer?.address || null,
+        items: Array.isArray(data.items) ? data.items : [],
+    };
+}
+
+function mergeCustomerProfileMetadata(existing = {}, incoming = {}) {
+    return {
+        customerId: String(incoming.customerDocId || existing.customerId || ''),
+        name: incoming.customerName || existing.name || 'Guest Customer',
+        email: incoming.customerEmail
+            ? String(incoming.customerEmail).trim().toLowerCase()
+            : (existing.email || ''),
+        phone: incoming.customerPhone ? normalizePhone(incoming.customerPhone) : normalizePhone(existing.phone || ''),
+        status: incoming.customerStatus || existing.status || 'verified',
+        customerType: incoming.customerType || existing.customerType || (String(incoming.customerDocId || '').startsWith('g_') ? 'guest' : 'uid'),
+        addresses: mergeAddresses(existing.addresses, buildAddressObject(incoming.customerAddress)),
+    };
+}
+
+async function loadProfileOrders({ firestore, businessId, customerDocId }) {
+    const orderMap = new Map();
+    const [userOrders, customerOrders] = await Promise.all([
+        firestore.collection('orders').where('userId', '==', String(customerDocId)).get().catch(() => null),
+        firestore.collection('orders').where('customerId', '==', String(customerDocId)).get().catch(() => null),
+    ]);
+
+    [userOrders, customerOrders].forEach((snapshot) => {
+        snapshot?.forEach((doc) => {
+            const data = doc.data() || {};
+            if (String(data.restaurantId || '').trim() !== String(businessId || '').trim()) return;
+            const normalized = normalizeOnlineOrderEntry(doc);
+            if (!isCountableCustomerOrderStatus(normalized.status)) return;
+            orderMap.set(`order:${doc.id}`, normalized);
+        });
+    });
+
+    return Array.from(orderMap.values());
+}
+
+function buildAggregatedDishStats(orderEntries = []) {
+    let dishStats = {};
+    for (const entry of orderEntries) {
+        dishStats = updateDishStats(dishStats, entry.items, entry.orderDate || new Date().toISOString());
+    }
+    return dishStats;
+}
+
+export async function rebuildBusinessCustomerProfile({
+    firestore,
+    businessCollection,
+    businessId,
+    customerDocId,
+    customerName = '',
+    customerEmail = '',
+    customerPhone = '',
+    customerAddress = null,
+    customerStatus = 'verified',
+    customerType = null,
+} = {}) {
+    if (!firestore || !businessCollection || !businessId || !customerDocId) return;
+
+    const businessRef = firestore.collection(String(businessCollection)).doc(String(businessId));
+    const customerRef = businessRef.collection('customers').doc(String(customerDocId));
+
+    const [customerSnap, onlineOrders] = await Promise.all([
+        customerRef.get(),
+        loadProfileOrders({ firestore, businessId, customerDocId }),
+    ]);
+
+    const current = customerSnap.exists ? (customerSnap.data() || {}) : {};
+    const metadata = mergeCustomerProfileMetadata(current, {
+        customerDocId,
+        customerName,
+        customerEmail,
+        customerPhone,
+        customerAddress,
+        customerStatus,
+        customerType,
+    });
+
+    const aggregatedOrders = [...onlineOrders]
+        .sort((a, b) => new Date(b.orderDate || 0).getTime() - new Date(a.orderDate || 0).getTime());
+
+    const dishStats = buildAggregatedDishStats(aggregatedOrders);
+    const bestDishes = computeBestDishes(dishStats);
+    const recentOrderIds = aggregatedOrders.map((entry) => entry.id).slice(0, 20);
+    const latestOrder = aggregatedOrders[0] || null;
+    const oldestOrder = aggregatedOrders[aggregatedOrders.length - 1] || null;
+
+    const aggregatedAddresses = mergeAddresses(
+        metadata.addresses,
+        ...aggregatedOrders.map((entry) => buildAddressObject(entry.customerAddress))
+    );
+
+    const totalOrders = aggregatedOrders.length;
+    const totalSpend = Number(aggregatedOrders.reduce((sum, entry) => sum + Math.max(0, toNumber(entry.subtotal, 0)), 0).toFixed(2));
+    const totalBillValue = Number(aggregatedOrders.reduce((sum, entry) => sum + Math.max(0, toNumber(entry.totalAmount, 0)), 0).toFixed(2));
+    const latestOrderDate = toDate(latestOrder?.orderDate);
+    const oldestOrderDate = toDate(oldestOrder?.orderDate);
+
+    const payload = {
+        customerId: metadata.customerId,
+        name: metadata.name,
+        status: metadata.status,
+        customerType: metadata.customerType,
+        totalOrders,
+        totalSpend,
+        totalBillValue,
+        lastOrderDate: latestOrderDate || null,
+        lastActivityAt: latestOrderDate || null,
+        lastOrderId: latestOrder?.id || null,
+        dishStats,
+        bestDishes,
+        addresses: aggregatedAddresses,
+        recentOrderIds,
+        updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (metadata.email) payload.email = metadata.email;
+    if (metadata.phone) payload.phone = metadata.phone;
+
+    if (!customerSnap.exists) {
+        payload.createdAt = FieldValue.serverTimestamp();
+        payload.joinedAt = oldestOrderDate || FieldValue.serverTimestamp();
+        if (latestOrderDate) {
+            payload.firstOrderDate = oldestOrderDate || latestOrderDate;
+        }
+    } else if (!current.joinedAt && oldestOrderDate) {
+        payload.joinedAt = oldestOrderDate;
+    }
+
+    await customerRef.set(payload, { merge: true });
+}
+
 /**
  * Upserts customer profile inside:
  * `{businessCollection}/{businessId}/customers/{customerDocId}`
@@ -123,9 +306,6 @@ export async function upsertBusinessCustomerProfile({
     customerAddress = null,
     customerStatus = 'verified',
     orderId = null,
-    orderSubtotal = 0,
-    orderTotal = 0,
-    items = [],
     customerType = null,
 }) {
     if (!firestore || !businessCollection || !businessId || !customerDocId) return;
@@ -136,23 +316,13 @@ export async function upsertBusinessCustomerProfile({
         .collection('customers')
         .doc(String(customerDocId));
 
-    const nowIso = new Date().toISOString();
     const safePhone = normalizePhone(customerPhone);
     const normalizedAddress = buildAddressObject(customerAddress);
-    const subtotalToAdd = Math.max(0, toNumber(orderSubtotal, 0));
-    const totalToAdd = Math.max(0, toNumber(orderTotal, 0));
 
     await firestore.runTransaction(async (tx) => {
         const snap = await tx.get(customerRef);
         const current = snap.exists ? (snap.data() || {}) : {};
-
-        const updatedDishStats = updateDishStats(current.dishStats, items, nowIso);
-        const bestDishes = computeBestDishes(updatedDishStats);
         const addresses = mergeAddresses(current.addresses, normalizedAddress);
-
-        const currentTotalOrders = toNumber(current.totalOrders, 0);
-        const currentTotalSpend = toNumber(current.totalSpend, 0);
-        const currentTotalBillValue = toNumber(current.totalBillValue, currentTotalSpend);
 
         const recentOrderIds = Array.isArray(current.recentOrderIds) ? [...current.recentOrderIds] : [];
         if (orderId) {
@@ -169,14 +339,8 @@ export async function upsertBusinessCustomerProfile({
             ...(safePhone ? { phone: safePhone } : {}),
             status: customerStatus || current.status || 'verified',
             customerType: customerType || current.customerType || (String(customerDocId).startsWith('g_') ? 'guest' : 'uid'),
-            totalOrders: currentTotalOrders + 1,
-            totalSpend: Number((currentTotalSpend + subtotalToAdd).toFixed(2)),
-            totalBillValue: Number((currentTotalBillValue + totalToAdd).toFixed(2)),
-            lastOrderDate: FieldValue.serverTimestamp(),
             lastActivityAt: FieldValue.serverTimestamp(),
             ...(orderId ? { lastOrderId: String(orderId) } : {}),
-            dishStats: updatedDishStats,
-            bestDishes,
             addresses,
             recentOrderIds: recentOrderIds.slice(0, 20),
             updatedAt: FieldValue.serverTimestamp(),
@@ -185,7 +349,11 @@ export async function upsertBusinessCustomerProfile({
         if (!snap.exists) {
             payload.createdAt = FieldValue.serverTimestamp();
             payload.joinedAt = FieldValue.serverTimestamp();
-            payload.firstOrderDate = FieldValue.serverTimestamp();
+            payload.totalOrders = 0;
+            payload.totalSpend = 0;
+            payload.totalBillValue = 0;
+            payload.dishStats = {};
+            payload.bestDishes = [];
         }
 
         tx.set(customerRef, payload, { merge: true });

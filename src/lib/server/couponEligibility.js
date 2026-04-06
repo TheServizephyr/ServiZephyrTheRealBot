@@ -1,4 +1,5 @@
 import { resolveGuestAccessRef } from '@/lib/public-auth';
+import { COUNTABLE_CUSTOMER_ORDER_STATUSES } from '@/lib/customer-profiles';
 
 export function normalizeCouponPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -84,6 +85,10 @@ export function buildCouponRedemptionKeys({
   return redemptionKeys;
 }
 
+function isCountableCouponOrderStatus(status) {
+  return COUNTABLE_CUSTOMER_ORDER_STATUSES.has(String(status || '').trim().toLowerCase());
+}
+
 export function hasCouponBeenRedeemedByAudience(coupon = {}, redemptionKeys = new Set()) {
   if (coupon?.singleUsePerCustomer !== true) return false;
 
@@ -120,6 +125,17 @@ function addMatchedCustomerDocIdentifiers(eligibleIds, doc) {
   if (customerPhone) eligibleIds.add(`phone:${customerPhone}`);
 }
 
+function addCanonicalCustomerIdentifiers(targetIds, doc) {
+  if (!doc?.id) return;
+
+  targetIds.add(String(doc.id));
+
+  const customerData = doc.data() || {};
+  if (customerData.customerId) targetIds.add(String(customerData.customerId));
+  if (customerData.userId) targetIds.add(String(customerData.userId));
+  if (customerData.uid) targetIds.add(String(customerData.uid));
+}
+
 function splitIntoChunks(values = [], size = 10) {
   const chunks = [];
   for (let index = 0; index < values.length; index += size) {
@@ -137,18 +153,26 @@ export async function resolveCouponAudienceContext({
   resolveRef = true,
 } = {}) {
   const eligibleIds = new Set();
+  const canonicalActorIds = new Set();
   const matchedCustomerDocs = new Map();
   const matchedOrderDocs = new Map();
   const normalizedPhone = normalizeCouponPhone(phone);
   const safeActorUid = String(actorUid || '').trim();
   const safeRef = String(ref || '').trim();
 
-  if (safeActorUid) eligibleIds.add(safeActorUid);
+  if (safeActorUid) {
+    eligibleIds.add(safeActorUid);
+    canonicalActorIds.add(safeActorUid);
+  }
 
   if (resolveRef && safeRef) {
     try {
       const refSession = await resolveGuestAccessRef(firestore, safeRef, { allowLegacy: true });
-      if (refSession?.subjectId) eligibleIds.add(String(refSession.subjectId));
+      if (refSession?.subjectId) {
+        const subjectId = String(refSession.subjectId);
+        eligibleIds.add(subjectId);
+        canonicalActorIds.add(subjectId);
+      }
       const refPhone = normalizeCouponPhone(refSession?.phone);
       if (refPhone) eligibleIds.add(`phone:${refPhone}`);
     } catch (error) {
@@ -158,8 +182,8 @@ export async function resolveCouponAudienceContext({
 
   if (normalizedPhone) eligibleIds.add(`phone:${normalizedPhone}`);
 
-  if (businessRef && eligibleIds.size > 0) {
-    const directIds = [...eligibleIds].filter((value) => value && !String(value).startsWith('phone:'));
+  if (businessRef && canonicalActorIds.size > 0) {
+    const directIds = [...canonicalActorIds].filter(Boolean);
 
     for (const directId of directIds) {
       try {
@@ -172,37 +196,29 @@ export async function resolveCouponAudienceContext({
       }
     }
 
-    const lookupPhones = [...eligibleIds]
-      .filter((value) => value.startsWith('phone:'))
-      .map((value) => value.slice('phone:'.length));
-
-    for (const lookupPhone of lookupPhones) {
+    for (const idChunk of splitIntoChunks(directIds, 10)) {
       try {
-        const [phoneSnap, phoneNumberSnap, directDocSnap] = await Promise.all([
-          businessRef.collection('customers').where('phone', '==', lookupPhone).limit(10).get(),
-          businessRef.collection('customers').where('phoneNumber', '==', lookupPhone).limit(10).get(),
-          businessRef.collection('customers').doc(lookupPhone).get(),
+        const [customerIdSnap, userIdSnap, uidSnap] = await Promise.all([
+          businessRef.collection('customers').where('customerId', 'in', idChunk).get(),
+          businessRef.collection('customers').where('userId', 'in', idChunk).get(),
+          businessRef.collection('customers').where('uid', 'in', idChunk).get(),
         ]);
 
-        phoneSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
-        phoneNumberSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
-        if (directDocSnap.exists) matchedCustomerDocs.set(directDocSnap.id, directDocSnap);
+        customerIdSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
+        userIdSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
+        uidSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
       } catch (error) {
-        console.warn('[Coupon Eligibility] Phone based reward lookup failed:', error?.message || error);
+        console.warn('[Coupon Eligibility] Canonical customer lookup failed:', error?.message || error);
       }
     }
 
-    matchedCustomerDocs.forEach((doc) => addMatchedCustomerDocIdentifiers(eligibleIds, doc));
+    matchedCustomerDocs.forEach((doc) => {
+      addMatchedCustomerDocIdentifiers(eligibleIds, doc);
+      addCanonicalCustomerIdentifiers(canonicalActorIds, doc);
+    });
 
     const businessId = String(businessRef.id || '').trim();
-    const nonCountableStatuses = new Set(['cancelled', 'rejected', 'failed', 'payment_failed', 'awaiting_payment']);
-    const lookupIds = [...eligibleIds].filter((value) => value && !String(value).startsWith('phone:'));
-    const enrichedLookupPhones = [...new Set(
-      [...eligibleIds]
-        .filter((value) => String(value).startsWith('phone:'))
-        .map((value) => value.slice('phone:'.length))
-        .filter(Boolean)
-    )];
+    const lookupIds = [...canonicalActorIds].filter((value) => value && !String(value).startsWith('phone:'));
 
     try {
       const orderLookups = [];
@@ -210,10 +226,6 @@ export async function resolveCouponAudienceContext({
         if (!idChunk.length) return;
         orderLookups.push(firestore.collection('orders').where('customerId', 'in', idChunk).get());
         orderLookups.push(firestore.collection('orders').where('userId', 'in', idChunk).get());
-      });
-      splitIntoChunks(enrichedLookupPhones, 10).forEach((phoneChunk) => {
-        if (!phoneChunk.length) return;
-        orderLookups.push(firestore.collection('orders').where('customerPhone', 'in', phoneChunk).get());
       });
 
       const orderSnapshots = await Promise.all(orderLookups);
@@ -223,24 +235,32 @@ export async function resolveCouponAudienceContext({
           const orderBusinessId = String(data.restaurantId || '').trim();
           const orderStatus = String(data.status || '').trim().toLowerCase();
           if (businessId && orderBusinessId !== businessId) return;
-          if (nonCountableStatuses.has(orderStatus)) return;
+          if (!isCountableCouponOrderStatus(orderStatus)) return;
           matchedOrderDocs.set(doc.id, doc);
         });
       });
     } catch (error) {
       console.warn('[Coupon Eligibility] Order history lookup failed:', error?.message || error);
     }
+
   }
 
-  const completedOrderCount = [...matchedCustomerDocs.values()].reduce((maxOrders, doc) => {
+  const resolvedCompletedOrderCount = matchedOrderDocs.size;
+  const compatibilityRedemptionIds = new Set(canonicalActorIds);
+  matchedCustomerDocs.forEach((doc) => {
     const customerData = doc.data() || {};
-    return Math.max(maxOrders, Number(customerData.totalOrders) || 0);
-  }, 0);
-  const resolvedCompletedOrderCount = Math.max(completedOrderCount, matchedOrderDocs.size);
+    const customerPhone = normalizeCouponPhone(customerData.phone || customerData.phoneNumber);
+    if (customerPhone) compatibilityRedemptionIds.add(`phone:${customerPhone}`);
+  });
+  const redemptionSourceIds = compatibilityRedemptionIds.size > 0 ? compatibilityRedemptionIds : eligibleIds;
 
   return {
     eligibleIds,
-    redemptionKeys: buildCouponRedemptionKeys({ eligibleIds, phone: normalizedPhone }),
+    canonicalActorIds,
+    redemptionKeys: buildCouponRedemptionKeys({
+      eligibleIds: redemptionSourceIds,
+      phone: canonicalActorIds.size > 0 ? '' : normalizedPhone,
+    }),
     matchedCustomerDocs,
     completedOrderCount: resolvedCompletedOrderCount,
     nextOrderNumber: resolvedCompletedOrderCount + 1,

@@ -18,6 +18,7 @@ import {
     hasCouponBeenRedeemedByAudience,
     resolveCouponAudienceContext,
 } from '@/lib/server/couponEligibility';
+import { releaseCouponForOrder } from '@/lib/server/orderLifecycle';
 
 const generateSecureToken = async (firestore, identifier) => {
     console.log(`[API /order/create] generateSecureToken for identifier: ${identifier}`);
@@ -61,30 +62,46 @@ const getBusinessLabel = (businessType = 'restaurant') => {
 };
 
 async function resolveCouponOwnership({
-    firestore,
-    businessRef,
     couponCustomerId,
-    userId,
+    eligibleIds = new Set(),
     normalizedPhone,
 }) {
     const assignedCustomerId = String(couponCustomerId || '').trim();
     if (!assignedCustomerId) return true;
-    if (assignedCustomerId === String(userId || '').trim()) return true;
+    if (eligibleIds instanceof Set && eligibleIds.has(assignedCustomerId)) return true;
 
     const safePhone = String(normalizedPhone || '').trim();
     if (assignedCustomerId.startsWith('phone:')) return assignedCustomerId.slice('phone:'.length) === safePhone;
-    if (!safePhone) return false;
+    return false;
+}
 
-    try {
-        const customerDoc = await businessRef.collection('customers').doc(assignedCustomerId).get();
-        if (!customerDoc.exists) return false;
-        const customerData = customerDoc.data() || {};
-        const customerPhone = String(customerData.phone || customerData.phoneNumber || '').replace(/\D/g, '').slice(-10);
-        return Boolean(customerPhone) && customerPhone === safePhone;
-    } catch (error) {
-        console.warn('[API /order/create] Coupon ownership lookup failed:', error?.message || error);
-        return false;
-    }
+async function compensateLegacyPaymentInitFailure({
+    firestore,
+    orderRef,
+    orderData,
+    businessCollection,
+    failureReason,
+}) {
+    if (!firestore || !orderRef) return;
+
+    await orderRef.set({
+        status: 'payment_failed',
+        paymentStatus: 'failed',
+        paymentFailureReason: String(failureReason || 'Payment initialization failed'),
+        updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    await releaseCouponForOrder({
+        firestore,
+        orderRef,
+        orderData: {
+            ...orderData,
+            status: 'payment_failed',
+        },
+        fallbackCollection: businessCollection,
+    }).catch((error) => {
+        console.error('[API /order/create] Coupon release failed after payment init failure:', error);
+    });
 }
 
 // Statuses that still belong to the same live dine-in tab token/session.
@@ -741,12 +758,18 @@ export async function processOrderV1(body, firestore) {
             console.warn('[API /order/create] Ignoring client-provided loyaltyDiscount; server side validation required.');
         }
         let verifiedCoupon = null;
+        const trustedCouponActorId = (() => {
+            const candidate = String(validGuestId || '').trim();
+            if (!candidate) return '';
+            if (/^\d{10}$/.test(candidate)) return '';
+            return candidate;
+        })();
         const couponAudience = coupon && coupon.id
             ? await resolveCouponAudienceContext({
                 firestore,
                 businessRef,
                 phone: normalizedPhone || securePhone || '',
-                actorUid: validGuestId || '',
+                actorUid: trustedCouponActorId,
                 resolveRef: false,
             })
             : { nextOrderNumber: 0, redemptionKeys: new Set() };
@@ -803,10 +826,8 @@ export async function processOrderV1(body, firestore) {
 
                     if (couponData.customerId) {
                         const isCouponOwnedByCurrentCustomer = await resolveCouponOwnership({
-                            firestore,
-                            businessRef,
                             couponCustomerId: couponData.customerId,
-                            userId: validGuestId || '',
+                            eligibleIds: couponAudience?.eligibleIds,
                             normalizedPhone: normalizedPhone || securePhone || '',
                         });
 
@@ -847,6 +868,7 @@ export async function processOrderV1(body, firestore) {
                 console.error("[API /order/create] Coupon validation error (non-fatal):", err);
             }
         }
+        const couponReservationKeys = verifiedCoupon?.id ? Array.from(couponRedemptionKeys) : [];
 
         // --- COORDINATE EXTRACTION (Shared for Delivery & Dine-In Geo-fencing) ---
         const customerLat = toFiniteNumber(address?.latitude ?? address?.lat);
@@ -1358,9 +1380,19 @@ export async function processOrderV1(body, firestore) {
                 specialInstructions: notes || null,
                 paymentDetails: [],
                 trackingToken: trackingToken,
+                couponRedemptionKeys: couponReservationKeys,
+                couponUsageState: verifiedCoupon?.id ? 'reserved' : 'none',
             };
 
             batch.set(newOrderRef, finalOrderData);
+            if (verifiedCoupon?.id) {
+                const couponRef = businessRef.collection('coupons').doc(verifiedCoupon.id);
+                const couponUpdate = { timesUsed: FieldValue.increment(1) };
+                if (verifiedCoupon.singleUsePerCustomer === true && couponRedemptionKeys.size > 0) {
+                    couponUpdate.redeemedCustomerIds = FieldValue.arrayUnion(...Array.from(couponRedemptionKeys));
+                }
+                batch.set(couponRef, couponUpdate, { merge: true });
+            }
             await batch.commit();
 
             return NextResponse.json({
@@ -1461,6 +1493,13 @@ export async function processOrderV1(body, firestore) {
             // Now create Razorpay order (only for non-phonepe)
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                 console.error("[API /order/create] Razorpay credentials not configured.");
+                await compensateLegacyPaymentInitFailure({
+                    firestore,
+                    orderRef: newOrderRef,
+                    orderData: finalOrderData,
+                    businessCollection: getBusinessCollection(businessType),
+                    failureReason: 'Payment gateway is not configured.',
+                });
                 return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
             }
 
@@ -1487,6 +1526,13 @@ export async function processOrderV1(body, firestore) {
                 }, { status: 200 });
             } catch (err) {
                 console.error("[API /order/create] Failed to create Razorpay order:", err);
+                await compensateLegacyPaymentInitFailure({
+                    firestore,
+                    orderRef: newOrderRef,
+                    orderData: finalOrderData,
+                    businessCollection: getBusinessCollection(businessType),
+                    failureReason: err?.error?.description || err?.message || 'Failed to initiate payment.',
+                });
                 return NextResponse.json({ message: 'Failed to initiate payment.' }, { status: 500 });
             }
         }
@@ -1658,6 +1704,8 @@ export async function processOrderV1(body, firestore) {
                 timestamp: new Date()
             }],
             trackingToken: trackingToken,
+            couponRedemptionKeys: couponReservationKeys,
+            couponUsageState: verifiedCoupon?.id ? 'reserved' : 'none',
         };
 
         batch.set(newOrderRef, finalOrderData);
