@@ -12,7 +12,7 @@ const ANALYTICS_TAG_KEYS = new Set([
     'chef\'s special',
 ]);
 
-import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock, RefreshCw, Wind, LogOut, Car, Crown } from 'lucide-react';
@@ -5412,18 +5412,16 @@ const OrderPage = ({ initialBootstrap = null, initialSearchParams = {} }) => {
     }, []);
 
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
-            <ThemeProvider
-                attribute="class"
-                defaultTheme="dark"
-                enableSystem
-                disableTransitionOnChange
-            >
-                <ThemeColorUpdater />
-                <GlobalHapticHandler />
-                {isPathCanonicalized ? <OrderPageInternal initialBootstrap={initialBootstrap} initialSearchParams={initialSearchParams} /> : <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}
-            </ThemeProvider>
-        </Suspense>
+        <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+        >
+            <ThemeColorUpdater />
+            <GlobalHapticHandler />
+            {isPathCanonicalized ? <OrderPageInternal initialBootstrap={initialBootstrap} initialSearchParams={initialSearchParams} /> : <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}
+        </ThemeProvider>
     );
 };
 
