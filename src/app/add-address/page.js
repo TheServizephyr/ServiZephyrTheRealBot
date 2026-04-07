@@ -20,6 +20,7 @@ import {
     fetchCachedOrderStatus,
     fetchCachedRestaurantBootstrap,
     invalidateCustomerLookupCache,
+    markCustomerAddressesUpdatedAt,
     upsertCustomerAddressSnapshot,
 } from '@/lib/client/runtimeFetchers';
 
@@ -990,6 +991,7 @@ const AddAddressPageInternal = () => {
 
             upsertCustomerAddressSnapshot(addressToSave);
             invalidateCustomerLookupCache();
+            markCustomerAddressesUpdatedAt();
             router.push(returnUrl);
 
         } catch (err) {

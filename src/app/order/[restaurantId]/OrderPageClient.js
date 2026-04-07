@@ -45,10 +45,12 @@ import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
 import { sendClientTelemetryEvent } from '@/lib/clientTelemetry';
 import {
+    clearCustomerAddressesUpdatedAt,
     fetchCachedActiveOrders,
     fetchCachedCustomerLookup,
     fetchCachedRestaurantBootstrap,
     invalidateCustomerLookupCache,
+    readCustomerAddressesUpdatedAt,
     readCustomerAddressesSnapshot,
     removeCustomerAddressSnapshot,
     writeCustomerAddressesSnapshot,
@@ -240,6 +242,18 @@ const isSameSavedAddress = (left = {}, right = {}) => {
     const leftPhone = normalizeSavedAddressPhone(left?.phone);
     const rightPhone = normalizeSavedAddressPhone(right?.phone);
     return Boolean(leftFull && rightFull && leftFull === rightFull && leftPhone && rightPhone && leftPhone === rightPhone);
+};
+
+const mergeSavedAddresses = (...groups) => {
+    const merged = [];
+    groups.forEach((group) => {
+        (Array.isArray(group) ? group : []).forEach((address) => {
+            if (!address) return;
+            if (merged.some((existing) => isSameSavedAddress(existing, address))) return;
+            merged.push(address);
+        });
+    });
+    return merged;
 };
 
 const normalizeTextValue = (value) => String(value || '').trim();
@@ -1609,6 +1623,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
     const hasAttemptedAutoOpen = useRef(false);
     const hasPrefetchedAddressBook = useRef(false);
     const isAddressSelectionInProgress = useRef(false);
+    const lastAddressBookUpdateSeenRef = useRef(0);
     const isAddressDrawerActivatingRef = useRef(false);
     const hasTrackedOrderPageOpen = useRef(false);
     const [deliveryType, setDeliveryType] = useState(() => (tableIdFromUrl ? 'dine-in' : 'delivery'));
@@ -1666,12 +1681,14 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
 
         const snapshotAddresses = readCustomerAddressesSnapshot();
         const hasSnapshotAddresses = snapshotAddresses.length > 0;
+        const pendingAddressBookUpdateAt = readCustomerAddressesUpdatedAt();
+        const shouldForceFreshLookup = pendingAddressBookUpdateAt > lastAddressBookUpdateSeenRef.current;
 
         flushSync(() => {
             setIsAddressDrawerMounted(true);
             setIsAddressSelectorOpen(true);
             if (hasSnapshotAddresses) {
-                setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
+                setUserAddresses((prev) => mergeSavedAddresses(snapshotAddresses, prev));
                 setAddressLoading(false);
             } else {
                 setAddressLoading(true);
@@ -1693,9 +1710,15 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                             ref,
                             user: auth.currentUser,
                             ttlMs: 60000,
+                            force: shouldForceFreshLookup,
                         });
-                        writeCustomerAddressesSnapshot(data?.addresses || []);
-                        setUserAddresses(data?.addresses || []);
+                        const nextAddresses = mergeSavedAddresses(data?.addresses || [], snapshotAddresses);
+                        writeCustomerAddressesSnapshot(nextAddresses);
+                        setUserAddresses(nextAddresses);
+                        if (shouldForceFreshLookup) {
+                            lastAddressBookUpdateSeenRef.current = pendingAddressBookUpdateAt;
+                            clearCustomerAddressesUpdatedAt();
+                        }
                     }
                 } catch (e) {
                     console.error("[handleOpenAddressDrawer] Failed to load addresses", e);
@@ -1761,12 +1784,15 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
 
         const snapshotAddresses = readCustomerAddressesSnapshot();
         if (snapshotAddresses.length > 0) {
-            setUserAddresses((prev) => (prev.length > 0 ? prev : snapshotAddresses));
+            setUserAddresses((prev) => mergeSavedAddresses(snapshotAddresses, prev));
         }
 
         const savedPhone = typeof window !== 'undefined' ? (localStorage.getItem('customerPhone') || '') : '';
         const fallbackPhone = phone || savedPhone;
         if (!fallbackPhone && !ref && !auth.currentUser) return;
+
+        const pendingAddressBookUpdateAt = readCustomerAddressesUpdatedAt();
+        const shouldForceFreshLookup = pendingAddressBookUpdateAt > lastAddressBookUpdateSeenRef.current;
 
         hasPrefetchedAddressBook.current = true;
 
@@ -1775,12 +1801,17 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
             ref,
             user: auth.currentUser,
             ttlMs: 60000,
+            force: shouldForceFreshLookup,
         })
             .then((data) => {
-                const nextAddresses = data?.addresses || [];
+                const nextAddresses = mergeSavedAddresses(data?.addresses || [], snapshotAddresses);
                 if (nextAddresses.length > 0) {
                     writeCustomerAddressesSnapshot(nextAddresses);
-                    setUserAddresses((prev) => (prev.length > 0 ? prev : nextAddresses));
+                    setUserAddresses((prev) => mergeSavedAddresses(nextAddresses, prev));
+                    if (shouldForceFreshLookup) {
+                        lastAddressBookUpdateSeenRef.current = pendingAddressBookUpdateAt;
+                        clearCustomerAddressesUpdatedAt();
+                    }
                 }
             })
             .catch((error) => {
@@ -1844,6 +1875,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                     addressId,
                     address: addressToDelete,
                     ...(phone ? { phone } : {}),
+                    ...(ref ? { ref } : {}),
                 }),
             });
             const payload = await response.json().catch(() => ({}));

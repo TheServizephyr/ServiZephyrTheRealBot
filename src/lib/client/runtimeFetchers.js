@@ -10,6 +10,7 @@ const RESTAURANT_BOOTSTRAP_CACHE_PREFIX = 'restaurant_bootstrap:v1:';
 const ORDER_STATUS_CACHE_PREFIX = 'order_status:v1:';
 const ACTIVE_ORDER_CACHE_PREFIX = 'order_active:v1:';
 const CUSTOMER_ADDRESSES_SNAPSHOT_KEY = 'servizephyr:customer-addresses-snapshot:v1';
+const CUSTOMER_ADDRESSES_UPDATED_AT_KEY = 'servizephyr:customer-addresses-updated-at:v1';
 
 const CUSTOMER_LOOKUP_TTL_MS = 60 * 1000;
 const RESTAURANT_BOOTSTRAP_TTL_MS = 60 * 1000;
@@ -247,6 +248,41 @@ export function removeCustomerAddressSnapshot(addressId) {
     return writeCustomerAddressesSnapshot(
         existing.filter((item) => String(item?.id || '') !== String(addressId))
     );
+}
+
+export function markCustomerAddressesUpdatedAt(timestamp = Date.now()) {
+    const storage = getBrowserStorage();
+    if (!storage) return 0;
+
+    const safeTimestamp = Number(timestamp) || Date.now();
+    try {
+        storage.setItem(CUSTOMER_ADDRESSES_UPDATED_AT_KEY, String(safeTimestamp));
+    } catch {
+        // Ignore storage errors.
+    }
+    return safeTimestamp;
+}
+
+export function readCustomerAddressesUpdatedAt() {
+    const storage = getBrowserStorage();
+    if (!storage) return 0;
+
+    try {
+        return Number(storage.getItem(CUSTOMER_ADDRESSES_UPDATED_AT_KEY) || 0) || 0;
+    } catch {
+        return 0;
+    }
+}
+
+export function clearCustomerAddressesUpdatedAt() {
+    const storage = getBrowserStorage();
+    if (!storage) return;
+
+    try {
+        storage.removeItem(CUSTOMER_ADDRESSES_UPDATED_AT_KEY);
+    } catch {
+        // Ignore storage errors.
+    }
 }
 
 export async function fetchCachedRestaurantBootstrap({

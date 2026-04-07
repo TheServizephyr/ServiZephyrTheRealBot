@@ -82,6 +82,16 @@ function addressesMatch(existingAddress = {}, incomingAddress = {}) {
     return sameFullAddress && samePhone;
 }
 
+function addressHasSameIdentity(existingAddress = {}, incomingAddress = {}) {
+    const existingId = String(existingAddress?.id || '').trim();
+    const incomingId = String(incomingAddress?.id || '').trim();
+    if (existingId && incomingId && existingId === incomingId) {
+        return true;
+    }
+
+    return addressesMatch(existingAddress, incomingAddress);
+}
+
 function addressesMatchForDelete(existingAddress = {}, addressId = '', candidateAddress = {}) {
     const normalizedId = String(addressId || candidateAddress?.id || '').trim();
     if (normalizedId && String(existingAddress?.id || '').trim() === normalizedId) {
@@ -143,6 +153,82 @@ async function getUserIdFromToken(req) {
     }
 }
 
+async function resolveProfileTargetRef(firestore, req, {
+    phone = '',
+    explicitGuestId = '',
+    ref = '',
+} = {}) {
+    const uid = await getUserIdFromToken(req);
+    if (uid) {
+        return {
+            userId: uid,
+            isGuest: false,
+            targetRef: firestore.collection('users').doc(uid),
+            source: 'auth',
+        };
+    }
+
+    const cookieStore = require('next/headers').cookies();
+    const guestSession = readSignedGuestSessionCookie(cookieStore, ['checkout']);
+    let resolvedSubjectId = guestSession?.subjectId || explicitGuestId || '';
+
+    if (!resolvedSubjectId && ref) {
+        const refSession = await resolveGuestAccessRef(firestore, ref, {
+            requiredScopes: ['checkout'],
+            allowLegacy: true,
+            touch: true,
+        });
+        resolvedSubjectId = refSession?.subjectId || '';
+    }
+
+    if (resolvedSubjectId) {
+        const guestRef = firestore.collection('guest_profiles').doc(resolvedSubjectId);
+        const guestSnap = await guestRef.get();
+        if (guestSnap.exists) {
+            return {
+                userId: resolvedSubjectId,
+                isGuest: true,
+                targetRef: guestRef,
+                source: 'session_subject_guest',
+                profileData: guestSnap.data() || {},
+            };
+        }
+
+        const userRef = firestore.collection('users').doc(resolvedSubjectId);
+        const userSnap = await userRef.get();
+        if (userSnap.exists) {
+            return {
+                userId: resolvedSubjectId,
+                isGuest: false,
+                targetRef: userRef,
+                source: 'session_subject_user',
+                profileData: userSnap.data() || {},
+            };
+        }
+    }
+
+    if (!phone) {
+        return null;
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    const profileResult = await getOrCreateGuestProfile(firestore, normalizedPhone);
+    const userId = profileResult?.userId || '';
+    if (!userId) {
+        return null;
+    }
+
+    return {
+        userId,
+        isGuest: !!profileResult.isGuest,
+        targetRef: profileResult.isGuest
+            ? firestore.collection('guest_profiles').doc(userId)
+            : firestore.collection('users').doc(userId),
+        source: 'phone_fallback',
+        profileData: profileResult.data || {},
+    };
+}
+
 
 // GET: Fetch all saved addresses for a user
 export async function GET(req) {
@@ -183,19 +269,6 @@ export async function POST(req) {
 
         const firestore = await getFirestore();
 
-        // Retrieve Guest ID from Cookie
-        const cookieStore = require('next/headers').cookies();
-        const guestSession = readSignedGuestSessionCookie(cookieStore, ['checkout']);
-        let guestId = guestSession?.subjectId || explicitGuestId;
-        if (!guestId && ref) {
-            const refSession = await resolveGuestAccessRef(firestore, ref, {
-                requiredScopes: ['checkout'],
-                allowLegacy: true,
-                touch: true,
-            });
-            guestId = refSession?.subjectId || '';
-        }
-
         if (!address || !address.id || !address.full || typeof address.latitude !== 'number' || typeof address.longitude !== 'number') {
             console.error("[API][user/addresses] POST validation failed: Invalid address data provided.", address);
             return NextResponse.json({ message: 'Invalid address data. A full address and location coordinates are required.' }, { status: 400 });
@@ -205,33 +278,34 @@ export async function POST(req) {
             return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
         }
 
-        // CRITICAL: Use UID-first priority via getOrCreateGuestProfile
-        const normalizedPhone = phone.slice(-10);
-
-        // Get or create user profile (UID-first, then guest)
-        const profileResult = await getOrCreateGuestProfile(firestore, normalizedPhone);
-        const userId = profileResult.userId;
-
-        console.log(`[API][user/addresses] Resolved userId: ${userId}, isGuest: ${profileResult.isGuest}`);
-
-        // Determine target collection
-        let targetRef;
-        let currentName = profileResult.data?.name || '';
-        const newName = address.name;
-
-        if (profileResult.isGuest) {
-            targetRef = firestore.collection('guest_profiles').doc(userId);
-            console.log(`[API][user/addresses] Saving to guest profile: ${userId}`);
-        } else {
-            targetRef = firestore.collection('users').doc(userId);
-            console.log(`[API][user/addresses] Saving to user UID: ${userId}`);
+        const profileTarget = await resolveProfileTargetRef(firestore, req, {
+            phone,
+            explicitGuestId,
+            ref,
+        });
+        if (!profileTarget?.targetRef || !profileTarget?.userId) {
+            return NextResponse.json({ message: 'Could not resolve profile for this address save.' }, { status: 404 });
         }
+
+        const userId = profileTarget.userId;
+        let targetRef = profileTarget.targetRef;
+        let currentName = profileTarget.profileData?.name || '';
+        const newName = address.name;
+        console.log(`[API][user/addresses] Resolved userId: ${userId}, isGuest: ${profileTarget.isGuest}, source: ${profileTarget.source}`);
+        console.log(`[API][user/addresses] Saving to ${profileTarget.isGuest ? 'guest profile' : 'user UID'}: ${userId}`);
 
         const currentProfileSnap = await targetRef.get();
         const currentProfileData = currentProfileSnap.exists ? (currentProfileSnap.data() || {}) : {};
         const existingAddresses = Array.isArray(currentProfileData.addresses) ? currentProfileData.addresses : [];
-        const duplicateAddress = existingAddresses.find((savedAddress) => addressesMatch(savedAddress, address));
-        const addressToPersist = duplicateAddress || address;
+        const matchingAddressIndex = existingAddresses.findIndex((savedAddress) => addressHasSameIdentity(savedAddress, address));
+        const duplicateAddress = matchingAddressIndex >= 0 ? existingAddresses[matchingAddressIndex] : null;
+        const isAddressEdit = matchingAddressIndex >= 0 && String(address?.id || '').trim() !== '';
+        const addressToPersist = isAddressEdit
+            ? {
+                ...duplicateAddress,
+                ...address,
+            }
+            : (duplicateAddress || address);
 
         currentName = currentProfileData.name || currentName;
 
@@ -240,7 +314,11 @@ export async function POST(req) {
             phone: phone
         };
 
-        if (!duplicateAddress) {
+        if (isAddressEdit) {
+            const nextAddresses = [...existingAddresses];
+            nextAddresses[matchingAddressIndex] = addressToPersist;
+            updateData.addresses = nextAddresses;
+        } else if (!duplicateAddress) {
             updateData.addresses = FieldValue.arrayUnion(addressToPersist);
         }
 
@@ -431,14 +509,17 @@ export async function POST(req) {
             }
         }
 
-        const responseMessage = duplicateAddress
-            ? 'Address already exists. Existing saved location was reused.'
-            : 'Address added successfully!';
+        const responseMessage = isAddressEdit
+            ? 'Address updated successfully!'
+            : (duplicateAddress
+                ? 'Address already exists. Existing saved location was reused.'
+                : 'Address added successfully!');
         console.log(`[API][user/addresses] ${responseMessage} Document: ${targetRef.path}.`);
         return NextResponse.json({
             message: responseMessage,
             address: addressToPersist,
-            duplicateAddressSkipped: !!duplicateAddress
+            duplicateAddressSkipped: !!duplicateAddress && !isAddressEdit,
+            updated: isAddressEdit,
         }, { status: 200 });
 
     } catch (error) {
@@ -453,41 +534,25 @@ export async function DELETE(req) {
     console.log("[API][user/addresses] DELETE request received.");
     try {
         const firestore = await getFirestore();
-        const { addressId, phone, address } = await req.json();
+        const { addressId, phone, address, ref, guestId: explicitGuestId } = await req.json();
 
         if (!addressId && !address) {
             console.error("[API][user/addresses] DELETE validation failed: Address identifier is required.");
             return NextResponse.json({ message: 'Address identifier is required.' }, { status: 400 });
         }
 
-        let targetRef;
+        const profileTarget = await resolveProfileTargetRef(firestore, req, {
+            phone,
+            explicitGuestId,
+            ref,
+        });
+        if (!profileTarget?.targetRef || !profileTarget?.userId) {
+            return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
+        }
+
+        const targetRef = profileTarget.targetRef;
         let normalizedPhone = normalizePhone(phone);
-
-        // Scenario 1: Request is from a WhatsApp user, identified by phone number
-        if (phone) {
-            console.log(`[API][user/addresses] DELETE request for phone number: ${normalizedPhone}`);
-
-            // CRITICAL: Use UID-first priority
-            const profileResult = await getOrCreateGuestProfile(firestore, normalizedPhone);
-            const userId = profileResult.userId;
-
-            if (profileResult.isGuest) {
-                targetRef = firestore.collection('guest_profiles').doc(userId);
-                console.log(`[API][user/addresses] Deleting from guest profile: ${userId}`);
-            } else {
-                targetRef = firestore.collection('users').doc(userId);
-                console.log(`[API][user/addresses] Deleting from user UID: ${userId}`);
-            }
-        }
-        // Scenario 2: Request is from a logged-in user, identified by ID token
-        else {
-            const uid = await getUserIdFromToken(req);
-            if (!uid) {
-                return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
-            }
-            console.log(`[API][user/addresses] DELETE request for UID: ${uid}`);
-            targetRef = firestore.collection('users').doc(uid);
-        }
+        console.log(`[API][user/addresses] DELETE request for ${profileTarget.isGuest ? 'guest' : 'user'} profile: ${profileTarget.userId} (${profileTarget.source})`);
 
         const candidateRefs = [targetRef];
         const primarySnap = await targetRef.get();
